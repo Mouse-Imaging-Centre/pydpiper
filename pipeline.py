@@ -7,6 +7,8 @@ import Pyro.naming
 import Queue
 import time
 import cPickle
+import os
+import sys
 from subprocess import call
 
 Pyro.config.PYRO_MOBILE_CODE=1 
@@ -28,10 +30,15 @@ class OutputFile(PipelineFile):
     def setType(self):
         self.fileType = "output"
 
+class LogFile(PipelineFile):
+    def setType(self):
+    	self.fileType = "log"
+
 class PipelineStage():
     def __init__(self):
         self.inputFiles = [] # the input files for this stage
         self.outputFiles = [] # the output files for this stage
+        self.logFile = None # each stage should have only one log file
         self.status = None
         self.name = ""
         self.colour = "black"
@@ -66,6 +73,7 @@ class CmdStage(PipelineStage):
         self.argArray = argArray # the raw input array
         self.cmd = [] # the input array converted to strings
         self.parseArgs()
+        self.checkLogFile()
 
     def parseArgs(self):
         if self.argArray:
@@ -75,17 +83,22 @@ class CmdStage(PipelineStage):
                     self.inputFiles.append(str(a))
                 elif ft == "output":
                     self.outputFiles.append(str(a))
+                elif ft == "log":
+                    self.logFile = str(a)
                 self.cmd.append(str(a))
                 self.name = self.cmd[0]
-
+    def checkLogFile(self):
+    	if not self.logFile:
+    	    self.logFile = self.name + ".log" 
     def execStage(self):
-        returncode = call(self.cmd)
+    	of = open(self.logFile, 'w')
+        returncode = call(self.cmd, stdout=of, stderr=of)
+        of.close()
         return(returncode)
     def getHash(self):
         return(hash(" ".join(self.cmd)))
     def __repr__(self):
         return(" ".join(self.cmd))
-
 
 class Pipeline(Pyro.core.SynchronizedObjBase):
     def __init__(self):
@@ -151,30 +164,6 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
                     self.G.add_edge(self.outputhash[ip], i)
         endtime = time.time()
         print("Create Edges time: " + str(endtime-starttime))
-    def createEdgesOld(self): # to be deleted - too slow
-        """computes stage dependencies by examining their inputs/outputs"""
-        # a rather dumb brute force algorithm - this might be too slow for
-        # big pipelines
-        starttime = time.time()
-        for i in self.G.nodes_iter():
-            for j in self.G.nodes_iter():
-                for output in self.stages[i].outputFiles:
-                    if output in self.stages[j].inputFiles:
-                        self.G.add_edge(i, j)
-        endtime = time.time()
-        print("createEdges time: " + str(endtime-starttime))
-    def createEdgesTest(self):
-        """computes stage dependencies by examining their inputs/outputs"""
-        # a rather dumb brute force algorithm - this might be too slow for
-        # big pipelines
-        starttime = time.time()
-        for i in range(len(self.stages)):
-            for j in range(len(self.stages)):
-                for output in self.stages[i].outputFiles:
-                    if output in self.stages[j].inputFiles:
-                        self.G.add_edge(i, j)
-        endtime = time.time()
-        print("createEdges time: " + str(endtime-starttime))
 
     def computeGraphHeads(self):
         """adds stages with no predecessors to the runnable queue"""
@@ -225,43 +214,41 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
     def continueLoop(self):
         # return 1 unless all stages are finished
         return(len(self.stages) > len(self.processedStages))
-        
-            
 
-def test():
-    p = Pipeline()
-    p.addStage( PipelineStage(["minctracc", "-transform", InputFile("out2.xfm"), InputFile("in5.mnc"), InputFile("in6.mnc"), OutputFile("out3.xfm")]) )
-    p.addStage( PipelineStage(["minctracc", "-option1", InputFile("input.mnc"), InputFile("input2.mnc"), OutputFile("out.xfm")]) )
-    p.addStage( PipelineStage(["minctracc", "-option1", InputFile("input3.mnc"), InputFile("input4.mnc"), OutputFile("out2.xfm")]) )
+def pipelineDaemon(pipeline):
+    
+    #error checking for valid pipeline?
 
-    return(p)
+    #Note: NameServer must be started for this function to work properly
 
-class pTest(Pyro.core.ObjBase):
-    def __init__(self):
-        Pyro.core.ObjBase.__init__(self)
-        self.counter=0
-    def addCounter(self):
-        self.counter += 1
-    def getCounter(self):
-        return(self.counter)
-
-def pipelineDaemon(pipeline, name="pipeline"):
-    print("MOBILE: " + str(Pyro.config.PYRO_MOBILE_CODE))
+    Pyro.core.initServer()  
     daemon=Pyro.core.Daemon()
     ns=Pyro.naming.NameServerLocator().getNS()
     daemon.useNameServer(ns)
-    uri=daemon.connect(pipeline,"ptest")
-    daemon.requestLoop()
+    uri=daemon.connect(pipeline,"pipeline")
+ 
+    print("Daemon is running on port: " + str(daemon.port))
+    print("The object's uri is: " + str(uri))
+    
+    daemon.requestLoop(pipeline.continueLoop)
 
-def pipelineNoNSDaemon(pipeline, urifile="/home/mfriedel/software-development/py-pipeline-modules/uri"):
+def pipelineNoNSDaemon(pipeline, urifile=None):
+
+    # check for valid pipeline?     
+
+    if urifile==None:
+	urifile = os.curdir + "/" + "uri"    
+
     Pyro.core.initServer()
     daemon=Pyro.core.Daemon()
-    uri=daemon.connect(pipeline, "ptest")
+    uri=daemon.connect(pipeline, "pipeline")
 
     print("Daemon is running on port: " + str(daemon.port))
     print("The object's uri is: " + str(uri))
+
     uf = open(urifile, 'w')
     uf.write(str(uri))
     uf.close()
 
     daemon.requestLoop(pipeline.continueLoop)
+

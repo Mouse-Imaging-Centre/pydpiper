@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 from pipeline import *
+from minctracc import *
 from optparse import OptionParser
 from os.path import basename,dirname,isdir,abspath
 from os import mkdir
@@ -9,100 +10,6 @@ import networkx as nx
 #rom networkx import DiGraph
 
 Pyro.config.PYRO_MOBILE_CODE=1 
-
-class minctracc(CmdStage):
-    def __init__(self, source, target, output, 
-                 source_mask=None, 
-                 target_mask=None,
-                 iterations=40,
-                 step=0.5,
-                 transform=None,
-                 weight=0.8,
-                 stiffness=0.98,
-                 similarity=0.3,
-                 w_translations=0.2):
-        CmdStage.__init__(self, None) #don't do any arg processing in superclass
-        self.source = source
-        self.target = target
-        self.output = output
-        self.source_mask = source_mask
-        self.target_mask = target_mask
-        self.iterations = str(iterations)
-        self.lattice_diameter = str(step*3)
-        self.step = str(step)
-        self.transform = transform
-        self.weight = str(weight)
-        self.stiffness = str(stiffness)
-        self.similarity = str(similarity)
-        self.w_translations = str(w_translations)
-
-        self.addDefaults()
-        self.finalizeCommand()
-        self.setName()
-        self.colour = "red"
-
-    def setName(self):
-        self.name = "minctracc nlin step: " + self.step 
-    def addDefaults(self):
-        self.cmd = ["minctracc",
-                    "-clobber",
-                    "-similarity", self.similarity,
-                    "-weight", self.weight,
-                    "-stiffness", self.stiffness,
-                    "-w_translations", self.w_translations,self.w_translations,self.w_translations,
-                    "-step", self.step, self.step, self.step,
-
-                    self.source,
-                    self.target,
-                    self.output]
-        
-        # assing inputs and outputs
-        # assing inputs and outputs
-        self.inputFiles = [self.source, self.target]
-        if self.source_mask:
-            self.inputFiles += [self.source_mask]
-            self.cmd += ["-source_mask", self.source_mask]
-        if self.target_mask:
-            self.inputFiles += [self.target_mask]
-            self.cmd += ["-model_mask", self.target_mask]
-        if self.transform:
-            self.inputFiles += [self.transform]
-            self.cmd += ["-transform", self.transform]
-        self.outputFiles = [self.output]
-
-    def finalizeCommand(self):
-        """add the options for non-linear registration"""
-        # build the command itself
-        self.cmd += ["-iterations", self.iterations,
-                    "-nonlinear", "corrcoeff", "-sub_lattice", "6",
-                    "-lattice_diameter", self.lattice_diameter,
-                     self.lattice_diameter, self.lattice_diameter]
-
-class lsq12minctracc(minctracc):
-    def __init__(self, source, target, output,
-                 source_mask=None, target_mask=None):
-        minctracc.__init__(self,source,target,output,
-                           source_mask=source_mask,
-                           target_mask=target_mask)
-    def finalizeCommand(self):
-        """add the options for a 12 parameter fit"""
-        self.cmd += ["-xcorr", "-lsq12"]
-    def setName(self):
-        self.name = "minctracc lsq12 "
-
-        
-
-class blur(CmdStage):
-    def __init__(self, input, output, fwhm):
-        # note - output should end with _blur.mnc
-        CmdStage.__init__(self, None)
-        self.base = output.replace("_blur.mnc", "")
-        self.inputFiles = [input]
-        self.outputFiles = [output]
-        self.cmd = ["mincblur", "-clobber", "-fwhm", str(fwhm),
-                    input, self.base]
-        self.name = "mincblur " + str(fwhm) + " " + basename(input)
-        self.colour="blue"
 
 class Template:
     def __init__(self, image, labels, mask=None, outputdir=None):
@@ -121,18 +28,25 @@ class SMATregister:
                  name="initial"):
         self.p = Pipeline()
         self.input = input
-        input_base = basename(input).replace(".mnc", "")
+        input_base_fname = basename(input).replace(".mnc", "")
         outDir = abspath(outDir)
-        input_dir = outDir + "/" + input_base
+        input_dir = outDir + "/" + input_base_fname
         if not isdir(input_dir):
             mkdir(input_dir)
+        input_log_dir = input_dir + "/log"
+        if not isdir(input_log_dir):
+            mkdir(input_log_dir)
+        templ_log_dir = template.outputdir + "/log"
+        if not isdir(templ_log_dir):
+            mkdir(templ_log_dir)
         self.outDir = input_dir
         self.inputMask = inputMask
         tbase = basename(template.labels).replace(".mnc","")
 
-
-        input_base = input_dir + "/" + input_base
+        input_base = input_dir + "/" + input_base_fname
         template_base = template.outputdir + "/" + basename(template.image).replace(".mnc", "")
+        input_log_base = input_log_dir + "/" + input_base_fname
+        templ_log_base = templ_log_dir + "/" + basename(template.image).replace(".mnc", "")
 
         input_blurs = []
         template_blurs = []
@@ -140,15 +54,20 @@ class SMATregister:
         for b in blurs:
             iblur = input_base + "_fwhm" + str(b) + "_blur.mnc" 
             tblur = template_base + "_fwhm" + str(b) + "_blur.mnc" 
-            self.p.addStage(blur(input, iblur, b))
-            self.p.addStage(blur(template.image, tblur, b))
+            ilog = input_log_base + "_fwhm" + str(b) + "_blur.log"
+            tlog = templ_log_base + "_fwhm" + str(b) + "_blur.log"
+            self.p.addStage(blur(input, iblur, ilog, b))
+            self.p.addStage(blur(template.image, tblur, tlog, b))
             input_blurs += [iblur]
             template_blurs += [tblur]
 
         # lsq12 alignment
         linxfm = input_base + "_" + tbase + "lsq12.xfm"
-        self.p.addStage(lsq12minctracc(template_blurs[0],
+        logfile = input_log_base + "_" + tbase + "lsq12.log"
+        linearparam = "lsq12"
+        self.p.addStage(linearminctracc(template_blurs[0],
                                        input_blurs[0], linxfm,
+				       logfile, linearparam,
                                        inputMask, template.mask))
 
         # create the nonlinear registrations
@@ -160,9 +79,11 @@ class SMATregister:
             else:
                 pxfm = xfms[i - 1]
             xfms += [cxfm]
-            #print("grunkle: " + str(i) + " " + xfms)
+            logfile = input_log_base + tbase + "step" + str(i) + ".log"
+            linearparam = "nlin"
             self.p.addStage(minctracc(template_blurs[i],
                                       input_blurs[i], cxfm,
+                                      logfile, linearparam,
                                       inputMask, template.mask,
                                       iterations=iterations[i],
                                       step=steps[i],
@@ -170,31 +91,20 @@ class SMATregister:
         # resample labels with final registration
         
         self.output = input_base + "resampled_" + tbase + ".mnc"
-        self.p.addStage(CmdStage(["mincresample", "-2", "-clobber", 
-                                  "-like", input,
-                                  "-keep_real_range", "-nearest_neighbour",
-                                  "-transform", InputFile(cxfm),
-                                  InputFile(template.labels), 
-                                  OutputFile(self.output)]))
-
+        logfile = input_log_base + "resampled_" + tbase + ".log"
+        #self.p.addStage(CmdStage(["mincresample", "-2", "-clobber", 
+         #                         "-like", input,
+          #                        "-keep_real_range", "-nearest_neighbour",
+           #                       "-transform", InputFile(cxfm),
+            #                      InputFile(template.labels), 
+             #                     OutputFile(self.output)]))
+	
+	resargs = ["-keep_real_range", "-nearest_neighbour"]
+	self.p.addStage(mincresample(template.labels, self.output, logfile, resargs, input, cxfm))
+	
     def getTemplate(self):
         return(Template(self.input, self.output, self.inputMask,
                         self.outDir))
-
-def test(npipes):
-    starttime = time.time()
-    atlas = Template("atlas-image.mnc", "atlas-labels.mnc")
-    p = Pipeline()
-
-    for i in range(npipes):
-        file = "input_" + str(i) + ".mnc"
-        sp = SMATregister(file, atlas)
-        p.addPipeline(sp.p)
-    p.initialize()
-    endtime = time.time()
-    print("test time: " + str(endtime-starttime))
-    return(p)
-
 
 if __name__ == "__main__":
     usage = "%prog [options] input1.mnc ... inputn.mnc"
@@ -223,6 +133,16 @@ if __name__ == "__main__":
     parser.add_option("--max-templates", dest="max_templates",
                       default=25, type="int",
                       help="Maximum number of templates to generate")
+    parser.add_option("--uri-file", dest="urifile",
+		      type="string", default=None,
+                      help="Location for uri file if NameServer is not used.")
+    parser.add_option("--use-ns", dest="use_ns",
+		      action="store_true",
+		      help="Use the Pyro NameServer to store object locations")
+    parser.add_option("--create-graph", dest="create_graph",
+		      action="store_true",
+		      help="Create a .dot file with graphical representation of pipeline relationships")
+    
 
     (options,args) = parser.parse_args()
 
@@ -257,15 +177,23 @@ if __name__ == "__main__":
             p.addPipeline(sp.p)
         bname = basename(file).replace(".mnc", "")
         of = OutputFile(outputDir + "/" + bname + "_votedlabels.mnc")
-        cmd = ["voxel_vote.py"] + labels + [of]
+        lf = LogFile(outputDir + "/" + bname + "_votedlabels.log")
+        cmd = ["voxel_vote.py"] + labels + [of] + [lf]
         p.addStage(CmdStage(cmd))
 
     p.initialize()
     p.printStages()
-    nx.write_dot(p.G, "labeled-tree.dot")
     
-    pipelineNoNSDaemon(p)
+    if options.create_graph:
+    	nx.write_dot(p.G, "labeled-tree.dot")
+    
+    #If Pyro NameServer option was specified, use it.
+    
+    if options.use_ns:
+	pipelineDaemon(p)
+    else:
+        pipelineNoNSDaemon(p, options.urifile)
+    
     print "templates: " + str(numTemplates)
-    #print("CHORDAL: " + nx.algorithms.chordal.chordal_alg.is_chordal(p.G))
 
     

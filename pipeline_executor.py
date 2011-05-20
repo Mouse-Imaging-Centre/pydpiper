@@ -8,6 +8,7 @@ import Pyro.core
 import time
 from pipeline import *
 from MAGeT import *
+from minctracc import *
 import sys
 
 Pyro.config.PYRO_MOBILE_CODE=1
@@ -15,14 +16,20 @@ Pyro.config.PYRO_MOBILE_CODE=1
 
 if __name__ == "__main__":
     
-    #locator = Pyro.naming.NameServerLocator()
-    #ns = locator.getNS()
-    #p = Pyro.core.getProxyForURI("PYRONAME://ptest")
-    uf = open(sys.argv[1])
-    uri = Pyro.core.processStringURI(uf.readline())
-    uf.close()
+    Pyro.core.initClient()
+    if len(sys.argv) == 1:
+	# no command line arguments - assume using NS
+	ns = Pyro.naming.NameServerLocator().getNS()
+        uri = ns.resolve("pipeline")
+    elif len(sys.argv) == 2:
+   	# one argument --> assume not using NS, reading in uri file
+    	uf = open(sys.argv[1])
+    	uri = Pyro.core.processStringURI(uf.readline())
+    	uf.close()
+    else:
+	sys.exit("pipeline_executor should have only one command line argument.")
+    
     p = Pyro.core.getProxyForURI(uri)
-    #p = Pyro.core.getProxyForURI("PYROLOC://172.20.103.84:7766/ptest")
 
     while True:
         i = p.getRunnableStageIndex()
