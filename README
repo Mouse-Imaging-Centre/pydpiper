@@ -5,4 +5,4 @@ It is very much under active development.
 Classes for building and controling the pipeline can be found in pipeline.py. 
 The code for executing the pipeline can be found in pipeline_executor.py.
 
-Application modules that utilize the pipeline class definitions can be found in the applications folder. 
+Application modules that utilize the pipeline class definitions will ultimately be placed in an applications folder. 
