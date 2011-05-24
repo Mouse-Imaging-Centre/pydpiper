@@ -92,12 +92,6 @@ class SMATregister:
         
         self.output = input_base + "resampled_" + tbase + ".mnc"
         logfile = input_log_base + "resampled_" + tbase + ".log"
-        #self.p.addStage(CmdStage(["mincresample", "-2", "-clobber", 
-         #                         "-like", input,
-          #                        "-keep_real_range", "-nearest_neighbour",
-           #                       "-transform", InputFile(cxfm),
-            #                      InputFile(template.labels), 
-             #                     OutputFile(self.output)]))
 	
 	resargs = ["-keep_real_range", "-nearest_neighbour"]
 	self.p.addStage(mincresample(template.labels, self.output, logfile, resargs, input, cxfm))

@@ -230,7 +230,10 @@ def pipelineDaemon(pipeline):
     print("Daemon is running on port: " + str(daemon.port))
     print("The object's uri is: " + str(uri))
     
-    daemon.requestLoop(pipeline.continueLoop)
+    try:
+    	daemon.requestLoop(pipeline.continueLoop)
+    finally:
+    	daemon.shutdown(True)
 
 def pipelineNoNSDaemon(pipeline, urifile=None):
 
@@ -250,5 +253,8 @@ def pipelineNoNSDaemon(pipeline, urifile=None):
     uf.write(str(uri))
     uf.close()
 
-    daemon.requestLoop(pipeline.continueLoop)
+    try:
+    	daemon.requestLoop(pipeline.continueLoop)
+    finally:
+    	daemon.shutdown(True)
 
