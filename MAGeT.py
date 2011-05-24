@@ -172,8 +172,10 @@ if __name__ == "__main__":
         bname = basename(file).replace(".mnc", "")
         of = OutputFile(outputDir + "/" + bname + "_votedlabels.mnc")
         lf = LogFile(outputDir + "/" + bname + "_votedlabels.log")
-        cmd = ["voxel_vote.py"] + labels + [of] + [lf]
-        p.addStage(CmdStage(cmd))
+        cmd = ["voxel_vote.py"] + labels + [of]
+        voxel = CmdStage(cmd)
+        voxel.setLogFile(lf)
+        p.addStage(voxel)
 
     p.initialize()
     p.printStages()

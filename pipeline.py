@@ -5,10 +5,12 @@ import networkx as nx
 import Pyro.core
 import Pyro.naming
 import Queue
-import time
 import cPickle
 import os
 import sys
+import socket
+import time
+from datetime import datetime
 from subprocess import call
 
 Pyro.config.PYRO_MOBILE_CODE=1 
@@ -83,15 +85,18 @@ class CmdStage(PipelineStage):
                     self.inputFiles.append(str(a))
                 elif ft == "output":
                     self.outputFiles.append(str(a))
-                elif ft == "log":
-                    self.logFile = str(a)
                 self.cmd.append(str(a))
                 self.name = self.cmd[0]
     def checkLogFile(self):
     	if not self.logFile:
-    	    self.logFile = self.name + ".log" 
+    	    self.logFile = self.name + "." + datetime.isoformat(datetime.now()) + ".log"
+    def setLogFile(self, logFileName): 
+    	self.logFile = str(logFileName)
     def execStage(self):
     	of = open(self.logFile, 'w')
+    	of.write("Running on: " + socket.gethostname() + " at " + datetime.isoformat(datetime.now(), " ") + "\n")
+    	of.write(repr(self) + "\n")
+    	of.flush()
         returncode = call(self.cmd, stdout=of, stderr=of)
         of.close()
         return(returncode)
