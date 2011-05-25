@@ -32,19 +32,25 @@ if __name__ == "__main__":
     p = Pyro.core.getProxyForURI(uri)
 
     while True:
-        i = p.getRunnableStageIndex()
-        if i == None:
-            print("Going to sleep")
-            time.sleep(5)
-        else:
-            print("in: ")
-            print(i)
-            s = p.getStage(i)
-            print("Running:")
-            print(s)
-            r = s.execStage()
-            print("return was: " + str(r))
-            if r == 0:
-                p.setStageFinished(i)
+    	try:
+            i = p.getRunnableStageIndex()
+            if i == None:
+            	print("Going to sleep")
+            	time.sleep(5)
             else:
-                p.setStageFailed(i)
+            	print("in: ")
+            	print(i)
+            	s = p.getStage(i)
+            	print("Running:")
+            	print(s)
+            	r = s.execStage()
+            	print("return was: " + str(r))
+            	if r == 0:
+                    p.setStageFinished(i)
+            	else:
+                    p.setStageFailed(i)
+        except Pyro.errors.ConnectionClosedError:
+            sys.exit("Connection with server closed. Server shutdown and system exit.")
+        except:
+            sys.exit("An error has occurred. Pipeline may not have completed properly. Check logs and restart if needed.")
+        

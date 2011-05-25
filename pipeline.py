@@ -237,8 +237,12 @@ def pipelineDaemon(pipeline):
     
     try:
     	daemon.requestLoop(pipeline.continueLoop)
-    finally:
+    except:
+    	sys.exit("daemon.requestLoop did not complete properly. Pipeline may not have completed. Check logs and restart if needed.")
+    else:
+    	print("Pipeline completed. daemon unregistering objects and shutting down.")
     	daemon.shutdown(True)
+    	print("Objects successfully unregistered and daemon shutdown.")
 
 def pipelineNoNSDaemon(pipeline, urifile=None):
 
@@ -250,7 +254,7 @@ def pipelineNoNSDaemon(pipeline, urifile=None):
     Pyro.core.initServer()
     daemon=Pyro.core.Daemon()
     uri=daemon.connect(pipeline, "pipeline")
-
+    
     print("Daemon is running on port: " + str(daemon.port))
     print("The object's uri is: " + str(uri))
 
@@ -260,6 +264,9 @@ def pipelineNoNSDaemon(pipeline, urifile=None):
 
     try:
     	daemon.requestLoop(pipeline.continueLoop)
-    finally:
+    except:
+    	sys.exit("daemon.requestLoop did not complete properly. Pipeline may not have completed. Check logs and restart if needed.")
+    else:
+    	print("Pipeline completed. daemon unregistering objects and shutting down.")
     	daemon.shutdown(True)
-
+    	print("Objects successfully unregistered and daemon shutdown.")
