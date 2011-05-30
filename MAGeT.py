@@ -7,7 +7,6 @@ from os.path import basename,dirname,isdir,abspath
 from os import mkdir
 import time
 import networkx as nx
-#rom networkx import DiGraph
 
 Pyro.config.PYRO_MOBILE_CODE=1 
 

@@ -1,14 +1,10 @@
 #!/usr/bin/env python
 
-#import matplotlib
-#matplotlib.use("PS") #to avoid X errors - see
-# http://matplotlib.sourceforge.net/faq/installing_faq.html#backends
-
 import Pyro.core
 import time
-from pipeline import *
-from MAGeT import *
-from minctracc import *
+#from pipeline import *
+#from MAGeT import *
+#from minctracc import *
 import sys
 
 Pyro.config.PYRO_MOBILE_CODE=1
@@ -35,7 +31,7 @@ if __name__ == "__main__":
     	try:
             i = p.getRunnableStageIndex()
             if i == None:
-            	print("Going to sleep")
+            	print("No runnable stages. Going to sleep")
             	time.sleep(5)
             else:
             	print("in: ")
@@ -49,8 +45,13 @@ if __name__ == "__main__":
                     p.setStageFinished(i)
             	else:
                     p.setStageFailed(i)
+                ps = p.getProcessedStageCount()
+                print("Number of processed stages: " + str(ps))
         except Pyro.errors.ConnectionClosedError:
             sys.exit("Connection with server closed. Server shutdown and system exit.")
         except:
-            sys.exit("An error has occurred. Pipeline may not have completed properly. Check logs and restart if needed.")
+            print "Failed in pipeline_executor"
+    	    print "Unexpected error: ", sys.exc_info()
+    	    sys.exit()
+            #sys.exit("An error has occurred. Pipeline may not have completed properly. Check logs and restart if needed.")
         
