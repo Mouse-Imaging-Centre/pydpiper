@@ -253,8 +253,8 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
                 self.runnable.put(i)
     def setStageFailed(self, index):
         self.processedStages.append(index)
-        #for i in nx.dfs_successors(self.G, index).keys():
-        #    self.processedStages.append(index)
+        for i in nx.dfs_successors(self.G, index).keys():
+            self.processedStages.append(index)
         
     def initialize(self):
         """called once all stages have been added - computes dependencies and adds graph heads to runnable queue"""

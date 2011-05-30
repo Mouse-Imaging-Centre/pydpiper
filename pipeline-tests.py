@@ -26,4 +26,21 @@ class TestSimplePipeline():
         s = self.p.G.predecessors(10)
         print "S: " + str(s)
         assert s[0] == 9
+
+    def test_set_runnable(self):
+        """make sure that it correctly updates runnable class"""
+        s = self.p.getRunnableStageIndex() # should be 0
+        self.p.setStageFinished(s)
+        s = self.p.getRunnableStageIndex()
+        assert s == 1
+
+    def test_stage_failure_pipe_finish(self):
+        for i in range(10):
+            s = self.p.getRunnableStageIndex()
+            self.p.setStageFinished(s)
+        s = self.p.getRunnableStageIndex()
+        self.p.setStageFailed(s)
+        assert self.p.continueLoop() == False
+        
+
         
