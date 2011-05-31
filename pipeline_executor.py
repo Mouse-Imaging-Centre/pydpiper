@@ -1,10 +1,8 @@
 #!/usr/bin/env python
 
 import Pyro.core
+import Pyro.naming
 import time
-#from pipeline import *
-#from MAGeT import *
-#from minctracc import *
 import sys
 
 Pyro.config.PYRO_MOBILE_CODE=1
@@ -15,7 +13,7 @@ if __name__ == "__main__":
     Pyro.core.initClient()
     if len(sys.argv) == 1:
 	# no command line arguments - assume using NS
-	ns = Pyro.naming.NameServerLocator().getNS()
+        ns = Pyro.naming.NameServerLocator().getNS()
         uri = ns.resolve("pipeline")
     elif len(sys.argv) == 2:
    	# one argument --> assume not using NS, reading in uri file
