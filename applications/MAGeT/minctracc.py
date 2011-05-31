@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-from pipeline import * 
+from pipeline.pipeline import * 
 from optparse import OptionParser
 from os.path import basename,dirname,isdir,abspath
 from os import mkdir
@@ -38,7 +38,7 @@ class minctracc(CmdStage):
         self.target = target
         self.output = output
         self.logFile = logfile
-	self.linearparam = linearparam
+        self.linearparam = linearparam
         self.source_mask = source_mask
         self.target_mask = target_mask
         self.iterations = str(iterations)
