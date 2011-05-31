@@ -70,7 +70,7 @@ class SMATregister:
 				       logfile, linearparam,
                                        inputMask, template.mask))
 
-        # create the nonlinear registrations
+        # create the nonlinear registrationstime
         xfms = []
         for i in range(len(steps)):
             cxfm = input_base + tbase + "step" + str(i) + ".xfm"
@@ -101,6 +101,7 @@ class SMATregister:
                         self.outDir))
 
 if __name__ == "__main__":
+    start = time.time()
     usage = "%prog [options] input1.mnc ... inputn.mnc"
     description = "description needed"
 
@@ -136,7 +137,8 @@ if __name__ == "__main__":
     parser.add_option("--create-graph", dest="create_graph",
 		      action="store_true",
 		      help="Create a .dot file with graphical representation of pipeline relationships")
-    
+    parser.add_option("--recycle", dest="recycle", action="store_true",
+		      help="Use a backup of a previously-running pipeline")
 
     (options,args) = parser.parse_args()
 
@@ -178,6 +180,7 @@ if __name__ == "__main__":
         p.addStage(voxel)
 
     p.initialize()
+    print '\n\nPIPELINE NOW READY, PREPARED IN ', time.time() - start, 'SECONDS.\n\n'
     p.printStages()
     
     if options.create_graph:
