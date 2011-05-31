@@ -51,5 +51,4 @@ if __name__ == "__main__":
             print "Failed in pipeline_executor"
     	    print "Unexpected error: ", sys.exc_info()
     	    sys.exit()
-            #sys.exit("An error has occurred. Pipeline may not have completed properly. Check logs and restart if needed.")
         
