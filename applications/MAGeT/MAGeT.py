@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-from pipeline.pipeline import *
+from pipeline import *
 from minctracc import *
 from optparse import OptionParser
 from os.path import basename,dirname,isdir,abspath
@@ -61,7 +61,7 @@ class SMATregister:
                                        logfile, linearparam,
                                        inputMask, template.mask))
 
-        # create the nonlinear registrationstime
+        # create the nonlinear registrations
         xfms = []
         linearparam = "nlin"
         for i in range(len(steps)):
@@ -89,7 +89,6 @@ class SMATregister:
                         self.outDir))
 
 if __name__ == "__main__":
-    start = time.time()
     usage = "%prog [options] input1.mnc ... inputn.mnc"
     description = "description needed"
 
@@ -123,15 +122,8 @@ if __name__ == "__main__":
                       action="store_true",
                       help="Use the Pyro NameServer to store object locations")
     parser.add_option("--create-graph", dest="create_graph",
-<<<<<<< HEAD
-		      action="store_true",
-		      help="Create a .dot file with graphical representation of pipeline relationships")
-    parser.add_option("--recycle", dest="recycle", action="store_true",
-		      help="Use a backup of a previously-running pipeline")
-=======
                       action="store_true",
                       help="Create a .dot file with graphical representation of pipeline relationships")
->>>>>>> upstream/master
 
     (options,args) = parser.parse_args()
 
@@ -172,7 +164,6 @@ if __name__ == "__main__":
         p.addStage(voxel)
 
     p.initialize()
-    print '\n\nPIPELINE NOW READY, PREPARED IN ', time.time() - start, 'SECONDS.\n\n'
     p.printStages()
     
     if options.create_graph:
