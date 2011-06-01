@@ -12,6 +12,8 @@ import socket
 import time
 from datetime import datetime
 from subprocess import call
+from os.path import basename,dirname,isdir,abspath
+from os import mkdir
 
 Pyro.config.PYRO_MOBILE_CODE=1 
 
@@ -35,6 +37,49 @@ class OutputFile(PipelineFile):
 class LogFile(PipelineFile):
     def setType(self):
     	self.fileType = "log"
+
+class FileHandling():
+    def __init__(self):
+        self.outFileName = []
+    def removeFileExt(self, input):
+        base, ext = os.path.splitext(input)
+        return(basename(input).replace(str(ext), ""))
+    def createSubDir(self, input_dir, subdir):
+        # check for input_dir/subdir format?
+        # at this point, assume all / properly accounted for
+        _newdir = input_dir + "/" + subdir
+        if not isdir(_newdir):
+            mkdir(_newdir)
+        return (_newdir)
+    def createLogDir(self, input_dir):
+        _logDir = self.createSubDir(input_dir, "log")
+        return (_logDir)
+    def createBaseName(self, input_dir, base):
+        # assume all / in input_dir accounted for? or add checking
+        return (input_dir + "/" + base)
+    def createSubDirSubBase(self, input_dir, subdir, input_base):
+        _subDir = self.createSubDir(input_dir, subdir)
+        _subBase = self.createBaseName(_subDir, input_base)
+        return (_subDir, _subBase)
+    def createLogDirLogBase(self, input_dir, input_base):
+        _logDir = self.createLogDir(input_dir)
+        _logBase = self.createBaseName(_logDir, input_base)
+        return (_logDir, _logBase)
+    def createOutputFileName(self, argArray):
+        self.outFileName = [] #clear out any arguments from previous call	
+        for a in argArray:
+            self.outFileName.append(str(a))
+        return("".join(self.outFileName))
+    def createOutputAndLogFiles(self, output_base, log_base, fileType, argArray=None):
+        if argArray:
+            outArray = [output_base, "_", "_".join(argArray), fileType]
+            logArray = [log_base, "_", "_".join(argArray), ".log"] 
+        else:
+            outArray = [output_base, fileType]
+            logArray = [log_base, ".log"]
+        outFile = self.createOutputFileName(outArray)
+        logFile = self.createOutputFileName(logArray)
+        return (outFile, logFile)
 
 class PipelineStage():
     def __init__(self):
@@ -238,8 +283,8 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
                 self.runnable.put(i)
     def setStageFailed(self, index):
         self.processedStages.append(index)
-        #for i in nx.dfs_successors(self.G, index).keys():
-        #    self.processedStages.append(index)
+        for i in nx.dfs_successors(self.G, index).keys():
+            self.processedStages.append(index)
         
     def initialize(self):
         """called once all stages have been added - computes dependencies and adds graph heads to runnable queue"""

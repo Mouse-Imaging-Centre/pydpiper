@@ -11,6 +11,18 @@ import networkx as nx
 
 Pyro.config.PYRO_MOBILE_CODE=1
 
+class mincFileHandling(FileHandling):
+    def __init__(self):
+        FileHandling.__init__(self)
+    def createBlurOutputAndLogFiles(self, output_base, log_base, b):
+        argArray = ["fwhm", b, "blur"]
+        return (self.createOutputAndLogFiles(output_base, log_base, ".mnc", argArray))
+    def createXfmAndLogFiles(self, output_base, log_base, argArray):
+        return (self.createOutputAndLogFiles(output_base, log_base, ".xfm", argArray))
+    def createResampledAndLogFiles(self, output_base, log_base, argArray):
+        argArray.insert(0, "resampled")
+        return (self.createOutputAndLogFiles(output_base, log_base, ".mnc", argArray))
+
 class minctracc(CmdStage):
     def __init__(self, source, target, output, logfile,
 		 linearparam="nlin",

@@ -28,59 +28,50 @@ class SMATregister:
                  name="initial"):
         self.p = Pipeline()
         self.input = input
-        input_base_fname = basename(input).replace(".mnc", "")
-        outDir = abspath(outDir)
-        input_dir = outDir + "/" + input_base_fname
-        if not isdir(input_dir):
-            mkdir(input_dir)
-        input_log_dir = input_dir + "/log"
-        if not isdir(input_log_dir):
-            mkdir(input_log_dir)
-        templ_log_dir = template.outputdir + "/log"
-        if not isdir(templ_log_dir):
-            mkdir(templ_log_dir)
+        
+        fh = mincFileHandling()
+        
+        input_base_fname = fh.removeFileExt(input)
+        input_dir, input_base = fh.createSubDirSubBase(abspath(outDir), input_base_fname, input_base_fname)
+        input_log_dir, input_log_base = fh.createLogDirLogBase(input_dir, input_base_fname)
+        
+        templ_base_fname = fh.removeFileExt(template.image)
+        template_base = fh.createBaseName(template.outputdir, templ_base_fname)
+        templ_log_dir, templ_log_base = fh.createLogDirLogBase(template.outputdir, templ_base_fname)
+        
         self.outDir = input_dir
         self.inputMask = inputMask
-        tbase = basename(template.labels).replace(".mnc","")
-
-        input_base = input_dir + "/" + input_base_fname
-        template_base = template.outputdir + "/" + basename(template.image).replace(".mnc", "")
-        input_log_base = input_log_dir + "/" + input_base_fname
-        templ_log_base = templ_log_dir + "/" + basename(template.image).replace(".mnc", "")
+        tbase = fh.removeFileExt(template.labels)
 
         input_blurs = []
         template_blurs = []
 
         for b in blurs:
-            iblur = input_base + "_fwhm" + str(b) + "_blur.mnc" 
-            tblur = template_base + "_fwhm" + str(b) + "_blur.mnc" 
-            ilog = input_log_base + "_fwhm" + str(b) + "_blur.log"
-            tlog = templ_log_base + "_fwhm" + str(b) + "_blur.log"
+            iblur, ilog = fh.createBlurOutputAndLogFiles(input_base, input_log_base, str(b))
+            tblur, tlog = fh.createBlurOutputAndLogFiles(template_base, templ_log_base, str(b))
             self.p.addStage(blur(input, iblur, ilog, b))
             self.p.addStage(blur(template.image, tblur, tlog, b))
             input_blurs += [iblur]
             template_blurs += [tblur]
 
         # lsq12 alignment
-        linxfm = input_base + "_" + tbase + "lsq12.xfm"
-        logfile = input_log_base + "_" + tbase + "lsq12.log"
         linearparam = "lsq12"
+        linxfm, logfile = fh.createXfmAndLogFiles(input_base, input_log_base, [tbase, linearparam])
         self.p.addStage(linearminctracc(template_blurs[0],
                                        input_blurs[0], linxfm,
-				       logfile, linearparam,
+                                       logfile, linearparam,
                                        inputMask, template.mask))
 
         # create the nonlinear registrationstime
         xfms = []
+        linearparam = "nlin"
         for i in range(len(steps)):
-            cxfm = input_base + tbase + "step" + str(i) + ".xfm"
+            cxfm, logfile = fh.createXfmAndLogFiles(input_base, input_log_base, [tbase, "step", str(i)])
             if i == 0:
                 pxfm = linxfm
             else:
                 pxfm = xfms[i - 1]
             xfms += [cxfm]
-            logfile = input_log_base + tbase + "step" + str(i) + ".log"
-            linearparam = "nlin"
             self.p.addStage(minctracc(template_blurs[i],
                                       input_blurs[i], cxfm,
                                       logfile, linearparam,
@@ -90,11 +81,9 @@ class SMATregister:
                                       transform=pxfm))
         # resample labels with final registration
         
-        self.output = input_base + "resampled_" + tbase + ".mnc"
-        logfile = input_log_base + "resampled_" + tbase + ".log"
-	
-	resargs = ["-keep_real_range", "-nearest_neighbour"]
-	self.p.addStage(mincresample(template.labels, self.output, logfile, resargs, input, cxfm))
+        self.output, logfile = fh.createResampledAndLogFiles(input_base, input_log_base, [tbase])
+        resargs = ["-keep_real_range", "-nearest_neighbour"]
+        self.p.addStage(mincresample(template.labels, self.output, logfile, resargs, input, cxfm))
 	
     def getTemplate(self):
         return(Template(self.input, self.output, self.inputMask,
@@ -129,23 +118,27 @@ if __name__ == "__main__":
                       default=25, type="int",
                       help="Maximum number of templates to generate")
     parser.add_option("--uri-file", dest="urifile",
-		      type="string", default=None,
+                      type="string", default=None,
                       help="Location for uri file if NameServer is not used.")
     parser.add_option("--use-ns", dest="use_ns",
-		      action="store_true",
-		      help="Use the Pyro NameServer to store object locations")
+                      action="store_true",
+                      help="Use the Pyro NameServer to store object locations")
     parser.add_option("--create-graph", dest="create_graph",
+<<<<<<< HEAD
 		      action="store_true",
 		      help="Create a .dot file with graphical representation of pipeline relationships")
     parser.add_option("--recycle", dest="recycle", action="store_true",
 		      help="Use a backup of a previously-running pipeline")
+=======
+                      action="store_true",
+                      help="Create a .dot file with graphical representation of pipeline relationships")
+>>>>>>> upstream/master
 
     (options,args) = parser.parse_args()
 
+    fh = FileHandling()
     outputDir = abspath(options.template_library)
-    tmplDir = outputDir + "/atlas"
-    if not isdir(tmplDir):
-        mkdir(tmplDir)
+    tmplDir = fh.createSubDir(outputDir, "atlas")
     tmpl = Template(options.atlas_image, options.atlas_labels,
                     mask=options.mask, outputdir=tmplDir)
     p = Pipeline()
@@ -171,12 +164,12 @@ if __name__ == "__main__":
                               inputMask=options.mask, name="templates")
             labels.append(InputFile(sp.output))
             p.addPipeline(sp.p)
-        bname = basename(file).replace(".mnc", "")
-        of = OutputFile(outputDir + "/" + bname + "_votedlabels.mnc")
-        lf = LogFile(outputDir + "/" + bname + "_votedlabels.log")
-        cmd = ["voxel_vote.py"] + labels + [of]
+        bname = fh.removeFileExt(file)
+        base = fh.createBaseName(outputDir, bname + "_votedlabels")
+        out, log = fh.createOutputAndLogFiles(base, base, ".mnc")
+        cmd = ["voxel_vote.py"] + labels + [OutputFile(out)]
         voxel = CmdStage(cmd)
-        voxel.setLogFile(lf)
+        voxel.setLogFile(LogFile(log))
         p.addStage(voxel)
 
     p.initialize()
