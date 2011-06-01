@@ -1,13 +1,12 @@
 #!/usr/bin/env python
 
-from pipeline import *
+from pipeline.pipeline import *
 from minctracc import *
 from optparse import OptionParser
 from os.path import basename,dirname,isdir,abspath
 from os import mkdir
 import time
 import networkx as nx
-#rom networkx import DiGraph
 
 Pyro.config.PYRO_MOBILE_CODE=1 
 

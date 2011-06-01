@@ -294,6 +294,8 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
     def continueLoop(self):
         # return 1 unless all stages are finished
         return(len(self.stages) > len(self.processedStages))
+    def getProcessedStageCount(self):
+        return(len(self.processedStages))
 
 def pipelineDaemon(pipeline):
     
@@ -313,7 +315,9 @@ def pipelineDaemon(pipeline):
     try:
     	daemon.requestLoop(pipeline.continueLoop)
     except:
-    	sys.exit("daemon.requestLoop did not complete properly. Pipeline may not have completed. Check logs and restart if needed.")
+    	print "Failed in pipelineNoNSDaemon"
+    	print "Unexpected error: ", sys.exc_info()
+    	sys.exit()
     else:
     	print("Pipeline completed. daemon unregistering objects and shutting down.")
     	daemon.shutdown(True)
@@ -340,7 +344,9 @@ def pipelineNoNSDaemon(pipeline, urifile=None):
     try:
     	daemon.requestLoop(pipeline.continueLoop)
     except:
-    	sys.exit("daemon.requestLoop did not complete properly. Pipeline may not have completed. Check logs and restart if needed.")
+    	print "Failed in pipelineNoNSDaemon"
+    	print "Unexpected error: ", sys.exc_info()
+    	sys.exit()
     else:
     	print("Pipeline completed. daemon unregistering objects and shutting down.")
     	daemon.shutdown(True)
