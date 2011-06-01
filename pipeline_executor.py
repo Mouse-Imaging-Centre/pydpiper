@@ -33,9 +33,8 @@ if __name__ == "__main__":
             	time.sleep(5)
             else:
             	print("in: ")
-            	print(i)
             	s = p.getStage(i)
-            	print("Running:")
+            	print("Running stage " + str(i) + ":")
             	print(s)
             	r = s.execStage()
             	print("return was: " + str(r))
