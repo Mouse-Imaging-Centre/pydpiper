@@ -210,7 +210,7 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
         self.counter = pickle.load(open('./backups/counter.pkl', 'rb'))
         self.outputhash = pickle.load(open('./backups/outputhash.pkl', 'rb'))
         self.stagehash = pickle.load(open('./backups/stagehash.pkl', 'rb'))
-        self.processedStages = pickle.load(open('./backups/processedStagesgm.pkl', 'rb'))
+        self.processedStages = pickle.load(open('./backups/processedStages.pkl', 'rb'))
         print '  Successfully reimported old data from backups.'
     def addPipeline(self, p):
         for s in p.stages:
