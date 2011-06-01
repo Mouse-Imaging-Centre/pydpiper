@@ -76,7 +76,6 @@ class CmdStage(PipelineStage):
         self.cmd = [] # the input array converted to strings
         self.parseArgs()
         self.checkLogFile()
-
     def parseArgs(self):
         if self.argArray:
             for a in self.argArray:
@@ -148,64 +147,26 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
             self.G.add_node(self.counter, label=stage.name,color=stage.colour)
             # increment the counter for the next stage
             self.counter += 1
-    def howFarDone(self):
-        done = 0
-        total = len(self.stages)
-        for i in self.G.nodes_iter():
-            if self.stages[i].isFinished() == True:
-			    done += 1
-        message = 'Finished ' + str(done) + ' of ' + str(total) + ' stages.'
-        message2 = '\nOn the queue: ' + str(self.runnable.qsize()) + ' stages.'
-        return message + message2
     def selfPickle(self):
-	if os.path.isdir('backups') == False:
-		print "Creating backup directory ..."
-		os.mkdir('backups')
-	pkl_file = open('./backups/stages.pkl', 'wb')
-	pickle.dump(self.stages, pkl_file)
-	pkl_file.close()
-        pkl_file = open('./backups/G.pkl', 'wb')
-	pickle.dump(self.G, pkl_file)
-	pkl_file.close()	
-        pkl_file = open('./backups/nameArray.pkl', 'wb')
-	pickle.dump(self.nameArray, pkl_file)
-	pkl_file.close()	
-        pkl_file = open('./backups/counter.pkl', 'wb')
-	pickle.dump(self.counter, pkl_file)
-	pkl_file.close()	
-        pkl_file = open('./backups/outputhash.pkl', 'wb')
-	pickle.dump(self.outputhash, pkl_file)
-	pkl_file.close()	
-        pkl_file = open('./backups/stagehash.pkl', 'wb')
-	pickle.dump(self.stagehash, pkl_file)
-	pkl_file.close()	
-        pkl_file = open('./backups/processedStages.pkl', 'wb')
-	pickle.dump(self.processedStages, pkl_file)
-	pkl_file.close()
-	print '\n\nPipeline pickled.\n\n'
+        if os.path.isdir('backups') == False:
+            print "Creating backup directory ..."
+            os.mkdir('backups')
+        pickle.dump(self.G, open('./backups/G.pkl', 'wb'))
+        pickle.dump(self.nameArray, open('./backups/nameArray.pkl', 'wb'))
+        pickle.dump(self.counter, open('./backups/counter.pkl', 'wb'))
+        pickle.dump(self.outputhash, open('./backups/outputhash.pkl', 'wb'))
+        pickle.dump(self.stagehash, open('./backups/stagehash.pkl', 'wb'))
+        pickle.dump(self.processedStages, open('./backups/processedStages.pkl', 'wb'))
+        print 'File closed'
+        print '\n\nPipeline pickled.\n\n'
     def recycle(self):
-	pkl_file = open('./backups/stages.pkl', 'rb')
-	self.stages = pickle.load(pkl_file)
-	pkl_file.close()
-        pkl_file = open('./backups/G.pkl', 'rb')
-	self.G = pickle.load(pkl_file)
-	pkl_file.close()	
-        pkl_file = open('./backups/nameArray.pkl', 'rb')
-	self.nameArray = pickle.load(pkl_file)
-	pkl_file.close()	
-        pkl_file = open('./backups/counter.pkl', 'rb')
-	self.counter = pickle.load(pkl_file)
-	pkl_file.close()	
-        pkl_file = open('./backups/outputhash.pkl', 'rb')
-	self.outputhash = pickle.load(pkl_file)
-	pkl_file.close()	
-        pkl_file = open('./backups/stagehash.pkl', 'rb')
-	self.stagehash = pickle.load(pkl_file)
-	pkl_file.close()	
-        pkl_file = open('./backups/processedStages.pkl', 'rb')
-	self.processedStages = pickle.load(pkl_file)
-	pkl_file.close()
-	print '  Successfully reimported old data from backups.'
+        self.G = pickle.load(open('./backups/G.pkl', 'rb'))        
+        self.nameArray = pickle.load(open('./backups/nameArray.pkl', 'rb'))
+        self.counter = pickle.load(open('./backups/counter.pkl', 'rb'))
+        self.outputhash = pickle.load(open('./backups/outputhash.pkl', 'rb'))
+        self.stagehash = pickle.load(open('./backups/stagehash.pkl', 'rb'))
+        self.processedStages = pickle.load(open('./backups/processedStagesgm.pkl', 'rb'))
+        print '  Successfully reimported old data from backups.'
     def addPipeline(self, p):
         for s in p.stages:
             self.addStage(s)
@@ -224,7 +185,6 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
                     self.G.add_edge(self.outputhash[ip], i)
         endtime = time.time()
         print("Create Edges time: " + str(endtime-starttime))
-
     def computeGraphHeads(self):
         """adds stages with no incomplete predecessors to the runnable queue"""
         for i in self.G.nodes_iter():
@@ -254,17 +214,17 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
     def checkIfRunnable(self, index):
         """stage added to runnable queue if all predecessors finished"""
         canRun = True
-	if self.stages[index].isFinished() == True:
+        if self.stages[index].isFinished() == True:
             canRun = False
         else:
-	    print("Checking if stage " + str(index) + " is runnable ...")
-	    for i in self.G.predecessors(index):
+            print("Checking if stage " + str(index) + " is runnable ...")
+            for i in self.G.predecessors(index):
                 line = "   Predecessor: Stage " + str(i)
-    	        s = self.getStage(i)
-    	        print(line + ", State: " + str(s.status))
-    	        if s.isFinished() == False:
-    	            canRun = False
-            print("Stage " + str(index) + " Runnable: " + str(canRun) + '\n\n')
+                s = self.getStage(i)
+                print(line + ", State: " + str(s.status))
+                if s.isFinished() == False:
+                    canRun = False
+                print("Stage " + str(index) + " Runnable: " + str(canRun) + '\n\n')
         return(canRun)
     def setStageFinished(self, index):
         """given an index, sets corresponding stage to finished and adds successors to the runnable queue"""

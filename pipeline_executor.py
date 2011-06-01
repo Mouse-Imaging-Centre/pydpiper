@@ -50,6 +50,6 @@ if __name__ == "__main__":
                     p.setStageFailed(i)
         except Pyro.errors.ConnectionClosedError:
             sys.exit("Connection with server closed. Server shutdown and system exit.")
-        except:
-            sys.exit("An error has occurred. Pipeline may not have completed properly. Check logs and restart if needed.")
+        #except:
+            #sys.exit("An error has occurred. Pipeline may not have completed properly. Check logs and restart if needed.")
         
