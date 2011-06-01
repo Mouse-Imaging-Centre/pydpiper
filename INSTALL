@@ -1,0 +1,7 @@
+To install pydpiper, both the current source and most stable release can be downloaded from github:
+
+https://github.com/mfriedel/pydpiper
+
+Using the Downloads button, access the .tar.gz or .zip file.
+Unzip and untar and change into the source directory (e.g. cd pydpiper)
+Run: python setup.py install 
