@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-from pipeline import *
+from pydpiper.pipeline import *
 import networkx as nx
 
 def generateFile(i):
