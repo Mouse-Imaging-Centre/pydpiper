@@ -32,7 +32,7 @@ if __name__ == "__main__":
             	print("No runnable stages. Going to sleep")
             	time.sleep(5)
             else:
-            	print("in: ")
+            	print("\n")
             	s = p.getStage(i)
             	print("Running stage " + str(i) + ":")
             	print(s)
