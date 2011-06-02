@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-from pipeline.pipeline import *
+from pydpiper.pipeline import *
 from minctracc import *
 from optparse import OptionParser
 from os.path import basename,dirname,isdir,abspath

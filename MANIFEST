@@ -4,5 +4,5 @@ README
 MANIFEST
 pipeline_executor.py
 setup.py
-pipeline/__init__.py
-pipeline/pipeline.py
+pydpiper/__init__.py
+pydpiper/pipeline.py
