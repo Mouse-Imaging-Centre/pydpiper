@@ -284,6 +284,7 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
             if self.checkIfRunnable(i):
                 self.runnable.put(i)
     def setStageFailed(self, index):
+        self.stages[index].setFailed()
         self.processedStages.append(index)
         for i in nx.dfs_successors(self.G, index).keys():
             self.processedStages.append(index)

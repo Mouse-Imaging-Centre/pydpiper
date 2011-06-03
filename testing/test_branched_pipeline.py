@@ -48,6 +48,7 @@ class TestBranchedPipeline():
         s = self.p.getRunnableStageIndex()
         assert s == 0
         self.p.setStageFailed(s)
+        assert self.p.stages[s].status == "failed"
         s = self.p.getRunnableStageIndex()
         assert s == 3
         assert self.p.continueLoop() == True
