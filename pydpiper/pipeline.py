@@ -197,6 +197,7 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
             print "Creating backup directory ..."
             os.mkdir('backups')
         pickle.dump(self.G, open('./backups/G.pkl', 'wb'))
+        pickle.dump(self.stages, open('./backups/stages.pkl', 'wb'))
         pickle.dump(self.nameArray, open('./backups/nameArray.pkl', 'wb'))
         pickle.dump(self.counter, open('./backups/counter.pkl', 'wb'))
         pickle.dump(self.outputhash, open('./backups/outputhash.pkl', 'wb'))
@@ -205,7 +206,8 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
         print 'File closed'
         print '\n\nPipeline pickled.\n\n'
     def recycle(self):
-        self.G = pickle.load(open('./backups/G.pkl', 'rb'))        
+        self.G = pickle.load(open('./backups/G.pkl', 'rb'))
+        self.stages = pickle.load(open('./backups/stages.pkl', 'rb'))         
         self.nameArray = pickle.load(open('./backups/nameArray.pkl', 'rb'))
         self.counter = pickle.load(open('./backups/counter.pkl', 'rb'))
         self.outputhash = pickle.load(open('./backups/outputhash.pkl', 'rb'))
