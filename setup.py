@@ -28,6 +28,9 @@ if sys.version_info<=(2,6,0):
 else:
     print 'installed'
 print 'Done testing required packages.\n'
+
+if proceedBool == False:
+    sys.exit("Quitting: Please install necessary packages before continuing.")
     
 
 """ Setup Info """
