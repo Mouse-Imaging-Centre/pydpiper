@@ -4,33 +4,30 @@ from distutils.core import setup
 import sys
 
 """ Testing required packages & Python version """
-prepackages_displaylist = {'networkx': 'networkx (http://networkx.lanl.gov)',
-                           'Pyro': 'Pyro (http://irmen.home.xs4all.nl/pyro3/)',
+prepackages_displaylist = {'networkx': 'networkx (http://networkx.lanl.gov)', 'Pyro': 'Pyro (http://irmen.home.xs4all.nl/pyro3/)',
                            'pytest': 'pytest (http://doc.pytest.org/en/latest/) [OPTIONAL]'}
-
 prepackages_stringlist = {'networkx': 'installed', 'Pyro': 'installed', 'pytest': 'installed'}
 
-proceedBool = True
 print 'Testing required packages ...'
-for key in prepackages_stringlist.keys():
-    try:             
-        __import__(key)
-    except ImportError:
-        prepackages_stringlist[key] = 'not installed'
-        proceedBool = False
-    print ' {0:60}{1:60}'.format(prepackages_displaylist[key], prepackages_stringlist[key])
 
 printstr = " Python >= v. 2.6"
 print printstr.ljust(60, ' '),
 if sys.version_info<=(2,6,0):
     print 'not installed (current v. = ' + sys.version[:5] + ')'
-    proceedBool = False
+    sys.exit("ERROR: Cancelling install. Please update Python to at least version 2.6")
 else:
     print 'installed'
+
+for key in prepackages_stringlist.keys():
+    try:             
+        __import__(key)
+    except ImportError:
+        prepackages_stringlist[key] = 'not installed'
+    print ' {0:60}{1:15}'.format(prepackages_displaylist[key], prepackages_stringlist[key])
+
+
 print 'Done testing required packages.\n'
 
-if proceedBool == False:
-    sys.exit("Quitting: Please install necessary packages before continuing.")
     
 
 """ Setup Info """
@@ -44,5 +41,6 @@ setup(name='pydpiper',
       url='https://github.com/mfriedel/pydpiper',
       platforms="any",
       packages=['pydpiper'], 
-      scripts=['pipeline_executor.py']
+      scripts=['pipeline_executor.py'],
+      requires=['networkx','Pyro']
       )
