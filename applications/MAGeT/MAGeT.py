@@ -129,6 +129,8 @@ if __name__ == "__main__":
 
     fh = FileHandling()
     outputDir = abspath(options.template_library)
+    if not isdir(outputDir):
+        mkdir(outputDir)
     tmplDir = fh.createSubDir(outputDir, "atlas")
     tmpl = Template(options.atlas_image, options.atlas_labels,
                     mask=options.mask, outputdir=tmplDir)

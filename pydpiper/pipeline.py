@@ -318,7 +318,7 @@ def pipelineDaemon(pipeline):
     try:
     	daemon.requestLoop(pipeline.continueLoop)
     except:
-    	print "Failed in pipelineNoNSDaemon"
+    	print "Failed in pipelineDaemon"
     	print "Unexpected error: ", sys.exc_info()
     	sys.exit()
     else:
@@ -331,7 +331,7 @@ def pipelineNoNSDaemon(pipeline, urifile=None):
     # check for valid pipeline?     
 
     if urifile==None:
-	urifile = os.curdir + "/" + "uri"    
+        urifile = os.curdir + "/" + "uri"    
 
     Pyro.core.initServer()
     daemon=Pyro.core.Daemon()
