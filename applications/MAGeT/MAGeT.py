@@ -117,7 +117,7 @@ if __name__ == "__main__":
                       help="Maximum number of templates to generate")
     parser.add_option("--uri-file", dest="urifile",
                       type="string", default=None,
-                      help="Location for uri file if NameServer is not used.")
+                      help="Location for uri file if NameServer is not used. If not specified, default is current working directory.")
     parser.add_option("--use-ns", dest="use_ns",
                       action="store_true",
                       help="Use the Pyro NameServer to store object locations")
@@ -129,6 +129,8 @@ if __name__ == "__main__":
 
     fh = FileHandling()
     outputDir = abspath(options.template_library)
+    if not isdir(outputDir):
+        mkdir(outputDir)
     tmplDir = fh.createSubDir(outputDir, "atlas")
     tmpl = Template(options.atlas_image, options.atlas_labels,
                     mask=options.mask, outputdir=tmplDir)
@@ -172,7 +174,7 @@ if __name__ == "__main__":
     #If Pyro NameServer option was specified, use it.
     
     if options.use_ns:
-	pipelineDaemon(p)
+        pipelineDaemon(p)
     else:
         pipelineNoNSDaemon(p, options.urifile)
     
