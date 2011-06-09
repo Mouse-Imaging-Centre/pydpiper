@@ -1,12 +1,15 @@
-To install pydpiper, both the current source and most stable release can be downloaded from github:
+I) To install pydpiper, both the current source and most stable release can be 
+   downloaded from github.  Using the Downloads button, access the .tar.gz or .zip file.:
+    https://github.com/mfriedel/pydpiper
 
-https://github.com/mfriedel/pydpiper
+II) The 'setuptools' package is required to run the installation:
+    http://pypi.python.org/pypi/setuptools
 
-Using the Downloads button, access the .tar.gz or .zip file.
-Unzip and untar and change into the source directory (e.g. cd pydpiper)
-Run: python setup.py install
+III) Unzip and untar and change into the source directory (e.g. cd pydpiper).
+
+IV) Run: python setup.py install
 
 In the event of an install error, check the output log to ensure all prerequisite packages are installed.
 
-In addition, the py.test package (http://doc.pytest.org/en/latest/) is not required, but is necessary in
-running any of the test scripts found in /tests.
+The py.test package (http://doc.pytest.org/en/latest/) is not required, but is necessary to run any 
+of the test scripts found in /tests.
