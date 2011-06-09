@@ -302,7 +302,10 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
 
 def pipelineDaemon(pipeline):
     
-    #error checking for valid pipeline?
+    #check for valid pipeline 
+    if pipeline.getRunnableStageIndex()==None:
+        print "Pipeline has no runnable stages. Exiting..."
+        sys.exit()
 
     #Note: NameServer must be started for this function to work properly
 
@@ -328,7 +331,10 @@ def pipelineDaemon(pipeline):
 
 def pipelineNoNSDaemon(pipeline, urifile=None):
 
-    # check for valid pipeline?     
+    #check for valid pipeline 
+    if pipeline.getRunnableStageIndex()==None:
+        print "Pipeline has no runnable stages. Exiting..."
+        sys.exit()
 
     if urifile==None:
         urifile = os.curdir + "/" + "uri"    
