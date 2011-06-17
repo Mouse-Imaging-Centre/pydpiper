@@ -65,6 +65,9 @@ class FileHandling():
         _logDir = self.createLogDir(input_dir)
         _logBase = self.createBaseName(_logDir, input_base)
         return (_logDir, _logBase)
+    def createBackupDir(self, output):
+        _backupDir = self.createSubDir(output, "backups")
+        return(_backupDir)
     def createOutputFileName(self, argArray):
         self.outFileName = [] #clear out any arguments from previous call	
         for a in argArray:
@@ -169,6 +172,8 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
         self.stagehash = {}
         # an array containing the status per stage
         self.processedStages = []
+        # location of backup files for restart if needed
+        self.backupFileLocation = None
     def addStage(self, stage):
         """adds a stage to the pipeline"""
         # check if stage already exists in pipeline - if so, don't bother
@@ -193,9 +198,8 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
             # increment the counter for the next stage
             self.counter += 1
     def selfPickle(self):
-        if os.path.isdir('backups') == False:
-            print "Creating backup directory ..."
-            os.mkdir('backups')
+        if (self.backupFileLocation == None):
+            self.setBackupFileLocation()
         pickle.dump(self.G, open('./backups/G.pkl', 'wb'))
         pickle.dump(self.stages, open('./backups/stages.pkl', 'wb'))
         pickle.dump(self.nameArray, open('./backups/nameArray.pkl', 'wb'))
@@ -214,6 +218,14 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
         self.stagehash = pickle.load(open('./backups/stagehash.pkl', 'rb'))
         self.processedStages = pickle.load(open('./backups/processedStages.pkl', 'rb'))
         print '  Successfully reimported old data from backups.'
+    def getBackupFileLocation(self):
+        return self.backupFileLocation
+    def setBackupFileLocation(self, outputDir=None):
+        fh = FileHandling()
+        if (outputDir == None):
+            # set backups in current directory if directory doesn't currently exist
+            outputDir = os.getcwd() 
+        self.backupFileLocation = fh.createBackupDir(outputDir)   
     def addPipeline(self, p):
         for s in p.stages:
             self.addStage(s)
@@ -279,7 +291,6 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
         self.stages[index].setFinished()
         self.processedStages.append(index)
         self.selfPickle()
-
         for i in self.G.successors(index):
             if self.checkIfRunnable(i):
                 self.runnable.put(i)

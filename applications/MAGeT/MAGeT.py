@@ -135,6 +135,7 @@ if __name__ == "__main__":
     tmpl = Template(options.atlas_image, options.atlas_labels,
                     mask=options.mask, outputdir=tmplDir)
     p = Pipeline()
+    p.setBackupFileLocation(outputDir)
 
     # create the initial templates - either total number of files
     # or the maximum number of templates, whichever is lesser
