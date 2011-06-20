@@ -200,26 +200,27 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
     def selfPickle(self):
         if (self.backupFileLocation == None):
             self.setBackupFileLocation()
-        pickle.dump(self.G, open('./backups/G.pkl', 'wb'))
-        pickle.dump(self.stages, open('./backups/stages.pkl', 'wb'))
-        pickle.dump(self.nameArray, open('./backups/nameArray.pkl', 'wb'))
-        pickle.dump(self.counter, open('./backups/counter.pkl', 'wb'))
-        pickle.dump(self.outputhash, open('./backups/outputhash.pkl', 'wb'))
-        pickle.dump(self.stagehash, open('./backups/stagehash.pkl', 'wb'))
-        pickle.dump(self.processedStages, open('./backups/processedStages.pkl', 'wb'))
-        print 'File closed'
-        print '\n\nPipeline pickled.\n\n'
+        pickle.dump(self.G, open(str(self.backupFileLocation) + '/G.pkl', 'wb'))
+        pickle.dump(self.stages, open(str(self.backupFileLocation) + '/stages.pkl', 'wb'))
+        pickle.dump(self.nameArray, open(str(self.backupFileLocation) + '/nameArray.pkl', 'wb'))
+        pickle.dump(self.counter, open(str(self.backupFileLocation) + '/counter.pkl', 'wb'))
+        pickle.dump(self.outputhash, open(str(self.backupFileLocation) + '/outputhash.pkl', 'wb'))
+        pickle.dump(self.stagehash, open(str(self.backupFileLocation) + '/stagehash.pkl', 'wb'))
+        pickle.dump(self.processedStages, open(str(self.backupFileLocation) + '/processedStages.pkl', 'wb'))
+        print '\nPipeline pickled.\n'
     def recycle(self):
-        self.G = pickle.load(open('./backups/G.pkl', 'rb'))
-        self.stages = pickle.load(open('./backups/stages.pkl', 'rb'))         
-        self.nameArray = pickle.load(open('./backups/nameArray.pkl', 'rb'))
-        self.counter = pickle.load(open('./backups/counter.pkl', 'rb'))
-        self.outputhash = pickle.load(open('./backups/outputhash.pkl', 'rb'))
-        self.stagehash = pickle.load(open('./backups/stagehash.pkl', 'rb'))
-        self.processedStages = pickle.load(open('./backups/processedStages.pkl', 'rb'))
-        print '  Successfully reimported old data from backups.'
-    def getBackupFileLocation(self):
-        return self.backupFileLocation
+        if (self.backupFileLocation == None): 
+            print 'No location for backup files specified. Exiting...'
+        elif not isdir(self.backupFileLocation):
+            print "Specified directory for backup files does not exist: " + str(self.backupFileLocation)
+        self.G = pickle.load(open(str(self.backupFileLocation) + '/G.pkl', 'rb'))
+        self.stages = pickle.load(open(str(self.backupFileLocation) + '/stages.pkl', 'rb'))         
+        self.nameArray = pickle.load(open(str(self.backupFileLocation) + '/nameArray.pkl', 'rb'))
+        self.counter = pickle.load(open(str(self.backupFileLocation) + '/counter.pkl', 'rb'))
+        self.outputhash = pickle.load(open(str(self.backupFileLocation) + '/outputhash.pkl', 'rb'))
+        self.stagehash = pickle.load(open(str(self.backupFileLocation) + '/stagehash.pkl', 'rb'))
+        self.processedStages = pickle.load(open(str(self.backupFileLocation) + '/processedStages.pkl', 'rb'))
+        print 'Successfully reimported old data from backups.'
     def setBackupFileLocation(self, outputDir=None):
         fh = FileHandling()
         if (outputDir == None):
