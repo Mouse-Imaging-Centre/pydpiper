@@ -4,24 +4,39 @@ import Pyro.core
 import Pyro.naming
 import time
 import sys
+import os
+from optparse import OptionParser
 
 Pyro.config.PYRO_MOBILE_CODE=1
 
 
 if __name__ == "__main__":
+    usage = "%prog [options]"
+    description = "pipeline executor"
     
+    parser = OptionParser(usage=usage, description=description)
+    
+    parser.add_option("--uri-file", dest="urifile",
+                      type="string", default=None,
+                      help="Location for uri file if NameServer is not used. If not specified, default is current working directory.")
+    parser.add_option("--use-ns", dest="use_ns",
+                      action="store_true",
+                      help="Use the Pyro NameServer to store object locations")
+                      
+    (options,args) = parser.parse_args()
+       
     Pyro.core.initClient()
-    if len(sys.argv) == 1:
-	# no command line arguments - assume using NS
+    if options.use_ns:
         ns = Pyro.naming.NameServerLocator().getNS()
         uri = ns.resolve("pipeline")
-    elif len(sys.argv) == 2:
-   	# one argument --> assume not using NS, reading in uri file
-    	uf = open(sys.argv[1])
+    else:
+        if options.urifile==None:
+            urifile = os.curdir + "/" + "uri"
+        else:
+            urifile = options.urifile
+    	uf = open(urifile)
     	uri = Pyro.core.processStringURI(uf.readline())
     	uf.close()
-    else:
-	sys.exit("pipeline_executor should have only one command line argument.")
     
     p = Pyro.core.getProxyForURI(uri)
 
