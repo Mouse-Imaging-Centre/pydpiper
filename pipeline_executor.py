@@ -9,6 +9,12 @@ from optparse import OptionParser
 
 Pyro.config.PYRO_MOBILE_CODE=1
 
+#use Pyro.core.CallbackObjBase?? - need further review of documentation
+class Executor(Pyro.core.SynchronizedObjBase):
+    def __init__(self):
+        Pyro.core.SynchronizedObjBase.__init__(self)
+    #def receiveServerShutdown(self):
+        # need function definition here
 
 if __name__ == "__main__":
     usage = "%prog [options]"
@@ -26,19 +32,26 @@ if __name__ == "__main__":
     (options,args) = parser.parse_args()
        
     Pyro.core.initClient()
+    Pyro.core.initServer()
+    daemon = Pyro.core.Daemon()
+    
+    #initialize executor as both client and server
     if options.use_ns:
         ns = Pyro.naming.NameServerLocator().getNS()
-        uri = ns.resolve("pipeline")
+        serverURI = ns.resolve("pipeline")
+        daemon.useNameServer(ns)
     else:
         if options.urifile==None:
             urifile = os.curdir + "/" + "uri"
         else:
             urifile = options.urifile
     	uf = open(urifile)
-    	uri = Pyro.core.processStringURI(uf.readline())
+    	serverURI = Pyro.core.processStringURI(uf.readline())
     	uf.close()
     
-    p = Pyro.core.getProxyForURI(uri)
+    clientURI=daemon.connect(Executor(),"executor")
+    p = Pyro.core.getProxyForURI(serverURI)
+    p.register(clientURI)
 
     while True:
     	try:

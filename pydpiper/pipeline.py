@@ -174,6 +174,8 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
         self.processedStages = []
         # location of backup files for restart if needed
         self.backupFileLocation = None
+        # list of registered clients
+        self.clients=[]
     def addStage(self, stage):
         """adds a stage to the pipeline"""
         # check if stage already exists in pipeline - if so, don't bother
@@ -299,8 +301,7 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
         self.stages[index].setFailed()
         self.processedStages.append(index)
         for i in nx.dfs_successors(self.G, index).keys():
-            self.processedStages.append(index)
-        
+            self.processedStages.append(index)       
     def initialize(self):
         """called once all stages have been added - computes dependencies and adds graph heads to runnable queue"""
         self.runnable = Queue.Queue()
@@ -311,6 +312,9 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
         return(len(self.stages) > len(self.processedStages))
     def getProcessedStageCount(self):
         return(len(self.processedStages))
+    def register(self, client):
+        print "CLIENT REGISTERED: " + str(client)
+        self.clients.append(client)
 
 def pipelineDaemon(pipeline):
     
