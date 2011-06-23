@@ -261,7 +261,7 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
                         if self.stages[j].isFinished() == False:
                             predfinished = False
                     if predfinished == True:
-                        self.runnable.put(i)                
+                        self.runnable.put(i)               
     def getStage(self, i):
         """given an index, return the actual pipelineStage object"""
         return(self.stages[i])
@@ -276,21 +276,21 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
     def checkIfRunnable(self, index):
         """stage added to runnable queue if all predecessors finished"""
         canRun = True
+        print("Checking if stage " + str(index) + " is runnable ...")
         if self.stages[index].isFinished() == True:
             canRun = False
         else:
-            print("Checking if stage " + str(index) + " is runnable ...")
             for i in self.G.predecessors(index):
-                line = "   Predecessor: Stage " + str(i)
+                line = "Predecessor: Stage " + str(i)
                 s = self.getStage(i)
                 print(line + ", State: " + str(s.status))
                 if s.isFinished() == False:
                     canRun = False
-                print("Stage " + str(index) + " Runnable: " + str(canRun) + '\n\n')
+        print("Stage " + str(index) + " Runnable: " + str(canRun) + '\n\n')
         return(canRun)
     def setStageFinished(self, index):
         """given an index, sets corresponding stage to finished and adds successors to the runnable queue"""
-        print("FINISHED: " + str(self.stages[index]))
+        print("FINISHED STAGE " + str(index) + ": " + str(self.stages[index]))
         self.stages[index].setFinished()
         self.processedStages.append(index)
         self.selfPickle()
@@ -319,7 +319,7 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
 def pipelineDaemon(pipeline):
     
     #check for valid pipeline 
-    if pipeline.getRunnableStageIndex()==None:
+    if pipeline.runnable.empty():
         print "Pipeline has no runnable stages. Exiting..."
         sys.exit()
 
@@ -342,13 +342,19 @@ def pipelineDaemon(pipeline):
     	sys.exit()
     else:
     	print("Pipeline completed. daemon unregistering objects and shutting down.")
+    	for c in pipeline.clients:
+    	    clientObj = Pyro.core.getProxyForURI(c)
+    	    clientObj.serverShutdownCall(True)
+    	    print "Made serverShutdownCall to: " + str(c)
+    	    pipeline.clients.remove(c)
+    	    print "Client deregistered from server: " + str(c)
     	daemon.shutdown(True)
     	print("Objects successfully unregistered and daemon shutdown.")
 
 def pipelineNoNSDaemon(pipeline, urifile=None):
 
     #check for valid pipeline 
-    if pipeline.getRunnableStageIndex()==None:
+    if pipeline.runnable.empty()==None:
         print "Pipeline has no runnable stages. Exiting..."
         sys.exit()
 
@@ -374,5 +380,11 @@ def pipelineNoNSDaemon(pipeline, urifile=None):
     	sys.exit()
     else:
     	print("Pipeline completed. daemon unregistering objects and shutting down.")
+    	for c in pipeline.clients:
+    	    clientObj = Pyro.core.getProxyForURI(c)
+    	    clientObj.serverShutdownCall(True)
+    	    print "Made serverShutdownCall to: " + str(c)
+    	    pipeline.clients.remove(c)
+    	    print "Client deregistered from server: "  + str(c)
     	daemon.shutdown(True)
     	print("Objects successfully unregistered and daemon shutdown.")
