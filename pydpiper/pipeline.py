@@ -12,7 +12,7 @@ import socket
 import time
 from datetime import datetime
 from subprocess import call
-from os.path import basename,dirname,isdir,abspath
+from os.path import basename,isdir
 from os import mkdir
 
 Pyro.config.PYRO_MOBILE_CODE=1 
