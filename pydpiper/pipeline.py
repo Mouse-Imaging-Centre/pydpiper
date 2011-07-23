@@ -342,7 +342,7 @@ def pipelineDaemon(pipeline):
     	sys.exit()
     else:
     	print("Pipeline completed. daemon unregistering objects and shutting down.")
-    	for c in pipeline.clients:
+    	for c in pipeline.clients[:]:
     	    clientObj = Pyro.core.getProxyForURI(c)
     	    clientObj.serverShutdownCall(True)
     	    print "Made serverShutdownCall to: " + str(c)
@@ -380,7 +380,7 @@ def pipelineNoNSDaemon(pipeline, urifile=None):
     	sys.exit()
     else:
     	print("Pipeline completed. daemon unregistering objects and shutting down.")
-    	for c in pipeline.clients:
+    	for c in pipeline.clients[:]:
     	    clientObj = Pyro.core.getProxyForURI(c)
     	    clientObj.serverShutdownCall(True)
     	    print "Made serverShutdownCall to: " + str(c)
