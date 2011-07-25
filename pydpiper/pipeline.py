@@ -281,9 +281,9 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
             canRun = False
         else:
             for i in self.G.predecessors(index):
-                line = "Predecessor: Stage " + str(i)
+                print "Predecessor: Stage " + str(i),
+                print ", State: " + str(self.getStage(i).status)                
                 s = self.getStage(i)
-                print(line + ", State: " + str(s.status))
                 if s.isFinished() == False:
                     canRun = False
         print("Stage " + str(index) + " Runnable: " + str(canRun) + '\n\n')
@@ -379,7 +379,7 @@ def pipelineNoNSDaemon(pipeline, urifile=None):
     	print "Unexpected error: ", sys.exc_info()
     	sys.exit()
     else:
-    	print("Pipeline completed. daemon unregistering objects and shutting down.")
+    	print("Pipeline completed. Daemon unregistering " + str(len(pipeline.clients)) + " client(s) and shutting down...\n")
     	for c in pipeline.clients[:]:
     	    clientObj = Pyro.core.getProxyForURI(c)
     	    clientObj.serverShutdownCall(True)
