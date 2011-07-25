@@ -34,7 +34,6 @@ def executePipeline(serverURI, executor):
             	print("No runnable stages. Going to sleep")
             	time.sleep(5)
             else:
-            	print("\n")
             	s = p.getStage(i)
             	print("Running stage " + str(i) + ":")
             	print(s)
@@ -45,7 +44,7 @@ def executePipeline(serverURI, executor):
             	else:
                     p.setStageFailed(i)
                 ps = p.getProcessedStageCount()
-                print("Number of processed stages: " + str(ps))
+                print("Number of processed stages: " + str(ps) + "\n")
         except:
             print "Failed in executor thread"
     	    print "Unexpected error: ", sys.exc_info()
@@ -57,7 +56,7 @@ if __name__ == "__main__":
     
     parser = OptionParser(usage=usage, description=description)
     
-    parser.add_option("--uri-file", dest="urifile",
+    parser.add_option("-u", "--uri-file", dest="urifile",
                       type="string", default=None,
                       help="Location for uri file if NameServer is not used. If not specified, default is current working directory.")
     parser.add_option("--use-ns", dest="use_ns",
@@ -80,9 +79,13 @@ if __name__ == "__main__":
             urifile = os.curdir + "/" + "uri"
         else:
             urifile = options.urifile
-    	uf = open(urifile)
-    	serverURI = Pyro.core.processStringURI(uf.readline())
-    	uf.close()
+    	try:
+    	    uf = open(urifile)
+    	    serverURI = Pyro.core.processStringURI(uf.readline())
+    	    uf.close()
+    	except IOError:
+    	    print "IOError: No uri file in working directory.  Specify uri file location with '-u'."
+    	    sys.exit()
     
     executor = Executor()
     clientURI=daemon.connect(executor,"executor")
