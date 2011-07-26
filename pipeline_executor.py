@@ -24,7 +24,7 @@ class Executor(Pyro.core.SynchronizedObjBase):
             self.continueRunning = False
          
 
-def runStage(serverURI, s):
+def runStage(serverURI, s, i):
     # Proc needs its own proxy as it's independent of executor
     p = Pyro.core.getProxyForURI(serverURI)
 
@@ -106,7 +106,7 @@ if __name__ == "__main__":
                     # the ShutdownCall and crash when calling p.getRunnableStageIndex()
                 else:
                     s = p.getStage(i)
-                    process = Process(target=runStage, args=(serverURI, s))
+                    process = Process(target=runStage, args=(serverURI, s, i))
                     process.start()
             except:
                 print "Executor failed"
@@ -116,9 +116,11 @@ if __name__ == "__main__":
     except:
         print "Failed in pipeline_executor"
         print "Unexpected error: ", sys.exc_info()
+        process.join()
         daemon.shutdown(True)
         sys.exit()
     else:
         print "Server has shutdown. Killing executor thread."
+        process.join()
         process.terminate()
         daemon.shutdown(True)
