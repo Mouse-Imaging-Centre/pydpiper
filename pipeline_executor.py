@@ -6,7 +6,8 @@ import time
 import sys
 import os
 from optparse import OptionParser
-from multiprocessing import Process 
+from multiprocessing import Process
+from multiprocessing import Pool
 
 Pyro.config.PYRO_MOBILE_CODE=1
 
@@ -54,7 +55,7 @@ if __name__ == "__main__":
     # command line option handling    
     parser = OptionParser(usage=usage, description=description)
     
-    parser.add_option("-u", "--uri-file", dest="urifile",
+    parser.add_option("--uri-file", dest="urifile",
                       type="string", default=None,
                       help="Location for uri file if NameServer is not used. If not specified, default is current working directory.")
     parser.add_option("--use-ns", dest="use_ns",
@@ -82,8 +83,8 @@ if __name__ == "__main__":
     	    uf = open(urifile)
     	    serverURI = Pyro.core.processStringURI(uf.readline())
     	    uf.close()
-    	except IOError:
-    	    print "IOError: No uri file in working directory.  Specify uri file location with '-u'."
+    	except:
+    	    print "Problem opening the specified uri file:", sys.exc_info()
     	    sys.exit()
 
     # instantiate the executor class and register the executor with the pipeline    
