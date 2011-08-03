@@ -93,7 +93,7 @@ if __name__ == "__main__":
     p.register(clientURI)
       
     # loop until the pipeline sets continueRunning to false
-    pool = Pool(processes=2)    # Limit the number of processes in the multiprocessing pool here
+    pool = Pool(processes=3)    # Limit the number of processes in the multiprocessing pool here
     try:
         while executor.continueLoop():
             daemon.handleRequests(0)  #functions in place of daemon.requestLoop() to allow for custom event loop
