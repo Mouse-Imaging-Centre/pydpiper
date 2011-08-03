@@ -31,9 +31,7 @@ def runStage(serverURI, i):
     
     # Run stage, set finished or failed accordingly  
     try:
-        print("Running stage " + str(i) + ":")
-        print(s),
-        print "\n"
+        print("Running stage " + str(i) + ": " + str(s) + "\n")
         r = s.execStage()
         print("Stage " + str(i) + " finished, return was: " + str(r) + "\n")
         if r == 0:
@@ -102,7 +100,7 @@ if __name__ == "__main__":
             try:
                 i = p.getRunnableStageIndex()
                 if i == None:
-                    print("Sleeping ...")
+                    print("No runnable stages. Sleeping...")
                     time.sleep(5)
                     # This is still buggy - shorter sleep times cause the executor to miss
                     # the ShutdownCall and crash when calling p.getRunnableStageIndex()
