@@ -24,10 +24,11 @@ class Executor(Pyro.core.SynchronizedObjBase):
             self.continueRunning = False
          
 
-def runStage(serverURI, s, i):
+def runStage(serverURI, i):
     # Proc needs its own proxy as it's independent of executor
     p = Pyro.core.getProxyForURI(serverURI)
-
+    s = p.getStage(i)
+    
     # Run stage, set finished or failed accordingly  
     try:
         print("Running stage " + str(i) + ": " + str(s) + "\n")
@@ -92,6 +93,7 @@ if __name__ == "__main__":
     p.register(clientURI)
       
     # loop until the pipeline sets continueRunning to false
+    pool = Pool(processes=3)    # Limit the number of processes in the multiprocessing pool here
     try:
         while executor.continueLoop():
             daemon.handleRequests(0)  #functions in place of daemon.requestLoop() to allow for custom event loop
@@ -103,9 +105,7 @@ if __name__ == "__main__":
                     # This is still buggy - shorter sleep times cause the executor to miss
                     # the ShutdownCall and crash when calling p.getRunnableStageIndex()
                 else:
-                    s = p.getStage(i)
-                    process = Process(target=runStage, args=(serverURI, s, i))
-                    process.start()
+                    process = pool.apply_async(runStage,(serverURI, i))
             except:
                 print "Executor failed"
                 print "Unexpected error: ", sys.exc_info()
@@ -114,11 +114,12 @@ if __name__ == "__main__":
     except:
         print "Failed in pipeline_executor"
         print "Unexpected error: ", sys.exc_info()
-        process.join()
         daemon.shutdown(True)
+        pool.close()
+        pool.join()
         sys.exit()
     else:
         print "Server has shutdown. Killing executor thread."
-        process.join()
-        process.terminate()
+        pool.close()
+        pool.join()        
         daemon.shutdown(True)
