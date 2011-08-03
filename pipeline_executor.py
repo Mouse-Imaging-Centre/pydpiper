@@ -84,8 +84,6 @@ if __name__ == "__main__":
     	serverURI = Pyro.core.processStringURI(uf.readline())
     	uf.close()
     
-    #TEST
-    
     executor = Executor()
     clientURI=daemon.connect(executor,"executor")
     p = Pyro.core.getProxyForURI(serverURI)
