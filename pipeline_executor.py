@@ -23,7 +23,6 @@ class Executor(Pyro.core.SynchronizedObjBase):
         if serverShutdown:
             self.continueRunning = False
          
-
 def runStage(serverURI, i):
     # Proc needs its own proxy as it's independent of executor
     p = Pyro.core.getProxyForURI(serverURI)
@@ -42,32 +41,14 @@ def runStage(serverURI, i):
         print "Failed in executor thread"
         print "Unexpected error: ", sys.exc_info()
     	sys.exit()        
-
-
-##########     ---     Start of program     ---     ##########
+         
+def launchPipeline(options=None):
     
-
-if __name__ == "__main__":
-    usage = "%prog [options]"
-    description = "pipeline executor"
-
-    # command line option handling    
-    parser = OptionParser(usage=usage, description=description)
-    
-    parser.add_option("--uri-file", dest="urifile",
-                      type="string", default=None,
-                      help="Location for uri file if NameServer is not used. If not specified, default is current working directory.")
-    parser.add_option("--use-ns", dest="use_ns",
-                      action="store_true",
-                      help="Use the Pyro NameServer to store object locations")
-                      
-    (options,args) = parser.parse_args()
-
     # initialize pipeline_executor as both client and server       
     Pyro.core.initClient()
     Pyro.core.initServer()
     daemon = Pyro.core.Daemon()
-    
+
     # set up communication with server from the URI string
     if options.use_ns:
         ns = Pyro.naming.NameServerLocator().getNS()
@@ -123,3 +104,29 @@ if __name__ == "__main__":
         pool.close()
         pool.join()        
         daemon.shutdown(True)
+
+
+##########     ---     Start of program     ---     ##########
+    
+
+if __name__ == "__main__":
+    usage = "%prog [options]"
+    description = "pipeline executor"
+
+    # command line option handling    
+    parser = OptionParser(usage=usage, description=description)
+    
+    parser.add_option("--uri-file", dest="urifile",
+                      type="string", default=None,
+                      help="Location for uri file if NameServer is not used. If not specified, default is current working directory.")
+    parser.add_option("--use-ns", dest="use_ns",
+                      action="store_true",
+                      help="Use the Pyro NameServer to store object locations")
+                      
+    (options,args) = parser.parse_args()
+
+    #instantiate executor class first and fold others into here? how to launch from pipeline?
+    #executor = Executor(options) # read in options here during instantiation
+    #executor.launchPipeline()
+    launchPipeline(options)
+    
