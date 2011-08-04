@@ -2,7 +2,7 @@ LICENSE
 INSTALL
 README
 MANIFEST
-pipeline_executor.py
 setup.py
 pydpiper/__init__.py
 pydpiper/pipeline.py
+pydpiper/pipeline_executor.py

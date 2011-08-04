@@ -12,5 +12,5 @@ setup(name='pydpiper',
       url='https://github.com/mfriedel/pydpiper',
       platforms="any",
       packages=['pydpiper'], 
-      scripts=['pipeline_executor.py']
+      scripts=['pydpiper/pipeline_executor.py']
       )
