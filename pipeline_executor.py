@@ -60,6 +60,7 @@ if __name__ == "__main__":
     parser.add_option("--use-ns", dest="use_ns",
                       action="store_true",
                       help="Use the Pyro NameServer to store object locations")
+    parser.add_option("--proc", dest="proc", type="int",help="User-specified number of processors available to the executor")
                       
     (options,args) = parser.parse_args()
 
@@ -93,7 +94,7 @@ if __name__ == "__main__":
     p.register(clientURI)
       
     # loop until the pipeline sets continueRunning to false
-    pool = Pool(processes=3)    # Limit the number of processes in the multiprocessing pool here
+    pool = Pool(processes = options.proc if options.proc != None else 2)    # Limit the number of processes in the multiprocessing pool
     try:
         while executor.continueLoop():
             daemon.handleRequests(0)  #functions in place of daemon.requestLoop() to allow for custom event loop
