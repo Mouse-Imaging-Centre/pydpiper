@@ -60,7 +60,7 @@ if __name__ == "__main__":
     parser.add_option("--use-ns", dest="use_ns",
                       action="store_true",
                       help="Use the Pyro NameServer to store object locations")
-    parser.add_option("--proc", dest="proc", type="int",help="User-specified number of processors available to the executor")
+    parser.add_option("--proc", dest="proc", type="int",help="User-specified number of processes available to the executor")
                       
     (options,args) = parser.parse_args()
 
