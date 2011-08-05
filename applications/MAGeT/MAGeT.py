@@ -171,12 +171,9 @@ if __name__ == "__main__":
     if options.create_graph:
     	nx.write_dot(p.G, "labeled-tree.dot")
     
-    #If Pyro NameServer option was specified, use it.
-    
-    if options.use_ns:
-        pipelineDaemon(p)
-    else:
-        pipelineNoNSDaemon(p, options)
+    #pipelineDaemon runs pipeline, launches Pyro client/server and executors (if specified)
+    # if use_ns is specified, Pyro NameServer must be started. 
+    pipelineDaemon(p, options)
     
     print "templates: " + str(numTemplates)
 

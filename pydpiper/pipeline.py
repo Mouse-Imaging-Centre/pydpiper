@@ -325,14 +325,21 @@ def launchPipelineExecutor(options):
 def launchServer(pipeline, options):
     Pyro.core.initServer()
     daemon=Pyro.core.Daemon()
-    uri=daemon.connect(pipeline, "pipeline")
     
+    #Note: Pyro NameServer must be started for this function to work properly
+    if options.use_ns:
+        ns=Pyro.naming.NameServerLocator().getNS()
+        daemon.useNameServer(ns)
+    
+    uri=daemon.connect(pipeline, "pipeline")
     print("Daemon is running on port: " + str(daemon.port))
     print("The object's uri is: " + str(uri))
 
-    uf = open(options.urifile, 'w')
-    uf.write(str(uri))
-    uf.close()
+    # If not using Pyro NameServer, must write uri to file for reading by client.
+    if not options.use_ns:
+        uf = open(options.urifile, 'w')
+        uf.write(str(uri))
+        uf.close()
     
     try:
         daemon.requestLoop(pipeline.continueLoop)
@@ -351,42 +358,7 @@ def launchServer(pipeline, options):
     	daemon.shutdown(True)
     	print("Objects successfully unregistered and daemon shutdown.")
 
-def pipelineDaemon(pipeline):
-    
-    #check for valid pipeline 
-    if pipeline.runnable.empty():
-        print "Pipeline has no runnable stages. Exiting..."
-        sys.exit()
-
-    #Note: NameServer must be started for this function to work properly
-
-    Pyro.core.initServer()  
-    daemon=Pyro.core.Daemon()
-    ns=Pyro.naming.NameServerLocator().getNS()
-    daemon.useNameServer(ns)
-    uri=daemon.connect(pipeline,"pipeline")
- 
-    print("Daemon is running on port: " + str(daemon.port))
-    print("The object's uri is: " + str(uri))
-    
-    try:
-    	daemon.requestLoop(pipeline.continueLoop)
-    except:
-    	print "Failed in pipelineDaemon"
-    	print "Unexpected error: ", sys.exc_info()
-    	sys.exit()
-    else:
-    	print("Pipeline completed. daemon unregistering objects and shutting down.")
-    	for c in pipeline.clients[:]:
-    	    clientObj = Pyro.core.getProxyForURI(c)
-    	    clientObj.serverShutdownCall(True)
-    	    print "Made serverShutdownCall to: " + str(c)
-    	    pipeline.clients.remove(c)
-    	    print "Client deregistered from server: " + str(c)
-    	daemon.shutdown(True)
-    	print("Objects successfully unregistered and daemon shutdown.")
-
-def pipelineNoNSDaemon(pipeline, options=None):
+def pipelineDaemon(pipeline, options=None):
 
     #check for valid pipeline 
     if pipeline.runnable.empty()==None:
@@ -401,10 +373,5 @@ def pipelineNoNSDaemon(pipeline, options=None):
     time.sleep(5)
     print "Done sleeping..."
     launchPipelineExecutor(options)
-    #launchServer(pipeline, options)
-    
-    #process = Process(target=launchPipelineExecutor, args=(options,))
-    #process.start()
-    #print "process has been started"
 
     

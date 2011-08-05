@@ -126,7 +126,6 @@ if __name__ == "__main__":
                       
     (options,args) = parser.parse_args()
 
-    #instantiate executor class first and fold others into here? how to launch from pipeline?
     pipelineExecutor = pipelineExecutor()
     pipelineExecutor.launchPipeline(options)
     
