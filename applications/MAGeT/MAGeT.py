@@ -176,7 +176,7 @@ if __name__ == "__main__":
     if options.use_ns:
         pipelineDaemon(p)
     else:
-        pipelineNoNSDaemon(p, options.urifile)
+        pipelineNoNSDaemon(p, options)
     
     print "templates: " + str(numTemplates)
 

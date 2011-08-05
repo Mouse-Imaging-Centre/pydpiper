@@ -14,6 +14,8 @@ from datetime import datetime
 from subprocess import call
 from os.path import basename,isdir
 from os import mkdir
+from multiprocessing import Process
+import pipeline_executor as pe
 
 Pyro.config.PYRO_MOBILE_CODE=1 
 
@@ -316,6 +318,39 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
         print "CLIENT REGISTERED: " + str(client)
         self.clients.append(client)
 
+def launchPipelineExecutor(options):
+    pipelineExecutor = pe.pipelineExecutor()
+    pipelineExecutor.launchPipeline(options) 
+    
+def launchServer(pipeline, options):
+    Pyro.core.initServer()
+    daemon=Pyro.core.Daemon()
+    uri=daemon.connect(pipeline, "pipeline")
+    
+    print("Daemon is running on port: " + str(daemon.port))
+    print("The object's uri is: " + str(uri))
+
+    uf = open(options.urifile, 'w')
+    uf.write(str(uri))
+    uf.close()
+    
+    try:
+        daemon.requestLoop(pipeline.continueLoop)
+    except:
+    	print "Failed in pipelineNoNSDaemon"
+    	print "Unexpected error: ", sys.exc_info()
+    	sys.exit()
+    else:
+    	print("Pipeline completed. Daemon unregistering " + str(len(pipeline.clients)) + " client(s) and shutting down...\n")
+    	for c in pipeline.clients[:]:
+    	    clientObj = Pyro.core.getProxyForURI(c)
+    	    clientObj.serverShutdownCall(True)
+    	    print "Made serverShutdownCall to: " + str(c)
+    	    pipeline.clients.remove(c)
+    	    print "Client deregistered from server: "  + str(c)
+    	daemon.shutdown(True)
+    	print("Objects successfully unregistered and daemon shutdown.")
+
 def pipelineDaemon(pipeline):
     
     #check for valid pipeline 
@@ -351,40 +386,25 @@ def pipelineDaemon(pipeline):
     	daemon.shutdown(True)
     	print("Objects successfully unregistered and daemon shutdown.")
 
-def pipelineNoNSDaemon(pipeline, urifile=None):
+def pipelineNoNSDaemon(pipeline, options=None):
 
     #check for valid pipeline 
     if pipeline.runnable.empty()==None:
         print "Pipeline has no runnable stages. Exiting..."
         sys.exit()
 
-    if urifile==None:
-        urifile = os.curdir + "/" + "uri"    
-
-    Pyro.core.initServer()
-    daemon=Pyro.core.Daemon()
-    uri=daemon.connect(pipeline, "pipeline")
+    if options.urifile==None:
+        options.urifile = os.curdir + "/" + "uri"    
     
-    print("Daemon is running on port: " + str(daemon.port))
-    print("The object's uri is: " + str(uri))
+    process = Process(target=launchServer, args=(pipeline,options,))
+    process.start()
+    time.sleep(5)
+    print "Done sleeping..."
+    launchPipelineExecutor(options)
+    #launchServer(pipeline, options)
+    
+    #process = Process(target=launchPipelineExecutor, args=(options,))
+    #process.start()
+    #print "process has been started"
 
-    uf = open(urifile, 'w')
-    uf.write(str(uri))
-    uf.close()
-
-    try:
-    	daemon.requestLoop(pipeline.continueLoop)
-    except:
-    	print "Failed in pipelineNoNSDaemon"
-    	print "Unexpected error: ", sys.exc_info()
-    	sys.exit()
-    else:
-    	print("Pipeline completed. Daemon unregistering " + str(len(pipeline.clients)) + " client(s) and shutting down...\n")
-    	for c in pipeline.clients[:]:
-    	    clientObj = Pyro.core.getProxyForURI(c)
-    	    clientObj.serverShutdownCall(True)
-    	    print "Made serverShutdownCall to: " + str(c)
-    	    pipeline.clients.remove(c)
-    	    print "Client deregistered from server: "  + str(c)
-    	daemon.shutdown(True)
-    	print("Objects successfully unregistered and daemon shutdown.")
+    

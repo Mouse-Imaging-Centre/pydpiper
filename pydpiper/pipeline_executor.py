@@ -44,9 +44,8 @@ def runStage(serverURI, i):
          
 class pipelineExecutor():
     #def __init__(self):
-        # initialization here if needed
-    def launchPipeline(self, options=None):
-    
+    # initialization here later, if needed. 
+    def launchPipeline(self, options=None):  
         # initialize pipeline_executor as both client and server       
         Pyro.core.initClient()
         Pyro.core.initServer()
@@ -109,8 +108,7 @@ class pipelineExecutor():
             daemon.shutdown(True)
 
 
-##########     ---     Start of program     ---     ##########
-    
+##########     ---     Start of program     ---     ##########   
 
 if __name__ == "__main__":
     usage = "%prog [options]"
