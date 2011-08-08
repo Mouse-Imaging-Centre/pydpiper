@@ -123,7 +123,13 @@ if __name__ == "__main__":
     parser.add_option("--create-graph", dest="create_graph",
                       action="store_true",
                       help="Create a .dot file with graphical representation of pipeline relationships")
-
+    parser.add_option("--launch-own-executor", dest="launch_executor", 
+                      action="store_true", 
+                      help="Launch executors automatically without having to run pipeline_excutor.py independently.")
+    parser.add_option("--proc", dest="proc", 
+                      type="int", default=4,
+                      help="User-specified number of simultaneous processes to run. Overridden if --launch-own-executor not specified.")
+    
     (options,args) = parser.parse_args()
 
     fh = FileHandling()

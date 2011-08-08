@@ -344,7 +344,7 @@ def launchServer(pipeline, options):
     try:
         daemon.requestLoop(pipeline.continueLoop)
     except:
-    	print "Failed in pipelineNoNSDaemon"
+    	print "Failed in pipelineDaemon"
     	print "Unexpected error: ", sys.exc_info()
     	sys.exit()
     else:
@@ -370,8 +370,10 @@ def pipelineDaemon(pipeline, options=None):
     
     process = Process(target=launchServer, args=(pipeline,options,))
     process.start()
+    print("Briefly napping while Pyro server starts up...")
     time.sleep(5)
     print "Done sleeping..."
-    launchPipelineExecutor(options)
+    if options.launch_executor:
+        launchPipelineExecutor(options)
 
     

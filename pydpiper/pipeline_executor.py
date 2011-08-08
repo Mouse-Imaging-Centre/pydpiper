@@ -76,7 +76,7 @@ class pipelineExecutor():
         p.register(clientURI)
       
         # loop until the pipeline sets continueRunning to false
-        pool = Pool(processes = options.proc if options.proc != None else 2)    # Limit the number of processes in the multiprocessing pool
+        pool = Pool(processes = options.proc)
         try:
             while executor.continueLoop():
                 daemon.handleRequests(0)  #functions in place of daemon.requestLoop() to allow for custom event loop
@@ -123,7 +123,9 @@ if __name__ == "__main__":
     parser.add_option("--use-ns", dest="use_ns",
                       action="store_true",
                       help="Use the Pyro NameServer to store object locations")
-    parser.add_option("--proc", dest="proc", type="int",help="User-specified number of processes available to the executor")
+    parser.add_option("--proc", dest="proc", 
+                      type="int", default=4,
+                      help="User-specified number of simultaneous processes to run. If not specified, default is 4.")
                       
     (options,args) = parser.parse_args()
 
