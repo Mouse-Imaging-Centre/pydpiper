@@ -88,6 +88,8 @@ class FileHandling():
 
 class PipelineStage():
     def __init__(self):
+        self.mem = 2 # global default memory allotted per stage
+        self.numProcessors = 1 # global default number of processors per stage
         self.inputFiles = [] # the input files for this stage
         self.outputFiles = [] # the output files for this stage
         self.logFile = None # each stage should have only one log file
@@ -106,6 +108,16 @@ class PipelineStage():
         self.status = "finished"
     def setFailed(self):
         self.status = "failed"
+    def setNone(self):
+        self.status = None
+    def setMem(self, mem):
+        self.mem = mem
+    def getMem(self):
+        return self.mem
+    def setNumProcessors(self, num):
+        self.numProcessors = num
+    def getNumProcessors(self):
+        return self.numProcessors
     def getHash(self):
         return(hash("".join(self.outputFiles) + "".join(self.inputFiles)))
     def __eq__(self, other):
@@ -177,7 +189,7 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
         # location of backup files for restart if needed
         self.backupFileLocation = None
         # list of registered clients
-        self.clients=[]
+        self.clients = []
     def addStage(self, stage):
         """adds a stage to the pipeline"""
         # check if stage already exists in pipeline - if so, don't bother
@@ -303,7 +315,11 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
         self.stages[index].setFailed()
         self.processedStages.append(index)
         for i in nx.dfs_successors(self.G, index).keys():
-            self.processedStages.append(index)       
+            self.processedStages.append(index)
+    def requeue(self, i):
+        # when executors return a stage, put it back on the queue
+        self.stages[i].setNone()
+        self.runnable.put(i)            
     def initialize(self):
         """called once all stages have been added - computes dependencies and adds graph heads to runnable queue"""
         self.runnable = Queue.Queue()
