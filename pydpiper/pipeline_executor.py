@@ -40,6 +40,7 @@ def runStage(serverURI, i):
     except:
         print "Failed in executor thread"
         print "Unexpected error: ", sys.exc_info()
+        task_done()
     	sys.exit()        
          
 class pipelineExecutor():
