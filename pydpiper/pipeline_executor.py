@@ -124,12 +124,19 @@ if __name__ == "__main__":
     parser.add_option("--use-ns", dest="use_ns",
                       action="store_true",
                       help="Use the Pyro NameServer to store object locations")
+    parser.add_option("--num-executors", dest="num_exec", 
+                      type="int", default=1, 
+                      help="Number of independent executors to launch.")
     parser.add_option("--proc", dest="proc", 
                       type="int", default=4,
-                      help="User-specified number of simultaneous processes to run. If not specified, default is 4.")
+                      help="Number of processes per executor. If not specified, default is 4.")
                       
     (options,args) = parser.parse_args()
 
-    pipelineExecutor = pipelineExecutor()
-    pipelineExecutor.launchPipeline(options)
+    pe = pipelineExecutor()
+    processes = [Process(target=pe.launchPipeline, args=(options,)) for i in range(options.num_exec)]
+    for p in processes:
+        p.start()
+    for p in processes:
+        p.join()
     

@@ -389,7 +389,11 @@ def pipelineDaemon(pipeline, options=None):
     print("Briefly napping while Pyro server starts up...")
     time.sleep(5)
     print "Done sleeping..."
-    if options.launch_executor:
-        launchPipelineExecutor(options)
+    if options.num_exec != 0:
+        processes = [Process(target=launchPipelineExecutor, args=(options,)) for i in range(options.num_exec)]
+        for p in processes:
+            p.start()
+        for p in processes:
+            p.join()
 
     
