@@ -89,7 +89,7 @@ class FileHandling():
 class PipelineStage():
     def __init__(self):
         self.mem = 2 # global default memory allotted per stage
-        self.numProcessors = 1 # global default number of processors per stage
+        self.numProcesses = 1 # global default number of processors per stage
         self.inputFiles = [] # the input files for this stage
         self.outputFiles = [] # the output files for this stage
         self.logFile = None # each stage should have only one log file
@@ -114,10 +114,10 @@ class PipelineStage():
         self.mem = mem
     def getMem(self):
         return self.mem
-    def setNumProcessors(self, num):
-        self.numProcessors = num
-    def getNumProcessors(self):
-        return self.numProcessors
+    def setNumProcesses(self, num):
+        self.numProcesses = num
+    def getNumProcesses(self):
+        return self.numProcesses
     def getHash(self):
         return(hash("".join(self.outputFiles) + "".join(self.inputFiles)))
     def __eq__(self, other):

@@ -22,10 +22,17 @@ class clientExecutor(Pyro.core.SynchronizedObjBase):
         # receive call from server when all stages are processed
         if serverShutdown:
             self.continueRunning = False
+
+def canRun(s, maxMem, maxProcs, runningMem, runningProcs):
+    if ( (int(s.getMem()) <= (maxMem-runningMem) ) and (int(s.getNumProcesses())<=(maxProcs-runningProcs)) ):
+        return True
+    else:
+        return False
          
-def runStage(serverURI, s):
+def runStage(serverURI, i):
     # Proc needs its own proxy as it's independent of executor
     p = Pyro.core.getProxyForURI(serverURI)
+    s = p.getStage(i)
     
     # Run stage, set finished or failed accordingly  
     try:
@@ -36,7 +43,7 @@ def runStage(serverURI, s):
             p.setStageFinished(i)
         else:
             p.setStageFailed(i)
-        return[s.getMem(),s.getNumProcessors()] # If completed, return mem & processes back for re-use
+        return[s.getMem(),s.getNumProcesses()] # If completed, return mem & processes back for re-use    
     except:
         print "Failed in executor thread"
         print "Unexpected error: ", sys.exc_info()
@@ -75,40 +82,50 @@ class pipelineExecutor():
         clientURI=daemon.connect(executor,"executor")
         p = Pyro.core.getProxyForURI(serverURI)
         p.register(clientURI)
-        
-        maxMemAndProcs = [8, 4]
-        runningMemAndProcs = [0, 0]        
-        
-        runningChildren = [] # no scissors involved
       
+        maxMem = 8      # default
+        maxProcs = 4    # default
+        runningMem = 0
+        runningProcs = 0        
+        
+        runningChildren = [] # no scissors
+              
         # loop until the pipeline sets continueRunning to false
         pool = Pool(processes = options.proc)
         try:
             while executor.continueLoop():
                 daemon.handleRequests(0)  #functions in place of daemon.requestLoop() to allow for custom event loop
+                
+                # Refresh usable mem & procs
+                completedTasks = []
+                for i,val in enumerate(runningChildren):
+                    if val.ready():                         
+                        completedTasks.insert(0,i)
+                for i in completedTasks:
+                    runningMem -= runningChildren[i].get()[0]
+                    runningProcs -= runningChildren[i].get()[1]
+                    del runningChildren[i]                    
+                
+                # Check for new stages
                 try:
                     i = p.getRunnableStageIndex()
+                    
                     if i == None:
                         print("No runnable stages. Sleeping...")
                         time.sleep(5)
                     else:
                         s = p.getStage(i)
-                        runningMemAndProcs[0] += s.getMem()
-                        runningMemAndProcs[1] += s.getNumProcessors()
-                        runningChildren.append(pool.apply_async(runStage,(serverURI, s)))
+                        if canRun(s, maxMem, maxProcs, runningMem, runningProcs):
+                            runningMem += s.getMem()
+                            runningProcs += s.getNumProcesses()                         
+                            runningChildren.append(pool.apply_async(runStage,(serverURI, i)))
+                        else:
+                            p.requeue(i)
                 except:
                     print "Executor failed"
                     print "Unexpected error: ", sys.exc_info()
-                    sys.exit()
-                
-                # Check for tasks which have completed, freeing up memory & processes to be re-used
-                completedTasks = []
-                for i,val in enumerate(runningChildren):
-                    if val.ready():
-                        completedTasks.insert(0,i)
-                for i in completedTasks:
-                    runningMemAndProcs -= runningChildren[i].get()
-                    del runningChildren[i]
+                    sys.exit()              
+
         except:
             print "Failed in pipeline_executor"
             print "Unexpected error: ", sys.exc_info()
@@ -153,4 +170,3 @@ if __name__ == "__main__":
         p.start()
     for p in processes:
         p.join()
-    
