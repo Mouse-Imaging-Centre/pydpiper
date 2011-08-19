@@ -14,7 +14,7 @@ from datetime import datetime
 from subprocess import call
 from os.path import basename,isdir
 from os import mkdir
-from multiprocessing import Process
+from multiprocessing import Process, Event
 import pipeline_executor as pe
 
 Pyro.config.PYRO_MOBILE_CODE=1 
@@ -322,7 +322,7 @@ def launchPipelineExecutor(options):
     pipelineExecutor = pe.pipelineExecutor()
     pipelineExecutor.launchPipeline(options) 
     
-def launchServer(pipeline, options):
+def launchServer(pipeline, options, e):
     Pyro.core.initServer()
     daemon=Pyro.core.Daemon()
     
@@ -340,6 +340,8 @@ def launchServer(pipeline, options):
         uf = open(options.urifile, 'w')
         uf.write(str(uri))
         uf.close()
+    
+    e.set()
     
     try:
         daemon.requestLoop(pipeline.continueLoop)
@@ -368,11 +370,10 @@ def pipelineDaemon(pipeline, options=None):
     if options.urifile==None:
         options.urifile = os.curdir + "/" + "uri"    
     
-    process = Process(target=launchServer, args=(pipeline,options,))
+    e = Event()
+    process = Process(target=launchServer, args=(pipeline,options,e,))
     process.start()
-    print("Briefly napping while Pyro server starts up...")
-    time.sleep(5)
-    print "Done sleeping..."
+    e.wait()
     if options.num_exec != 0:
         processes = [Process(target=launchPipelineExecutor, args=(options,)) for i in range(options.num_exec)]
         for p in processes:
