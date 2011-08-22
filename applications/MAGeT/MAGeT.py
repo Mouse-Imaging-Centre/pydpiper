@@ -129,6 +129,9 @@ if __name__ == "__main__":
     parser.add_option("--proc", dest="proc", 
                       type="int", default=4,
                       help="Number of processes per executor. Overridden if --num-executors not specified.")
+    parser.add_option("--queue", dest="queue", 
+                      type="string", default=None,
+                      help="Use specified queueing system to submit jobs. Default is None.")
     
     (options,args) = parser.parse_args()
 

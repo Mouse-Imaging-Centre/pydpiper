@@ -320,7 +320,16 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
 
 def launchPipelineExecutor(options):
     pipelineExecutor = pe.pipelineExecutor()
-    pipelineExecutor.launchPipeline(options) 
+    # Need to put in memory mgmt here as well. 
+    if options.queue=="sge":
+        strprocs = str(options.proc) 
+        cmd = ["sge_batch", "-m", strprocs, "-q", "defdev.q", "pipeline_executor.py", "--uri-file", options.urifile, "--proc", strprocs]
+        call(cmd)   
+    elif options.queue=="scinet":
+        print "Specified queueing system == scinet"
+    else: 
+        #options.queue==None - no queuesing system specified. 
+        pipelineExecutor.launchPipeline(options) 
     
 def launchServer(pipeline, options, e):
     Pyro.core.initServer()
