@@ -163,6 +163,9 @@ if __name__ == "__main__":
     parser.add_option("--proc", dest="proc", 
                       type="int", default=4,
                       help="Number of processes per executor. If not specified, default is 4.")
+    parser.add_option("--mem", dest="mem", 
+                      type="int", default=8,
+                      help="Total amount of requested memory. If not specified, default is 8G.")              
                       
     (options,args) = parser.parse_args()
 
