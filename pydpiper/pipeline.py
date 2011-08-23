@@ -10,7 +10,7 @@ import shutil
 import sys
 import socket
 import time
-from datetime import datetime
+from datetime import datetime, date
 from subprocess import call
 from os.path import basename,isdir
 from os import mkdir
@@ -323,12 +323,21 @@ def launchPipelineExecutor(options):
     # Need to put in memory mgmt here as well. 
     if options.queue=="sge":
         strprocs = str(options.proc) 
-        cmd = ["sge_batch", "-m", strprocs, "-q", "defdev.q", "pipeline_executor.py", "--uri-file", options.urifile, "--proc", strprocs]
+        # NOTE: May want to change definition of options.mem, as sge_batch multiplies this by # procs. 
+        # Currently designed as total amount of memory needed. May want this to be mem/process or just divide. 
+        strmem = "vf=" + str(options.mem) + "G"  
+        jobname = "pipeline-" + str(date.today())
+        # Add options for sge_batch command
+        cmd = ["sge_batch", "-J", jobname, "-m", strprocs, "-l", strmem] 
+        # Next line is for development and testing only -- will be removed in final checked in version
+        cmd += ["-q", "defdev.q"]
+        cmd += ["pipeline_executor.py", "--uri-file", options.urifile, "--proc", strprocs]
+        print cmd
         call(cmd)   
     elif options.queue=="scinet":
         print "Specified queueing system == scinet"
     else: 
-        #options.queue==None - no queuesing system specified. 
+        #options.queue==None. No queueing system specified, jobs will run locally. 
         pipelineExecutor.launchPipeline(options) 
     
 def launchServer(pipeline, options, e):
