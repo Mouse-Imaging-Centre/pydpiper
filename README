@@ -2,12 +2,10 @@ pydpiper is a set of python modules that offers programmatic control over pipeli
 
 It is very much under active development. 
 
-Classes for building and controling the pipeline can be found in pipeline/pipeline.py. 
+Classes for building and controling the pipeline can be found in pydpiper/pipeline.py. 
 The location of the pipeline directory must be in the users PYTHONPATH. 
 
 The code for executing the pipeline can be found in pipeline_executor.py.
-
-Ultimately both pipeline and pipeline_executor will have a setup.py script, so it can be installed via: python setup.py install
 
 Application modules that utilize the pipeline class definitions are currently in applications folder. These applications may be moved to a separate repository at a later date. 
  
