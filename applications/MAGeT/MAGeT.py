@@ -132,9 +132,6 @@ if __name__ == "__main__":
     parser.add_option("--mem", dest="mem", 
                       type="int", default=8,
                       help="Total amount of requested memory. Default is 8G. Overridden if --num-executors not specified.")
-    parser.add_option("--queue", dest="queue", 
-                      type="string", default=None,
-                      help="Use specified queueing system to submit jobs. Default is None.")
     
     (options,args) = parser.parse_args()
 
