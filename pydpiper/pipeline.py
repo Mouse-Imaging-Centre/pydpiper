@@ -317,7 +317,7 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
         for i in nx.dfs_successors(self.G, index).keys():
             self.processedStages.append(index)
     def requeue(self, i):
-        # when executors return a stage, put it back on the queue
+        # when executors return a stage they can't handle at the moment, put it back on the queue
         self.stages[i].setNone()
         self.runnable.put(i)            
     def initialize(self):
