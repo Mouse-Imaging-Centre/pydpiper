@@ -23,8 +23,8 @@ class clientExecutor(Pyro.core.SynchronizedObjBase):
         if serverShutdown:
             self.continueRunning = False
 
-def canRun(s, maxMem, maxProcs, runningMem, runningProcs):
-    if ( (int(s.getMem()) <= (maxMem-runningMem) ) and (int(s.getNumProcesses())<=(maxProcs-runningProcs)) ):
+def canRun(stageMem, stageNumProcesses, maxMem, maxProcs, runningMem, runningProcs):
+    if ( (int(stageMem) <= (maxMem-runningMem) ) and (int(stageNumProcesses)<=(maxProcs-runningProcs)) ):
         return True
     else:
         return False
@@ -115,9 +115,11 @@ class pipelineExecutor():
                         time.sleep(5)
                     else:
                         s = p.getStage(i)
-                        if canRun(s, maxMem, maxProcs, runningMem, runningProcs):
-                            runningMem += s.getMem()
-                            runningProcs += s.getNumProcesses()                         
+                        stageMem = s.getMem()
+                        stageNumProcesses = s.getNumProcesses()
+                        if canRun(stageMem, stageNumProcesses, maxMem, maxProcs, runningMem, runningProcs):
+                            runningMem += stageMem
+                            runningProcs += stageNumProcesses                       
                             runningChildren.append(pool.apply_async(runStage,(serverURI, i)))
                         else:
                             p.requeue(i)
