@@ -83,8 +83,8 @@ class pipelineExecutor():
         p = Pyro.core.getProxyForURI(serverURI)
         p.register(clientURI)
       
-        maxMem = 8      # default
-        maxProcs = 4    # default
+        maxMem = options.mem
+        maxProcs = options.proc
         runningMem = 0
         runningProcs = 0        
         
@@ -165,7 +165,7 @@ if __name__ == "__main__":
                       help="Number of processes per executor. If not specified, default is 4.")
     parser.add_option("--mem", dest="mem", 
                       type="int", default=8,
-                      help="Total amount of requested memory. If not specified, default is 8G.")              
+                      help="Total amount of requested memory for all processes the executor runs. If not specified, default is 8 GB.")              
                       
     (options,args) = parser.parse_args()
 
