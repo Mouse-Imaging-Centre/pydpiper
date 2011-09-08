@@ -12,7 +12,7 @@ import socket
 import time
 from datetime import datetime, date
 from subprocess import call
-from os.path import basename,isdir,abspath
+from os.path import basename,isdir
 from os import mkdir
 from multiprocessing import Process, Event
 import pipeline_executor as pe
@@ -225,49 +225,29 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
         pickle.dump(self.processedStages, open(str(self.backupFileLocation) + '/processedStages.pkl', 'wb'))
         print '\nPipeline pickled.\n'
     def restart(self):
-        # If another backup location is not specified, make it look in the current directory
+        """Restarts the pipeline from previously pickled backup files."""
         if (self.backupFileLocation == None):
-            outputDir = abspath(".")
-            self.setBackupFileLocation(outputDir)
-            print "Looking in running directory for backup files ..."
-        elif not isdir(self.backupFileLocation):
-            sys.exit('Specified output/backups directory does not exist. Cannot reimport data from backups. Exiting...')
-        print 'New pipeline created, trying to recover reusable stages ... \n'
+            self.setBackupFileLocation()
+            print "Backup location not specified. Looking in the current directory."
         try:
             self.G = pickle.load(open(str(self.backupFileLocation) + '/G.pkl', 'rb'))
             self.stages = pickle.load(open(str(self.backupFileLocation) + '/stages.pkl', 'rb'))
             self.nameArray = pickle.load(open(str(self.backupFileLocation) + '/nameArray.pkl', 'rb'))
             self.counter = pickle.load(open(str(self.backupFileLocation) + '/counter.pkl', 'rb'))
             self.outputhash = pickle.load(open(str(self.backupFileLocation) + '/outputhash.pkl', 'rb'))
-            self.stagehash = pickle.load(open(str(self.backupFileLocation) + '/sta`gehash.pkl', 'rb'))
+            self.stagehash = pickle.load(open(str(self.backupFileLocation) + '/stagehash.pkl', 'rb'))
             self.processedStages = pickle.load(open(str(self.backupFileLocation) + '/processedStages.pkl', 'rb'))
             print 'Successfully reimported old data from backups.'
-        except IOError:
-            sys.exit("Backup files are not recoverable.  Clean pipeline restart required.\n")
-        print 'Previously completed stages (of ' + str(len(self.stages)) + ' total): \n'
+        except:
+            sys.exit("Backup files are not recoverable.  Pipeline restart required.\n")
+        print 'Previously completed stages (of ' + str(len(self.stages)) + ' total): '
         done = []
         for i in self.G.nodes_iter():
             if self.stages[i].isFinished() == True:
                 done.append(i)
-        print '  ' + str(done)
-        print 'Now computing starting nodes ... \n'
-        self.computeGraphHeads()
-        starters = []
-        for i in p.G.nodes_iter():
-            if self.stages[i].isFinished() == False:
-                if len(self.G.predecessors(i)) == 0:
-                    starters.append(i)
-                if len(self.G.predecessors(i)) != 0:
-                    predfinished = True
-                    for j in self.G.predecessors(i):
-                        if self.stages[j].isFinished() == False:
-                            predfinished = False
-                    if predfinished == True:
-                        starters.append(i)
-        print '  ' + str(starters)
-        print 'Reimport complete. Now running the pipeline ...\n'
-        p.initialize()
-        p.printStages()
+        print str(done)
+        self.initialize()
+        self.printStages()
     def setBackupFileLocation(self, outputDir=None):
         fh = FileHandling()
         if (outputDir == None):
@@ -294,6 +274,7 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
         print("Create Edges time: " + str(endtime-starttime))
     def computeGraphHeads(self):
         """adds stages with no incomplete predecessors to the runnable queue"""
+        graphHeads = []
         for i in self.G.nodes_iter():
             if self.stages[i].isFinished() == False:
                 """ either it has 0 predecessors """
@@ -306,7 +287,9 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
                         if self.stages[j].isFinished() == False:
                             predfinished = False
                     if predfinished == True:
-                        self.runnable.put(i)               
+                        self.runnable.put(i) 
+                        graphHeads.append(i)
+        print "Graph heads: " + str(graphHeads) + "\n"              
     def getStage(self, i):
         """given an index, return the actual pipelineStage object"""
         return(self.stages[i])
