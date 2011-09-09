@@ -128,7 +128,7 @@ if __name__ == "__main__":
                       help="Launch executors automatically without having to run pipeline_excutor.py independently.")
     parser.add_option("--proc", dest="proc", 
                       type="int", default=4,
-                      help="Number of processes per executor. Default is 4. Overridden if --num-executors not specified.")
+                      help="Number of processes per executor. Default is 4. Also sets max value for processor use per executor. Overridden if --num-executors not specified.")
     parser.add_option("--mem", dest="mem", 
                       type="int", default=8,
                       help="Total amount of requested memory. Default is 8G. Overridden if --num-executors not specified.")
