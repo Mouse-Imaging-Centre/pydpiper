@@ -23,8 +23,8 @@ class clientExecutor(Pyro.core.SynchronizedObjBase):
         if serverShutdown:
             self.continueRunning = False
 
-def canRun(stageMem, stageNumProcesses, maxMem, maxProcs, runningMem, runningProcs):
-    if ( (int(stageMem) <= (maxMem-runningMem) ) and (int(stageNumProcesses)<=(maxProcs-runningProcs)) ):
+def canRun(stageMem, stageProcs, maxMem, maxProcs, runningMem, runningProcs):
+    if ( (int(stageMem) <= (maxMem-runningMem) ) and (int(stageProcs)<=(maxProcs-runningProcs)) ):
         return True
     else:
         return False
@@ -43,7 +43,7 @@ def runStage(serverURI, i):
             p.setStageFinished(i)
         else:
             p.setStageFailed(i)
-        return[s.getMem(),s.getNumProcesses()] # If completed, return mem & processes back for re-use    
+        return[s.getMem(),s.getProcs()] # If completed, return mem & processes back for re-use    
     except:
         print "Failed in executor thread"
         print "Unexpected error: ", sys.exc_info()
@@ -94,32 +94,29 @@ class pipelineExecutor():
         pool = Pool(processes = options.proc)
         try:
             while executor.continueLoop():
-                daemon.handleRequests(0)  #functions in place of daemon.requestLoop() to allow for custom event loop
-                
-                # Refresh usable mem & procs
-                completedTasks = []
-                for i,val in enumerate(runningChildren):
-                    if val.ready():                         
-                        completedTasks.insert(0,i)
-                for i in completedTasks:
-                    runningMem -= runningChildren[i].get()[0]
-                    runningProcs -= runningChildren[i].get()[1]
-                    del runningChildren[i]                    
-                
+                daemon.handleRequests(0)               
                 # Check for new stages
                 try:
-                    i = p.getRunnableStageIndex()
-                    
+                    i = p.getRunnableStageIndex()                 
                     if i == None:
                         print("No runnable stages. Sleeping...")
                         time.sleep(5)
                     else:
+                        # Before running stage, check usable mem & procs
+                        completedTasks = []
+                        for j,val in enumerate(runningChildren):
+                            if val.ready():                         
+                                completedTasks.insert(0,j)
+                        for j in completedTasks:
+                            runningMem -= runningChildren[j].get()[0]
+                            runningProcs -= runningChildren[j].get()[1]
+                            del runningChildren[j]    
                         s = p.getStage(i)
                         stageMem = s.getMem()
-                        stageNumProcesses = s.getNumProcesses()
-                        if canRun(stageMem, stageNumProcesses, maxMem, maxProcs, runningMem, runningProcs):
+                        stageProcs = s.getProcs()
+                        if canRun(stageMem, stageProcs, maxMem, maxProcs, runningMem, runningProcs):
                             runningMem += stageMem
-                            runningProcs += stageNumProcesses                       
+                            runningProcs += stageProcs                   
                             runningChildren.append(pool.apply_async(runStage,(serverURI, i)))
                         else:
                             p.requeue(i)
