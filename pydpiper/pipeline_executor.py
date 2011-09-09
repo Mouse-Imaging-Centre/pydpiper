@@ -96,37 +96,31 @@ class pipelineExecutor():
             while executor.continueLoop():
                 daemon.handleRequests(0)               
                 # Check for new stages
-                try:
-                    i = p.getRunnableStageIndex()                 
-                    if i == None:
-                        print("No runnable stages. Sleeping...")
-                        time.sleep(5)
+                i = p.getRunnableStageIndex()                 
+                if i == None:
+                    print("No runnable stages. Sleeping...")
+                    time.sleep(5)
+                else:
+                    # Before running stage, check usable mem & procs
+                    completedTasks = []
+                    for j,val in enumerate(runningChildren):
+                        if val.ready():                         
+                            completedTasks.insert(0,j)
+                    for j in completedTasks:
+                        runningMem -= runningChildren[j].get()[0]
+                        runningProcs -= runningChildren[j].get()[1]
+                        del runningChildren[j]    
+                    s = p.getStage(i)
+                    stageMem = s.getMem()
+                    stageProcs = s.getProcs()
+                    if canRun(stageMem, stageProcs, maxMem, maxProcs, runningMem, runningProcs):
+                        runningMem += stageMem
+                        runningProcs += stageProcs                   
+                        runningChildren.append(pool.apply_async(runStage,(serverURI, i)))
                     else:
-                        # Before running stage, check usable mem & procs
-                        completedTasks = []
-                        for j,val in enumerate(runningChildren):
-                            if val.ready():                         
-                                completedTasks.insert(0,j)
-                        for j in completedTasks:
-                            runningMem -= runningChildren[j].get()[0]
-                            runningProcs -= runningChildren[j].get()[1]
-                            del runningChildren[j]    
-                        s = p.getStage(i)
-                        stageMem = s.getMem()
-                        stageProcs = s.getProcs()
-                        if canRun(stageMem, stageProcs, maxMem, maxProcs, runningMem, runningProcs):
-                            runningMem += stageMem
-                            runningProcs += stageProcs                   
-                            runningChildren.append(pool.apply_async(runStage,(serverURI, i)))
-                        else:
-                            p.requeue(i)
-                except:
-                    print "Executor failed"
-                    print "Unexpected error: ", sys.exc_info()
-                    sys.exit()              
-
+                        p.requeue(i)
         except:
-            print "Failed in pipeline_executor"
+            print "Failed in pipeline executor."
             print "Unexpected error: ", sys.exc_info()
             daemon.shutdown(True)
             pool.close()
