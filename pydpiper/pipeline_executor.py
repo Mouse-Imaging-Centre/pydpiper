@@ -22,6 +22,12 @@ class clientExecutor(Pyro.core.SynchronizedObjBase):
         # receive call from server when all stages are processed
         if serverShutdown:
             self.continueRunning = False
+
+def canRun(stageMem, stageProcs, maxMem, maxProcs, runningMem, runningProcs):
+    if ( (int(stageMem) <= (maxMem-runningMem) ) and (int(stageProcs)<=(maxProcs-runningProcs)) ):
+        return True
+    else:
+        return False
          
 def runStage(serverURI, i):
     # Proc needs its own proxy as it's independent of executor
@@ -37,6 +43,7 @@ def runStage(serverURI, i):
             p.setStageFinished(i)
         else:
             p.setStageFailed(i)
+        return[s.getMem(),s.getProcs()] # If completed, return mem & processes back for re-use    
     except:
         print "Failed in executor thread"
         print "Unexpected error: ", sys.exc_info()
@@ -76,27 +83,44 @@ class pipelineExecutor():
         p = Pyro.core.getProxyForURI(serverURI)
         p.register(clientURI)
       
+        maxMem = options.mem
+        maxProcs = options.proc
+        runningMem = 0
+        runningProcs = 0        
+        
+        runningChildren = [] # no scissors
+              
         # loop until the pipeline sets continueRunning to false
         pool = Pool(processes = options.proc)
         try:
             while executor.continueLoop():
-                daemon.handleRequests(0)  #functions in place of daemon.requestLoop() to allow for custom event loop
-                try:
-                    i = p.getRunnableStageIndex()
-                    if i == None:
-                        print("No runnable stages. Sleeping...")
-                        time.sleep(5)
-                        # This is still buggy - shorter sleep times cause the executor to miss
-                        # the ShutdownCall and crash when calling p.getRunnableStageIndex()
+                daemon.handleRequests(0)               
+                # Check for new stages
+                i = p.getRunnableStageIndex()                 
+                if i == None:
+                    print("No runnable stages. Sleeping...")
+                    time.sleep(5)
+                else:
+                    # Before running stage, check usable mem & procs
+                    completedTasks = []
+                    for j,val in enumerate(runningChildren):
+                        if val.ready():                         
+                            completedTasks.insert(0,j)
+                    for j in completedTasks:
+                        runningMem -= runningChildren[j].get()[0]
+                        runningProcs -= runningChildren[j].get()[1]
+                        del runningChildren[j]    
+                    s = p.getStage(i)
+                    stageMem = s.getMem()
+                    stageProcs = s.getProcs()
+                    if canRun(stageMem, stageProcs, maxMem, maxProcs, runningMem, runningProcs):
+                        runningMem += stageMem
+                        runningProcs += stageProcs                   
+                        runningChildren.append(pool.apply_async(runStage,(serverURI, i)))
                     else:
-                        process = pool.apply_async(runStage,(serverURI, i))
-                except:
-                    print "Executor failed"
-                    print "Unexpected error: ", sys.exc_info()
-                    sys.exit()
-                
+                        p.requeue(i)
         except:
-            print "Failed in pipeline_executor"
+            print "Failed in pipeline executor."
             print "Unexpected error: ", sys.exc_info()
             daemon.shutdown(True)
             pool.close()
@@ -129,10 +153,10 @@ if __name__ == "__main__":
                       help="Number of independent executors to launch.")
     parser.add_option("--proc", dest="proc", 
                       type="int", default=4,
-                      help="Number of processes per executor. If not specified, default is 4.")
+                      help="Number of processes per executor. If not specified, default is 4. Also sets max value for processor use per executor.")
     parser.add_option("--mem", dest="mem", 
                       type="int", default=8,
-                      help="Total amount of requested memory. If not specified, default is 8G.")              
+                      help="Total amount of requested memory for all processes the executor runs. If not specified, default is 8 GB.")              
                       
     (options,args) = parser.parse_args()
 
@@ -142,4 +166,3 @@ if __name__ == "__main__":
         p.start()
     for p in processes:
         p.join()
-    

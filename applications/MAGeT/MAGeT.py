@@ -128,13 +128,16 @@ if __name__ == "__main__":
                       help="Launch executors automatically without having to run pipeline_excutor.py independently.")
     parser.add_option("--proc", dest="proc", 
                       type="int", default=4,
-                      help="Number of processes per executor. Default is 4. Overridden if --num-executors not specified.")
+                      help="Number of processes per executor. Default is 4. Also sets max value for processor use per executor. Overridden if --num-executors not specified.")
     parser.add_option("--mem", dest="mem", 
                       type="int", default=8,
                       help="Total amount of requested memory. Default is 8G. Overridden if --num-executors not specified.")
     parser.add_option("--queue", dest="queue", 
                       type="string", default=None,
                       help="Use specified queueing system to submit jobs. Default is None.")
+    parser.add_option("--restart", dest="restart", 
+                      action="store_true",
+                      help="Restart pipeline using backup files.")
     
     (options,args) = parser.parse_args()
 
@@ -148,37 +151,39 @@ if __name__ == "__main__":
     p = Pipeline()
     p.setBackupFileLocation(outputDir)
 
-    # create the initial templates - either total number of files
-    # or the maximum number of templates, whichever is lesser
-    templates = []
-    numTemplates = len(args)
-    if numTemplates > options.max_templates:
-        numTemplates = options.max_templates
+    if options.restart:
+        p.restart()
+    else:
+        # create the initial templates - either total number of files
+        # or the maximum number of templates, whichever is lesser
+        templates = []
+        numTemplates = len(args)
+        if numTemplates > options.max_templates:
+            numTemplates = options.max_templates
     
-    for nfile in range(numTemplates):
-        sp = SMATregister(args[nfile], tmpl, outDir=outputDir, inputMask=options.mask)
-        templates.append(sp.getTemplate())
-        p.addPipeline(sp.p)
-
-    # once the initial templates have been created, go and register each
-    # file to the templates
-    for file in args:
-        labels = []
-        for t in templates:
-            sp = SMATregister(file, t, outDir=outputDir,
-                              inputMask=options.mask, name="templates")
-            labels.append(InputFile(sp.output))
+        for nfile in range(numTemplates):
+            sp = SMATregister(args[nfile], tmpl, outDir=outputDir, inputMask=options.mask)
+            templates.append(sp.getTemplate())
             p.addPipeline(sp.p)
-        bname = fh.removeFileExt(file)
-        base = fh.createBaseName(outputDir, bname + "_votedlabels")
-        out, log = fh.createOutputAndLogFiles(base, base, ".mnc")
-        cmd = ["voxel_vote.py"] + labels + [OutputFile(out)]
-        voxel = CmdStage(cmd)
-        voxel.setLogFile(LogFile(log))
-        p.addStage(voxel)
 
-    p.initialize()
-    p.printStages()
+        # once the initial templates have been created, go and register each
+        # file to the templates
+        for file in args:
+            labels = []
+            for t in templates:
+                sp = SMATregister(file, t, outDir=outputDir, inputMask=options.mask, name="templates")
+                labels.append(InputFile(sp.output))
+                p.addPipeline(sp.p)
+            bname = fh.removeFileExt(file)
+            base = fh.createBaseName(outputDir, bname + "_votedlabels")
+            out, log = fh.createOutputAndLogFiles(base, base, ".mnc")
+            cmd = ["voxel_vote.py"] + labels + [OutputFile(out)]
+            voxel = CmdStage(cmd)
+            voxel.setLogFile(LogFile(log))
+            p.addStage(voxel)
+
+        p.initialize()
+        p.printStages()
     
     if options.create_graph:
     	nx.write_dot(p.G, "labeled-tree.dot")
