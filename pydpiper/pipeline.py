@@ -408,7 +408,7 @@ def launchServer(pipeline, options, e):
     	daemon.shutdown(True)
     	print("Objects successfully unregistered and daemon shutdown.")
 
-def pipelineDaemon(pipeline, options=None):
+def pipelineDaemon(pipeline, returnEvent, options=None):
 
     #check for valid pipeline 
     if pipeline.runnable.empty()==None:
@@ -428,5 +428,5 @@ def pipelineDaemon(pipeline, options=None):
             p.start()
         for p in processes:
             p.join()
-
     
+    returnEvent.set()
