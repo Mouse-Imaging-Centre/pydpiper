@@ -6,8 +6,9 @@ import time
 import sys
 import os
 from optparse import OptionParser
-from multiprocessing import Process
-from multiprocessing import Pool
+from datetime import date
+from multiprocessing import Process, Pool
+from subprocess import call
 
 Pyro.config.PYRO_MOBILE_CODE=1
 
@@ -53,6 +54,24 @@ def runStage(serverURI, i):
 class pipelineExecutor():
     #def __init__(self):
     # initialization here later, if needed. 
+    def submitToQueue(self, options=None):
+    # Need to put in memory mgmt here as well. 
+        if options.queue=="sge":
+            strprocs = str(options.proc) 
+            # NOTE: May want to change definition of options.mem, as sge_batch multiplies this by # procs. 
+            # Currently designed as total amount of memory needed. May want this to be mem/process or just divide. 
+            # Update to allow for multiple executors
+            strmem = "vf=" + str(options.mem) + "G"  
+            jobname = "pipeline-" + str(date.today())
+            # Add options for sge_batch command
+            cmd = ["sge_batch", "-J", jobname, "-m", strprocs, "-l", strmem] 
+            # Next line is for development and testing only -- will be removed in final checked in version
+            cmd += ["-q", "defdev.q"]
+            cmd += ["pipeline_executor.py", "--uri-file", options.urifile, "--proc", strprocs]
+            print cmd
+            call(cmd)   
+        elif options.queue=="scinet":
+            print "Specified queueing system == scinet"
     def launchPipeline(self, options=None):  
         # initialize pipeline_executor as both client and server       
         Pyro.core.initClient()
