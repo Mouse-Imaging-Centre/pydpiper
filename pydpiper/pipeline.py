@@ -280,6 +280,7 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
                 """ either it has 0 predecessors """
                 if len(self.G.predecessors(i)) == 0:
                     self.runnable.put(i)
+                    graphHeads.append(i)
                 """ or all of its predecessors are finished """
                 if len(self.G.predecessors(i)) != 0:
                     predfinished = True
@@ -398,7 +399,7 @@ def launchServer(pipeline, options, e):
     	print "Unexpected error: ", sys.exc_info()
     	sys.exit()
     else:
-    	print("Pipeline completed. Daemon unregistering " + str(len(pipeline.clients)) + " client(s) and shutting down...\n")
+    	print("Pipeline completed. Daemon unregistering " + str(len(pipeline.clients)) + " client(s) and shutting down...")
     	for c in pipeline.clients[:]:
     	    clientObj = Pyro.core.getProxyForURI(c)
     	    clientObj.serverShutdownCall(True)
@@ -407,6 +408,7 @@ def launchServer(pipeline, options, e):
     	    print "Client deregistered from server: "  + str(c)
     	daemon.shutdown(True)
     	print("Objects successfully unregistered and daemon shutdown.")
+    	e.clear()
 
 def pipelineDaemon(pipeline, returnEvent, options=None):
 
@@ -429,4 +431,8 @@ def pipelineDaemon(pipeline, returnEvent, options=None):
         for p in processes:
             p.join()
     
+    #Return to calling code if pipeline has no more runnable stages:
+    #Event will be cleared once clients are unregistered. 
+    while e.is_set():
+        time.sleep(5)
     returnEvent.set()
