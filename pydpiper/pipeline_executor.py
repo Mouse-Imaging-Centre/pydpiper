@@ -23,12 +23,6 @@ class clientExecutor(Pyro.core.SynchronizedObjBase):
         # receive call from server when all stages are processed
         if serverShutdown:
             self.continueRunning = False
-
-def canRun(stageMem, stageProcs, maxMem, maxProcs, runningMem, runningProcs):
-    if ( (int(stageMem) <= (maxMem-runningMem) ) and (int(stageProcs)<=(maxProcs-runningProcs)) ):
-        return True
-    else:
-        return False
          
 def runStage(serverURI, i):
     # Proc needs its own proxy as it's independent of executor
@@ -52,44 +46,51 @@ def runStage(serverURI, i):
     	sys.exit()        
          
 class pipelineExecutor():
-    #def __init__(self):
-    # initialization here later, if needed. 
-    def submitToQueue(self, options=None):
+    def __init__(self, options):
+        #options cannot be null when used to instantiate pipelineExecutor
+        self.mem = options.mem
+        self.proc = options.proc
+        self.queue = options.queue       
+        self.ns = options.use_ns
+        self.uri = options.urifile
+        if self.uri==None:
+            urifile = os.curdir + "/" + "uri"
+    def submitToQueue(self):
     # Need to put in memory mgmt here as well. 
-        if options.queue=="sge":
-            strprocs = str(options.proc) 
-            # NOTE: May want to change definition of options.mem, as sge_batch multiplies this by # procs. 
-            # Currently designed as total amount of memory needed. May want this to be mem/process or just divide. 
-            # Update to allow for multiple executors
-            strmem = "vf=" + str(options.mem) + "G"  
+        if self.queue=="sge":
+            strprocs = str(self.proc) 
+            # NOTE: sge_batch multiplies vf value by # of processors. 
+            # Since options.mem = total amount of memory needed, divide by self.proc to get value 
+            memPerProc = float(self.mem)/float(self.proc)
+            strmem = "vf=" + str(memPerProc) + "G"  
             jobname = "pipeline-" + str(date.today())
             # Add options for sge_batch command
             cmd = ["sge_batch", "-J", jobname, "-m", strprocs, "-l", strmem] 
             # Next line is for development and testing only -- will be removed in final checked in version
             cmd += ["-q", "defdev.q"]
-            cmd += ["pipeline_executor.py", "--uri-file", options.urifile, "--proc", strprocs]
-            print cmd
+            cmd += ["pipeline_executor.py", "--uri-file", self.uri, "--proc", strprocs]
             call(cmd)   
-        elif options.queue=="scinet":
+        elif self.queue=="scinet":
             print "Specified queueing system == scinet"
-    def launchPipeline(self, options=None):  
+    def canRun(self, stageMem, stageProcs, runningMem, runningProcs):
+        if ( (int(stageMem) <= (self.mem-runningMem) ) and (int(stageProcs)<=(self.proc-runningProcs)) ):
+            return True
+        else:
+            return False
+    def launchPipeline(self):  
         # initialize pipeline_executor as both client and server       
         Pyro.core.initClient()
         Pyro.core.initServer()
         daemon = Pyro.core.Daemon()
 
         # set up communication with server from the URI string
-        if options.use_ns:
+        if self.ns:
             ns = Pyro.naming.NameServerLocator().getNS()
             serverURI = ns.resolve("pipeline")
             daemon.useNameServer(ns)
         else:
-            if options.urifile==None:
-                urifile = os.curdir + "/" + "uri"
-            else:
-                urifile = options.urifile
     	    try:
-    	        uf = open(urifile)
+    	        uf = open(self.uri)
     	        serverURI = Pyro.core.processStringURI(uf.readline())
     	        uf.close()
     	    except:
@@ -102,15 +103,12 @@ class pipelineExecutor():
         p = Pyro.core.getProxyForURI(serverURI)
         p.register(clientURI)
       
-        maxMem = options.mem
-        maxProcs = options.proc
         runningMem = 0
-        runningProcs = 0        
-        
+        runningProcs = 0               
         runningChildren = [] # no scissors
               
         # loop until the pipeline sets continueRunning to false
-        pool = Pool(processes = options.proc)
+        pool = Pool(processes = self.proc)
         try:
             while executor.continueLoop():
                 daemon.handleRequests(0)               
@@ -132,9 +130,9 @@ class pipelineExecutor():
                     s = p.getStage(i)
                     stageMem = s.getMem()
                     stageProcs = s.getProcs()
-                    if canRun(stageMem, stageProcs, maxMem, maxProcs, runningMem, runningProcs):
+                    if self.canRun(stageMem, stageProcs, runningMem, runningProcs):
                         runningMem += stageMem
-                        runningProcs += stageProcs                   
+                        runningProcs += stageProcs              
                         runningChildren.append(pool.apply_async(runStage,(serverURI, i)))
                     else:
                         p.requeue(i)
@@ -175,12 +173,15 @@ if __name__ == "__main__":
                       help="Number of processes per executor. If not specified, default is 4. Also sets max value for processor use per executor.")
     parser.add_option("--mem", dest="mem", 
                       type="int", default=8,
-                      help="Total amount of requested memory for all processes the executor runs. If not specified, default is 8 GB.")              
+                      help="Total amount of requested memory for all processes the executor runs. If not specified, default is 8 GB.")
+    parser.add_option("--queue", dest="queue", 
+                      type="string", default=None,
+                      help="Use specified queueing system to submit jobs. Default is None.")              
                       
     (options,args) = parser.parse_args()
 
-    pe = pipelineExecutor()
-    processes = [Process(target=pe.launchPipeline, args=(options,)) for i in range(options.num_exec)]
+    pe = pipelineExecutor(options)
+    processes = [Process(target=pe.launchPipeline) for i in range(options.num_exec)]
     for p in processes:
         p.start()
     for p in processes:

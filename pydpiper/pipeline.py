@@ -350,12 +350,11 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
         self.clients.append(client)
 
 def launchPipelineExecutor(options):
-    pipelineExecutor = pe.pipelineExecutor()
+    pipelineExecutor = pe.pipelineExecutor(options)
     if options.queue==None:
-        pipelineExecutor.launchPipeline(options) 
+        pipelineExecutor.launchPipeline() 
     else: 
-        pipelineExecutor.submitToQueue(options) 
-        
+        pipelineExecutor.submitToQueue()      
     
 def launchServer(pipeline, options, e):
     Pyro.core.initServer()
