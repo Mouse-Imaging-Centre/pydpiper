@@ -351,10 +351,10 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
 
 def launchPipelineExecutor(options):
     pipelineExecutor = pe.pipelineExecutor(options)
-    if options.queue==None:
-        pipelineExecutor.launchPipeline() 
+    if options.queue=="sge":
+        pipelineExecutor.submitToQueue() 
     else: 
-        pipelineExecutor.submitToQueue()      
+        pipelineExecutor.launchPipeline()    
     
 def launchServer(pipeline, options, e):
     Pyro.core.initServer()

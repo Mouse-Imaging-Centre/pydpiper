@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 from pydpiper.pipeline import *
+from pydpiper.queueing import *
 from minctracc import *
 from optparse import OptionParser
 from os.path import dirname,isdir,abspath
@@ -141,59 +142,65 @@ if __name__ == "__main__":
                       help="Restart pipeline using backup files.")
     
     (options,args) = parser.parse_args()
-
-    fh = FileHandling()
-    outputDir = abspath(options.template_library)
-    if not isdir(outputDir):
-        mkdir(outputDir)
-    tmplDir = fh.createSubDir(outputDir, "atlas")
-    tmpl = Template(options.atlas_image, options.atlas_labels,
-                    mask=options.mask, outputdir=tmplDir)
-    p = Pipeline()
-    p.setBackupFileLocation(outputDir)
-
-    if options.restart:
-        p.restart()
+    
+    if options.queue=="pbs":
+        ppn = 8
+        time = "2:00:00:00"
+        roq = runOnQueueingSystem(options, ppn, time, sys.argv)
+        roq.createPbsScripts()
     else:
-        # create the initial templates - either total number of files
-        # or the maximum number of templates, whichever is lesser
-        templates = []
-        numTemplates = len(args)
-        if numTemplates > options.max_templates:
-            numTemplates = options.max_templates
-    
-        for nfile in range(numTemplates):
-            sp = SMATregister(args[nfile], tmpl, outDir=outputDir, inputMask=options.mask)
-            templates.append(sp.getTemplate())
-            p.addPipeline(sp.p)
+        fh = FileHandling()
+        outputDir = abspath(options.template_library)
+        if not isdir(outputDir):
+            mkdir(outputDir)
+        tmplDir = fh.createSubDir(outputDir, "atlas")
+        tmpl = Template(options.atlas_image, options.atlas_labels,
+                        mask=options.mask, outputdir=tmplDir)
+        p = Pipeline()
+        p.setBackupFileLocation(outputDir)
 
-        # once the initial templates have been created, go and register each
-        # file to the templates
-        for file in args:
-            labels = []
-            for t in templates:
-                sp = SMATregister(file, t, outDir=outputDir, inputMask=options.mask, name="templates")
-                labels.append(InputFile(sp.output))
+        if options.restart:
+            p.restart()
+        else:
+            # create the initial templates - either total number of files
+            # or the maximum number of templates, whichever is lesser
+            templates = []
+            numTemplates = len(args)
+            if numTemplates > options.max_templates:
+                numTemplates = options.max_templates
+    
+            for nfile in range(numTemplates):
+                sp = SMATregister(args[nfile], tmpl, outDir=outputDir, inputMask=options.mask)
+                templates.append(sp.getTemplate())
                 p.addPipeline(sp.p)
-            bname = fh.removeFileExt(file)
-            base = fh.createBaseName(outputDir, bname + "_votedlabels")
-            out, log = fh.createOutputAndLogFiles(base, base, ".mnc")
-            cmd = ["voxel_vote.py"] + labels + [OutputFile(out)]
-            voxel = CmdStage(cmd)
-            voxel.setLogFile(LogFile(log))
-            p.addStage(voxel)
 
-        p.initialize()
-        p.printStages()
+            # once the initial templates have been created, go and register each
+            # file to the templates
+            for file in args:
+                labels = []
+                for t in templates:
+                    sp = SMATregister(file, t, outDir=outputDir, inputMask=options.mask, name="templates")
+                    labels.append(InputFile(sp.output))
+                    p.addPipeline(sp.p)
+                bname = fh.removeFileExt(file)
+                base = fh.createBaseName(outputDir, bname + "_votedlabels")
+                out, log = fh.createOutputAndLogFiles(base, base, ".mnc")
+                cmd = ["voxel_vote.py"] + labels + [OutputFile(out)]
+                voxel = CmdStage(cmd)
+                voxel.setLogFile(LogFile(log))
+                p.addStage(voxel)
+
+            p.initialize()
+            p.printStages()
     
-    if options.create_graph:
-    	nx.write_dot(p.G, "labeled-tree.dot")
+        if options.create_graph:
+    	    nx.write_dot(p.G, "labeled-tree.dot")
     
-    #pipelineDaemon runs pipeline, launches Pyro client/server and executors (if specified)
-    # if use_ns is specified, Pyro NameServer must be started. 
-    returnEvent = Event()
-    pipelineDaemon(p, returnEvent, options)
-    returnEvent.wait()
-    print "templates: " + str(numTemplates)
+        #pipelineDaemon runs pipeline, launches Pyro client/server and executors (if specified)
+        # if use_ns is specified, Pyro NameServer must be started. 
+        returnEvent = Event()
+        pipelineDaemon(p, returnEvent, options)
+        returnEvent.wait()
+        print "templates: " + str(numTemplates)
 
     

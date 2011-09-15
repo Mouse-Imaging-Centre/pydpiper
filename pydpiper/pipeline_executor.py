@@ -9,6 +9,7 @@ from optparse import OptionParser
 from datetime import date
 from multiprocessing import Process, Pool
 from subprocess import call
+import pydpiper.queueing as q
 
 Pyro.config.PYRO_MOBILE_CODE=1
 
@@ -70,8 +71,11 @@ class pipelineExecutor():
             cmd += ["-q", "defdev.q"]
             cmd += ["pipeline_executor.py", "--uri-file", self.uri, "--proc", strprocs]
             call(cmd)   
-        elif self.queue=="scinet":
-            print "Specified queueing system == scinet"
+        else:
+            print("Specified queueing system is: %s" % (self.queue))
+            print("Only queue=sge or queue=None currently supports pipeline launching own executors.")
+            print("Exiting...")
+            sys.exit()
     def canRun(self, stageMem, stageProcs, runningMem, runningProcs):
         if ( (int(stageMem) <= (self.mem-runningMem) ) and (int(stageProcs)<=(self.proc-runningProcs)) ):
             return True
@@ -181,8 +185,16 @@ if __name__ == "__main__":
     (options,args) = parser.parse_args()
 
     pe = pipelineExecutor(options)
-    processes = [Process(target=pe.launchPipeline) for i in range(options.num_exec)]
-    for p in processes:
-        p.start()
-    for p in processes:
-        p.join()
+    if options.queue=="pbs":
+        roq = q.runOnQueueingSystem(options)
+        for i in range(options.num_exec):
+            roq.createExecutorJobFile(i)
+    elif options.queue=="sge":
+        for i in range(options.num_exec):
+            pe.submitToQueue()        
+    else:
+        processes = [Process(target=pe.launchPipeline) for i in range(options.num_exec)]
+        for p in processes:
+            p.start()
+        for p in processes:
+            p.join()
