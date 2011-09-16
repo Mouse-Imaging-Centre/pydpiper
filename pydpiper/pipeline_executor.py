@@ -55,7 +55,7 @@ class pipelineExecutor():
         self.ns = options.use_ns
         self.uri = options.urifile
         if self.uri==None:
-            urifile = os.curdir + "/" + "uri"
+            self.uri = os.path.abspath(os.curdir + "/" + "uri")
     def submitToQueue(self):
     # Need to put in memory mgmt here as well. 
         if self.queue=="sge":

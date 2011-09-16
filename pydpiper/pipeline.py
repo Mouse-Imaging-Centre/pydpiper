@@ -403,7 +403,7 @@ def pipelineDaemon(pipeline, returnEvent, options=None):
         sys.exit()
 
     if options.urifile==None:
-        options.urifile = os.curdir + "/" + "uri"    
+        options.urifile = os.path.abspath(os.curdir + "/" + "uri")
     
     e = Event()
     process = Process(target=launchServer, args=(pipeline,options,e,))

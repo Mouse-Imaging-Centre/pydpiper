@@ -4,7 +4,7 @@ import Pyro.core
 import Pyro.naming
 from optparse import OptionParser
 from datetime import datetime
-from os.path import isdir
+from os.path import isdir, abspath, basename
 from os import mkdir
 import os
 import time
@@ -25,14 +25,15 @@ class runOnQueueingSystem():
         self.ns = options.use_ns
         self.uri = options.urifile
         if self.uri==None:
-            urifile = os.curdir + "/" + "uri"
+            self.uri = os.path.abspath(os.curdir + "/" + "uri")
         self.jobDir = os.environ["HOME"] + "/pbs-jobs"
         if not isdir(self.jobDir):
             mkdir(self.jobDir) 
-        if sysArgs==None:
-            self.jobName = "pipeline-executor"
+        if self.arguments==None:
+            self.jobName = "pipeline"
         else:
-            self.jobName = re.sub('./', '', sysArgs[0])
+            executablePath = os.path.abspath(self.arguments[0])
+            self.jobName = basename(executablePath)
         self.ppn = ppn
         self.time = time
     def buildMainCommand(self):
