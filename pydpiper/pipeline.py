@@ -88,7 +88,7 @@ class FileHandling():
 
 class PipelineStage():
     def __init__(self):
-        self.mem = 2 # default memory allotted per stage
+        self.mem = 2.0 # default memory allotted per stage
         self.procs = 1 # default number of processors per stage
         self.inputFiles = [] # the input files for this stage
         self.outputFiles = [] # the output files for this stage
@@ -214,6 +214,7 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
             # increment the counter for the next stage
             self.counter += 1
     def selfPickle(self):
+        """Pickles pipeline in case future restart is needed"""
         if (self.backupFileLocation == None):
             self.setBackupFileLocation()
         pickle.dump(self.G, open(str(self.backupFileLocation) + '/G.pkl', 'wb'))
@@ -349,10 +350,10 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
         print "CLIENT REGISTERED: " + str(client)
         self.clients.append(client)
 
-def launchPipelineExecutor(options):
+def launchPipelineExecutor(options, programName=None):
     pipelineExecutor = pe.pipelineExecutor(options)
     if options.queue=="sge":
-        pipelineExecutor.submitToQueue() 
+        pipelineExecutor.submitToQueue(programName) 
     else: 
         pipelineExecutor.launchPipeline()    
     
@@ -395,7 +396,7 @@ def launchServer(pipeline, options, e):
     	print("Objects successfully unregistered and daemon shutdown.")
     	e.clear()
 
-def pipelineDaemon(pipeline, returnEvent, options=None):
+def pipelineDaemon(pipeline, returnEvent, options=None, programName=None):
 
     #check for valid pipeline 
     if pipeline.runnable.empty()==None:
@@ -410,7 +411,7 @@ def pipelineDaemon(pipeline, returnEvent, options=None):
     process.start()
     e.wait()
     if options.num_exec != 0:
-        processes = [Process(target=launchPipelineExecutor, args=(options,)) for i in range(options.num_exec)]
+        processes = [Process(target=launchPipelineExecutor, args=(options,programName,)) for i in range(options.num_exec)]
         for p in processes:
             p.start()
         for p in processes:

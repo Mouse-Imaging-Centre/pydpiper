@@ -6,7 +6,7 @@ import time
 import sys
 import os
 from optparse import OptionParser
-from datetime import date
+from datetime import datetime
 from multiprocessing import Process, Pool
 from subprocess import call
 import pydpiper.queueing as q
@@ -56,20 +56,23 @@ class pipelineExecutor():
         self.uri = options.urifile
         if self.uri==None:
             self.uri = os.path.abspath(os.curdir + "/" + "uri")
-    def submitToQueue(self):
-    # Need to put in memory mgmt here as well. 
+    def submitToQueue(self, programName=None):
+        """Submits to sge queueing system using sge_batch script""" 
         if self.queue=="sge":
             strprocs = str(self.proc) 
             # NOTE: sge_batch multiplies vf value by # of processors. 
             # Since options.mem = total amount of memory needed, divide by self.proc to get value 
             memPerProc = float(self.mem)/float(self.proc)
-            strmem = "vf=" + str(memPerProc) + "G"  
-            jobname = "pipeline-" + str(date.today())
+            strmem = "vf=" + str(memPerProc) + "G" 
+            jobname = ""
+            if not programName==None: 
+                executablePath = os.path.abspath(programName)
+                jobname = os.path.basename(executablePath) + "-" 
+            now = datetime.now()
+            jobname += "pipeline-executor-" + now.strftime("%Y%m%d-%H%M%S")
             # Add options for sge_batch command
             cmd = ["sge_batch", "-J", jobname, "-m", strprocs, "-l", strmem] 
-            # Next line is for development and testing only -- will be removed in final checked in version
-            cmd += ["-q", "defdev.q"]
-            cmd += ["pipeline_executor.py", "--uri-file", self.uri, "--proc", strprocs]
+            cmd += ["pipeline_executor.py", "--uri-file", self.uri, "--proc", strprocs, "--mem", str(self.mem)]
             call(cmd)   
         else:
             print("Specified queueing system is: %s" % (self.queue))
@@ -77,7 +80,7 @@ class pipelineExecutor():
             print("Exiting...")
             sys.exit()
     def canRun(self, stageMem, stageProcs, runningMem, runningProcs):
-        if ( (int(stageMem) <= (self.mem-runningMem) ) and (int(stageProcs)<=(self.proc-runningProcs)) ):
+        if ( (stageMem <= (self.mem-runningMem) ) and (stageProcs<=(self.proc-runningProcs)) ):
             return True
         else:
             return False
@@ -107,7 +110,7 @@ class pipelineExecutor():
         p = Pyro.core.getProxyForURI(serverURI)
         p.register(clientURI)
       
-        runningMem = 0
+        runningMem = 0.0
         runningProcs = 0               
         runningChildren = [] # no scissors
               
@@ -136,7 +139,7 @@ class pipelineExecutor():
                     stageProcs = s.getProcs()
                     if self.canRun(stageMem, stageProcs, runningMem, runningProcs):
                         runningMem += stageMem
-                        runningProcs += stageProcs              
+                        runningProcs += stageProcs             
                         runningChildren.append(pool.apply_async(runStage,(serverURI, i)))
                     else:
                         p.requeue(i)
@@ -176,7 +179,7 @@ if __name__ == "__main__":
                       type="int", default=4,
                       help="Number of processes per executor. If not specified, default is 4. Also sets max value for processor use per executor.")
     parser.add_option("--mem", dest="mem", 
-                      type="int", default=8,
+                      type="float", default=8,
                       help="Total amount of requested memory for all processes the executor runs. If not specified, default is 8 GB.")
     parser.add_option("--queue", dest="queue", 
                       type="string", default=None,

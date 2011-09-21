@@ -132,7 +132,7 @@ if __name__ == "__main__":
                       type="int", default=4,
                       help="Number of processes per executor. Default is 4. Also sets max value for processor use per executor. Overridden if --num-executors not specified.")
     parser.add_option("--mem", dest="mem", 
-                      type="int", default=8,
+                      type="float", default=8,
                       help="Total amount of requested memory. Default is 8G. Overridden if --num-executors not specified.")
     parser.add_option("--queue", dest="queue", 
                       type="string", default=None,
@@ -199,7 +199,7 @@ if __name__ == "__main__":
         #pipelineDaemon runs pipeline, launches Pyro client/server and executors (if specified)
         # if use_ns is specified, Pyro NameServer must be started. 
         returnEvent = Event()
-        pipelineDaemon(p, returnEvent, options)
+        pipelineDaemon(p, returnEvent, options, sys.argv[0])
         returnEvent.wait()
         print "templates: " + str(numTemplates)
 

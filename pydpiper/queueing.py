@@ -57,7 +57,6 @@ class runOnQueueingSystem():
     def createPbsScripts(self):        
         self.createMainJobFile()
         # if we need to submit multiple jobs, based on command line opts, do it here
-        print "self.numexec: " + str(self.numexec)
         if self.numexec >=2:
             for i in range(1, self.numexec):
                 self.createExecutorJobFile(i)
@@ -83,7 +82,8 @@ class runOnQueueingSystem():
             elif self.numexec == 1:
                 name = self.jobName + "-pipeline-all"
                 execProcs = self.proc
-                if nodes[1]<=4:
+                halfPpn = self.ppn/2
+                if nodes[1]<=halfPpn:
                     requestNodes = nodes[0]
                 else:
                     requestNodes = nodes[0] + 1               
@@ -100,7 +100,7 @@ class runOnQueueingSystem():
             self.jobFile.write("sleep 60")
             self.jobFile.write("\n\n")
         if launchExecs:
-            self.jobFile.write("pipeline_executor.py --uri-file=%s --proc=%d --mem=%d" % (self.uri, execProcs, self.mem))
+            self.jobFile.write("pipeline_executor.py --uri-file=%s --proc=%d --mem=%.2f" % (self.uri, execProcs, self.mem))
             if self.ns:
                 self.jobFile.write(" --use-ns")
             self.jobFile.write(" &\n")
