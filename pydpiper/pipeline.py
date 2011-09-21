@@ -41,6 +41,7 @@ class LogFile(PipelineFile):
     	self.fileType = "log"
 
 class FileHandling():
+    """File handling class for creating subdirectories/base file names as needed"""
     def __init__(self):
         self.outFileName = []
     def removeFileExt(self, input):
@@ -250,6 +251,7 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
         self.initialize()
         self.printStages()
     def setBackupFileLocation(self, outputDir=None):
+        """Sets location of backup files."""
         fh = FileHandling()
         if (outputDir == None):
             # set backups in current directory if directory doesn't currently exist
@@ -328,12 +330,13 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
             if self.checkIfRunnable(i):
                 self.runnable.put(i)
     def setStageFailed(self, index):
+        """given an index, sets stage to failed, adds to processed stages array"""
         self.stages[index].setFailed()
         self.processedStages.append(index)
         for i in nx.dfs_successors(self.G, index).keys():
             self.processedStages.append(index)
     def requeue(self, i):
-        # when executors return a stage they can't handle at the moment, put it back on the queue
+        """If stage cannot be run due to insufficient mem/procs, executor returns it to the queue"""
         self.stages[i].setNone()
         self.runnable.put(i)            
     def initialize(self):
@@ -342,15 +345,17 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
         self.createEdges()
         self.computeGraphHeads()
     def continueLoop(self):
-        # return 1 unless all stages are finished
+        """Returns 1 unless all stages are finished. Used in Pyro communication."""
         return(len(self.stages) > len(self.processedStages))
     def getProcessedStageCount(self):
         return(len(self.processedStages))
     def register(self, client):
+        """Adds new client to array of registered clients."""
         print "CLIENT REGISTERED: " + str(client)
         self.clients.append(client)
 
 def launchPipelineExecutor(options, programName=None):
+    """Launch pipeline executor directly from pipeline"""
     pipelineExecutor = pe.pipelineExecutor(options)
     if options.queue=="sge":
         pipelineExecutor.submitToQueue(programName) 
@@ -358,6 +363,7 @@ def launchPipelineExecutor(options, programName=None):
         pipelineExecutor.launchPipeline()    
     
 def launchServer(pipeline, options, e):
+    """Starts Pyro Server in a separate thread"""
     Pyro.core.initServer()
     daemon=Pyro.core.Daemon()
     
@@ -397,7 +403,8 @@ def launchServer(pipeline, options, e):
     	e.clear()
 
 def pipelineDaemon(pipeline, returnEvent, options=None, programName=None):
-
+    """Launches Pyro server and (if specified by options) pipeline executors"""
+    
     #check for valid pipeline 
     if pipeline.runnable.empty()==None:
         print "Pipeline has no runnable stages. Exiting..."

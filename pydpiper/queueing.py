@@ -37,7 +37,7 @@ class runOnQueueingSystem():
         self.ppn = ppn
         self.time = time
     def buildMainCommand(self):
-        """Re-construct main command, removing un-necessary arguments"""
+        """Re-construct main command to be called in pbs script, removing un-necessary arguments"""
         reconstruct = ""
         for i in range(len(self.arguments)):
             if not (re.search("--num-executors", self.arguments[i]) or re.search("--proc", self.arguments[i])
@@ -46,7 +46,7 @@ class runOnQueueingSystem():
                 reconstruct += " "
         return reconstruct
     def constructJobFile(self, identifier, isMainFile):
-        #rewrite with fileHandling class
+        """Construct the bulk of the pbs script to be submitted via qsub"""
         now = datetime.now()  
         jobName = self.jobName + identifier + now.strftime("%Y%m%d-%H%M%S") + ".job"
         self.jobFileName = self.jobDir + "/" + jobName
@@ -54,20 +54,21 @@ class runOnQueueingSystem():
         self.addHeaderAndCommands(isMainFile)
         self.completeJobFile()
         self.submitJob()
-    def createPbsScripts(self):        
+    def createPbsScripts(self): 
+        """Creates pbs script(s) for main program and separate executors, if needed"""       
         self.createMainJobFile()
-        # if we need to submit multiple jobs, based on command line opts, do it here
         if self.numexec >=2:
             for i in range(1, self.numexec):
                 self.createExecutorJobFile(i)
     def createMainJobFile(self): 
         self.constructJobFile("-pipeline-", True)
     def createExecutorJobFile(self, i):
-        # This is called directly from pipeline_executor (without createPbsScripts).
+        # This is called directly from pipeline_executor
         # For multiple executors, this will be called multiple-times.
         execId = "-executor-" + str(i) + "-"
         self.constructJobFile(execId, False)
     def addHeaderAndCommands(self, isMainFile):
+        """Constructs header and commands for pbs script, based on options input from calling program"""
         self.jobFile.write("#!/bin/bash" + "\n")
         requestNodes = 1
         execProcs = self.ppn
@@ -75,6 +76,9 @@ class runOnQueueingSystem():
         name = self.jobName + "-executor"
         launchExecs = True   
         if isMainFile:
+            # Number of nodes used depends on:
+            # 1) number of available processors per node
+            # 2) number of processes per executor
             nodes = divmod(self.proc, self.ppn)
             mainCommand = self.buildMainCommand()
             if self.numexec == 0:
@@ -97,7 +101,7 @@ class runOnQueueingSystem():
         if mainCommand:
             self.jobFile.write(self.buildMainCommand())
             self.jobFile.write("&\n\n")
-            self.jobFile.write("sleep 60")
+            self.jobFile.write("sleep 60") # sleep to ensure that PyroServer has time to start
             self.jobFile.write("\n\n")
         if launchExecs:
             self.jobFile.write("pipeline_executor.py --uri-file=%s --proc=%d --mem=%.2f" % (self.uri, execProcs, self.mem))
@@ -105,9 +109,10 @@ class runOnQueueingSystem():
                 self.jobFile.write(" --use-ns")
             self.jobFile.write(" &\n")
     def completeJobFile(self):
-        #must include wait at the end per the scinet wiki
+        """Complets pbs script--wait included as per scinet wiki"""
         self.jobFile.write("wait" + "\n")
         self.jobFile.close()
     def submitJob(self): 
+        """Submit job to batch queueing system"""
         os.system("qsub " + self.jobFileName)  
         print "Submitted!"

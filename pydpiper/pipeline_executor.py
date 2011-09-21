@@ -80,16 +80,17 @@ class pipelineExecutor():
             print("Exiting...")
             sys.exit()
     def canRun(self, stageMem, stageProcs, runningMem, runningProcs):
+        """Calculates if stage is runnable based on memory and processor availibility"""
         if ( (stageMem <= (self.mem-runningMem) ) and (stageProcs<=(self.proc-runningProcs)) ):
             return True
         else:
             return False
     def launchPipeline(self):  
+        """Start executor that will run pipeline stages"""   
         # initialize pipeline_executor as both client and server       
         Pyro.core.initClient()
         Pyro.core.initServer()
         daemon = Pyro.core.Daemon()
-
         # set up communication with server from the URI string
         if self.ns:
             ns = Pyro.naming.NameServerLocator().getNS()
@@ -110,16 +111,17 @@ class pipelineExecutor():
         p = Pyro.core.getProxyForURI(serverURI)
         p.register(clientURI)
       
+        #initialize runningMem and Procs
         runningMem = 0.0
         runningProcs = 0               
         runningChildren = [] # no scissors
               
-        # loop until the pipeline sets continueRunning to false
+        # loop until the pipeline sets executor.continueLoop() to false
         pool = Pool(processes = self.proc)
         try:
             while executor.continueLoop():
                 daemon.handleRequests(0)               
-                # Check for new stages
+                # Check for available stages
                 i = p.getRunnableStageIndex()                 
                 if i == None:
                     print("No runnable stages. Sleeping...")
