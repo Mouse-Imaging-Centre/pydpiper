@@ -43,8 +43,8 @@ def runStage(serverURI, i):
     except:
         print "Failed in executor thread"
         print "Unexpected error: ", sys.exc_info()
-        task_done()
-    	sys.exit()        
+        #task_done()
+        sys.exit()        
          
 class pipelineExecutor():
     def __init__(self, options):
@@ -97,13 +97,13 @@ class pipelineExecutor():
             serverURI = ns.resolve("pipeline")
             daemon.useNameServer(ns)
         else:
-    	    try:
-    	        uf = open(self.uri)
-    	        serverURI = Pyro.core.processStringURI(uf.readline())
-    	        uf.close()
-    	    except:
-    	        print "Problem opening the specified uri file:", sys.exc_info()
-    	        sys.exit()
+            try:
+                uf = open(self.uri)
+                serverURI = Pyro.core.processStringURI(uf.readline())
+                uf.close()
+            except:
+                print "Problem opening the specified uri file:", sys.exc_info()
+                sys.exit()
 
         # instantiate the executor class and register the executor with the pipeline    
         executor = clientExecutor()

@@ -84,7 +84,7 @@ class SMATregister:
         self.output, logfile = fh.createResampledAndLogFiles(input_base, input_log_base, [tbase])
         resargs = ["-keep_real_range", "-nearest_neighbour"]
         self.p.addStage(mincresample(template.labels, self.output, logfile, resargs, input, cxfm))
-	
+    
     def getTemplate(self):
         return(Template(self.input, self.output, self.inputMask,
                         self.outDir))
@@ -194,7 +194,7 @@ if __name__ == "__main__":
             p.printStages()
     
         if options.create_graph:
-    	    nx.write_dot(p.G, "labeled-tree.dot")
+            nx.write_dot(p.G, "labeled-tree.dot")
     
         #pipelineDaemon runs pipeline, launches Pyro client/server and executors (if specified)
         # if use_ns is specified, Pyro NameServer must be started. 

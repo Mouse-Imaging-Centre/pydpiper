@@ -10,6 +10,7 @@ import shutil
 import sys
 import socket
 import time
+from networkx.algorithms.traversal.depth_first_search import dfs_successor
 from datetime import datetime
 from subprocess import call
 from os.path import basename,isdir
@@ -38,7 +39,7 @@ class OutputFile(PipelineFile):
 
 class LogFile(PipelineFile):
     def setType(self):
-    	self.fileType = "log"
+        self.fileType = "log"
 
 class FileHandling():
     """File handling class for creating subdirectories/base file names as needed"""
@@ -150,15 +151,15 @@ class CmdStage(PipelineStage):
                 self.cmd.append(str(a))
                 self.name = self.cmd[0]
     def checkLogFile(self):
-    	if not self.logFile:
-    	    self.logFile = self.name + "." + datetime.isoformat(datetime.now()) + ".log"
+        if not self.logFile:
+            self.logFile = self.name + "." + datetime.isoformat(datetime.now()) + ".log"
     def setLogFile(self, logFileName): 
-    	self.logFile = str(logFileName)
+        self.logFile = str(logFileName)
     def execStage(self):
-    	of = open(self.logFile, 'w')
-    	of.write("Running on: " + socket.gethostname() + " at " + datetime.isoformat(datetime.now(), " ") + "\n")
-    	of.write(repr(self) + "\n")
-    	of.flush()
+        of = open(self.logFile, 'w')
+        of.write("Running on: " + socket.gethostname() + " at " + datetime.isoformat(datetime.now(), " ") + "\n")
+        of.write(repr(self) + "\n")
+        of.flush()
         returncode = call(self.cmd, stdout=of, stderr=of)
         of.close()
         return(returncode)
@@ -333,7 +334,7 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
         """given an index, sets stage to failed, adds to processed stages array"""
         self.stages[index].setFailed()
         self.processedStages.append(index)
-        for i in nx.dfs_successors(self.G, index).keys():
+        for i in dfs_successor(self.G, index).keys():
             self.processedStages.append(index)
     def requeue(self, i):
         """If stage cannot be run due to insufficient mem/procs, executor returns it to the queue"""
@@ -387,20 +388,20 @@ def launchServer(pipeline, options, e):
     try:
         daemon.requestLoop(pipeline.continueLoop)
     except:
-    	print "Failed in pipelineDaemon"
-    	print "Unexpected error: ", sys.exc_info()
-    	sys.exit()
+        print "Failed in pipelineDaemon"
+        print "Unexpected error: ", sys.exc_info()
+        sys.exit()
     else:
-    	print("Pipeline completed. Daemon unregistering " + str(len(pipeline.clients)) + " client(s) and shutting down...")
-    	for c in pipeline.clients[:]:
-    	    clientObj = Pyro.core.getProxyForURI(c)
-    	    clientObj.serverShutdownCall(True)
-    	    print "Made serverShutdownCall to: " + str(c)
-    	    pipeline.clients.remove(c)
-    	    print "Client deregistered from server: "  + str(c)
-    	daemon.shutdown(True)
-    	print("Objects successfully unregistered and daemon shutdown.")
-    	e.clear()
+        print("Pipeline completed. Daemon unregistering " + str(len(pipeline.clients)) + " client(s) and shutting down...")
+        for c in pipeline.clients[:]:
+            clientObj = Pyro.core.getProxyForURI(c)
+            clientObj.serverShutdownCall(True)
+            print "Made serverShutdownCall to: " + str(c)
+            pipeline.clients.remove(c)
+            print "Client deregistered from server: "  + str(c)
+        daemon.shutdown(True)
+        print("Objects successfully unregistered and daemon shutdown.")
+        e.clear()
 
 def pipelineDaemon(pipeline, returnEvent, options=None, programName=None):
     """Launches Pyro server and (if specified by options) pipeline executors"""
