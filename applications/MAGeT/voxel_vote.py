@@ -47,12 +47,12 @@ if __name__ == "__main__":
             sliceArray[j::] = t
             
         outfile.data[i::] = mode(sliceArray)[0]
-  #      outdist.data[i::] = mode(sliceArray)[1]/nfiles
+        #outdist.data[i::] = mode(sliceArray)[1]/nfiles
 
     outfile.writeFile()
     outfile.closeVolume()
-   # outdist.writeFile()
-   # outdist.closeVolume()
+    #outdist.writeFile()
+    # outdist.closeVolume()
 
                                                           
     

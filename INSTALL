@@ -5,3 +5,14 @@ https://github.com/mfriedel/pydpiper
 Using the Downloads button, access the .tar.gz or .zip file.
 Unzip and untar and change into the source directory (e.g. cd pydpiper)
 Run: python setup.py install 
+
+Dependencies: 
+
+Pyro - http://irmen.home.xs4all.nl/pyro/
+NetworkX - http://networkx.lanl.gov/
+Py.test - http://pytest.org/
+
+In Ubuntu (tested on 10.04), run: 
+	apt-get install python-networkx
+	pip install pyro
+	pip install pytest
