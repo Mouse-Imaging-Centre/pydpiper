@@ -49,9 +49,7 @@ class FileHandling():
         base, ext = os.path.splitext(input)
         return(basename(input).replace(str(ext), ""))
     def createSubDir(self, input_dir, subdir):
-        # check for input_dir/subdir format?
-        # at this point, assume all / properly accounted for
-        _newdir = input_dir + "/" + subdir
+        _newdir = os.path.join(input_dir, subdir)
         if not isdir(_newdir):
             mkdir(_newdir)
         return (_newdir)
@@ -59,8 +57,7 @@ class FileHandling():
         _logDir = self.createSubDir(input_dir, "log")
         return (_logDir)
     def createBaseName(self, input_dir, base):
-        # assume all / in input_dir accounted for? or add checking
-        return (input_dir + "/" + base)
+        return (os.path.join(input_dir,base))
     def createSubDirSubBase(self, input_dir, subdir, input_base):
         _subDir = self.createSubDir(input_dir, subdir)
         _subBase = self.createBaseName(_subDir, input_base)

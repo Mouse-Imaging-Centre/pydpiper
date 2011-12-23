@@ -106,7 +106,24 @@ class linearminctracc(minctracc):
         self.cmd += ["-xcorr", _numCmd]
     def setName(self):
         self.name = "minctracc" + self.linearparam + " "
-
+        
+class minctotal(CmdStage):
+    def __init__(self, input, output, modeldir, model, logfile):
+        CmdStage.__init__(self,None)
+        self.inputFiles = [input]
+        self.outputFiles = [output]
+        self.cmd = ["mritotal", input, output, "-modeldir", modeldir, "-model", model]
+        self.name = "mritotal" + basename(input)
+        
+class nu_correct(CmdStage):
+    def __init__(self, input, output, logfile):
+        CmdStage.__init__(self, None)
+        self.inputFiles = [input]
+        self.outputFiles = [output]
+        self.logFile = logfile
+        self.cmd = ["nu_correct", input, output]
+        self.name = "nu_correct " + basename(input)
+        
 class blur(CmdStage):
     def __init__(self, input, output, logfile, fwhm):
         # note - output should end with _blur.mnc
