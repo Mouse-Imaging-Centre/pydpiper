@@ -32,7 +32,8 @@ class minctracc(CmdStage):
                  weight=1,
                  stiffness=1,
                  similarity=0.3,
-                 w_translations=0.2):
+                 w_translations=0.2, 
+                 sub_lattice=6):
         CmdStage.__init__(self, None) #don't do any arg processing in superclass
         self.source = source
         self.target = target
@@ -49,7 +50,8 @@ class minctracc(CmdStage):
         self.stiffness = str(stiffness)
         self.similarity = str(similarity)
         self.w_translations = str(w_translations)
-
+        self.sub_lattice = str(sub_lattice)
+        
         self.addDefaults()
         self.finalizeCommand()
         self.setName()
@@ -88,7 +90,7 @@ class minctracc(CmdStage):
         """add the options for non-linear registration"""
         # build the command itself
         self.cmd += ["-iterations", self.iterations,
-                    "-nonlinear", "corrcoeff", "-sub_lattice", "6",
+                    "-nonlinear", "corrcoeff", "-sub_lattice", self.sub_lattice,
                     "-lattice_diameter", self.lattice_diameter,
                      self.lattice_diameter, self.lattice_diameter]
 
@@ -123,7 +125,7 @@ class nu_correct(CmdStage):
         self.logFile = logfile
         self.cmd = ["nu_correct", input, output]
         self.name = "nu_correct " + basename(input)
-        
+       
 class blur(CmdStage):
     def __init__(self, input, output, logfile, fwhm):
         # note - output should end with _blur.mnc
@@ -138,23 +140,24 @@ class blur(CmdStage):
         self.colour="blue"
 
 class mincresample(CmdStage):
-    def __init__(self, inputFile, outputFile, logfile, argarray=[], input=None, cxfm=None):
-    	if argarray:
-	    argarray.insert(0, "mincresample")
-    	else:
-    	    argarray = ["mincresample"]
-    	CmdStage.__init__(self, argarray)
-	# inputFile and outputFile are required, everything else optional
-	# This class assuming use of the most commonly used flags (-2, -clobber, -like, -transform)
-	# Any commands above and beyond the standard will be read in from argarray
-	# argarray could contain input and/or output files
-	if input:
-	    self.cmd += ["-like", input]
-	if cxfm:
-	    self.inputFiles += [cxfm]
-	    self.cmd += ["-transform", cxfm]
-	self.inputFiles += [inputFile]
-	self.outputFiles += [outputFile]
-	self.logFile = logfile
-	self.cmd += ["-2", "-clobber", inputFile, outputFile]
+    def __init__(self, inputFile, outputFile, logfile, argarray=[], like=None, cxfm=None):
+        if argarray:
+            argarray.insert(0, "mincresample")
+        else:
+            argarray = ["mincresample"]
+        CmdStage.__init__(self, argarray)
+        
+        # inputFile and outputFile are required, everything else optional
+        # This class assuming use of the most commonly used flags (-2, -clobber, -like, -transform)
+        # Any commands above and beyond the standard will be read in from argarray
+        # argarray could contain like and/or output files
+        if like:
+            self.cmd += ["-like", like]
+        if cxfm:
+            self.inputFiles += [cxfm]
+            self.cmd += ["-transform", cxfm]
+        self.inputFiles += [inputFile]
+        self.outputFiles += [outputFile]
+        self.logFile = logfile
+        self.cmd += ["-2", "-clobber", inputFile, outputFile]
 

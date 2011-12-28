@@ -108,20 +108,20 @@ class linearminctracc(minctracc):
         self.name = "minctracc" + self.linearparam + " "
 
 class blur(CmdStage):
-    def __init__(self, input, output, logfile, fwhm):
+    def __init__(self, like, output, logfile, fwhm):
         # note - output should end with _blur.mnc
         CmdStage.__init__(self, None)
         self.base = output.replace("_blur.mnc", "")
-        self.inputFiles = [input]
+        self.inputFiles = [like]
         self.outputFiles = [output]
         self.logFile = logfile
         self.cmd = ["mincblur", "-clobber", "-fwhm", str(fwhm),
-                    input, self.base]
-        self.name = "mincblur " + str(fwhm) + " " + basename(input)
+                    like, self.base]
+        self.name = "mincblur " + str(fwhm) + " " + basename(like)
         self.colour="blue"
 
 class mincresample(CmdStage):
-    def __init__(self, inputFile, outputFile, logfile, argarray=[], input=None, cxfm=None):
+    def __init__(self, inputFile, outputFile, logfile, argarray=[], like=None, cxfm=None):
     	if argarray:
 	    argarray.insert(0, "mincresample")
     	else:
@@ -130,9 +130,9 @@ class mincresample(CmdStage):
 	# inputFile and outputFile are required, everything else optional
 	# This class assuming use of the most commonly used flags (-2, -clobber, -like, -transform)
 	# Any commands above and beyond the standard will be read in from argarray
-	# argarray could contain input and/or output files
-	if input:
-	    self.cmd += ["-like", input]
+	# argarray could contain like and/or output files
+	if like:
+	    self.cmd += ["-like", like]
 	if cxfm:
 	    self.inputFiles += [cxfm]
 	    self.cmd += ["-transform", cxfm]

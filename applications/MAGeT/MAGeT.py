@@ -22,16 +22,16 @@ class Template:
             self.outputdir = outputdir
 
 class SMATregister:
-    def __init__(self, input, template, outDir="", inputMask=None,
+    def __init__(self, like, template, outDir="", inputMask=None,
                  steps=[0.5,0.2],
                  blurs=[0.5,0.2], iterations=[80,20],
                  name="initial"):
         self.p = Pipeline()
-        self.input = input
+        self.input = like
         
         fh = mincFileHandling()
         
-        input_base_fname = fh.removeFileExt(input)
+        input_base_fname = fh.removeFileExt(like)
         input_dir, input_base = fh.createSubDirSubBase(abspath(outDir), input_base_fname, input_base_fname)
         input_log_dir, input_log_base = fh.createLogDirLogBase(input_dir, input_base_fname)
         
@@ -49,7 +49,7 @@ class SMATregister:
         for b in blurs:
             iblur, ilog = fh.createBlurOutputAndLogFiles(input_base, input_log_base, str(b))
             tblur, tlog = fh.createBlurOutputAndLogFiles(template_base, templ_log_base, str(b))
-            self.p.addStage(blur(input, iblur, ilog, b))
+            self.p.addStage(blur(like, iblur, ilog, b))
             self.p.addStage(blur(template.image, tblur, tlog, b))
             input_blurs += [iblur]
             template_blurs += [tblur]
@@ -83,7 +83,7 @@ class SMATregister:
         
         self.output, logfile = fh.createResampledAndLogFiles(input_base, input_log_base, [tbase])
         resargs = ["-keep_real_range", "-nearest_neighbour"]
-        self.p.addStage(mincresample(template.labels, self.output, logfile, resargs, input, cxfm))
+        self.p.addStage(mincresample(template.labels, self.output, logfile, resargs, like, cxfm))
     
     def getTemplate(self):
         return(Template(self.input, self.output, self.inputMask,
