@@ -8,8 +8,7 @@
 <path>/pydpiper</path>
 <path>/pydpiper/applications/MAGeT</path>
 <path>/pydpiper/testing</path>
+<path>/pydpiper/lib</path>
 </pydev_pathproperty>
-<pydev_pathproperty name="org.python.pydev.PROJECT_EXTERNAL_SOURCE_PATH">
-<path>/quarantine/minc-tools/2011.11/x86_64/python/</path>
-</pydev_pathproperty>
+
 </pydev_project>
