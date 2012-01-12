@@ -8,6 +8,7 @@ from os.path import dirname,isdir,abspath
 from os import mkdir
 import networkx as nx
 from multiprocessing import Event
+import copy 
 
 Pyro.config.PYRO_MOBILE_CODE=1 
 
@@ -22,11 +23,12 @@ Pyro.config.PYRO_MOBILE_CODE=1
 #    Subject  - Target brain of the MAGeT pipeline that is to be labeled.  
  
 class Template:
-    def __init__(self, image, labels, mask=None, model_dir=None, outputdir=None):
+    def __init__(self, image, labels, mask=None, model_dir=None, outputdir=None, roi=None):
         """image     - template image file
            labels    - list of label files
            mask      - label mask for 'image'
-           model_dir - directory of blurred images used for linear resampling
+           model_dir - directory of blurred images used for linear resampling by mritotal
+           roi       - MINC volume containing a region of the atlas image to do non-linear registration on."
            outputdir - (deprecated)"""
            
         if type(labels) == str:
@@ -38,6 +40,7 @@ class Template:
         self.labels    = labels
         self.mask      = mask
         self.model_dir = model_dir
+        self.roi       = roi
         if outputdir == None:
             self.outputdir = dirname(image)
         else:
@@ -51,63 +54,61 @@ class SMATregister:
         
         self.p = Pipeline()
         self.input = target
-      
-        
+        self.template = template
+
+        # file handling stuffs
         fh = mincFileHandling()
-            
         input_base_fname = fh.removeFileExt(target)
         input_dir, input_base = fh.createSubDirSubBase(abspath(outDir), input_base_fname, input_base_fname)
         log_dir, log_base = fh.createLogDirLogBase(input_dir, input_base_fname)
-        
         self.outDir = input_dir
         
-        # nu_correct the like
         inuc, inuc_log = fh.createOutputAndLogFiles(input_base, log_base, "_nuc.mnc" )
         p.addStage(nu_correct(target, inuc, inuc_log))
         
         # linear registration to TAL space, using the template as a model      
-        linxfm, tal_log = fh.createXfmAndLogFiles(input_base, log_base, ".xfm")
+        linxfm, tal_log = fh.createXfmAndLogFiles(input_base, log_base, ["lin"])
         assert template.model_dir != "", "Expected model directory supplied for mritotal linear registration step"        
-        p.addStage(minctotal(inuc, linxfm, template.model_dir, template.image, tal_log))
+        p.addStage(mritotal(inuc, linxfm, template.model_dir, fh.removeFileExt(template.image), tal_log))
 
-        #p.addStage(linearminctracc(template_blurs[0],
-        #                               input_blurs[0], linxfm,
-        #                               logfile, linearparam,
-        #                               inputMask, template.mask))
-
-        # apply linear registration
         linres, linres_log = fh.createResampledAndLogFiles(input_base, log_base, ["linres"])
-        p.addStage(mincresample(inuc, linres, linres_log, argarray=["-sinc", "-width"], like=template.image, cxfm=linxfm))
+        p.addStage(mincresample(inuc, linres, linres_log, argarray=["-sinc", "-width", "2"], like=template.image, cxfm=linxfm))
+
+        # non-linear registration        
+        iterations = 15  
+        nl0, logfile0 = fh.createXfmAndLogFiles(input_base, log_base, ["step_0"])
+        nl1, logfile1 = fh.createXfmAndLogFiles(input_base, log_base, ["step_1"])
+        nl2, logfile2 = fh.createXfmAndLogFiles(input_base, log_base, ["step_2"])
+        p.addStage(minctracc(linres, template.roi, nl0, logfile0, 
+                            step=4,
+                            sub_lattice=8, 
+                            iterations=iterations, 
+                            ident=True))
+        p.addStage(minctracc(linres, template.roi, nl1, logfile1, 
+                             step=2,
+                             sub_lattice=8, 
+                             transform = nl0,
+                             iterations=iterations,
+                             ident=True))
+        p.addStage(minctracc(linres, template.roi, nl2, logfile2, 
+                             step=1,
+                             sub_lattice=6, 
+                             transform = nl1,
+                             iterations=iterations))
         
-        # create the nonlinear registrations
-        # by default three iterations: 
-        #    1. step = '4', '4', '4'; lattice_diam = '12', '12', '12'; sub_lattice = 8; ident
-        #    2. step = '2', '2', '2'; lattice_diam = '6', '6', '6'; sub_lattice = 8; ident
-        #    3. step = '1', '1', '1'; lattice_diam = '3', '3', '3'; sub_lattice = 6
-        self.output = linres
-        return 
-    
-        xfms = []
-        for i in range(len(steps)):
-            cxfm, logfile = fh.createXfmAndLogFiles(input_base, log_base, ["step", str(i)])
-            if i == 0:
-                pxfm = linxfm
-            else:
-                pxfm = xfms[i - 1]
-            xfms += [cxfm]
-            p.addStage(minctracc(linres, subcortical, cxfm, logfile,
-                                      step=steps[i],
-                                      transform=pxfm))
-        
-        # resample image with final registration
+        nlxfm, logfile_nl = fh.createXfmAndLogFiles(input_base, log_base, ["nl"])
+        p.addStage(xfmconcat([linxfm, nl2], nlxfm, logfile_nl))
         
         # resample labels with final registration
-        self.output, logfile = fh.createResampledAndLogFiles(input_base, log_base, [tbase])
-        resargs = ["-keep_real_range", "-nearest_neighbour"]
-        self.p.addStage(mincresample(template.labels, self.output, logfile, resargs, target, cxfm))
+        resargs = ["-keep_real_range", "-nearest_neighbour", "-invert"]
+        self.outputs = []
+        for label in template.labels:
+            output, logfile = fh.createResampledAndLogFiles(input_base, log_base, ["label", fh.removeFileExt(label)])
+            self.outputs.append(output)        
+            self.p.addStage(mincresample(label, output, logfile, resargs, target, nlxfm))
     
     def getTemplate(self):
-        return(Template(self.input, self.output, outputdir=self.outDir))
+        return copy.copy(self.template)
 
 if __name__ == "__main__":
     usage = "%prog [options] input1.mnc ... inputn.mnc"
@@ -125,6 +126,9 @@ if __name__ == "__main__":
     parser.add_option("--atlas-models", dest="atlas_models", 
                       type="string",
                       help="Directory containing blurred and masked MINC volumes of atlas image")
+    parser.add_option("--atlas-roi", "-r", dest="atlas_roi",
+                      type="string",
+                      help="MINC volume containing a region of the atlas image to do non-linear registration on")
     
     parser.add_option("--template-lib", dest="template_library",
                       type="string", default=".",
@@ -153,7 +157,7 @@ if __name__ == "__main__":
                       action="store_true",
                       help="Create a .dot file with graphical representation of pipeline relationships")
     parser.add_option("--num-executors", dest="num_exec", 
-                      type="int", default=1, 
+                      type="int", default=0, 
                       help="Launch executors automatically without having to run pipeline_excutor.py independently.")
     parser.add_option("--proc", dest="proc", 
                       type="int", default=4,
@@ -185,7 +189,8 @@ if __name__ == "__main__":
                         options.atlas_labels,
                         mask=options.mask, 
                         outputdir=tmplDir, 
-                        model_dir=options.atlas_models)
+                        model_dir=options.atlas_models,
+                        roi = options.atlas_roi )
         
         p = Pipeline()
         p.setBackupFileLocation(outputDir)
@@ -206,14 +211,14 @@ if __name__ == "__main__":
                 p.addPipeline(sp.p)
 
             # once the initial templates have been created, go and register each
-            # file to the templates
-#            for file in args:
+            # subject to the templates
+#            for subject in args:
 #                labels = []
 #                for t in templates:
-#                    sp = SMATregister(file, t, outDir=outputDir, inputMask=options.mask, name="templates")
-#                    labels.append(InputFile(sp.output))
-#                    p.addPipeline(sp.p)
-#                bname = fh.removeFileExt(file)
+#                    sp = SMATregister(subject, t, outDir=outputDir, name="templates")
+#                    labels.extend([InputFile(x) for x in sp.outputs])
+#                    #p.addPipeline(sp.p)
+#                bname = fh.removeFileExt(subject)
 #                base = fh.createBaseName(outputDir, bname + "_votedlabels")
 #                out, log = fh.createOutputAndLogFiles(base, base, ".mnc")
 #                cmd = ["voxel_vote.py"] + labels + [OutputFile(out)]
@@ -225,8 +230,9 @@ if __name__ == "__main__":
             p.printStages()
     
         if options.create_graph:
+            print "Writing dot file..."
             nx.write_dot(p.G, "labeled-tree.dot")
-    
+            print "Done."
         #pipelineDaemon runs pipeline, launches Pyro client/server and executors (if specified)
         # if use_ns is specified, Pyro NameServer must be started. 
         returnEvent = Event()

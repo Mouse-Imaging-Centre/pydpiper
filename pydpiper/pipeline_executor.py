@@ -10,6 +10,7 @@ from datetime import datetime
 from multiprocessing import Process, Pool
 from subprocess import call
 import pydpiper.queueing as q
+import traceback
 
 Pyro.config.PYRO_MOBILE_CODE=1
 
@@ -43,6 +44,7 @@ def runStage(serverURI, i):
     except:
         print "Failed in executor thread"
         print "Unexpected error: ", sys.exc_info()
+        traceback.print_tb(sys.exc_info()[2])
         #task_done()
         sys.exit()        
          
@@ -145,9 +147,9 @@ class pipelineExecutor():
                         runningChildren.append(pool.apply_async(runStage,(serverURI, i)))
                     else:
                         p.requeue(i)
-        except:
-            print "Failed in pipeline executor."
-            print "Unexpected error: ", sys.exc_info()
+        except Exception as e:
+            traceback.print_tb(sys.exc_info()[2])
+            print "Shutting down executor."
             daemon.shutdown(True)
             pool.close()
             pool.join()

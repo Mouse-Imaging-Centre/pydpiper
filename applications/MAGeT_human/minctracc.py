@@ -31,9 +31,9 @@ class minctracc(CmdStage):
                  transform=None,
                  weight=1,
                  stiffness=1,
-                 similarity=0.3,
-                 w_translations=0.2, 
-                 sub_lattice=6):
+                 similarity=0.3, 
+                 sub_lattice=6, 
+                 ident=False):
         CmdStage.__init__(self, None) #don't do any arg processing in superclass
         self.source = source
         self.target = target
@@ -49,9 +49,8 @@ class minctracc(CmdStage):
         self.weight = str(weight)
         self.stiffness = str(stiffness)
         self.similarity = str(similarity)
-        self.w_translations = str(w_translations)
         self.sub_lattice = str(sub_lattice)
-        
+        self.ident = ident
         self.addDefaults()
         self.finalizeCommand()
         self.setName()
@@ -65,7 +64,6 @@ class minctracc(CmdStage):
                     "-similarity", self.similarity,
                     "-weight", self.weight,
                     "-stiffness", self.stiffness,
-                    "-w_translations", self.w_translations,self.w_translations,self.w_translations,
                     "-step", self.step, self.step, self.step,
 
                     self.source,
@@ -84,6 +82,8 @@ class minctracc(CmdStage):
         if self.transform:
             self.inputFiles += [self.transform]
             self.cmd += ["-transform", self.transform]
+        if self.ident:
+            self.cmd += ["-ident"]
         self.outputFiles = [self.output]
 
     def finalizeCommand(self):
@@ -109,13 +109,14 @@ class linearminctracc(minctracc):
     def setName(self):
         self.name = "minctracc" + self.linearparam + " "
         
-class minctotal(CmdStage):
+class mritotal(CmdStage):
     def __init__(self, input, output, modeldir, model, logfile):
         CmdStage.__init__(self,None)
         self.inputFiles = [input]
         self.outputFiles = [output]
+        self.logFile = logfile
         self.cmd = ["mritotal", input, output, "-modeldir", modeldir, "-model", model]
-        self.name = "mritotal" + basename(input)
+        self.name = "mritotal " + basename(input)
         
 class nu_correct(CmdStage):
     def __init__(self, input, output, logfile):
@@ -123,9 +124,21 @@ class nu_correct(CmdStage):
         self.inputFiles = [input]
         self.outputFiles = [output]
         self.logFile = logfile
-        self.cmd = ["nu_correct", input, output]
+        self.cmd = ["nu_correct", "-clobber", input, output]
         self.name = "nu_correct " + basename(input)
-       
+        
+class xfmconcat(CmdStage):
+    def __init__(self, inputs, output, logfile):
+        CmdStage.__init__(self, None)
+        if type(inputs) != list: 
+            inputs = [inputs]
+            
+        self.inputFiles = inputs
+        self.outputFiles = [output]
+        self.logFile = logfile
+        self.cmd = ["xfmconcat", "-clobber"] + inputs + [output]
+        self.name = "xfmconcat " + basename(output)
+               
 class blur(CmdStage):
     def __init__(self, input, output, logfile, fwhm):
         # note - output should end with _blur.mnc
@@ -142,7 +155,7 @@ class blur(CmdStage):
 class mincresample(CmdStage):
     def __init__(self, inputFile, outputFile, logfile, argarray=[], like=None, cxfm=None):
         if argarray:
-            argarray.insert(0, "mincresample")
+            argarray = ["mincresample"] + argarray
         else:
             argarray = ["mincresample"]
         CmdStage.__init__(self, argarray)

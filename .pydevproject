@@ -2,13 +2,15 @@
 <?eclipse-pydev version="1.0"?>
 
 <pydev_project>
-<pydev_property name="org.python.pydev.PYTHON_PROJECT_INTERPRETER">Default</pydev_property>
+<pydev_property name="org.python.pydev.PYTHON_PROJECT_INTERPRETER">python</pydev_property>
 <pydev_property name="org.python.pydev.PYTHON_PROJECT_VERSION">python 2.7</pydev_property>
 <pydev_pathproperty name="org.python.pydev.PROJECT_SOURCE_PATH">
 <path>/pydpiper</path>
 <path>/pydpiper/applications/MAGeT</path>
 <path>/pydpiper/testing</path>
-<path>/pydpiper/lib</path>
 </pydev_pathproperty>
 
+<pydev_pathproperty name="org.python.pydev.PROJECT_EXTERNAL_SOURCE_PATH">
+<path>/home/jp/git/pydpiper/lib</path>
+</pydev_pathproperty>
 </pydev_project>

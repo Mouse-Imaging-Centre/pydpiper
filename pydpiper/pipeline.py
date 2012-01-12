@@ -77,10 +77,10 @@ class FileHandling():
     def createOutputAndLogFiles(self, output_base, log_base, fileType, argArray=None):
         if argArray:
             outArray = [output_base, "_", "_".join(argArray), fileType]
-            logArray = [log_base, "_", "_".join(argArray), ".log"] 
+            logArray = [log_base, "_", "_".join(argArray), fileType, ".log"] 
         else:
             outArray = [output_base, fileType]
-            logArray = [log_base, ".log"]
+            logArray = [log_base, fileType, ".log"]
         outFile = self.createOutputFileName(outArray)
         logFile = self.createOutputFileName(logArray)
         return (outFile, logFile)
@@ -157,7 +157,18 @@ class CmdStage(PipelineStage):
         of.write("Running on: " + socket.gethostname() + " at " + datetime.isoformat(datetime.now(), " ") + "\n")
         of.write(repr(self) + "\n")
         of.flush()
-        returncode = call(self.cmd, stdout=of, stderr=of)
+        print self.cmd
+        #check if output files exist
+        all_outputs_exist = True
+        for output in self.outputFiles:
+            if not os.path.exists(output):
+                all_outputs_exist = False
+                break
+        if all_outputs_exist:
+            of.write("All output files exist. Skipping stage.\n")
+            returncode = 0
+        else: 
+            returncode = call(self.cmd, stdout=of, stderr=of, shell=False) #TODO: shell = False?  Is this okay? 
         of.close()
         return(returncode)
     def getHash(self):
