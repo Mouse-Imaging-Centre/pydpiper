@@ -12,8 +12,8 @@ import time
 from networkx.algorithms.traversal.depth_first_search import dfs_successor
 from datetime import datetime
 from subprocess import call
-from os.path import basename,isdir
-from os import mkdir
+from os.path import basename,isdir,splitext, abspath
+from os import mkdir,makedirs
 from multiprocessing import Process, Event
 import pipeline_executor as pe
 
@@ -44,9 +44,14 @@ class FileHandling():
     """File handling class for creating subdirectories/base file names as needed"""
     def __init__(self):
         self.outFileName = []
-    def removeFileExt(self, input):
-        base, ext = os.path.splitext(input)
-        return(basename(input).replace(str(ext), ""))
+    def removeFileExt(self, inputFile):
+        base, ext = splitext(inputFile)
+        return(basename(inputFile).replace(str(ext), ""))
+    def removeBaseAndExtension(self, filename):
+        """removes path as well as extension from filename"""
+        bname = basename(filename)
+        root,ext = splitext(bname)
+        return(root)
     def createSubDir(self, input_dir, subdir):
         # check for input_dir/subdir format?
         # at this point, assume all / properly accounted for
@@ -65,9 +70,19 @@ class FileHandling():
         _subBase = self.createBaseName(_subDir, input_base)
         return (_subDir, _subBase)
     def createLogDirLogBase(self, input_dir, input_base):
+        #MF TODO: This will go away and be replaced 
         _logDir = self.createLogDir(input_dir)
         _logBase = self.createBaseName(_logDir, input_base)
         return (_logDir, _logBase)
+    def createLogDirandFile(self, inputDir, baseName):
+        """Check to see if log directory is created
+           before creating fileName"""
+        _logDir = self.createLogDir(inputDir)
+        _logFile = self.CreateLogFile(_logDir, baseName)
+        return(_logFile)
+    def createLogFile(self, dirName, baseName):
+        log = "%s/%s.log" % (dirName, baseName)
+        return(log)
     def createBackupDir(self, output):
         _backupDir = self.createSubDir(output, "backups")
         return(_backupDir)
@@ -86,6 +101,16 @@ class FileHandling():
         outFile = self.createOutputFileName(outArray)
         logFile = self.createOutputFileName(logArray)
         return (outFile, logFile)
+    def makedirsIgnoreExisting(self, dirname):
+        """os.makedirs which fails silently if dir exists"""
+        try:
+            newDir = abspath(dirname)
+            if not isdir(newDir):
+                makedirs(newDir)
+            return(newDir)
+        except:
+            print "Could not create directory " + str(dirname)
+            raise
 
 class PipelineStage():
     def __init__(self):

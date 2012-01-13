@@ -1,29 +1,156 @@
 #!/usr/bin/env python
 
 from pydpiper.pipeline import * 
-from optparse import OptionParser
-from os.path import basename,dirname,isdir,abspath
-from os import mkdir
-import time
+from os.path import basename
 import networkx as nx
+import inspect
 
 Pyro.config.PYRO_MOBILE_CODE=1
 
-class mincFileHandling(FileHandling):
-    def __init__(self):
-        FileHandling.__init__(self)
-    def createBlurOutputAndLogFiles(self, output_base, log_base, b):
-        argArray = ["fwhm", b, "blur"]
-        return (self.createOutputAndLogFiles(output_base, log_base, ".mnc", argArray))
-    def createXfmAndLogFiles(self, output_base, log_base, argArray):
-        return (self.createOutputAndLogFiles(output_base, log_base, ".xfm", argArray))
-    def createResampledAndLogFiles(self, output_base, log_base, argArray):
-        argArray.insert(0, "resampled")
-        return (self.createOutputAndLogFiles(output_base, log_base, ".mnc", argArray))
+class RegistrationGroupedFiles():
+    """A class to keep together all bits for a RegistrationPipeFH stage"""
+    def __init__(self, inputVolume):
+        self.basevol = [inputVolume]
+        self.labels = []
+        self.blurs = {}
+        self.lastblur = None
+        self.transforms = []
+        
+    def getBlur(self, fwhm=None):
+        """returns file with specified blurring kernel
+        If no blurring kernel is specified, return the last blur"""
+        if not fwhm:
+            fwhm = self.lastblur
+        return(self.blurs[fwhm])
 
+    def addBlur(self, filename, fwhm):
+        """adds the blur with the specified kernel"""
+        self.blurs[fwhm] = filename
+        self.lastblur = fwhm
+            
+class RegistrationPipeFH():
+    """A class to provide file-handling support for registration pipelines
+
+    Each input file will have a separate directory underneath the
+    specified base directory. This will in turn be populated by
+    different output directories for transforms, resampled files,
+    temporary files, etc. The final directory tree will look like the
+    following:
+
+    basedir/filenamebase/log -- log files
+    basedir/filenamebase/resampled -- resampled files go here
+    basedir/filenamebase/transforms -- transforms (xfms, grids, etc.) go here
+    basedir/filenamebase/labels -- any resampled labels (if necessary) go here
+    basedir/filenamebase/tmp -- intermediate temporary files go here
+
+    The RegistrationPipeFH can be passed to different processing
+    functions (minctracc, blur, etc.) which will use it to derive
+    proper filenames. The RegistrationPipeFH can moreover group
+    related files (blurs, transforms, resamples) by using the newGroup
+    call.
+
+    """
+    def __init__(self, filename, basedir):
+        """two inputs required - an inputFile file and a base directory."""
+        self.groupedFiles = [RegistrationGroupedFiles(filename)]
+        self.currentGroupIndex = -1
+        #MF TODO: verify below with Jason to verify correct interpretation
+        self.inputFileName = filename
+        # Create filehandling class for usage in all functions in this class
+        self.FH = FileHandling()
+        # Check to make sure that basedir exists, otherwise create:
+        self.basedir = self.FH.makedirsIgnoreExisting(basedir)
+        # groups can be referred to by either name or index number
+        self.groupNames = {'base' : 0}       
+    
+    def newGroup(self, inputVolume = None, groupName = None):
+        """create a new set of grouped files"""
+        groupIndex = len(self.groupedFiles) + 1
+        if not inputVolume:
+            inputVolume = self.getLastBasevol()
+        
+        if not groupName:
+            groupName = groupIndex
+
+        self.groupedFiles.append(RegistrationGroupedFiles(inputVolume))
+        self.groupNames[groupName] = groupIndex
+        self.currentGroupIndex = groupIndex
+
+    def setupNames(self):
+        """string munging to create necessary basenames and such"""
+        self.basename = self.FH.removeFileExt(self.inputFilename)
+        self.subjDir = self.FH.createSubDir(self.basedir, self.basename)
+        self.logDir = self.FH.createLogDir(self.subjDir)
+        self.resampledDir = self.FH.createSubDir(self.subjDir, "resampled")
+        self.transformsDir = self.FH.createSubDir(self.subjDir, "transforms")
+        self.labelsDir = self.FH.createSubDir(self.subjDir, "labels")
+        self.tmpDir = self.FH.createSubDir(self.subjDir, "tmp")
+        
+    def logFromFile(self, inFile):
+        """ creates a log file from an input filename
+
+        Takes the input file, strips out any extensions, and returns a 
+        filename with the same basename, in the log directory, and 
+        with a .log extension"""
+
+        #MF TODO: Can we use existing functions for this?
+        # See how logging is handled generally and test this well 
+        logBase = self.FH.removeBaseAndExtension(inFile)
+        log = self.FH.createLogFile(self.logDir, logBase)
+        return(log)
+
+    def registerVolume(self, targetFH, arglist):
+        """create the filenames for a single registration call
+
+        Two input arguments - a RegistrationPipeFH instance for the
+        target volume and an argument list; the argument list is
+        derived from function introspection in the minctracc or
+        mincANTS calls and will be used to provide a unique filename.
+
+        """
+        sourceFilename = self.getBlur()
+        
+        
+    def getBlur(self):
+        return(self.groupedFiles[self.currentGroupIndex].getBlur())
+    def setBlurToUse(self, fwhm):
+        self.groupedFiles[self.currentGroupIndex].lastblur = fwhm
+    def getLastBasevol(self):
+        return(self.groupedFiles[self.currentGroupIndex].basevol[-1])
+
+    def blurFile(self, fwhm, gradient=False):
+        """create filename for a mincblur call
+
+        Return a triplet of the basename, which mincblur needs as its
+        input, the full filename, which mincblur will create after its done,
+        and the log file"""
+        
+        #MF TODO: Handle if there is no lastBaseVol --> what to do?
+        lastBaseVol = self.getLastBasevol()
+
+        outputbase = self.FH.removeBaseAndExtension(lastBaseVol)
+        outputbase = "%s/%s_fwhm%g" % (self.tmpDir, outputbase, fwhm)
+        #MF TODO: What if we want both gradient and regular. Do we need to
+        # call this twice?
+        if gradient:
+            withext = "%s_dxyz.mnc", outputbase
+        else:
+            withext = "%s_blur.mnc", outputbase
+        
+        log = self.logFromFile(withext)
+
+        outlist = { "base" : outputbase,
+                    "file" : withext,
+                    "log"  : log }
+
+        self.groupedFiles[self.currentGroupIndex].addBlur(withext, fwhm)
+        return(outlist)
+        
 class minctracc(CmdStage):
-    def __init__(self, source, target, output, logfile,
-		 linearparam="nlin",
+    def __init__(self, 
+                 inSource,
+                 inTarget,
+                 linearparam="nlin",
                  source_mask=None, 
                  target_mask=None,
                  iterations=40,
@@ -33,11 +160,35 @@ class minctracc(CmdStage):
                  stiffness=0.98,
                  similarity=0.3,
                  w_translations=0.2):
+        """an efficient way to add a minctracc call to a pipeline
+
+        The constructor needs two inputFile arguments, the source and the
+        target for the registration, and multiple optional arguments
+        for specifying parameters. The source and the target can be
+        specified as either RegistrationPipeFH instances or as strings
+        representing filenames. In the latter case an output and a
+        logfile filename are required as well (these are filled in
+        automatically in the case of RegistrationPipeFH instances.)
+
+        """
         CmdStage.__init__(self, None) #don't do any arg processing in superclass
-        self.source = source
-        self.target = target
-        self.output = output
-        self.logFile = logfile
+        try: # try with inputs as RegistrationPipeFH instances
+            self.source = inSource.lastBlur
+            self.target = inTarget.lastBlur
+            # get the arguments passed to this function - that will be used
+            # by the RegistrationPipeFH to build an output filename
+            frame = inspect.currentframe()
+            args,_,_,arglocals = inspect.getargvalues(frame)
+            arglist = [(i, arglocals[i]) for i in args]
+            targetList = inSource.registerVolume(inTarget, arglist)
+            self.output = "tmp.xfm" # output will be based on source and target
+            self.logFile = "tmp.log"
+        except AttributeError: # go with filename inputs
+            self.source = inSource
+            self.target = inTarget
+            self.output = "tmp.xfm" #set this based on input and output files
+            self.logFile = "tmp.log"
+        
         self.linearparam = linearparam
         self.source_mask = source_mask
         self.target_mask = target_mask
@@ -70,8 +221,8 @@ class minctracc(CmdStage):
                     self.target,
                     self.output]
         
-        # assing inputs and outputs
-        # assing inputs and outputs
+        # adding inputs and outputs
+        # adding inputs and outputs
         self.inputFiles = [self.source, self.target]
         if self.source_mask:
             self.inputFiles += [self.source_mask]
@@ -93,51 +244,76 @@ class minctracc(CmdStage):
                      self.lattice_diameter, self.lattice_diameter]
 
 class linearminctracc(minctracc):
-    def __init__(self, source, target, output, logfile, linearparam,
+    def __init__(self, source, target, linearparam,
                  source_mask=None, target_mask=None):
-        minctracc.__init__(self,source,target,output,
-			   logfile,linearparam,
+        minctracc.__init__(self,source,target, linearparam,
                            source_mask=source_mask,
                            target_mask=target_mask)
 
     def finalizeCommand(self):
         """add the options for a linear fit"""
-	_numCmd = "-" + self.linearparam
+        _numCmd = "-" + self.linearparam
         self.cmd += ["-xcorr", _numCmd]
     def setName(self):
         self.name = "minctracc" + self.linearparam + " "
 
 class blur(CmdStage):
-    def __init__(self, input, output, logfile, fwhm):
-        # note - output should end with _blur.mnc
+    def __init__(self, inFile, fwhm):
+        """calls mincblur with the specified 3D Gaussian kernel
+
+        The inputs can be in one of two styles. The first argument can
+        be an instance of RegistrationPipeFH, in which case the last
+        volume in that instance (i.e. inFile.lastBasevol) will be
+        blurred and the output will be determined by its blurFile
+        method. Alternately, the inFile can be a string representing a
+        filename, in which case the output and logfile will be set based on 
+        the inFile name.
+
+        """
         CmdStage.__init__(self, None)
-        self.base = output.replace("_blur.mnc", "")
-        self.inputFiles = [input]
-        self.outputFiles = [output]
-        self.logFile = logfile
+
+        # first try to generate the filenames if inputFile was a filehandler
+        #MF TODO: In both instances, better handle gradient option
+        try:
+            blurlist = inFile.blurFile(fwhm)
+            self.base = blurlist["outputbase"]
+            self.inputFiles = [inFile.lastBaseVol]
+            self.outputFiles = [blurlist["withext"]]
+            self.logFile = blurlist["log"]
+        except AttributeError:
+            # this means it wasn't a filehandler - now assume it's a file
+            self.base = inFile.replace(".mnc", "")
+            self.inputFiles = [inFile]
+            blurBase = "".join([self.base, "_fwhm", str(fwhm), "_blur"])
+            self.outputFiles = ["".join([blurBase, ".mnc"])]
+            # Check for log directory and create logfile
+            fh = FileHandling()
+            self.logFile = fh.createLogDirandFile(abspath(os.curdir), blurBase)
+
         self.cmd = ["mincblur", "-clobber", "-fwhm", str(fwhm),
-                    input, self.base]
-        self.name = "mincblur " + str(fwhm) + " " + basename(input)
+                    inFile, self.base]
+        self.name = "mincblur " + str(fwhm) + " " + basename(inFile)
         self.colour="blue"
 
 class mincresample(CmdStage):
-    def __init__(self, inputFile, outputFile, logfile, argarray=[], input=None, cxfm=None):
-    	if argarray:
-	    argarray.insert(0, "mincresample")
-    	else:
-    	    argarray = ["mincresample"]
-    	CmdStage.__init__(self, argarray)
-	# inputFile and outputFile are required, everything else optional
-	# This class assuming use of the most commonly used flags (-2, -clobber, -like, -transform)
-	# Any commands above and beyond the standard will be read in from argarray
-	# argarray could contain input and/or output files
-	if input:
-	    self.cmd += ["-like", input]
-	if cxfm:
-	    self.inputFiles += [cxfm]
-	    self.cmd += ["-transform", cxfm]
-	self.inputFiles += [inputFile]
-	self.outputFiles += [outputFile]
-	self.logFile = logfile
-	self.cmd += ["-2", "-clobber", inputFile, outputFile]
-
+    def __init__(self, inputFile, argarray=[], likeFile=None, cxfm=None):
+        # Re-write so this includes fileHandling like blur and minctracc
+        if argarray:
+            argarray.insert(0, "mincresample")
+        else:
+            argarray = ["mincresample"]
+        CmdStage.__init__(self, argarray)
+        # inputFile is required, everything else optional
+        # This class assuming use of the most commonly used flags (-2, -clobber, -like, -transform)
+        # Any commands above and beyond the standard will be read in from argarray
+        # argarray could contain inputFile and/or output files
+        if likeFile:
+            self.cmd += ["-like", likeFile] # include as an input file?
+        if cxfm:
+            self.inputFiles += [cxfm]
+            self.cmd += ["-transform", cxfm]
+            self.inputFiles += [inputFile]
+            outputFile = "tmp_out_resample.mnc" # need to create this based on inputs
+            self.outputFiles += [outputFile] 
+            self.logFile = "tmp.log" # need to create this based on inputs
+            self.cmd += ["-2", "-clobber", inputFile, outputFile]

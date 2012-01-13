@@ -22,68 +22,63 @@ class Template:
             self.outputdir = outputdir
 
 class SMATregister:
-    def __init__(self, input, template, outDir="", inputMask=None,
+    def __init__(self, inputFile, template, outDir="", inputMask=None,
                  steps=[0.5,0.2],
                  blurs=[0.5,0.2], iterations=[80,20],
                  name="initial"):
         self.p = Pipeline()
-        self.input = input
+        self.input = inputFile
         
-        fh = mincFileHandling()
+        fh = FileHandling()
         
-        input_base_fname = fh.removeFileExt(input)
+        input_base_fname = fh.removeFileExt(inputFile)
         input_dir, input_base = fh.createSubDirSubBase(abspath(outDir), input_base_fname, input_base_fname)
-        input_log_dir, input_log_base = fh.createLogDirLogBase(input_dir, input_base_fname)
-        
-        templ_base_fname = fh.removeFileExt(template.image)
-        template_base = fh.createBaseName(template.outputdir, templ_base_fname)
-        templ_log_dir, templ_log_base = fh.createLogDirLogBase(template.outputdir, templ_base_fname)
         
         self.outDir = input_dir
         self.inputMask = inputMask
-        tbase = fh.removeFileExt(template.labels)
-
+        
         input_blurs = []
         template_blurs = []
 
         for b in blurs:
-            iblur, ilog = fh.createBlurOutputAndLogFiles(input_base, input_log_base, str(b))
-            tblur, tlog = fh.createBlurOutputAndLogFiles(template_base, templ_log_base, str(b))
-            self.p.addStage(blur(input, iblur, ilog, b))
-            self.p.addStage(blur(template.image, tblur, tlog, b))
-            input_blurs += [iblur]
-            template_blurs += [tblur]
+            iblur = blur(inputFile, b)
+            tblur = blur(template.image, b)
+            self.p.addStage(iblur)
+            self.p.addStage(tblur)
+            #MF TODO: Make sure array concatenation syntax is correct
+            input_blurs += iblur.outputFiles
+            template_blurs += tblur.outputFiles
 
         # lsq12 alignment
         linearparam = "lsq12"
-        linxfm, logfile = fh.createXfmAndLogFiles(input_base, input_log_base, [tbase, linearparam])
-        self.p.addStage(linearminctracc(template_blurs[0],
-                                       input_blurs[0], linxfm,
-                                       logfile, linearparam,
-                                       inputMask, template.mask))
+        linearStage = linearminctracc(template_blurs[0], input_blurs[0], linearparam,
+                                       inputMask, template.mask)
+        self.p.addStage(linearStage)
+        linxfm = linearStage.outputFiles[0] #is this correct?
 
         # create the nonlinear registrations
         xfms = []
         linearparam = "nlin"
         for i in range(len(steps)):
-            cxfm, logfile = fh.createXfmAndLogFiles(input_base, input_log_base, [tbase, "step", str(i)])
             if i == 0:
                 pxfm = linxfm
             else:
-                pxfm = xfms[i - 1]
-            xfms += [cxfm]
-            self.p.addStage(minctracc(template_blurs[i],
-                                      input_blurs[i], cxfm,
-                                      logfile, linearparam,
+                pxfm = xfms[i - 1]  
+            nlinStage = minctracc(template_blurs[i],
+                                      input_blurs[i], linearparam,
                                       inputMask, template.mask,
                                       iterations=iterations[i],
                                       step=steps[i],
-                                      transform=pxfm))
-        # resample labels with final registration
+                                      transform=pxfm)
+            self.p.addStage(nlinStage)
+            cxfm = nlinStage.outputFiles[0] #is this correct? 
+            xfms += [cxfm]
         
-        self.output, logfile = fh.createResampledAndLogFiles(input_base, input_log_base, [tbase])
+        # resample labels with final registration
         resargs = ["-keep_real_range", "-nearest_neighbour"]
-        self.p.addStage(mincresample(template.labels, self.output, logfile, resargs, input, cxfm))
+        resampleStage = mincresample(template.labels, resargs, inputFile, cxfm)
+        self.p.addStage(resampleStage)
+        self.output = resampleStage.outputFiles[0] # again...ok? 
     
     def getTemplate(self):
         return(Template(self.input, self.output, self.inputMask,
@@ -149,10 +144,8 @@ if __name__ == "__main__":
         roq = runOnQueueingSystem(options, ppn, time, sys.argv)
         roq.createPbsScripts()
     else:
-        fh = FileHandling()
-        outputDir = abspath(options.template_library)
-        if not isdir(outputDir):
-            mkdir(outputDir)
+        fh = FileHandling() 
+        outputDir = fh.makedirsIgnoreExisting(options.template_library)
         tmplDir = fh.createSubDir(outputDir, "atlas")
         tmpl = Template(options.atlas_image, options.atlas_labels,
                         mask=options.mask, outputdir=tmplDir)
@@ -175,14 +168,14 @@ if __name__ == "__main__":
                 p.addPipeline(sp.p)
 
             # once the initial templates have been created, go and register each
-            # file to the templates
-            for file in args:
+            # inputFile to the templates
+            for inputFile in args:
                 labels = []
                 for t in templates:
-                    sp = SMATregister(file, t, outDir=outputDir, inputMask=options.mask, name="templates")
+                    sp = SMATregister(inputFile, t, outDir=outputDir, inputMask=options.mask, name="templates")
                     labels.append(InputFile(sp.output))
                     p.addPipeline(sp.p)
-                bname = fh.removeFileExt(file)
+                bname = fh.removeFileExt(inputFile)
                 base = fh.createBaseName(outputDir, bname + "_votedlabels")
                 out, log = fh.createOutputAndLogFiles(base, base, ".mnc")
                 cmd = ["voxel_vote.py"] + labels + [OutputFile(out)]
