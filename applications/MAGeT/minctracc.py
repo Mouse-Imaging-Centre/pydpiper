@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 
 from pydpiper.pipeline import * 
-from os.path import basename
+from os.path import abspath, basename
+import pydpiper.file_handling as fh
 import networkx as nx
 import inspect
 
@@ -53,15 +54,15 @@ class RegistrationPipeFH():
     def __init__(self, filename, basedir):
         """two inputs required - an inputFile file and a base directory."""
         self.groupedFiles = [RegistrationGroupedFiles(filename)]
-        self.currentGroupIndex = -1
+        self.currentGroupIndex = -1 #MF why -1 instead of 0?
         #MF TODO: verify below with Jason to verify correct interpretation
         self.inputFileName = filename
-        # Create filehandling class for usage in all functions in this class
-        self.FH = FileHandling()
         # Check to make sure that basedir exists, otherwise create:
-        self.basedir = self.FH.makedirsIgnoreExisting(basedir)
+        self.basedir = fh.makedirsIgnoreExisting(basedir)
         # groups can be referred to by either name or index number
         self.groupNames = {'base' : 0}       
+        # create directories
+        self.setupNames()
     
     def newGroup(self, inputVolume = None, groupName = None):
         """create a new set of grouped files"""
@@ -172,6 +173,7 @@ class minctracc(CmdStage):
         """
         CmdStage.__init__(self, None) #don't do any arg processing in superclass
         try: # try with inputs as RegistrationPipeFH instances
+            # MF TODO: get lastBlur from currentGroupIndex? 
             self.source = inSource.lastBlur
             self.target = inTarget.lastBlur
             # get the arguments passed to this function - that will be used
@@ -180,11 +182,12 @@ class minctracc(CmdStage):
             args,_,_,arglocals = inspect.getargvalues(frame)
             arglist = [(i, arglocals[i]) for i in args]
             targetList = inSource.registerVolume(inTarget, arglist)
-            self.output = "tmp.xfm" # output will be based on source and target
+            self.output = "tmp.xfm" # output will be based on targetList
             self.logFile = "tmp.log"
         except AttributeError: # go with filename inputs
             self.source = inSource
             self.target = inTarget
+            # MF TODO: use registerVolume here/make general? 
             self.output = "tmp.xfm" #set this based on input and output files
             self.logFile = "tmp.log"
         
@@ -286,7 +289,6 @@ class blur(CmdStage):
             blurBase = "".join([self.base, "_fwhm", str(fwhm), "_blur"])
             self.outputFiles = ["".join([blurBase, ".mnc"])]
             # Check for log directory and create logfile
-            fh = FileHandling()
             self.logFile = fh.createLogDirandFile(abspath(os.curdir), blurBase)
 
         self.cmd = ["mincblur", "-clobber", "-fwhm", str(fwhm),
@@ -319,7 +321,6 @@ class mincresample(CmdStage):
         else:
             argarray = ["mincresample"]
         CmdStage.__init__(self, argarray)
-        fh = FileHandling()
         # first try to generate the filenames if inFile was a filehandler
         try:
             inputFile = inFile.getLastBasevol()

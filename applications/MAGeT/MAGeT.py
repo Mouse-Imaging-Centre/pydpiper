@@ -3,6 +3,7 @@
 from pydpiper.pipeline import *
 from pydpiper.queueing import *
 from minctracc import *
+import pydpiper.file_handling as fh
 from optparse import OptionParser
 from os.path import dirname,isdir,abspath
 from os import mkdir
@@ -28,8 +29,6 @@ class SMATregister:
                  name="initial"):
         self.p = Pipeline()
         self.input = inputFile
-        
-        fh = FileHandling()
         
         input_base_fname = fh.removeFileExt(inputFile)
         input_dir, input_base = fh.createSubDirSubBase(abspath(outDir), input_base_fname, input_base_fname)
@@ -144,7 +143,6 @@ if __name__ == "__main__":
         roq = runOnQueueingSystem(options, ppn, time, sys.argv)
         roq.createPbsScripts()
     else:
-        fh = FileHandling() 
         outputDir = fh.makedirsIgnoreExisting(options.template_library)
         tmplDir = fh.createSubDir(outputDir, "atlas")
         tmpl = Template(options.atlas_image, options.atlas_labels,
