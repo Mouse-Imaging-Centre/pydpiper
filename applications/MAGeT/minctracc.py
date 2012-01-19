@@ -93,8 +93,7 @@ class RegistrationPipeFH():
         filename with the same basename, in the log directory, and 
         with a .log extension"""
 
-        #MF TODO: Can we use existing functions for this?
-        # See how logging is handled generally and test this well 
+        #MF TODO: Can we move to fileHandling class?  
         logBase = self.FH.removeBaseAndExtension(inFile)
         log = self.FH.createLogFile(self.logDir, logBase)
         return(log)
@@ -296,24 +295,55 @@ class blur(CmdStage):
         self.colour="blue"
 
 class mincresample(CmdStage):
-    def __init__(self, inputFile, argarray=[], likeFile=None, cxfm=None):
-        # Re-write so this includes fileHandling like blur and minctracc
+    def __init__(self, inFile, argarray=[], likeFile=None, cxfm=None):
+        """calls mincresample with the specified options
+
+        The inFile and likeFile can be in one of two styles. 
+        The first argument can be an instance of RegistrationPipeFH. 
+        In this case the last volume in that instance (i.e. inFile.lastBasevol) 
+        will be resampled and the output will be determined accordingly.
+        Alternatively, the inFile can be a string representing a
+        filename, in which case the output and logfile will be set based on 
+        the inFile name.
+
+        inFile is required, everything else optional
+        This class assuming use of the most commonly used flags (-2, -clobber, -like, -transform)
+        Any commands above and beyond the standard will be read in from argarray
+        argarray could contain inFile and/or output files
+
+        """
+        #MF TODO: What if we don't want to use lastBasevol? 
+        #MF TODO: Do we need to parse argarray for input or output files? 
         if argarray:
             argarray.insert(0, "mincresample")
         else:
             argarray = ["mincresample"]
         CmdStage.__init__(self, argarray)
-        # inputFile is required, everything else optional
-        # This class assuming use of the most commonly used flags (-2, -clobber, -like, -transform)
-        # Any commands above and beyond the standard will be read in from argarray
-        # argarray could contain inputFile and/or output files
+        fh = FileHandling()
+        # first try to generate the filenames if inFile was a filehandler
+        try:
+            inputFile = inFile.getLastBasevol()
+            lFile = likeFile.getLastBasevol()
+            outDir = inFile.tmpDir
+            logDir = inFile.logDir
+        except AttributeError:
+            # this means it wasn't a filehandler - now assume it's a file
+            inputFile = inFile
+            lFile = likeFile
+            #MF TODO: check for output and log directories with name of file?
+            outDir = abspath(os.curdir)
+            logDir = fh.createLogDir(outDir)
+        logAndOutBase = str(fh.removeBaseAndExtension(inputFile)) + "-resample.mnc"
+        self.logFile = fh.createLogFile(logDir, logAndOutBase)    
+        self.inputFiles += [inputFile]   
+        
         if likeFile:
-            self.cmd += ["-like", likeFile] # include as an input file?
+            self.cmd += ["-like", lFile] # include as an input file?
         if cxfm:
             self.inputFiles += [cxfm]
             self.cmd += ["-transform", cxfm]
-            self.inputFiles += [inputFile]
-            outputFile = "tmp_out_resample.mnc" # need to create this based on inputs
-            self.outputFiles += [outputFile] 
-            self.logFile = "tmp.log" # need to create this based on inputs
-            self.cmd += ["-2", "-clobber", inputFile, outputFile]
+        # check to see if argarray had an outputFile, if so use, else create
+        #MF TODO: Can we assume first arg in array is correct output?
+        if not self.outputFiles:
+            self.outputFiles += ["%s/%s" % (outDir, logAndOutBase)] 
+        self.cmd += ["-2", "-clobber", inputFile, self.outputFiles[0]]
