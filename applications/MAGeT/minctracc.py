@@ -150,6 +150,8 @@ class minctracc(CmdStage):
     def __init__(self, 
                  inSource,
                  inTarget,
+                 output=None,
+                 logFile=None,
                  linearparam="nlin",
                  source_mask=None, 
                  target_mask=None,
@@ -188,8 +190,8 @@ class minctracc(CmdStage):
             self.source = inSource
             self.target = inTarget
             # MF TODO: use registerVolume here/make general? 
-            self.output = "tmp.xfm" #set this based on input and output files
-            self.logFile = "tmp.log"
+            self.output = output
+            self.logFile = logFile
         
         self.linearparam = linearparam
         self.source_mask = source_mask
@@ -246,9 +248,10 @@ class minctracc(CmdStage):
                      self.lattice_diameter, self.lattice_diameter]
 
 class linearminctracc(minctracc):
-    def __init__(self, source, target, linearparam,
-                 source_mask=None, target_mask=None):
-        minctracc.__init__(self,source,target, linearparam,
+    def __init__(self, source, target, output=None, logFile=None, 
+                 linearparam, source_mask=None, target_mask=None):
+        minctracc.__init__(self,source,target,output, 
+                           logFile,linearparam,
                            source_mask=source_mask,
                            target_mask=target_mask)
 
@@ -297,7 +300,8 @@ class blur(CmdStage):
         self.colour="blue"
 
 class mincresample(CmdStage):
-    def __init__(self, inFile, argarray=[], likeFile=None, cxfm=None):
+    def __init__(self, inFile, outFile=None, logFile=None, 
+                 argarray=[], likeFile=None, cxfm=None):
         """calls mincresample with the specified options
 
         The inFile and likeFile can be in one of two styles. 
@@ -327,24 +331,23 @@ class mincresample(CmdStage):
             lFile = likeFile.getLastBasevol()
             outDir = inFile.tmpDir
             logDir = inFile.logDir
+            logAndOutBase = str(fh.removeBaseAndExtension(inputFile)) + "-resample.mnc"
+            self.logFile = fh.createLogFile(logDir, logAndOutBase) 
+            outfile= "%s/%s" % (outDir, logAndOutBase) 
         except AttributeError:
             # this means it wasn't a filehandler - now assume it's a file
             inputFile = inFile
             lFile = likeFile
             #MF TODO: check for output and log directories with name of file?
-            outDir = abspath(os.curdir)
-            logDir = fh.createLogDir(outDir)
-        logAndOutBase = str(fh.removeBaseAndExtension(inputFile)) + "-resample.mnc"
-        self.logFile = fh.createLogFile(logDir, logAndOutBase)    
+            outfile=outFile
+            self.logFile=logFile
+          
         self.inputFiles += [inputFile]   
+        self.outputFiles += [outfile]
         
         if likeFile:
             self.cmd += ["-like", lFile] # include as an input file?
         if cxfm:
             self.inputFiles += [cxfm]
-            self.cmd += ["-transform", cxfm]
-        # check to see if argarray had an outputFile, if so use, else create
-        #MF TODO: Can we assume first arg in array is correct output?
-        if not self.outputFiles:
-            self.outputFiles += ["%s/%s" % (outDir, logAndOutBase)] 
-        self.cmd += ["-2", "-clobber", inputFile, self.outputFiles[0]]
+            self.cmd += ["-transform", cxfm]       
+        self.cmd += ["-2", "-clobber", inputFile, outfile]
