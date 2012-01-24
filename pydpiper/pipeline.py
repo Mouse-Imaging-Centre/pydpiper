@@ -10,7 +10,7 @@ import shutil
 import sys
 import socket
 import time
-from networkx.algorithms.traversal.depth_first_search import dfs_successor
+from networkx.algorithms.traversal.depth_first_search import dfs_successors
 from datetime import datetime
 from subprocess import call
 from os.path import basename,isdir
@@ -59,10 +59,20 @@ class FileHandling():
     def createBaseName(self, input_dir, base):
         return (os.path.join(input_dir,base))
     def createSubDirSubBase(self, input_dir, subdir, input_base):
+        """Return a subdirectory and basename in that subdirectory.
+           
+           The subdirectory is <input_dir>/<subdir>
+           The new basename is <input_dir>/<subdir>/<input_base> 
+        """
         _subDir = self.createSubDir(input_dir, subdir)
         _subBase = self.createBaseName(_subDir, input_base)
         return (_subDir, _subBase)
     def createLogDirLogBase(self, input_dir, input_base):
+        """Return a subdirectory and basename in that subdirectory for logging.
+        
+           The subdirectory is <input_dir>/log
+           The new basename is <input_dir>/log/<input_base> 
+        """
         _logDir = self.createLogDir(input_dir)
         _logBase = self.createBaseName(_logDir, input_base)
         return (_logDir, _logBase)
@@ -158,19 +168,24 @@ class CmdStage(PipelineStage):
         of.write(repr(self) + "\n")
         of.flush()
         print self.cmd
-        #check if output files exist
+        
+        if self.outputs_exist():
+            of.write("All output files exist. Skipping stage.\n")
+            returncode = 0
+        else: 
+            returncode = call(self.cmd, stdout=of, stderr=of, shell=False) #TODO: shell = False?  Is this okay?
+        of.close()
+        return(returncode)
+    
+    def outputs_exist(self):
+        """check if this stage is effectively complete (if output files already exist)"""
         all_outputs_exist = True
         for output in self.outputFiles:
             if not os.path.exists(output):
                 all_outputs_exist = False
                 break
-        if all_outputs_exist:
-            of.write("All output files exist. Skipping stage.\n")
-            returncode = 0
-        else: 
-            returncode = call(self.cmd, stdout=of, stderr=of, shell=False) #TODO: shell = False?  Is this okay? 
-        of.close()
-        return(returncode)
+        return all_outputs_exist
+
     def getHash(self):
         return(hash(" ".join(self.cmd)))
     def __repr__(self):
@@ -234,7 +249,7 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
         pickle.dump(self.outputhash, open(str(self.backupFileLocation) + '/outputhash.pkl', 'wb'))
         pickle.dump(self.stagehash, open(str(self.backupFileLocation) + '/stagehash.pkl', 'wb'))
         pickle.dump(self.processedStages, open(str(self.backupFileLocation) + '/processedStages.pkl', 'wb'))
-        print '\nPipeline pickled.\n'
+        #print '\nPipeline pickled.\n'
     def restart(self):
         """Restarts the pipeline from previously pickled backup files."""
         if (self.backupFileLocation == None):
@@ -313,25 +328,33 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
         else:
             index = self.runnable.get()
             self.stages[index].setRunning()
-            return(index)
+            return index
+        
+    def setStageStarted(self, index, clientURI=None):
+        print "Starting Stage " + str(index) + ": " + str(self.stages[index]),
+        if clientURI:
+            print "(" + str(clientURI) + ")"
+        else: 
+            print
+
     def checkIfRunnable(self, index):
         """stage added to runnable queue if all predecessors finished"""
         canRun = True
-        print("Checking if stage " + str(index) + " is runnable ...")
+        #print("Checking if stage " + str(index) + " is runnable ...")
         if self.stages[index].isFinished() == True:
             canRun = False
         else:
             for i in self.G.predecessors(index):
-                print "Predecessor: Stage " + str(i),               
+                #print "Predecessor: Stage " + str(i),               
                 s = self.getStage(i)
-                print " State: " + str(s.status) 
+                #print " State: " + str(s.status) 
                 if s.isFinished() == False:
                     canRun = False
-        print("Stage " + str(index) + " Runnable: " + str(canRun) + '\n')
+        #print("Stage " + str(index) + " Runnable: " + str(canRun) + '\n')
         return(canRun)
     def setStageFinished(self, index):
         """given an index, sets corresponding stage to finished and adds successors to the runnable queue"""
-        print("FINISHED STAGE " + str(index) + ": " + str(self.stages[index]))
+        print("Finished Stage " + str(index) + ": " + str(self.stages[index]))
         self.stages[index].setFinished()
         self.processedStages.append(index)
         self.selfPickle()
@@ -341,8 +364,9 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
     def setStageFailed(self, index):
         """given an index, sets stage to failed, adds to processed stages array"""
         self.stages[index].setFailed()
+        print("ERROR in Stage " + str(index) + ": " + str(self.stages[index]))
         self.processedStages.append(index)
-        for i in dfs_successor(self.G, index).keys():
+        for i in dfs_successors(self.G, index).keys():
             self.processedStages.append(index)
     def requeue(self, i):
         """If stage cannot be run due to insufficient mem/procs, executor returns it to the queue"""
@@ -436,5 +460,6 @@ def pipelineDaemon(pipeline, returnEvent, options=None, programName=None):
     #Return to calling code if pipeline has no more runnable stages:
     #Event will be cleared once clients are unregistered. 
     while e.is_set():
+        sys.stdout.flush()
         time.sleep(5)
     returnEvent.set()

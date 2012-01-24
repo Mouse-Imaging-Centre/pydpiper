@@ -128,15 +128,19 @@ $jobScript .= "\n";
 # add the arguments themselves
 $jobScript .= "@command \n";
 
+$sgeOpts = "-l $sgeOpts" if $sgeOpts;
+$sgeOpts .= " -p $sgePriority" if $sgePriority;
+$sgeOpts .= " -pe smp $sgeSMP" if $sgeSMP;
+
 if ($printJob) {
     print $jobScript;
+    print "qsub -S /bin/bash $sgeOpts\n";
 }
 else {
-    $sgeOpts = "-l $sgeOpts" if $sgeOpts;
-    $sgeOpts .= " -p $sgePriority" if $sgePriority;
-    $sgeOpts .= " -pe smp $sgeSMP" if $sgeSMP;
-
-    open PIPE, "|qsub -S /bin/sh $sgeOpts"
+    open (JOBSCRIPT, '>>.jobscript');
+    print JOBSCRIPT $jobScript;
+    close(JOBSCRIPT);
+    open PIPE, "|qsub -S /bin/bash $sgeOpts"
         or die "ERROR: could not open pipe to qsub: $!\n";
     print PIPE $jobScript;
     if (! close PIPE ) {

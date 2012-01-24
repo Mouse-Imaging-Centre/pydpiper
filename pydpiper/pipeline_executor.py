@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 
-import Pyro.core
-import Pyro.naming
+import Pyro
 import time
 import sys
 import os
@@ -26,7 +25,7 @@ class clientExecutor(Pyro.core.SynchronizedObjBase):
         if serverShutdown:
             self.continueRunning = False
          
-def runStage(serverURI, i):
+def runStage(serverURI, clientURI, i):
     # Proc needs its own proxy as it's independent of executor
     p = Pyro.core.getProxyForURI(serverURI)
     s = p.getStage(i)
@@ -34,6 +33,7 @@ def runStage(serverURI, i):
     # Run stage, set finished or failed accordingly  
     try:
         print("Running stage " + str(i) + ": " + str(s) + "\n")
+        p.setStageStarted(i, clientURI)
         r = s.execStage()
         print("Stage " + str(i) + " finished, return was: " + str(r) + "\n")
         if r == 0:
@@ -75,6 +75,7 @@ class pipelineExecutor():
             # Add options for sge_batch command
             cmd = ["sge_batch", "-J", jobname, "-m", strprocs, "-l", strmem] 
             cmd += ["pipeline_executor.py", "--uri-file", self.uri, "--proc", strprocs, "--mem", str(self.mem)]
+            print(cmd)
             call(cmd)   
         else:
             print("Specified queueing system is: %s" % (self.queue))
@@ -89,7 +90,8 @@ class pipelineExecutor():
             return False
     def launchPipeline(self):  
         """Start executor that will run pipeline stages"""   
-        # initialize pipeline_executor as both client and server       
+        # initialize pipeline_executor as both client and server
+        print "Launching pipeline..."       
         Pyro.core.initClient()
         Pyro.core.initServer()
         daemon = Pyro.core.Daemon()
@@ -117,7 +119,9 @@ class pipelineExecutor():
         runningMem = 0.0
         runningProcs = 0               
         runningChildren = [] # no scissors
-              
+        
+        print "Connected to ", serverURI
+        print "Client URI is ", clientURI
         # loop until the pipeline sets executor.continueLoop() to false
         pool = Pool(processes = self.proc)
         try:
@@ -129,6 +133,7 @@ class pipelineExecutor():
                     print("No runnable stages. Sleeping...")
                     time.sleep(5)
                 else:
+                    print "Considering stage", i
                     # Before running stage, check usable mem & procs
                     completedTasks = []
                     for j,val in enumerate(runningChildren):
@@ -144,10 +149,12 @@ class pipelineExecutor():
                     if self.canRun(stageMem, stageProcs, runningMem, runningProcs):
                         runningMem += stageMem
                         runningProcs += stageProcs             
-                        runningChildren.append(pool.apply_async(runStage,(serverURI, i)))
+                        runningChildren.append(pool.apply_async(runStage,(serverURI, clientURI, i)))
                     else:
+                        print "Not enough resources to run stage", i 
                         p.requeue(i)
         except Exception as e:
+            print e
             traceback.print_tb(sys.exc_info()[2])
             print "Shutting down executor."
             daemon.shutdown(True)

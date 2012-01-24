@@ -1,11 +1,6 @@
 #!/usr/bin/env python
 
 from pydpiper.pipeline import * 
-from optparse import OptionParser
-from os.path import basename,dirname,isdir,abspath
-from os import mkdir
-import time
-import networkx as nx
 
 Pyro.config.PYRO_MOBILE_CODE=1
 
@@ -126,7 +121,16 @@ class nu_correct(CmdStage):
         self.logFile = logfile
         self.cmd = ["nu_correct", "-clobber", input, output]
         self.name = "nu_correct " + basename(input)
-        
+
+class bestlinreg(CmdStage):
+    def __init__(self, source, target, xfm, log_file):
+        CmdStage.__init__(self, None)
+        self.inputFiles = [source, target]
+        self.outputFiles = [xfm]
+        self.logFile = log_file
+        self.cmd = ["bestlinreg", "-clobber", source, target, xfm]
+        self.name = "bestlinreg " + basename(source) + " " + basename(target)
+                
 class xfmconcat(CmdStage):
     def __init__(self, inputs, output, logfile):
         CmdStage.__init__(self, None)
@@ -166,6 +170,7 @@ class mincresample(CmdStage):
         # argarray could contain like and/or output files
         if like:
             self.cmd += ["-like", like]
+            self.inputFiles += [like]
         if cxfm:
             self.inputFiles += [cxfm]
             self.cmd += ["-transform", cxfm]
