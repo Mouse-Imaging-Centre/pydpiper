@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import logging
 from pydpiper.pipeline import *
 from pydpiper.queueing import *
 from minctools import minctracc, nu_correct, bestlinreg, mincresample, xfmconcat, mincFileHandling
@@ -13,7 +14,8 @@ import glob
 
 Pyro.config.PYRO_MOBILE_CODE=1 
 fh = mincFileHandling()
-
+test_mode = False
+logger = logging.getLogger("MAGeT")
 #Nomenclature: 
 #    Atlas    - a MINC volume and corresponding label volume
 #    Template - Refers to the application of atlas labels applied to a subject brain 
@@ -25,24 +27,19 @@ fh = mincFileHandling()
 #    Subject  - Target brain of the MAGeT pipeline that is to be labeled.  
  
 class Template:
-    def __init__(self, image, labels, mask=None, model_dir=None, roi=None):
+    def __init__(self, image, labels, mask=None, roi=None):
         """image     - template image file
            labels    - list of label files
            mask      - label mask for 'image'
-           model_dir - directory of blurred images used for linear resampling by mritotal
            roi       - MINC volume containing a region of the atlas image to do non-linear registration on."
         """
            
-        if type(labels) == str:
-            labels = [labels]
-            
-        assert type(labels) == list, "labels must be a string or a list of strings"
+        assert type(labels) == str, "labels must be a pointer to a label file (as a string)"
         
         self.image     = image
         self.labels    = labels
         self.mask      = mask
-        self.model_dir = model_dir
-        self.roi       = roi
+        self.roi       = roi or image
 
 
 class SMATregister:
@@ -92,47 +89,51 @@ class SMATregister:
         #assert template.model_dir != "", "Expected model directory supplied for mritotal linear registration step"        
         #p.addStage(mritotal(inuc, linxfm, template.model_dir, fh.removeFileExt(template.image), linreg_log))
         
-
-        linres, linres_log = fh.createResampledAndLogFiles(output_base_fname, log_base, ["linres"])
-        p.addStage(mincresample(inuc, linres, linres_log, argarray=["-sinc", "-width", "2"], like=self.template.image, cxfm=linxfm))
-
-        # non-linear registration        
-        iterations = 15  
-        nl0, logfile0 = fh.createXfmAndLogFiles(output_base_fname, log_base, ["step_0"])
-        nl1, logfile1 = fh.createXfmAndLogFiles(output_base_fname, log_base, ["step_1"])
-        nl2, logfile2 = fh.createXfmAndLogFiles(output_base_fname, log_base, ["step_2"])
-        p.addStage(minctracc(linres, self.template.roi, nl0, logfile0, 
-                            step=4,
-                            sub_lattice=8, 
-                            iterations=iterations, 
-                            ident=True))
-        p.addStage(minctracc(linres, self.template.roi, nl1, logfile1, 
-                             step=2,
-                             sub_lattice=8, 
-                             transform = nl0,
-                             iterations=iterations,
-                             ident=True))
-        p.addStage(minctracc(linres, self.template.roi, nl2, logfile2, 
-                             step=1,
-                             sub_lattice=6, 
-                             transform = nl1,
-                             iterations=iterations))
+        if not test_mode:
+            linres, linres_log = fh.createResampledAndLogFiles(output_base_fname, log_base, ["linres"])
+            p.addStage(mincresample(inuc, linres, linres_log, argarray=["-sinc", "-width", "2"], like=self.template.image, cxfm=linxfm))
+    
+            # non-linear registration        
+            iterations = test_mode and 1 or 15  
+            nl0, logfile0 = fh.createXfmAndLogFiles(output_base_fname, log_base, ["step_0"])
+            nl1, logfile1 = fh.createXfmAndLogFiles(output_base_fname, log_base, ["step_1"])
+            nl2, logfile2 = fh.createXfmAndLogFiles(output_base_fname, log_base, ["step_2"])
         
-        nlxfm, logfile_nl = fh.createXfmAndLogFiles(output_base_fname, log_base, ["nl"])
-        p.addStage(xfmconcat([linxfm, nl2], nlxfm, logfile_nl))
+
+            p.addStage(minctracc(linres, self.template.roi, nl0, logfile0, 
+                                step=4,
+                                sub_lattice=8, 
+                                iterations=iterations, 
+                                ident=True))
+            
         
+            p.addStage(minctracc(linres, self.template.roi, nl1, logfile1, 
+                                 step=2,
+                                 sub_lattice=8, 
+                                 transform = nl0,
+                                 iterations=iterations,
+                                 ident=True))
+            p.addStage(minctracc(linres, self.template.roi, nl2, logfile2, 
+                                 step=1,
+                                 sub_lattice=6, 
+                                 transform = nl1,
+                                 iterations=iterations))
+        
+            nlxfm, logfile_nl = fh.createXfmAndLogFiles(output_base_fname, log_base, ["nl"])
+            p.addStage(xfmconcat([linxfm, nl2], nlxfm, logfile_nl))
+            
+        else:
+            nlxfm = linxfm
+            
         # resample labels with final registration
-        resargs = ["-keep_real_range", "-nearest_neighbour", "-invert"]
+        resargs = ["-nearest_neighbour", "-invert", "-byte"]
+        labels, logfile = fh.createResampledAndLogFiles(output_base_fname, log_base, ["labels"])
+        p.addStage(mincresample(self.template.labels, labels, logfile, resargs, cxfm=nlxfm, like=inuc))
         
         outputs = []
+        outputs.append(labels)        
         
-        self.template.labels.sort()  #TODO: hack: sort the labels, so that the indices correlate across subjects (works for up to 10 labels!)
-        for label, index in zip(self.template.labels, range(len(self.template.labels))):
-            output, logfile = fh.createResampledAndLogFiles(output_base_fname, log_base, ["label", str(index)])
-            outputs.append(output)        
-            p.addStage(mincresample(label, output, logfile, resargs, cxfm=nlxfm, like=inuc))
-    
-        output_template = Template(self.target, outputs, roi=self.target)
+        output_template = Template(self.target, labels, roi=self.target)
         
         return (p, output_template)
     
@@ -146,14 +147,10 @@ if __name__ == "__main__":
     # atlas options
     parser.add_option("--atlas-labels", "-a", dest="atlas_labels",
                       type="string", 
-                      action="append",
                       help="MINC volume containing labelled structures")
     parser.add_option("--atlas-image", "-i", dest="atlas_image",
                       type="string",
                       help="MINC volume of image corresponding to labels")
-    parser.add_option("--atlas-models", dest="atlas_models", 
-                      type="string",
-                      help="Directory containing blurred and masked MINC volumes of atlas image")
     parser.add_option("--atlas-roi", "-r", dest="atlas_roi",
                       type="string",
                       help="MINC volume containing a region of the atlas image to do non-linear registration on")
@@ -163,12 +160,19 @@ if __name__ == "__main__":
     parser.add_option("--max-templates", dest="max_templates",
                       default=25, type="int",
                       help="Maximum number of templates to generate")
+    parser.add_option("--validation-labels", dest="validation_labels",
+                      type="string", 
+                      help="Directory containing label files corresponding to input templates (form: <input>_labels.mnc) used for validation")
     
     # output options
     parser.add_option("--output-dir", dest="output_directory",
                       type="string", default="output",
                       help="Directory where output (template library and segmentations are stored.")    
     
+    parser.add_option("--test-mode", dest="test_mode", 
+                      action="store_true", 
+                      default=False, 
+                      help="Run this code in a testing mode.  Registration is simplified to make for much shorter process.")
     
     # PydPiper options
     parser.add_option("--uri-file", dest="urifile",
@@ -204,6 +208,7 @@ if __name__ == "__main__":
         roq = runOnQueueingSystem(options, ppn, time, sys.argv)
         roq.createPbsScripts()
     else:
+        test_mode = options.test_mode
         
         outputDir = abspath(options.output_directory)
         if not isdir(outputDir):
@@ -218,7 +223,6 @@ if __name__ == "__main__":
         atlas = Template(options.atlas_image, 
                          options.atlas_labels,
                          mask=options.mask, 
-                         model_dir=options.atlas_models,
                          roi = options.atlas_roi )
         
         p = Pipeline()
@@ -237,10 +241,10 @@ if __name__ == "__main__":
             # or the maximum number of templates, whichever is lesser
             templates = []
             numTemplates = min(len(subject_files), options.max_templates)
+            
     
             for nfile in range(numTemplates):
                 sp = SMATregister(subject_files[nfile], atlas, root_dir=template_dir)
-                
                 pipeline, output_template = sp.build_pipeline()
                 templates.append(output_template)
                 p.addPipeline(pipeline)
@@ -248,25 +252,37 @@ if __name__ == "__main__":
             # once the initial templates have been created, go and register each
             # subject to the templates
             for subject in subject_files:
-                labels = {}
+                labels = []
                 for t in templates:
                     sp = SMATregister(subject, t, root_dir=segmentation_dir)
                     pipeline, output_template = sp.build_pipeline()
-                    for index in range(len(output_template.labels)):
-                        labels[index] = labels.get(index, []) + [InputFile(output_template.labels[index])]
+                    labels.append(InputFile(output_template.labels))
                     p.addPipeline(pipeline)
                     
                 subject_base_fname = fh.removeFileExt(subject)
                 subject_dir = os.path.join(segmentation_dir,subject_base_fname)
                 
-                for index, label_set in labels.items():
-                    voted_dir, base_name = fh.createSubDirSubBase(subject_dir, "final", subject_base_fname + "_votedlabels_" + str(index))
-                    voted_labels, log = fh.createOutputAndLogFiles(base_name, base_name, ".mnc")
-                    cmd = ["voxel_vote.py"] + label_set + [OutputFile(voted_labels)]
-                    voxel = CmdStage(cmd)
-                    voxel.setLogFile(LogFile(log))
-                    p.addStage(voxel)
-
+                # vote!
+                final_dir, base_name = fh.createSubDirSubBase(subject_dir, "final", subject_base_fname + "_labels")
+                voted_labels, log = fh.createOutputAndLogFiles(base_name, base_name, ".mnc")
+                cmd = ["voxel_vote.py"] + labels + [OutputFile(voted_labels)]
+                vote = CmdStage(cmd)
+                vote.setLogFile(LogFile(log))
+                p.addStage(vote)
+                    
+                if not options.validation_labels:
+                    continue
+                
+                # check if there is a validation label set for this subject
+                validation_labels = os.path.join(options.validation_labels, fh.removeFileExt(subject) + "_labels.mnc")
+                if not os.path.exists(validation_labels):
+                    continue
+                    
+                validation_output_file = os.path.join(final_dir, "validation.csv")
+                validate = CmdStage(["volume_similarity.sh", InputFile(voted_labels), validation_labels, OutputFile(validation_output_file)])
+                validate.setLogFile(LogFile(os.path.join(final_dir, "validation.log")))
+                p.addStage(validate)
+                    
             p.initialize()
             p.printStages()
     

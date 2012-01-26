@@ -178,4 +178,5 @@ class mincresample(CmdStage):
         self.outputFiles += [outputFile]
         self.logFile = logfile
         self.cmd += ["-2", "-clobber", inputFile, outputFile]
-
+        fh = mincFileHandling()
+        self.name = "mincresample " + fh.removeFileExt(inputFile) + " " + fh.removeFileExt(outputFile)
