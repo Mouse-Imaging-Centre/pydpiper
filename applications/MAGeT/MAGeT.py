@@ -23,61 +23,66 @@ class Template:
             self.outputdir = outputdir
 
 class SMATregister:
-    def __init__(self, inputFile, template, outDir="", inputMask=None,
+    def __init__(self, inputFile, template, outDir=None, inputMask=None,
                  steps=[0.5,0.2],
                  blurs=[0.5,0.2], iterations=[80,20],
                  name="initial"):
         self.p = Pipeline()
         self.input = inputFile
         
-        input_base_fname = fh.removeFileExt(inputFile)
-        input_dir, input_base = fh.createSubDirSubBase(abspath(outDir), input_base_fname, input_base_fname)
+        if not outDir:
+            outDir = abspath(os.curdir)
+            
+        inputPipeFH = RegistrationPipeFH(inputFile, abspath(outDir))
+        templatePipeFH = RegistrationPipeFH(template.image, template.outputdir)
         
-        self.outDir = input_dir
+        self.outDir = inputPipeFH.subjDir
         self.inputMask = inputMask
         
+        # Note that after testing, these arrays will go away. 
         input_blurs = []
         template_blurs = []
 
         for b in blurs:
-            iblur = blur(inputFile, b)
-            tblur = blur(template.image, b)
+            iblur = blur(inputPipeFH, b)
+            tblur = blur(templatePipeFH, b)
             self.p.addStage(iblur)
             self.p.addStage(tblur)
             #MF TODO: Make sure array concatenation syntax is correct
-            input_blurs += iblur.outputFiles
-            template_blurs += tblur.outputFiles
+            # Last blurs for both input and template should be the ones just added
+            input_blurs += inputPipeFH.getBlur()
+            template_blurs += templatePipeFH.getBlur()
+            print input_blurs #debug
+            print template_blurs #debug
 
         # lsq12 alignment
         linearparam = "lsq12"
-        linearStage = linearminctracc(template_blurs[0], input_blurs[0], linearparam,
-                                       inputMask, template.mask)
+        linearStage = linearminctracc(templatePipeFH, 
+                                      inputPipeFH, 
+                                      blur=blurs[0], 
+                                      linearparam,
+                                      source_mask=template.mask,
+                                      target_Mask=inputMask)
         self.p.addStage(linearStage)
-        linxfm = linearStage.outputFiles[0] #is this correct?
 
         # create the nonlinear registrations
-        xfms = []
-        linearparam = "nlin"
         for i in range(len(steps)):
-            if i == 0:
-                pxfm = linxfm
-            else:
-                pxfm = xfms[i - 1]  
-            nlinStage = minctracc(template_blurs[i],
-                                      input_blurs[i], linearparam,
-                                      inputMask, template.mask,
-                                      iterations=iterations[i],
-                                      step=steps[i],
-                                      transform=pxfm)
+            nlinStage = minctracc(templatePipeFH, 
+                                  inputPipeFH, 
+                                  blur=blurs[i],
+                                  source_mask=template.mask,
+                                  target_Mask=inputMask,
+                                  iterations=iterations[i],
+                                  step=steps[i])
             self.p.addStage(nlinStage)
-            cxfm = nlinStage.outputFiles[0] #is this correct? 
-            xfms += [cxfm]
         
         # resample labels with final registration
         resargs = ["-keep_real_range", "-nearest_neighbour"]
-        resampleStage = mincresample(template.labels, resargs, inputFile, cxfm)
+        resampleStage = mincresample(template.labels, 
+                                     argarray=resargs, 
+                                     likeFile=inputFile)
         self.p.addStage(resampleStage)
-        self.output = resampleStage.outputFiles[0] # again...ok? 
+        self.output = resampleStage.outputFiles[0] # ok to assume this? 
     
     def getTemplate(self):
         return(Template(self.input, self.output, self.inputMask,

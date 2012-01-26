@@ -14,6 +14,7 @@ class RegistrationGroupedFiles():
         self.basevol = [inputVolume]
         self.labels = []
         self.blurs = {}
+        self.gradients = {}
         self.lastblur = None
         self.transforms = []
         
@@ -24,10 +25,12 @@ class RegistrationGroupedFiles():
             fwhm = self.lastblur
         return(self.blurs[fwhm])
 
-    def addBlur(self, filename, fwhm):
+    def addBlur(self, filename, fwhm, gradient=None):
         """adds the blur with the specified kernel"""
         self.blurs[fwhm] = filename
         self.lastblur = fwhm
+        if gradient:
+            self.gradients[fwhm] = gradient
             
 class RegistrationPipeFH():
     """A class to provide file-handling support for registration pipelines
@@ -54,7 +57,9 @@ class RegistrationPipeFH():
     def __init__(self, filename, basedir):
         """two inputs required - an inputFile file and a base directory."""
         self.groupedFiles = [RegistrationGroupedFiles(filename)]
-        self.currentGroupIndex = -1 #MF why -1 instead of 0?
+        #debug
+        print "Number of grouped files at init: " + str(len(self.groupedFiles))
+        self.currentGroupIndex = -1 #MF why -1 instead of 0? TEST
         #MF TODO: verify below with Jason to verify correct interpretation
         self.inputFileName = filename
         # Check to make sure that basedir exists, otherwise create:
@@ -78,7 +83,7 @@ class RegistrationPipeFH():
         self.currentGroupIndex = groupIndex
 
     def setupNames(self):
-        """string munging to create necessary basenames and such"""
+        """string munging to create necessary basenames and directories"""
         self.basename = self.FH.removeFileExt(self.inputFilename)
         self.subjDir = self.FH.createSubDir(self.basedir, self.basename)
         self.logDir = self.FH.createLogDir(self.subjDir)
@@ -111,8 +116,8 @@ class RegistrationPipeFH():
         sourceFilename = self.getBlur()
         
         
-    def getBlur(self):
-        return(self.groupedFiles[self.currentGroupIndex].getBlur())
+    def getBlur(self, fwhm=None): 
+        return(self.groupedFiles[self.currentGroupIndex].getBlur(fwhm))
     def setBlurToUse(self, fwhm):
         self.groupedFiles[self.currentGroupIndex].lastblur = fwhm
     def getLastBasevol(self):
@@ -125,25 +130,24 @@ class RegistrationPipeFH():
         input, the full filename, which mincblur will create after its done,
         and the log file"""
         
-        #MF TODO: Handle if there is no lastBaseVol --> what to do?
+        #MF TODO: Error handling if there is no lastBaseVol
         lastBaseVol = self.getLastBasevol()
 
         outputbase = self.FH.removeBaseAndExtension(lastBaseVol)
         outputbase = "%s/%s_fwhm%g" % (self.tmpDir, outputbase, fwhm)
-        #MF TODO: What if we want both gradient and regular. Do we need to
-        # call this twice?
-        if gradient:
-            withext = "%s_dxyz.mnc", outputbase
-        else:
-            withext = "%s_blur.mnc", outputbase
         
+        withext = "%s_blur.mnc", outputbase       
         log = self.logFromFile(withext)
 
         outlist = { "base" : outputbase,
                     "file" : withext,
                     "log"  : log }
+        
+        if gradient:
+            gradWithExt = "%s_dxyz.mnc", outputbase
+            outlist["gradient"] = gradWithExt
 
-        self.groupedFiles[self.currentGroupIndex].addBlur(withext, fwhm)
+        self.groupedFiles[self.currentGroupIndex].addBlur(withext, fwhm, gradWithExt)
         return(outlist)
         
 class minctracc(CmdStage):
@@ -152,6 +156,7 @@ class minctracc(CmdStage):
                  inTarget,
                  output=None,
                  logFile=None,
+                 blur=None,
                  linearparam="nlin",
                  source_mask=None, 
                  target_mask=None,
@@ -175,15 +180,16 @@ class minctracc(CmdStage):
         """
         CmdStage.__init__(self, None) #don't do any arg processing in superclass
         try: # try with inputs as RegistrationPipeFH instances
-            # MF TODO: get lastBlur from currentGroupIndex? 
-            self.source = inSource.lastBlur
-            self.target = inTarget.lastBlur
+            # if blur = None, getBlur returns lastblur 
+            self.source = inSource.getBlur(blur)
+            self.target = inTarget.getBlur(blur)
             # get the arguments passed to this function - that will be used
             # by the RegistrationPipeFH to build an output filename
             frame = inspect.currentframe()
             args,_,_,arglocals = inspect.getargvalues(frame)
             arglist = [(i, arglocals[i]) for i in args]
             targetList = inSource.registerVolume(inTarget, arglist)
+            #MF TODO: Handle both output xfn and -transform xfm
             self.output = "tmp.xfm" # output will be based on targetList
             self.logFile = "tmp.log"
         except AttributeError: # go with filename inputs
@@ -248,10 +254,22 @@ class minctracc(CmdStage):
                      self.lattice_diameter, self.lattice_diameter]
 
 class linearminctracc(minctracc):
-    def __init__(self, source, target, output=None, logFile=None, 
-                 linearparam, source_mask=None, target_mask=None):
-        minctracc.__init__(self,source,target,output, 
-                           logFile,linearparam,
+    def __init__(self, 
+                 inSource, 
+                 inTarget, 
+                 output=None, 
+                 logFile=None, 
+                 blur=None,
+                 linearparam, 
+                 source_mask=None, 
+                 target_mask=None):
+        minctracc.__init__(self,
+                           inSource,
+                           inTarget,
+                           output, 
+                           logFile,
+                           blur, 
+                           linearparam,
                            source_mask=source_mask,
                            target_mask=target_mask)
 
@@ -263,7 +281,7 @@ class linearminctracc(minctracc):
         self.name = "minctracc" + self.linearparam + " "
 
 class blur(CmdStage):
-    def __init__(self, inFile, fwhm):
+    def __init__(self, inFile, fwhm, gradient=False):
         """calls mincblur with the specified 3D Gaussian kernel
 
         The inputs can be in one of two styles. The first argument can
@@ -280,22 +298,29 @@ class blur(CmdStage):
         # first try to generate the filenames if inputFile was a filehandler
         #MF TODO: In both instances, better handle gradient option
         try:
-            blurlist = inFile.blurFile(fwhm)
+            blurlist = inFile.blurFile(fwhm, gradient)
             self.base = blurlist["outputbase"]
             self.inputFiles = [inFile.lastBaseVol]
             self.outputFiles = [blurlist["withext"]]
             self.logFile = blurlist["log"]
+            if gradient:
+                self.outputFiles.append(blurlist["gradient"])
         except AttributeError:
             # this means it wasn't a filehandler - now assume it's a file
             self.base = inFile.replace(".mnc", "")
             self.inputFiles = [inFile]
             blurBase = "".join([self.base, "_fwhm", str(fwhm), "_blur"])
             self.outputFiles = ["".join([blurBase, ".mnc"])]
+            if gradient:
+                gradientBase = blurBase.replace("blur", "dxyz")
+                self.outputFiles += ["".join([gradientBase, ".mnc"])]
             # Check for log directory and create logfile
             self.logFile = fh.createLogDirandFile(abspath(os.curdir), blurBase)
 
         self.cmd = ["mincblur", "-clobber", "-fwhm", str(fwhm),
                     inFile, self.base]
+        if gradient:
+            self.cmd += ["-gradient"]
         self.name = "mincblur " + str(fwhm) + " " + basename(inFile)
         self.colour="blue"
 
@@ -320,6 +345,7 @@ class mincresample(CmdStage):
         """
         #MF TODO: What if we don't want to use lastBasevol? 
         #MF TODO: Do we need to parse argarray for input or output files? 
+        #MF TODO: Need to get xfm file if not in input
         if argarray:
             argarray.insert(0, "mincresample")
         else:
