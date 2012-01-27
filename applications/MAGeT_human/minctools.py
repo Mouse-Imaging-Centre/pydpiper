@@ -13,7 +13,7 @@ class mincFileHandling(FileHandling):
     def createXfmAndLogFiles(self, output_base, log_base, argArray):
         return (self.createOutputAndLogFiles(output_base, log_base, ".xfm", argArray))
     def createResampledAndLogFiles(self, output_base, log_base, argArray):
-        argArray.insert(0, "resampled")
+        #argArray.insert(0, "resampled")
         return (self.createOutputAndLogFiles(output_base, log_base, ".mnc", argArray))
 
 class minctracc(CmdStage):
@@ -120,7 +120,7 @@ class nu_correct(CmdStage):
         self.outputFiles = [output]
         self.logFile = logfile
         self.cmd = ["nu_correct", "-clobber", input, output]
-        self.name = "nu_correct " + basename(input)
+        self.name = "nu_correct " + basename(input) + " " + output 
 
 class bestlinreg(CmdStage):
     def __init__(self, source, target, xfm, log_file):
@@ -179,4 +179,4 @@ class mincresample(CmdStage):
         self.logFile = logfile
         self.cmd += ["-2", "-clobber", inputFile, outputFile]
         fh = mincFileHandling()
-        self.name = "mincresample " + fh.removeFileExt(inputFile) + " " + fh.removeFileExt(outputFile)
+        

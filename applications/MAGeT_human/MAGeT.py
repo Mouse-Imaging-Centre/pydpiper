@@ -77,7 +77,7 @@ class SMATregister:
         target_base_fname   = fh.removeFileExt(self.target)
         template_base_fname = fh.removeFileExt(self.template.image)
         output_target_dir = fh.createSubDir(abspath(self.root_dir), target_base_fname)            
-        output_dir, output_base_fname = fh.createSubDirSubBase(output_target_dir, template_base_fname, target_base_fname)
+        output_dir, output_base_fname = fh.createSubDirSubBase(output_target_dir, template_base_fname, target_base_fname + "_" + template_base_fname)
         log_dir, log_base = fh.createLogDirLogBase(output_dir, target_base_fname)
     
         inuc, inuc_log = fh.createOutputAndLogFiles(output_base_fname, log_base, "_nuc.mnc" )
@@ -94,7 +94,7 @@ class SMATregister:
             p.addStage(mincresample(inuc, linres, linres_log, argarray=["-sinc", "-width", "2"], like=self.template.image, cxfm=linxfm))
     
             # non-linear registration        
-            iterations = test_mode and 1 or 15  
+            iterations = 15  
             nl0, logfile0 = fh.createXfmAndLogFiles(output_base_fname, log_base, ["step_0"])
             nl1, logfile1 = fh.createXfmAndLogFiles(output_base_fname, log_base, ["step_1"])
             nl2, logfile2 = fh.createXfmAndLogFiles(output_base_fname, log_base, ["step_2"])
@@ -137,7 +137,13 @@ class SMATregister:
         
         return (p, output_template)
     
-
+def get_labels_for_image(image_file, labels_dir):
+    """Get the labels file for the given image.
+    
+       Look in the labels_dir for a file named <image_file>_labels.mnc
+    """
+    return os.path.join(labels_dir, fh.removeFileExt(image_file) + "_labels.mnc")
+    
 if __name__ == "__main__":
     usage = "%prog [options] subjects_dir"
     description = "subjects_dir holds the subject brain images in .mnc format"
@@ -148,7 +154,7 @@ if __name__ == "__main__":
     parser.add_option("--atlas-labels", "-a", dest="atlas_labels",
                       type="string", 
                       help="MINC volume containing labelled structures")
-    parser.add_option("--atlas-image", "-i", dest="atlas_image",
+    parser.add_option("--atlas-images", "-i", dest="atlas_images",
                       type="string",
                       help="MINC volume of image corresponding to labels")
     parser.add_option("--atlas-roi", "-r", dest="atlas_roi",
@@ -219,12 +225,7 @@ if __name__ == "__main__":
         # segmentation_dir holds all of the participant segmentations, including the final voted on labels
         template_dir = fh.createSubDir(outputDir, "template-lib")
         segmentation_dir= fh.createSubDir(outputDir, "segmentations")
-        
-        atlas = Template(options.atlas_image, 
-                         options.atlas_labels,
-                         mask=options.mask, 
-                         roi = options.atlas_roi )
-        
+                
         p = Pipeline()
         p.setBackupFileLocation(outputDir)
 
@@ -234,7 +235,8 @@ if __name__ == "__main__":
         else:
             subjects_dir = args[0]
             
-            # get a list of the subjects
+            # get a list of the subjects and atlases
+            atlas_images  = glob.glob(os.path.join(options.atlas_images, "*.mnc"))
             subject_files = glob.glob(os.path.join(subjects_dir,"*.mnc"))
             
             # create the initial templates - either total number of files
@@ -243,11 +245,16 @@ if __name__ == "__main__":
             numTemplates = min(len(subject_files), options.max_templates)
             
     
-            for nfile in range(numTemplates):
-                sp = SMATregister(subject_files[nfile], atlas, root_dir=template_dir)
-                pipeline, output_template = sp.build_pipeline()
-                templates.append(output_template)
-                p.addPipeline(pipeline)
+            # for each atlas, register to all of the templates in order to build the template library
+            for atlas_image in atlas_images: 
+                atlas_labels = get_labels_for_image(atlas_image, options.atlas_labels) 
+                atlas_template = Template(atlas_image, atlas_labels)
+                
+                for nfile in range(numTemplates):
+                    sp = SMATregister(subject_files[nfile], atlas_template, root_dir=template_dir)
+                    pipeline, output_template = sp.build_pipeline()
+                    templates.append(output_template)
+                    p.addPipeline(pipeline)
 
             # once the initial templates have been created, go and register each
             # subject to the templates
@@ -274,7 +281,9 @@ if __name__ == "__main__":
                     continue
                 
                 # check if there is a validation label set for this subject
-                validation_labels = os.path.join(options.validation_labels, fh.removeFileExt(subject) + "_labels.mnc")
+
+                validation_labels = get_labels_for_image(subject, options.validation_labels)
+                
                 if not os.path.exists(validation_labels):
                     continue
                     
