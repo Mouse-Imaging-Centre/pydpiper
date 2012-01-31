@@ -92,21 +92,21 @@ class SMATregister:
         p.addStage(nu_correct(self.target, inuc, inuc_log))
         
         # linear registration to TAL space, using the template as a model      
-        linxfm, linreg_log = fh.createXfmAndLogFiles(output_base_fname, log_base, ["lin"])
+        linxfm, linreg_log = fh.createOutputAndLogFiles(output_base_fname, log_base, "lin.xfm" )
         p.addStage(bestlinreg(inuc, self.template.image, linxfm, linreg_log))
         
         #assert template.model_dir != "", "Expected model directory supplied for mritotal linear registration step"        
         #p.addStage(mritotal(inuc, linxfm, template.model_dir, fh.removeFileExt(template.image), linreg_log))
         
         if not test_mode:
-            linres, linres_log = fh.createMincAndLogFiles(output_base_fname, log_base, ["linres"])
+            linres, linres_log = fh.createOutputAndLogFiles(output_base_fname, log_base, "linres.mnc" )
             p.addStage(mincresample(inuc, linres, linres_log, argarray=["-sinc", "-width", "2"], like=self.template.image, cxfm=linxfm))
     
             # non-linear registration        
             iterations = 15  
-            nl0, logfile0 = fh.createXfmAndLogFiles(output_base_fname, log_base, ["nl_0"])
-            nl1, logfile1 = fh.createXfmAndLogFiles(output_base_fname, log_base, ["nl_1"])
-            nl2, logfile2 = fh.createXfmAndLogFiles(output_base_fname, log_base, ["nl_2"])
+            nl0, logfile0 = fh.createOutputAndLogFiles(output_base_fname, log_base, "nl_0.xfm" )
+            nl1, logfile1 = fh.createOutputAndLogFiles(output_base_fname, log_base, "nl_1.xfm" )
+            nl2, logfile2 = fh.createOutputAndLogFiles(output_base_fname, log_base, "nl_2.xfm" )
         
 
             p.addStage(minctracc(linres, self.template.roi, nl0, logfile0, 
@@ -128,7 +128,7 @@ class SMATregister:
                                  transform = nl1,
                                  iterations=iterations))
         
-            nlxfm, logfile_nl = fh.createXfmAndLogFiles(output_base_fname, log_base, ["reg"])
+            nlxfm, logfile_nl = fh.createOutputAndLogFiles(output_base_fname, log_base, "reg.xfm" )
             p.addStage(xfmconcat([linxfm, nl2], nlxfm, logfile_nl))
             
         else:
@@ -136,13 +136,13 @@ class SMATregister:
             
         # resample labels with final registration
         resargs = ["-nearest_neighbour", "-invert", "-byte"]
-        labels, logfile = fh.createMincAndLogFiles(output_base_fname, log_base, ["labels"])
+        labels, logfile = fh.createOutputAndLogFiles(output_base_fname, log_base, "labels.mnc" )
         p.addStage(mincresample(self.template.labels, labels, logfile, resargs, cxfm=nlxfm, like=inuc))
         
         outputs = []
         outputs.append(labels)        
         
-        output_template = Template(self.target, labels, roi=self.target)
+        output_template = Template(self.target, labels, roi=self.target, directory = output_dir)
         
         return (p, output_template)
     
@@ -232,8 +232,8 @@ if __name__ == "__main__":
         # create the output directories 
         # template_dir holds all of the generated templates
         # segmentation_dir holds all of the participant segmentations, including the final voted on labels
-        template_dir = fh.createSubDir(outputDir, "template-lib")
-        segmentation_dir= fh.createSubDir(outputDir, "segmentations")
+        registrations_dir = fh.createSubDir(outputDir, "registrations")
+        labels_dir = fh.createSubDir(outputDir, "voted_labels")
                 
         p = Pipeline()
         p.setBackupFileLocation(outputDir)
@@ -260,7 +260,7 @@ if __name__ == "__main__":
                 atlas_template = Template(atlas_image, atlas_labels)
                 
                 for nfile in range(numTemplates):
-                    sp = SMATregister(subject_files[nfile], atlas_template, root_dir=template_dir)
+                    sp = SMATregister(subject_files[nfile], atlas_template, root_dir=registrations_dir)
                     pipeline, output_template = sp.build_pipeline()
                     templates.append(output_template)
                     p.addPipeline(pipeline)
@@ -270,17 +270,21 @@ if __name__ == "__main__":
             for subject in subject_files:
                 labels = []
                 for t in templates:
-                    sp = SMATregister(subject, t, root_dir=segmentation_dir)
+                    root_dir = os.path.dirname(t.directory) 
+                    sp = SMATregister(subject, t, root_dir=root_dir)
                     pipeline, output_template = sp.build_pipeline()
                     labels.append(InputFile(output_template.labels))
                     p.addPipeline(pipeline)
-                    
-                subject_base_fname = fh.removeFileExt(subject)
-                subject_dir = os.path.join(segmentation_dir,subject_base_fname)
                 
-                # vote!
-                final_dir, base_name = fh.createSubDirSubBase(subject_dir, "final", subject_base_fname + "_labels")
-                voted_labels, log = fh.createOutputAndLogFiles(base_name, base_name, ".mnc")
+                # vote 
+                subject_base_fname = fh.removeFileExt(subject)
+                vote_dir = fh.createSubDir(labels_dir, subject_base_fname) 
+                log_dir = fh.createLogDir(vote_dir)
+                vote_base = vote_dir + "/"
+                log_base  = log_dir + "/"
+                
+                voted_labels, log = fh.createOutputAndLogFiles(vote_base, log_base, "labels.mnc")
+                
                 cmd = ["voxel_vote.py"] + labels + [OutputFile(voted_labels)]
                 vote = CmdStage(cmd)
                 vote.setLogFile(LogFile(log))
@@ -290,15 +294,13 @@ if __name__ == "__main__":
                     continue
                 
                 # check if there is a validation label set for this subject
-
-                validation_labels = get_labels_for_image(subject, options.validation_labels)
-                
+                validation_labels = get_labels_for_image(subject, options.validation_labels)                
                 if not os.path.exists(validation_labels):
                     continue
-                    
-                validation_output_file = os.path.join(final_dir, "validation.csv")
+                
+                validation_output_file, log =  fh.createOutputAndLogFiles(vote_base, log_base, "validation.csv")
                 validate = CmdStage(["volume_similarity.sh", InputFile(voted_labels), validation_labels, OutputFile(validation_output_file)])
-                validate.setLogFile(LogFile(os.path.join(final_dir, "validation.log")))
+                validate.setLogFile(LogFile(log))
                 p.addStage(validate)
                     
             p.initialize()
