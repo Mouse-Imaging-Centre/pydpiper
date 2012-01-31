@@ -16,6 +16,7 @@ Pyro.config.PYRO_MOBILE_CODE=1
 fh = mincFileHandling()
 test_mode = False
 logger = logging.getLogger("MAGeT")
+
 #Nomenclature: 
 #    Atlas    - a MINC volume and corresponding label volume
 #    Template - Refers to the application of atlas labels applied to a subject brain 
@@ -152,7 +153,52 @@ def get_labels_for_image(image_file, labels_dir):
        Look in the labels_dir for a file named <image_file>_labels.mnc
     """
     return os.path.join(labels_dir, fh.removeFileExt(image_file) + "_labels.mnc")
+
+def volume_similarity(labels, validation_labels, output_dir, pipeline):
+    pass
+
+def majority_vote(subject, labels, pipeline, output_dir, validation_labels_dir = None):
+    subject_base_fname = fh.removeFileExt(subject)
+    vote_dir = fh.createSubDir(output_dir, subject_base_fname) 
+    log_dir = fh.createLogDir(vote_dir)
+    vote_base = vote_dir + "/"
+    log_base = log_dir + "/"
     
+    voted_labels, log = fh.createOutputAndLogFiles(vote_base, log_base, "labels.mnc")
+    
+    cmd = ["voxel_vote.py"] + labels + [OutputFile(voted_labels)]
+    vote = CmdStage(cmd)
+    vote.setLogFile(LogFile(log))
+    pipeline.addStage(vote)
+    
+    if not validation_labels_dir:
+        continue
+    
+    # check if there is a validation label set for this subject
+    subject_validation_labels = get_labels_for_image(subject, validation_labels_dir)                
+    if not os.path.exists(subject_validation_labels):
+        continue
+    
+    validation_output_file, log =  fh.createOutputAndLogFiles(vote_base, log_base, "validation.csv")
+    validate = CmdStage(["volume_similarity.sh", InputFile(voted_labels), subject_validation_labels, OutputFile(validation_output_file)])
+    validate.setLogFile(LogFile(log))
+    pipeline.addStage(validate)
+        
+class BasicMAGeT():
+    def __init__(self, atlases, subjects, validation_labels_dir):
+        pass
+    def set_label_propagation_method(self, method):
+        """Sets the label propagation method to use.
+        
+           Method should be a SMATRegistration or subclass
+        """
+        pass
+    
+    def build_pipeline(self, output_dir, pipeline):
+        """Builds a MAGeT pipeline."""
+        pass
+
+        
 if __name__ == "__main__":
     usage = "%prog [options] subjects_dir"
     description = "subjects_dir holds the subject brain images in .mnc format"
@@ -233,7 +279,7 @@ if __name__ == "__main__":
         # template_dir holds all of the generated templates
         # segmentation_dir holds all of the participant segmentations, including the final voted on labels
         registrations_dir = fh.createSubDir(outputDir, "registrations")
-        labels_dir = fh.createSubDir(outputDir, "voted_labels")
+        labels_dir = fh.createSubDir(outputDir, "labels")
                 
         p = Pipeline()
         p.setBackupFileLocation(outputDir)
@@ -276,32 +322,9 @@ if __name__ == "__main__":
                     labels.append(InputFile(output_template.labels))
                     p.addPipeline(pipeline)
                 
-                # vote 
-                subject_base_fname = fh.removeFileExt(subject)
-                vote_dir = fh.createSubDir(labels_dir, subject_base_fname) 
-                log_dir = fh.createLogDir(vote_dir)
-                vote_base = vote_dir + "/"
-                log_base  = log_dir + "/"
+                majority_vote(subject, labels, p, labels_dir, options.validation_labels)
                 
-                voted_labels, log = fh.createOutputAndLogFiles(vote_base, log_base, "labels.mnc")
-                
-                cmd = ["voxel_vote.py"] + labels + [OutputFile(voted_labels)]
-                vote = CmdStage(cmd)
-                vote.setLogFile(LogFile(log))
-                p.addStage(vote)
-                    
-                if not options.validation_labels:
-                    continue
-                
-                # check if there is a validation label set for this subject
-                validation_labels = get_labels_for_image(subject, options.validation_labels)                
-                if not os.path.exists(validation_labels):
-                    continue
-                
-                validation_output_file, log =  fh.createOutputAndLogFiles(vote_base, log_base, "validation.csv")
-                validate = CmdStage(["volume_similarity.sh", InputFile(voted_labels), validation_labels, OutputFile(validation_output_file)])
-                validate.setLogFile(LogFile(log))
-                p.addStage(validate)
+
                     
             p.initialize()
             p.printStages()
