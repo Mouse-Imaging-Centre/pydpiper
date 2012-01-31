@@ -27,26 +27,32 @@ logger = logging.getLogger("MAGeT")
 #    Subject  - Target brain of the MAGeT pipeline that is to be labeled.  
  
 class Template:
-    def __init__(self, image, labels, mask=None, roi=None):
-        """image     - template image file
-           labels    - list of label files
-           mask      - label mask for 'image'
-           roi       - MINC volume containing a region of the atlas image to do non-linear registration on."
+    def __init__(self, image, labels, mask=None, roi=None, directory = None):
+        """
+           Represents an atlas or a generated template.  
+           
+           image     - brain image file
+           labels    - label image file
+           roi       - MINC volume containing a region of the atlas image to do non-linear registration on.
+           directory - Directory where this generated template exists. None if not known.
         """
            
         assert type(labels) == str, "labels must be a pointer to a label file (as a string)"
         
         self.image     = image
         self.labels    = labels
-        self.mask      = mask
         self.roi       = roi or image
+        self.mask      = mask
+        self.directory = directory   
 
 
 class SMATregister:
     def __init__(self, target, template, root_dir=""):
         """Register input image (target) to a labelled template (template).
         
-            root_dir is the directory under which to place the output directories and files. 
+            root_dir is the directory under which to place the output directories and files.
+            The directory structure produced is <root_dir>/<template>/<target>/. All registration files are placed
+            in that folder  
         """
         
         
@@ -58,46 +64,49 @@ class SMATregister:
     def build_pipeline(self):
         p = Pipeline()
         
-        # file handling stuffs
-        
-        # Create the output directories, in the following pattern:
+        # We create the output directories, in the following pattern:
         #
-        # <root_dir>/<target>/<template>/
+        # <root_dir>/<template>/<target>/
         #
-        # where root_dir is given when this object was initialised
-        #       <target> is the name of the target image 
+        # where root_dir is given when this object was initialised 
+        #       <target> is the name of the target image
         #       <template> is the name of the template image
         #
-        # log files will appear in:
-        # <root_dir>/<target>/<template>/log/
+        # This folder is called the output_dir.
         #
-        # in these folders will be prefixed with <target>.  e.g. H00234_nuc.mnc 
-        # (if <target> is H00234)
+        # log files will appear in:
+        # <output_dir>/log/
+        #
         # 
         target_base_fname   = fh.removeFileExt(self.target)
         template_base_fname = fh.removeFileExt(self.template.image)
-        output_target_dir = fh.createSubDir(abspath(self.root_dir), target_base_fname)            
-        output_dir, output_base_fname = fh.createSubDirSubBase(output_target_dir, template_base_fname, target_base_fname)
-        log_dir, log_base = fh.createLogDirLogBase(output_dir, target_base_fname)
+        output_template_dir = fh.createSubDir(abspath(self.root_dir), template_base_fname)
+        
+        output_dir = fh.createSubDir(output_template_dir, target_base_fname)    
+        log_dir = fh.createLogDir(output_dir)
     
-        inuc, inuc_log = fh.createOutputAndLogFiles(output_base_fname, log_base, "_nuc.mnc" )
+        log_base = log_dir + "/"
+        output_base_fname = output_dir + "/"
+        
+        inuc, inuc_log = fh.createOutputAndLogFiles(output_base_fname, log_base, "nuc.mnc" )
         p.addStage(nu_correct(self.target, inuc, inuc_log))
         
         # linear registration to TAL space, using the template as a model      
         linxfm, linreg_log = fh.createXfmAndLogFiles(output_base_fname, log_base, ["lin"])
         p.addStage(bestlinreg(inuc, self.template.image, linxfm, linreg_log))
+        
         #assert template.model_dir != "", "Expected model directory supplied for mritotal linear registration step"        
         #p.addStage(mritotal(inuc, linxfm, template.model_dir, fh.removeFileExt(template.image), linreg_log))
         
         if not test_mode:
-            linres, linres_log = fh.createResampledAndLogFiles(output_base_fname, log_base, ["linres"])
+            linres, linres_log = fh.createMincAndLogFiles(output_base_fname, log_base, ["linres"])
             p.addStage(mincresample(inuc, linres, linres_log, argarray=["-sinc", "-width", "2"], like=self.template.image, cxfm=linxfm))
     
             # non-linear registration        
-            iterations = test_mode and 1 or 15  
-            nl0, logfile0 = fh.createXfmAndLogFiles(output_base_fname, log_base, ["step_0"])
-            nl1, logfile1 = fh.createXfmAndLogFiles(output_base_fname, log_base, ["step_1"])
-            nl2, logfile2 = fh.createXfmAndLogFiles(output_base_fname, log_base, ["step_2"])
+            iterations = 15  
+            nl0, logfile0 = fh.createXfmAndLogFiles(output_base_fname, log_base, ["nl_0"])
+            nl1, logfile1 = fh.createXfmAndLogFiles(output_base_fname, log_base, ["nl_1"])
+            nl2, logfile2 = fh.createXfmAndLogFiles(output_base_fname, log_base, ["nl_2"])
         
 
             p.addStage(minctracc(linres, self.template.roi, nl0, logfile0, 
@@ -119,7 +128,7 @@ class SMATregister:
                                  transform = nl1,
                                  iterations=iterations))
         
-            nlxfm, logfile_nl = fh.createXfmAndLogFiles(output_base_fname, log_base, ["nl"])
+            nlxfm, logfile_nl = fh.createXfmAndLogFiles(output_base_fname, log_base, ["reg"])
             p.addStage(xfmconcat([linxfm, nl2], nlxfm, logfile_nl))
             
         else:
@@ -127,7 +136,7 @@ class SMATregister:
             
         # resample labels with final registration
         resargs = ["-nearest_neighbour", "-invert", "-byte"]
-        labels, logfile = fh.createResampledAndLogFiles(output_base_fname, log_base, ["labels"])
+        labels, logfile = fh.createMincAndLogFiles(output_base_fname, log_base, ["labels"])
         p.addStage(mincresample(self.template.labels, labels, logfile, resargs, cxfm=nlxfm, like=inuc))
         
         outputs = []

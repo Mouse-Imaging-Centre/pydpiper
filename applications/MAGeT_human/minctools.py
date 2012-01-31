@@ -15,6 +15,8 @@ class mincFileHandling(FileHandling):
     def createResampledAndLogFiles(self, output_base, log_base, argArray):
         argArray.insert(0, "resampled")
         return (self.createOutputAndLogFiles(output_base, log_base, ".mnc", argArray))
+    def createMincAndLogFiles(self, output_base, log_base, argArray):
+        return (self.createOutputAndLogFiles(output_base, log_base, ".mnc", argArray))
 
 class minctracc(CmdStage):
     def __init__(self, source, target, output, logfile,
