@@ -1,18 +1,13 @@
 #!/usr/bin/env python
 
 import logging
-from pydpiper.pipeline import *
-from pydpiper.queueing import *
+from pydpiper.pipeline import Pipeline, InputFile, OutputFile, LogFile, CmdStage
+from pydpiper.application import AbstractApplication
 from minctools import minctracc, nu_correct, bestlinreg, mincresample, xfmconcat, mincFileHandling
-from optparse import OptionParser
-from os.path import dirname, abspath
-from os import mkdir
-import networkx as nx
-from multiprocessing import Event
-import copy 
+import os.path
 import glob 
 
-Pyro.config.PYRO_MOBILE_CODE=1 
+
 fh = mincFileHandling()
 test_mode = False
 logger = logging.getLogger("MAGeT")
@@ -86,7 +81,7 @@ class BasicLabelPropogationStrategy:
     def create_base_names(self):
         target_base_fname = fh.removeFileExt(self.target)
         template_base_fname = fh.removeFileExt(self.template.image)
-        output_template_dir = fh.createSubDir(abspath(self.root_dir), template_base_fname)
+        output_template_dir = fh.createSubDir(os.path.abspath(self.root_dir), template_base_fname)
         output_dir = fh.createSubDir(output_template_dir, target_base_fname)
         log_dir = fh.createLogDir(output_dir)
         log_base = log_dir + "/"
@@ -169,9 +164,9 @@ class BasicMAGeT():
         for atlas in self.atlases: 
             for subject_image in self.get_templates():
                 sp = self.label_propagation_method(subject_image, atlas, root_dir=registrations_dir)
-                pipeline, output_template = sp.build_pipeline()
+                p, output_template = sp.build_pipeline()
                 self.templates.append(output_template)
-                p.addPipeline(pipeline)
+                pipeline.addPipeline(p)
 
         # once the initial templates have been created, go and register each
         # subject to the templates
@@ -180,11 +175,11 @@ class BasicMAGeT():
             for t in self.templates:
                 root_dir = os.path.dirname(t.directory) 
                 sp = self.label_propagation_method(subject_image, t, root_dir=root_dir)
-                pipeline, output_template = sp.build_pipeline()
+                p, output_template = sp.build_pipeline()
                 labels.append(InputFile(output_template.labels))
-                p.addPipeline(pipeline)
+                pipeline.addPipeline(p)
             
-            majority_vote(subject_image, labels, p, labels_dir, validation_labels_dir)
+            majority_vote(subject_image, labels, pipeline, labels_dir, validation_labels_dir)
 
 def get_labels_for_image(image_file, labels_dir):
     """Get the labels file for the given image.
@@ -287,126 +282,72 @@ def majority_vote(subject, labels, pipeline, output_dir, validation_labels_dir =
     pipeline.addStage(validate)
 
     
-if __name__ == "__main__":
-    usage = "%prog [options] subjects_dir"
-    description = "subjects_dir holds the subject brain images in .mnc format"
+class MAGeTApplication(AbstractApplication):
+    def setup_options(self):
+        self.parser.add_option("--atlas-labels", "-a", dest="atlas_labels",
+                          type="string", 
+                          help="MINC volume containing labelled structures")
+        self.parser.add_option("--atlas-images", "-i", dest="atlas_images",
+                          type="string",
+                          help="MINC volume of image corresponding to labels")
+        self.parser.add_option("--atlas-roi", "-r", dest="atlas_roi",
+                          type="string",
+                          help="MINC volume containing a region of the atlas image to do non-linear registration on")
+        self.parser.add_option("--mask", dest="mask",
+                          type="string",
+                          help="Mask to use for all images")
+        self.parser.add_option("--max-templates", dest="max_templates",
+                          default=25, type="int",
+                          help="Maximum number of templates to generate")
+        self.parser.add_option("--validation-labels", dest="validation_labels",
+                          type="string", 
+                          help="Directory containing label files corresponding to input templates (form: <input>_labels.mnc) used for validation")
+        self.parser.add_option("--output-dir", dest="output_directory",
+                          type="string", default="output",
+                          help="Directory where output (template library and segmentations are stored.")
+        self.parser.add_option("--test-mode", dest="test_mode",
+                          action="store_true", default=False,
+                          help="Turns on a testing mode in which the pipeline is simplified and produces output of reduced quality.")
+        
+        self.parser.set_usage("%prog [options] subjects_dir")        
 
-    parser = OptionParser(usage=usage, description=description)
-
-    # atlas options
-    parser.add_option("--atlas-labels", "-a", dest="atlas_labels",
-                      type="string", 
-                      help="MINC volume containing labelled structures")
-    parser.add_option("--atlas-images", "-i", dest="atlas_images",
-                      type="string",
-                      help="MINC volume of image corresponding to labels")
-    parser.add_option("--atlas-roi", "-r", dest="atlas_roi",
-                      type="string",
-                      help="MINC volume containing a region of the atlas image to do non-linear registration on")
-    parser.add_option("--mask", dest="mask",
-                      type="string",
-                      help="Mask to use for all images")
-    parser.add_option("--max-templates", dest="max_templates",
-                      default=25, type="int",
-                      help="Maximum number of templates to generate")
-    parser.add_option("--validation-labels", dest="validation_labels",
-                      type="string", 
-                      help="Directory containing label files corresponding to input templates (form: <input>_labels.mnc) used for validation")
-    
-    # output options
-    parser.add_option("--output-dir", dest="output_directory",
-                      type="string", default="output",
-                      help="Directory where output (template library and segmentations are stored.")    
-    
-    parser.add_option("--test-mode", dest="test_mode", 
-                      action="store_true", 
-                      default=False, 
-                      help="Run this code in a testing mode.  Registration is simplified to make for much shorter process.")
-    
-    # PydPiper options
-    parser.add_option("--uri-file", dest="urifile",
-                      type="string", default=None,
-                      help="Location for uri file if NameServer is not used. If not specified, default is current working directory.")
-    parser.add_option("--use-ns", dest="use_ns",
-                      action="store_true",
-                      help="Use the Pyro NameServer to store object locations")
-    parser.add_option("--create-graph", dest="create_graph",
-                      action="store_true",
-                      help="Create a .dot file with graphical representation of pipeline relationships")
-    parser.add_option("--num-executors", dest="num_exec", 
-                      type="int", default=0, 
-                      help="Launch executors automatically without having to run pipeline_excutor.py independently.")
-    parser.add_option("--proc", dest="proc", 
-                      type="int", default=4,
-                      help="Number of processes per executor. Default is 4. Also sets max value for processor use per executor. Overridden if --num-executors not specified.")
-    parser.add_option("--mem", dest="mem", 
-                      type="float", default=4,
-                      help="Total amount of requested memory. Default is 4G. Overridden if --num-executors not specified.")
-    parser.add_option("--queue", dest="queue", 
-                      type="string", default=None,
-                      help="Use specified queueing system to submit jobs. Default is None.")
-    parser.add_option("--restart", dest="restart", 
-                      action="store_true",
-                      help="Restart pipeline using backup files.")
-    
-    (options,args) = parser.parse_args()
-    
-    if options.queue=="pbs":
-        ppn = 8
-        time = "2:00:00:00"
-        roq = runOnQueueingSystem(options, ppn, time, sys.argv)
-        roq.createPbsScripts()
-    else:
+    def run(self):
+        options = self.options
+        args = self.args
+        
         test_mode = options.test_mode
         
-        outputDir = abspath(options.output_directory)
-        if not isdir(outputDir):
-            mkdir(outputDir)
+        outputDir = os.path.abspath(options.output_directory)
+        if not os.path.isdir(outputDir):
+            os.mkdir(outputDir)
         
         # create the output directories 
         # template_dir holds all of the generated templates
         # segmentation_dir holds all of the participant segmentations, including the final voted on labels
         registrations_dir = fh.createSubDir(outputDir, "registrations")
         labels_dir = fh.createSubDir(outputDir, "majority_vote_labels")
-                
-        p = Pipeline()
-        p.setBackupFileLocation(outputDir)
-
-        if options.restart:
-            print "Restarting pipeline"
-            p.restart()
-        else:
-            subjects_dir = args[0]
-            atlas_images_dir = options.atlas_images
-            atlas_labels_dir = options.atlas_labels
-            validation_labels_dir = options.validation_labels
-            
-            atlases = []
-            for atlas_image in glob.glob(os.path.join(atlas_images_dir, "*.mnc")):
-                atlases.append(Template(atlas_image, get_labels_for_image(atlas_image, atlas_labels_dir)))
-            
-            subject_files = glob.glob(os.path.join(subjects_dir,"*.mnc"))
-            
-            maget = BasicMAGeT(atlases, subject_files)
-            if test_mode: 
-                maget.set_label_propagation_method(TestLabelPropogationStrategy)
-            maget.set_max_templates(options.max_templates)
-            maget.build_pipeline(p, validation_labels_dir, registrations_dir, labels_dir)
-            
-            xcorr_dir = fh.createSubDir(outputDir, "xcorr_vote_labels")
-            xcorr_vote(subject_files, maget.templates, xcorr_dir, p)
-            
-            p.initialize()
-            p.printStages()
-    
-        if options.create_graph:
-            print "Writing dot file..."
-            nx.write_dot(p.G, "labeled-tree.dot")
-            print "Done."
-        #pipelineDaemon runs pipeline, launches Pyro client/server and executors (if specified)
-        # if use_ns is specified, Pyro NameServer must be started. 
-        returnEvent = Event()
-        pipelineDaemon(p, returnEvent, options, sys.argv[0])
-        returnEvent.wait()
-
+        
+        subjects_dir = args[0]
+        atlas_images_dir = options.atlas_images
+        atlas_labels_dir = options.atlas_labels
+        validation_labels_dir = options.validation_labels
+        
+        atlases = []
+        for atlas_image in glob.glob(os.path.join(atlas_images_dir, "*.mnc")):
+            atlases.append(Template(atlas_image, get_labels_for_image(atlas_image, atlas_labels_dir)))
+        
+        subject_files = glob.glob(os.path.join(subjects_dir,"*.mnc"))
+        
+        maget = BasicMAGeT(atlases, subject_files)
+        if test_mode: 
+            maget.set_label_propagation_method(TestLabelPropogationStrategy)
+        maget.set_max_templates(options.max_templates)
+        maget.build_pipeline(self.pipeline, validation_labels_dir, registrations_dir, labels_dir)
+        
+        xcorr_dir = fh.createSubDir(outputDir, "xcorr_vote_labels")
+        xcorr_vote(subject_files, maget.templates, xcorr_dir, self.pipeline)
+        
+if __name__ == "__main__":
+    application = MAGeTApplication()
+    application.start()
     
