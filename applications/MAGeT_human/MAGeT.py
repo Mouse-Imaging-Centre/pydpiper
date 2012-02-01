@@ -61,8 +61,6 @@ class BasicLabelPropogationStrategy:
         self.template = template
         self.root_dir = root_dir
         
-    
-
     def do_linear_registration(self, p, log_base, output_base_fname, inuc):
         linxfm, linreg_log = fh.createOutputAndLogFiles(output_base_fname, log_base, "lin.xfm")
         p.addStage(bestlinreg(inuc, self.template.image, linxfm, linreg_log))
@@ -118,8 +116,9 @@ class BasicLabelPropogationStrategy:
         p.addStage(nu_correct(self.target, inuc, inuc_log))
         
         linxfm = self.do_linear_registration(p, log_base, output_base_fname, inuc)
+    
         nlxfm = self.do_non_linear_registration(p, log_base, output_base_fname, inuc, linxfm)
-            
+        
         # resample labels with final registration
         resargs = ["-nearest_neighbour", "-invert", "-byte"]
         labels, logfile = fh.createOutputAndLogFiles(output_base_fname, log_base, "labels.mnc" )
@@ -132,44 +131,55 @@ class BasicLabelPropogationStrategy:
         
         return (p, output_template)
 
+class TestLabelPropogationStrategy(BasicLabelPropogationStrategy):
+    """A testing version of this strategy which skips the non-linear registration step."""
+    def __init__(self, target, template, root_dir=""):
+        BasicLabelPropogationStrategy.__init__(self, target, template, root_dir)
+    def do_non_linear_registration(self, p, log_base, output_base_fname, inuc, linxfm):
+        return linxfm
         
 class BasicMAGeT():
     def __init__(self, atlases, subject_images):
         self.atlases = atlases
         self.subject_images = subject_images
         self.max_templates = len(subject_images)
+        self.label_propagation_method = BasicLabelPropogationStrategy
         
     def set_label_propagation_method(self, method):
         """Sets the label propagation method to use.
         
            Method should be a SMATRegistration or subclass
         """
-        pass
+        self.label_propagation_method = method
     
     def set_max_templates(self, max_templates):
+        """Sets the maximum number of subjects to use in the template library.""" 
         self.max_templates = max_templates
         
     def get_templates(self):
+        """Returns the subject images to be used to build the template library.
+        
+           Return value is simply a list of paths to images."""
         return self.subject_images[:min(len(self.subject_images), self.max_templates)]
         
     def build_pipeline(self, pipeline, validation_labels_dir, registrations_dir, labels_dir):
-        templates = []
+        self.templates = []
         
         # for each atlas, register to all of the templates in order to build the template library
         for atlas in self.atlases: 
             for subject_image in self.get_templates():
-                sp = BasicLabelPropogationStrategy(subject_image, atlas, root_dir=registrations_dir)
+                sp = self.label_propagation_method(subject_image, atlas, root_dir=registrations_dir)
                 pipeline, output_template = sp.build_pipeline()
-                templates.append(output_template)
+                self.templates.append(output_template)
                 p.addPipeline(pipeline)
 
         # once the initial templates have been created, go and register each
         # subject to the templates
         for subject_image in self.subject_images:
             labels = []
-            for t in templates:
+            for t in self.templates:
                 root_dir = os.path.dirname(t.directory) 
-                sp = BasicLabelPropogationStrategy(subject_image, t, root_dir=root_dir)
+                sp = self.label_propagation_method(subject_image, t, root_dir=root_dir)
                 pipeline, output_template = sp.build_pipeline()
                 labels.append(InputFile(output_template.labels))
                 p.addPipeline(pipeline)
@@ -183,7 +193,7 @@ def get_labels_for_image(image_file, labels_dir):
     """
     return os.path.join(labels_dir, fh.removeFileExt(image_file) + "_labels.mnc")
 
-def xcorr_vote(subject_files, registration_dir, output_dir):
+def xcorr_vote(subject_files, templates, output_dir, pipeline):
     #
     # for each subject, calculate the cross-correlation between it and each of the templates.
     #  
@@ -192,16 +202,62 @@ def xcorr_vote(subject_files, registration_dir, output_dir):
     #
     # Output for this step is in the following form:
     #  <output_dir>/<subject>/xcorr_mask.mnc
-    #  <output_dir>/<subject>/templates.txt      # a list of templates used
-    #  <registration_dir>/<atlas>/<template>/<subject>/xcorr.txt
     #  <output_dir>/<subject>/labels.mnc    
+    #  <template>/<subject>/template_xcorr.txt
     
-    # STEP 1: calculate the correlation masks
     for subject_file in subject_files:
+        # STEP 1: calculate the correlation masks for each subject
         subject_name = fh.removeFileExt(subject_file)
-        for maget_subjects_dir in glob.glob(registration_dir + "/*/*/" + subject_name):
-            pass
-
+        subject_xcorr_base = fh.createSubDir(output_dir, subject_name) + "/"
+        subject_xcorr_log_base = fh.createLogDir(subject_xcorr_base) + "/"
+        
+        # first, gather all of the label files ...
+        template_dirs = [template.directory for template in templates]
+        subject_label_files = map(lambda x: os.path.join(x, subject_name, "labels.mnc"), template_dirs)
+        
+        # ... and average them
+        cmd, merged_labels_file = single_output_command_helper("mincaverage", subject_xcorr_base, "merged_labels.mnc", subject_label_files)
+        pipeline.addStage(cmd)
+        
+        # ... threshold so we only get labels
+        cmd, thesholded_labels_file = single_output_command_helper("minccalc", subject_xcorr_base, "thresholded_labels.mnc", [merged_labels_file], args=["-expression", "A[0]>0"])
+        pipeline.addStage(cmd)
+        
+        # .. dialate to create the mask
+        cmd, label_mask_file = single_output_command_helper("mincmorph", subject_xcorr_base, "label_mask.mnc", [thesholded_labels_file], args=["-successive", "DDD"])
+        pipeline.addStage(cmd)
+        
+        # STEP 2: using this mask, calculate the correlation between this subject, and all of the templates
+        
+        # to parallel lists holding xcorr between a subject and template, and the corresponding propagated labels
+        subject_xcorrs_list = []
+        subject_labels_list = []
+         
+        for template in templates: 
+            subject_dir = os.path.join(template.directory, subject_name) + "/"
+            subject_template_linreg = os.path.join(subject_dir, "linres.mnc")
+            subject_labels = os.path.join(subject_dir, "labels.mnc")
+            
+            cmd, subject_xcorr = single_output_command_helper("xcorr_vol.sh", subject_dir, "template_xcorr.txt", [subject_template_linreg, template.image, label_mask_file])
+            pipeline.addStage(cmd)
+            
+            subject_xcorrs_list.append(subject_xcorr)
+            subject_labels_list.append(subject_labels)
+            
+        # STEP 3: vote!
+        cmd, xcorr_voted_labels = single_output_command_helper("xcorr_vote.sh", subject_xcorr_base, "labels.mnc", subject_labels_list + subject_xcorrs_list)
+        pipeline.addStage(cmd)
+        
+        
+def single_output_command_helper(command_name,  output_base, output, input_files = [], args = []):
+    """Returns a properly configured CmdStage from the given input."""
+    output_base = output_base[-1] == "/" and output_base or output_base + "/"  # nasty way of verifying the trailing slash
+    log_base = fh.createLogDir(output_base) + "/"
+    
+    output_file, log_file = fh.createOutputAndLogFiles(output_base, log_base, output)
+    cmd = CmdStage([command_name] + args + map(lambda x: InputFile(x), input_files) + [OutputFile(output_file)]) 
+    cmd.setLogFile(LogFile(log_file))
+    return cmd, output_file
 
 def majority_vote(subject, labels, pipeline, output_dir, validation_labels_dir = None):
     subject_base_fname = fh.removeFileExt(subject)
@@ -218,12 +274,12 @@ def majority_vote(subject, labels, pipeline, output_dir, validation_labels_dir =
     pipeline.addStage(vote)
     
     if not validation_labels_dir:
-        continue
+        return
     
     # check if there is a validation label set for this subject
     subject_validation_labels = get_labels_for_image(subject, validation_labels_dir)                
     if not os.path.exists(subject_validation_labels):
-        continue
+        return
     
     validation_output_file, log =  fh.createOutputAndLogFiles(vote_base, log_base, "validation.csv")
     validate = CmdStage(["volume_similarity.sh", InputFile(voted_labels), subject_validation_labels, OutputFile(validation_output_file)])
@@ -311,7 +367,7 @@ if __name__ == "__main__":
         # template_dir holds all of the generated templates
         # segmentation_dir holds all of the participant segmentations, including the final voted on labels
         registrations_dir = fh.createSubDir(outputDir, "registrations")
-        labels_dir = fh.createSubDir(outputDir, "labels")
+        labels_dir = fh.createSubDir(outputDir, "majority_vote_labels")
                 
         p = Pipeline()
         p.setBackupFileLocation(outputDir)
@@ -332,9 +388,14 @@ if __name__ == "__main__":
             subject_files = glob.glob(os.path.join(subjects_dir,"*.mnc"))
             
             maget = BasicMAGeT(atlases, subject_files)
+            if test_mode: 
+                maget.set_label_propagation_method(TestLabelPropogationStrategy)
             maget.set_max_templates(options.max_templates)
             maget.build_pipeline(p, validation_labels_dir, registrations_dir, labels_dir)
-                    
+            
+            xcorr_dir = fh.createSubDir(outputDir, "xcorr_vote_labels")
+            xcorr_vote(subject_files, maget.templates, xcorr_dir, p)
+            
             p.initialize()
             p.printStages()
     
