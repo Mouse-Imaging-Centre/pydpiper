@@ -80,7 +80,7 @@ class FileHandling():
         _backupDir = self.createSubDir(output, "backups")
         return(_backupDir)
     def createOutputFileName(self, argArray):
-        self.outFileName = [] #clear out any arguments from previous call	
+        self.outFileName = [] #clear out any arguments from previous call    
         for a in argArray:
             self.outFileName.append(str(a))
         return("".join(self.outFileName))
@@ -435,12 +435,48 @@ def launchServer(pipeline, options, e):
         print("Objects successfully unregistered and daemon shutdown.")
         e.clear()
 
+def flatten_pipeline(p):
+    """return a list of tuples for each stage.
+
+       Each item in the list is (id, command, [dependencies]) 
+       where dependencies is a list of stages that must be completed
+       immediately completed before this stage.
+    """
+    return [(i, str(p.stages[i]), p.G.predecessors(i)) for i in p.G.nodes_iter()]
+
+def sge_script(p):
+    qsub = "sge_batch_hold -l vf=2G"
+    flat = flatten_pipeline(p)
+
+    subs   = []
+    alter  = []
+    unhold = []
+    f = lambda x: "MAGeT_%i" % x
+
+    for i in flat:
+        job_id,cmd,depends = i
+        name = f(job_id)
+        deps = ",".join(map(f,depends))
+        subs.append("%s -N %s %s" % (qsub, name, cmd))
+        if depends:
+            alter.append("qalter -hold_jid %s %s" % (deps,name))
+        unhold.append("qalter -h U %s" % name)
+    
+    return subs + alter + unhold
+
 def pipelineDaemon(pipeline, returnEvent, options=None, programName=None):
     """Launches Pyro server and (if specified by options) pipeline executors"""
     
     #check for valid pipeline 
     if pipeline.runnable.empty()==None:
         print "Pipeline has no runnable stages. Exiting..."
+        sys.exit()
+
+    if options.queue == "sge_script":
+        script = open("sge_script", "w")
+        script.write("\n".join(sge_script(pipeline)))
+        script.close()
+        print "SGE job submission script for this pipeline written to sge_script"
         sys.exit()
 
     if options.urifile==None:
