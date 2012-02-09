@@ -8,7 +8,7 @@ import networkx as nx
 import multiprocessing
 import sys
 
-logger = logging.Logger("pydpiper.application")
+logger = logging.getLogger("pydpiper.application")
 
 
 

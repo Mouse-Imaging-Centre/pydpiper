@@ -11,6 +11,7 @@ import glob
 fh = mincFileHandling()
 test_mode = False
 logger = logging.getLogger("MAGeT")
+logging.basicConfig(filename="MAGeTApplication.log")
 
 #Nomenclature: 
 #    Atlas    - a MINC volume and corresponding label volume
@@ -65,7 +66,8 @@ class BasicLabelPropogationStrategy:
     def do_non_linear_registration(self, p, log_base, output_base_fname, inuc, linxfm):
         linres, linres_log = fh.createOutputAndLogFiles(output_base_fname, log_base, "linres.mnc")
         p.addStage(mincresample(inuc, linres, linres_log, argarray=["-sinc", "-width", "2"], like=self.template.image, cxfm=linxfm))
-    # non-linear registration
+        
+        # non-linear registration
         iterations = 15
         nl0, logfile0 = fh.createOutputAndLogFiles(output_base_fname, log_base, "nl_0.xfm")
         nl1, logfile1 = fh.createOutputAndLogFiles(output_base_fname, log_base, "nl_1.xfm")
@@ -131,6 +133,8 @@ class TestLabelPropogationStrategy(BasicLabelPropogationStrategy):
     def __init__(self, target, template, root_dir=""):
         BasicLabelPropogationStrategy.__init__(self, target, template, root_dir)
     def do_non_linear_registration(self, p, log_base, output_base_fname, inuc, linxfm):
+        linres, linres_log = fh.createOutputAndLogFiles(output_base_fname, log_base, "linres.mnc")
+        p.addStage(mincresample(inuc, linres, linres_log, argarray=["-sinc", "-width", "2"], like=self.template.image, cxfm=linxfm))
         return linxfm
         
 class BasicMAGeT():
@@ -157,7 +161,7 @@ class BasicMAGeT():
            Return value is simply a list of paths to images."""
         return self.subject_images[:min(len(self.subject_images), self.max_templates)]
         
-    def build_pipeline(self, pipeline, validation_labels_dir, registrations_dir, labels_dir):
+    def build_pipeline(self, pipeline, registrations_dir):
         self.templates = []
         
         # for each atlas, register to all of the templates in order to build the template library
@@ -170,16 +174,18 @@ class BasicMAGeT():
 
         # once the initial templates have been created, go and register each
         # subject to the templates
+        subjects_labels = {}
         for subject_image in self.subject_images:
             labels = []
             for t in self.templates:
                 root_dir = os.path.dirname(t.directory) 
                 sp = self.label_propagation_method(subject_image, t, root_dir=root_dir)
                 p, output_template = sp.build_pipeline()
-                labels.append(InputFile(output_template.labels))
+                labels.append(output_template.labels)
                 pipeline.addPipeline(p)
-            
-            majority_vote(subject_image, labels, pipeline, labels_dir, validation_labels_dir)
+            subjects_labels[subject_image] = labels
+        return subjects_labels
+
 
 def get_labels_for_image(image_file, labels_dir):
     """Get the labels file for the given image.
@@ -188,7 +194,7 @@ def get_labels_for_image(image_file, labels_dir):
     """
     return os.path.join(labels_dir, fh.removeFileExt(image_file) + "_labels.mnc")
 
-def xcorr_vote(subject_files, templates, output_dir, pipeline):
+def xcorr_vote_all_subjects(subject_files, templates, output_dir, pipeline):
     #
     # for each subject, calculate the cross-correlation between it and each of the templates.
     #  
@@ -201,10 +207,12 @@ def xcorr_vote(subject_files, templates, output_dir, pipeline):
     #  <template>/<subject>/template_xcorr.txt
     
     for subject_file in subject_files:
+        xcorr_vote(subject_file, templates, output_dir, pipeline)
+        
+def xcorr_vote(subject_file, templates, output_dir, pipeline):
         # STEP 1: calculate the correlation masks for each subject
         subject_name = fh.removeFileExt(subject_file)
         subject_xcorr_base = fh.createSubDir(output_dir, subject_name) + "/"
-        subject_xcorr_log_base = fh.createLogDir(subject_xcorr_base) + "/"
         
         # first, gather all of the label files ...
         template_dirs = [template.directory for template in templates]
@@ -240,9 +248,33 @@ def xcorr_vote(subject_files, templates, output_dir, pipeline):
             subject_labels_list.append(subject_labels)
             
         # STEP 3: vote!
-        cmd, xcorr_voted_labels = single_output_command_helper("xcorr_vote.sh", subject_xcorr_base, "labels.mnc", subject_labels_list + subject_xcorrs_list)
+        cmd, xcorr_voted_labels = single_output_command_helper("xcorr_vote.py", subject_xcorr_base, "labels.mnc", subject_labels_list + subject_xcorrs_list)
         pipeline.addStage(cmd)
+        return xcorr_voted_labels
         
+
+def majority_vote_all_subjects(subject_files, templates, output_dir, pipeline):
+    for subject_file in subject_files:
+        subject_name = fh.removeFileExt(subject_file)
+        
+        # first, gather all of the label files ...
+        template_dirs = [template.directory for template in templates]
+        subject_label_files = map(lambda x: os.path.join(x, subject_name, "labels.mnc"), template_dirs)
+        
+        majority_vote(subject_file, subject_label_files, output_dir, pipeline)
+        
+def majority_vote(subject, labels, output_dir, pipeline):
+    subject_base_fname = fh.removeFileExt(subject)
+    vote_dir = fh.createSubDir(output_dir, subject_base_fname)     
+    cmd, voted_labels = single_output_command_helper("voxel_vote.py", vote_dir, "labels.mnc", labels)
+    pipeline.addStage(cmd)
+    return voted_labels
+
+def compare_similarity(image_path, expected_labels_path, computed_labels_path, output_dir, pipeline):       
+    compare_base = fh.createSubDir(output_dir, fh.removeFileExt(image_path)) 
+    cmd, validation_output_file = single_output_command_helper("volume_similarity.sh", compare_base, "validation.csv", [expected_labels_path, computed_labels_path])
+    pipeline.addStage(cmd)
+    return validation_output_file
         
 def single_output_command_helper(command_name,  output_base, output, input_files = [], args = []):
     """Returns a properly configured CmdStage from the given input."""
@@ -253,34 +285,6 @@ def single_output_command_helper(command_name,  output_base, output, input_files
     cmd = CmdStage([command_name] + args + map(lambda x: InputFile(x), input_files) + [OutputFile(output_file)]) 
     cmd.setLogFile(LogFile(log_file))
     return cmd, output_file
-
-def majority_vote(subject, labels, pipeline, output_dir, validation_labels_dir = None):
-    subject_base_fname = fh.removeFileExt(subject)
-    vote_dir = fh.createSubDir(output_dir, subject_base_fname) 
-    log_dir = fh.createLogDir(vote_dir)
-    vote_base = vote_dir + "/"
-    log_base = log_dir + "/"
-    
-    voted_labels, log = fh.createOutputAndLogFiles(vote_base, log_base, "labels.mnc")
-    
-    cmd = ["voxel_vote.py"] + labels + [OutputFile(voted_labels)]
-    vote = CmdStage(cmd)
-    vote.setLogFile(LogFile(log))
-    pipeline.addStage(vote)
-    
-    if not validation_labels_dir:
-        return
-    
-    # check if there is a validation label set for this subject
-    subject_validation_labels = get_labels_for_image(subject, validation_labels_dir)                
-    if not os.path.exists(subject_validation_labels):
-        return
-    
-    validation_output_file, log =  fh.createOutputAndLogFiles(vote_base, log_base, "validation.csv")
-    validate = CmdStage(["volume_similarity.sh", InputFile(voted_labels), subject_validation_labels, OutputFile(validation_output_file)])
-    validate.setLogFile(LogFile(log))
-    pipeline.addStage(validate)
-
     
 class MAGeTApplication(AbstractApplication):
     def setup_options(self):
@@ -299,9 +303,6 @@ class MAGeTApplication(AbstractApplication):
         self.parser.add_option("--max-templates", dest="max_templates",
                           default=25, type="int",
                           help="Maximum number of templates to generate")
-        self.parser.add_option("--validation-labels", dest="validation_labels",
-                          type="string", 
-                          help="Directory containing label files corresponding to input templates (form: <input>_labels.mnc) used for validation")
         self.parser.add_option("--output-dir", dest="output_directory",
                           type="string", default="output",
                           help="Directory where output (template library and segmentations are stored.")
@@ -316,7 +317,9 @@ class MAGeTApplication(AbstractApplication):
         args = self.args
         
         test_mode = options.test_mode
-        
+        if test_mode: 
+            logging.info("Test mode is on. Pipeline is simplified. Don't expect great results. ")
+            
         outputDir = os.path.abspath(options.output_directory)
         if not os.path.isdir(outputDir):
             os.mkdir(outputDir)
@@ -325,12 +328,10 @@ class MAGeTApplication(AbstractApplication):
         # template_dir holds all of the generated templates
         # segmentation_dir holds all of the participant segmentations, including the final voted on labels
         registrations_dir = fh.createSubDir(outputDir, "registrations")
-        labels_dir = fh.createSubDir(outputDir, "majority_vote_labels")
         
         subjects_dir = args[0]
         atlas_images_dir = options.atlas_images
         atlas_labels_dir = options.atlas_labels
-        validation_labels_dir = options.validation_labels
         
         atlases = []
         for atlas_image in glob.glob(os.path.join(atlas_images_dir, "*.mnc")):
@@ -342,10 +343,17 @@ class MAGeTApplication(AbstractApplication):
         if test_mode: 
             maget.set_label_propagation_method(TestLabelPropogationStrategy)
         maget.set_max_templates(options.max_templates)
-        maget.build_pipeline(self.pipeline, validation_labels_dir, registrations_dir, labels_dir)
+        maget.build_pipeline(self.pipeline, registrations_dir)
         
-        xcorr_dir = fh.createSubDir(outputDir, "xcorr_vote_labels")
+        # fuse labels!     
+        majority_vote_dir = fh.createSubDir(outputDir, "labels_majority_vote")
+        majority_vote_all_subjects(subject_files, maget.templates, majority_vote_dir, self.pipeline)
+        
+        xcorr_dir = fh.createSubDir(outputDir, "labels_xcorr_vote")
         xcorr_vote(subject_files, maget.templates, xcorr_dir, self.pipeline)
+        
+        
+            
         
 if __name__ == "__main__":
     application = MAGeTApplication()

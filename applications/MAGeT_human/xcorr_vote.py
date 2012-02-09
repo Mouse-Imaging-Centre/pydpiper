@@ -28,8 +28,12 @@ if __name__ == "__main__":
 
 
     num_labels = (len(args) - 1) / 2
+
     labels = args[:num_labels]
     xcorr_files = args[num_labels:-1]
+    print num_labels
+    print labels
+    print xcorr_files
     outfilename = args[-1]
     
     # read in the xcorr values
@@ -39,8 +43,8 @@ if __name__ == "__main__":
   
     top_n = options.top_n
     
-    cmd = ["voxel.py"] + sorted_labels[:top_n] + [outfilename]
-    return call(cmd, shell=False)
+    cmd = ["voxel_vote.py"] + sorted_labels[:top_n] + [outfilename]
+    call(cmd, shell=False)
          
     
     

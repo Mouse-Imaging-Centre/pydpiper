@@ -10,8 +10,11 @@ from multiprocessing import Process, Pool
 from subprocess import call
 import pydpiper.queueing as q
 import traceback
+import logging
 
 Pyro.config.PYRO_MOBILE_CODE=1
+
+logger = logging.getLogger("pydpiper.executor")
 
 #use Pyro.core.CallbackObjBase?? - need further review of documentation
 class clientExecutor(Pyro.core.SynchronizedObjBase):
@@ -130,10 +133,10 @@ class pipelineExecutor():
                 # Check for available stages
                 i = p.getRunnableStageIndex()                 
                 if i == None:
-                    print("No runnable stages. Sleeping...")
+                    logger.debug("No runnable stages. Sleeping...")
                     time.sleep(5)
                 else:
-                    print "Considering stage", i
+                    logger.debug("Considering stage %i" % i)
                     # Before running stage, check usable mem & procs
                     completedTasks = []
                     for j,val in enumerate(runningChildren):
@@ -151,7 +154,7 @@ class pipelineExecutor():
                         runningProcs += stageProcs             
                         runningChildren.append(pool.apply_async(runStage,(serverURI, clientURI, i)))
                     else:
-                        print "Not enough resources to run stage", i 
+                        logger.debug("Not enough resources to run stage %i" % i) 
                         p.requeue(i)
         except Exception as e:
             print e
