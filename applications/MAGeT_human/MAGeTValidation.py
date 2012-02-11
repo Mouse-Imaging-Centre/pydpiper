@@ -10,6 +10,7 @@ import glob
 import random
 from pydpiper.application import AbstractApplication
 
+
 class ValidationMAGeT(BasicMAGeT):
     """This variation of the MAGeT algorithm allows you to configure a disjoint set of subjects and templates."""
     def __init__(self, atlas_templates, template_images, subject_images):
@@ -22,7 +23,7 @@ class ValidationMAGeT(BasicMAGeT):
            Return value is simply a list of paths to images."""
         return self.template_images
 
-class MAGeTLeaveOneOutCrossValidationApp(AbstractApplication):
+class MAGeTSubSamplingCrossValidationApp(AbstractApplication):
     """Performs Leave One Out Cross Validation on a given test set.
     
        A number of validation runs are performed.  In each run, the test set is randomly permuted, and 
@@ -73,6 +74,7 @@ class MAGeTLeaveOneOutCrossValidationApp(AbstractApplication):
         # template_dir holds all of the generated templates
         # segmentation_dir holds all of the participant segmentations, including the final voted on labels
         registrations_dir = fh.createSubDir(outputDir, "registrations")
+        labels_dir = fh.createSubDir(outputDir, "labels")
         
         input_images_dir = args[0]
         input_labels_dir = args[1]
@@ -81,20 +83,17 @@ class MAGeTLeaveOneOutCrossValidationApp(AbstractApplication):
         for image in glob.glob(os.path.join(input_images_dir, "*.mnc")):
             brains.append(Template(image, get_labels_for_image(image, input_labels_dir)))
         
-        folds = len(brains)  # we're doing k-fold validation, where k is the number of input brains.
-        num_validations = min(folds, options.num_validations)
+        num_validations = options.num_validations
         
         # begin the validation
-        validation_brains = range(len(brains))
-        random.shuffle(validation_brains)  # shuffled indices into brains.  At each validation we'll use one of these brains as our validation brain 
         for i in range(num_validations):
             print "Validation #", i
             subjects = brains[:]
-            validators = [subjects.pop(validation_brains.pop())]   # take the guy at this index 
             random.shuffle(subjects)
             
             atlases = subjects[:options.num_atlases]
             templates = subjects[options.num_atlases:]
+            validators = templates 
             
             assert len(templates) > 0, "Not enough inputs to create atlas, template and validation set."
             
@@ -114,11 +113,11 @@ class MAGeTLeaveOneOutCrossValidationApp(AbstractApplication):
             if test_mode: 
                maget.set_label_propagation_method(TestLabelPropogationStrategy)
                
-            subjects_labels = maget.build_pipeline(self.pipeline, registrations_dir)
+            subjects_labels = maget.build_pipeline(self.pipeline, registrations_dir, labels_dir)
         
-            # fuse labels!     
-            majority_vote_dir = fh.createSubDir(outputDir, "labels_majority_vote")
-            xcorr_dir = fh.createSubDir(outputDir, "labels_xcorr_vote")
+            # fuse labels!
+            fusion_dir = fh.createSubDir(outputDir, "fusion")
+            majority_vote_dir = fh.createSubDir(fusion_dir, "majority_vote_%i" %i)
             for validator in validators:
                 image = validator.image
                 expected_labels = validator.labels
@@ -126,11 +125,11 @@ class MAGeTLeaveOneOutCrossValidationApp(AbstractApplication):
                 majority_vote_labels = majority_vote(image, subjects_labels[image], majority_vote_dir, self.pipeline)
                 compare_similarity(image, expected_labels, majority_vote_labels, majority_vote_dir, self.pipeline)
             
-                xcorr_vote_labels = xcorr_vote(image, maget.templates, xcorr_dir, self.pipeline)
-                compare_similarity(image, expected_labels, xcorr_vote_labels, xcorr_dir, self.pipeline)
+                #xcorr_vote_labels = xcorr_vote(image, maget.templates, xcorr_dir, self.pipeline, registrations_dir)
+                #compare_similarity(image, expected_labels, xcorr_vote_labels, xcorr_dir, self.pipeline)
             
             #     
 if __name__ == "__main__":
-    application = MAGeTLeaveOneOutCrossValidationApp()
+    application = MAGeTSubSamplingCrossValidationApp()
     application.start()
     

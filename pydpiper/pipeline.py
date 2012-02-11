@@ -215,6 +215,8 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
         self.backupFileLocation = None
         # list of registered clients
         self.clients = []
+        
+        self.skipped_stages = 0
     def addStage(self, stage):
         """adds a stage to the pipeline"""
         # check if stage already exists in pipeline - if so, don't bother
@@ -223,7 +225,8 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
         # for base stages and entire command for CmdStages
         h = stage.getHash()
         if self.stagehash.has_key(h):
-            pass #stage already exists - nothing to be done
+            self.skipped_stages += 1 
+            #stage already exists - nothing to be done
         else: #stage doesn't exist - add it
             # add hash to the dict
             self.stagehash[h] = self.counter
@@ -286,7 +289,9 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
             self.addStage(s)
     def printStages(self):
         for i in range(len(self.stages)):
-            print(str(i) + "  " + str(self.stages[i]))           
+            print(str(i) + "  " + str(self.stages[i]))
+        print self.skipped_stages, "stages skipped as redundant. ", len(self.stages), "stages to run."
+                   
     def createEdges(self):
         """computes stage dependencies by examining their inputs/outputs"""
         starttime = time.time()
@@ -439,8 +444,7 @@ def flatten_pipeline(p):
     """return a list of tuples for each stage.
 
        Each item in the list is (id, command, [dependencies]) 
-       where dependencies is a list of stages that must be completed
-       immediately completed before this stage.
+       where dependencies is a list of stages depend on this stage to be complete before they run.
     """
     return [(i, str(p.stages[i]), p.G.predecessors(i)) for i in p.G.nodes_iter()]
 
@@ -453,15 +457,22 @@ def sge_script(p):
     unhold = []
     f = lambda x: "MAGeT_%i" % x
 
+    skipped_stages = 0
     for i in flat:
         job_id,cmd,depends = i
+        stage  = p.getStage(job_id)
+        if isinstance(stage, CmdStage): 
+            if stage.outputs_exist():
+                skipped_stages += 1
+                continue
         name = f(job_id)
         deps = ",".join(map(f,depends))
-        subs.append("%s -N %s %s" % (qsub, name, cmd))
+        subs.append("%s -J %s %s" % (qsub, name, cmd))
         if depends:
             alter.append("qalter -hold_jid %s %s" % (deps,name))
         unhold.append("qalter -h U %s" % name)
     
+    print skipped_stages, "stages skipped (outputs exist).", len(subs), "stages to run."
     return subs + alter + unhold
 
 def pipelineDaemon(pipeline, returnEvent, options=None, programName=None):

@@ -131,7 +131,7 @@ $jobScript .= "@command \n";
 $sgeOpts = "-l $sgeOpts" if $sgeOpts;
 $sgeOpts .= " -p $sgePriority" if $sgePriority;
 $sgeOpts .= " -pe smp $sgeSMP" if $sgeSMP;
-$sgeOpts .= " -h"
+$sgeOpts .= " -h";
 
 if ($printJob) {
     print $jobScript;
