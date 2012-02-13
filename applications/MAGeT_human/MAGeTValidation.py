@@ -74,7 +74,6 @@ class MAGeTSubSamplingCrossValidationApp(AbstractApplication):
         # template_dir holds all of the generated templates
         # segmentation_dir holds all of the participant segmentations, including the final voted on labels
         registrations_dir = fh.createSubDir(outputDir, "registrations")
-        labels_dir = fh.createSubDir(outputDir, "labels")
         
         input_images_dir = args[0]
         input_labels_dir = args[1]
@@ -113,7 +112,7 @@ class MAGeTSubSamplingCrossValidationApp(AbstractApplication):
             if test_mode: 
                maget.set_label_propagation_method(TestLabelPropogationStrategy)
                
-            subjects_labels = maget.build_pipeline(self.pipeline, registrations_dir, labels_dir)
+            subjects_labels = maget.build_pipeline(self.pipeline, registrations_dir)
         
             # fuse labels!
             fusion_dir = fh.createSubDir(outputDir, "fusion")
