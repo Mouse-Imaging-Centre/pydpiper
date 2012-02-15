@@ -32,37 +32,29 @@ class SMATregister:
         
         if not outDir:
             outDir = abspath(os.curdir)
-            
+        
         inputPipeFH = RegistrationPipeFH(inputFile, abspath(outDir))
         templatePipeFH = RegistrationPipeFH(template.image, template.outputdir)
+        templatePipeFH.addAndSetLabelsToUse(template.labels)
         
-        self.outDir = inputPipeFH.subjDir
+        #MF TODO: Verify self.outDir change with Jason
+        self.outDir = inputPipeFH.basedir
         self.inputMask = inputMask
         
-        # Note that after testing, these arrays will go away. 
-        input_blurs = []
-        template_blurs = []
-
         for b in blurs:
             iblur = blur(inputPipeFH, b)
             tblur = blur(templatePipeFH, b)
             self.p.addStage(iblur)
             self.p.addStage(tblur)
-            #MF TODO: Make sure array concatenation syntax is correct
-            # Last blurs for both input and template should be the ones just added
-            input_blurs += inputPipeFH.getBlur()
-            template_blurs += templatePipeFH.getBlur()
-            print input_blurs #debug
-            print template_blurs #debug
-
+            
         # lsq12 alignment
         linearparam = "lsq12"
         linearStage = linearminctracc(templatePipeFH, 
                                       inputPipeFH, 
                                       blur=blurs[0], 
-                                      linearparam,
+                                      linearparam=linearparam,
                                       source_mask=template.mask,
-                                      target_Mask=inputMask)
+                                      target_mask=inputMask)
         self.p.addStage(linearStage)
 
         # create the nonlinear registrations
@@ -71,18 +63,16 @@ class SMATregister:
                                   inputPipeFH, 
                                   blur=blurs[i],
                                   source_mask=template.mask,
-                                  target_Mask=inputMask,
+                                  target_mask=inputMask,
                                   iterations=iterations[i],
                                   step=steps[i])
             self.p.addStage(nlinStage)
         
         # resample labels with final registration
-        resargs = ["-keep_real_range", "-nearest_neighbour"]
-        resampleStage = mincresample(template.labels, 
-                                     argarray=resargs, 
-                                     likeFile=inputFile)
+        resampleStage = mincresampleLabels(templatePipeFH, likeFile=inputPipeFH)
+        self.output = resampleStage.outputFiles[0]
         self.p.addStage(resampleStage)
-        self.output = resampleStage.outputFiles[0] # ok to assume this? 
+        
     
     def getTemplate(self):
         return(Template(self.input, self.output, self.inputMask,
@@ -175,9 +165,10 @@ if __name__ == "__main__":
             for inputFile in args:
                 labels = []
                 for t in templates:
-                    sp = SMATregister(inputFile, t, outDir=outputDir, inputMask=options.mask, name="templates")
-                    labels.append(InputFile(sp.output))
-                    p.addPipeline(sp.p)
+                        if t.image != inputFile:
+                            sp = SMATregister(inputFile, t, outDir=outputDir, inputMask=options.mask, name="templates")
+                            labels.append(InputFile(sp.output))
+                            p.addPipeline(sp.p)
                 bname = fh.removeFileExt(inputFile)
                 base = fh.createBaseName(outputDir, bname + "_votedlabels")
                 out, log = fh.createOutputAndLogFiles(base, base, ".mnc")

@@ -13,10 +13,12 @@ class RegistrationGroupedFiles():
     def __init__(self, inputVolume):
         self.basevol = [inputVolume]
         self.labels = []
+        self.lastLabels = None
         self.blurs = {}
         self.gradients = {}
-        self.lastblur = None
+        self.lastblur = None #This can be a gradient.
         self.transforms = []
+        self.lastTransform = None
         
     def getBlur(self, fwhm=None):
         """returns file with specified blurring kernel
@@ -31,7 +33,7 @@ class RegistrationGroupedFiles():
         self.lastblur = fwhm
         if gradient:
             self.gradients[fwhm] = gradient
-            
+    
 class RegistrationPipeFH():
     """A class to provide file-handling support for registration pipelines
 
@@ -57,8 +59,6 @@ class RegistrationPipeFH():
     def __init__(self, filename, basedir):
         """two inputs required - an inputFile file and a base directory."""
         self.groupedFiles = [RegistrationGroupedFiles(filename)]
-        #debug
-        print "Number of grouped files at init: " + str(len(self.groupedFiles))
         self.currentGroupIndex = -1 #MF why -1 instead of 0? TEST
         #MF TODO: verify below with Jason to verify correct interpretation
         self.inputFileName = filename
@@ -68,6 +68,8 @@ class RegistrationPipeFH():
         self.groupNames = {'base' : 0}       
         # create directories
         self.setupNames()
+        # set lastBaseVol
+        self.lastBaseVol = filename
     
     def newGroup(self, inputVolume = None, groupName = None):
         """create a new set of grouped files"""
@@ -84,13 +86,13 @@ class RegistrationPipeFH():
 
     def setupNames(self):
         """string munging to create necessary basenames and directories"""
-        self.basename = self.FH.removeFileExt(self.inputFilename)
-        self.subjDir = self.FH.createSubDir(self.basedir, self.basename)
-        self.logDir = self.FH.createLogDir(self.subjDir)
-        self.resampledDir = self.FH.createSubDir(self.subjDir, "resampled")
-        self.transformsDir = self.FH.createSubDir(self.subjDir, "transforms")
-        self.labelsDir = self.FH.createSubDir(self.subjDir, "labels")
-        self.tmpDir = self.FH.createSubDir(self.subjDir, "tmp")
+        self.basename = fh.removeFileExt(self.inputFileName)
+        self.subjDir = fh.createSubDir(self.basedir, self.basename)
+        self.logDir = fh.createLogDir(self.subjDir)
+        self.resampledDir = fh.createSubDir(self.subjDir, "resampled")
+        self.transformsDir = fh.createSubDir(self.subjDir, "transforms")
+        self.labelsDir = fh.createSubDir(self.subjDir, "labels")
+        self.tmpDir = fh.createSubDir(self.subjDir, "tmp")
         
     def logFromFile(self, inFile):
         """ creates a log file from an input filename
@@ -100,8 +102,8 @@ class RegistrationPipeFH():
         with a .log extension"""
 
         #MF TODO: Can we move to fileHandling class?  
-        logBase = self.FH.removeBaseAndExtension(inFile)
-        log = self.FH.createLogFile(self.logDir, logBase)
+        logBase = fh.removeBaseAndExtension(inFile)
+        log = fh.createLogFile(self.logDir, logBase)
         return(log)
 
     def registerVolume(self, targetFH, arglist):
@@ -113,16 +115,46 @@ class RegistrationPipeFH():
         mincANTS calls and will be used to provide a unique filename.
 
         """
-        sourceFilename = self.getBlur()
-        
-        
+        # Could arglist contain blur information?
+        sourceFilename = self.basename
+        targetFilename = targetFH.basename
+        # check to make sure blurs match, otherwise throw error?
+        # Go through argument list to build file name
+        xfmFileName = [sourceFilename, "to", targetFilename]
+        for i, j in enumerate(arglist):
+            k, l = j
+            # MF TODO: Think about how to handle gradient case
+            if k == 'blur':
+                xfmFileName += [str(l), "blur"]
+            elif k == 'linearparam':
+                xfmFileName += [l]
+            elif k == 'iterations':
+                xfmFileName += ["iter", str(l)]
+        xfmFileWithExt = "_".join(xfmFileName) + ".xfm"
+        return(fh.createBaseName(self.tmpDir, xfmFileWithExt))
+    #MF TODO: This code is getting a bit repetitive. Lets see if we can't
+    # consolidate a bit.     
     def getBlur(self, fwhm=None): 
         return(self.groupedFiles[self.currentGroupIndex].getBlur(fwhm))
     def setBlurToUse(self, fwhm):
         self.groupedFiles[self.currentGroupIndex].lastblur = fwhm
+    #MF TODO: Fix the function below?
     def getLastBasevol(self):
         return(self.groupedFiles[self.currentGroupIndex].basevol[-1])
-
+    def getLastXfm(self):
+        return(self.groupedFiles[self.currentGroupIndex].lastTransform)
+    def addAndSetXfmToUse(self, xfm):
+        currGroup = self.groupedFiles[self.currentGroupIndex]
+        if not currGroup.transforms.__contains__(xfm):
+            currGroup.transforms.append(xfm)
+        currGroup.lastTransform = xfm
+    def getLastLabels(self):
+        return(self.groupedFiles[self.currentGroupIndex].lastLabels)
+    def addAndSetLabelsToUse(self, labels):
+        currGroup = self.groupedFiles[self.currentGroupIndex]
+        if not currGroup.labels.__contains__(labels):
+            currGroup.labels.append(labels)
+        currGroup.lastLabels = labels
     def blurFile(self, fwhm, gradient=False):
         """create filename for a mincblur call
 
@@ -132,11 +164,10 @@ class RegistrationPipeFH():
         
         #MF TODO: Error handling if there is no lastBaseVol
         lastBaseVol = self.getLastBasevol()
-
-        outputbase = self.FH.removeBaseAndExtension(lastBaseVol)
+        outputbase = fh.removeBaseAndExtension(lastBaseVol)
         outputbase = "%s/%s_fwhm%g" % (self.tmpDir, outputbase, fwhm)
         
-        withext = "%s_blur.mnc", outputbase       
+        withext = "%s_blur.mnc" % outputbase     
         log = self.logFromFile(withext)
 
         outlist = { "base" : outputbase,
@@ -146,6 +177,8 @@ class RegistrationPipeFH():
         if gradient:
             gradWithExt = "%s_dxyz.mnc", outputbase
             outlist["gradient"] = gradWithExt
+        else:
+            gradWithExt=None
 
         self.groupedFiles[self.currentGroupIndex].addBlur(withext, fwhm, gradWithExt)
         return(outlist)
@@ -183,29 +216,32 @@ class minctracc(CmdStage):
             # if blur = None, getBlur returns lastblur 
             self.source = inSource.getBlur(blur)
             self.target = inTarget.getBlur(blur)
-            # get the arguments passed to this function - that will be used
+            if not transform:
+                # Note: this may also be None and should be for initial call
+                self.transform = inSource.getLastXfm()
+            # get the arguments passed to this function - these will be used
             # by the RegistrationPipeFH to build an output filename
             frame = inspect.currentframe()
             args,_,_,arglocals = inspect.getargvalues(frame)
             arglist = [(i, arglocals[i]) for i in args]
-            targetList = inSource.registerVolume(inTarget, arglist)
-            #MF TODO: Handle both output xfn and -transform xfm
-            self.output = "tmp.xfm" # output will be based on targetList
-            self.logFile = "tmp.log"
+            outputXfm = inSource.registerVolume(inTarget, arglist)
+            self.output = outputXfm
+            self.logFile = inSource.logFromFile(outputXfm)
+            # Set new xfm as input for next time
+            inSource.addAndSetXfmToUse(outputXfm)
         except AttributeError: # go with filename inputs
             self.source = inSource
             self.target = inTarget
-            # MF TODO: use registerVolume here/make general? 
             self.output = output
             self.logFile = logFile
+            self.transform = transform
         
         self.linearparam = linearparam
         self.source_mask = source_mask
         self.target_mask = target_mask
         self.iterations = str(iterations)
         self.lattice_diameter = str(step*3)
-        self.step = str(step)
-        self.transform = transform
+        self.step = str(step)       
         self.weight = str(weight)
         self.stiffness = str(stiffness)
         self.similarity = str(similarity)
@@ -231,7 +267,6 @@ class minctracc(CmdStage):
                     self.target,
                     self.output]
         
-        # adding inputs and outputs
         # adding inputs and outputs
         self.inputFiles = [self.source, self.target]
         if self.source_mask:
@@ -260,7 +295,7 @@ class linearminctracc(minctracc):
                  output=None, 
                  logFile=None, 
                  blur=None,
-                 linearparam, 
+                 linearparam="lsq12", 
                  source_mask=None, 
                  target_mask=None):
         minctracc.__init__(self,
@@ -299,34 +334,42 @@ class blur(CmdStage):
         #MF TODO: In both instances, better handle gradient option
         try:
             blurlist = inFile.blurFile(fwhm, gradient)
-            self.base = blurlist["outputbase"]
+            self.base = blurlist["base"]
             self.inputFiles = [inFile.lastBaseVol]
-            self.outputFiles = [blurlist["withext"]]
+            self.outputFiles = [blurlist["file"]]
             self.logFile = blurlist["log"]
+            self.name = "mincblur " + str(fwhm) + " " + inFile.basename
             if gradient:
                 self.outputFiles.append(blurlist["gradient"])
         except AttributeError:
+            #print "Unexpected error: ", sys.exc_info()
+            #print "In blur attribute error except"
             # this means it wasn't a filehandler - now assume it's a file
-            self.base = inFile.replace(".mnc", "")
+            self.base = str(inFile).replace(".mnc", "")
             self.inputFiles = [inFile]
             blurBase = "".join([self.base, "_fwhm", str(fwhm), "_blur"])
             self.outputFiles = ["".join([blurBase, ".mnc"])]
+            self.logFile = fh.createLogDirandFile(abspath(os.curdir), blurBase)
+            self.name = "mincblur " + str(fwhm) + " " + basename(inFile)
             if gradient:
                 gradientBase = blurBase.replace("blur", "dxyz")
                 self.outputFiles += ["".join([gradientBase, ".mnc"])]
             # Check for log directory and create logfile
-            self.logFile = fh.createLogDirandFile(abspath(os.curdir), blurBase)
-
+            
         self.cmd = ["mincblur", "-clobber", "-fwhm", str(fwhm),
-                    inFile, self.base]
+                    self.inputFiles[0], self.base]
         if gradient:
-            self.cmd += ["-gradient"]
-        self.name = "mincblur " + str(fwhm) + " " + basename(inFile)
+            self.cmd += ["-gradient"]       
         self.colour="blue"
 
 class mincresample(CmdStage):
-    def __init__(self, inFile, outFile=None, logFile=None, 
-                 argarray=[], likeFile=None, cxfm=None):
+    def __init__(self, 
+                 inFile, 
+                 outFile=None, 
+                 logFile=None, 
+                 likeFile=None, 
+                 cxfm=None, 
+                 argArray=None):
         """calls mincresample with the specified options
 
         The inFile and likeFile can be in one of two styles. 
@@ -343,37 +386,80 @@ class mincresample(CmdStage):
         argarray could contain inFile and/or output files
 
         """
-        #MF TODO: What if we don't want to use lastBasevol? 
-        #MF TODO: Do we need to parse argarray for input or output files? 
-        #MF TODO: Need to get xfm file if not in input
-        if argarray:
-            argarray.insert(0, "mincresample")
+        if argArray:
+            argArray.insert(0, "mincresample")
+            CmdStage.__init__(self, argArray)
         else:
-            argarray = ["mincresample"]
-        CmdStage.__init__(self, argarray)
+            CmdStage.__init__(self, None)
+            self.cmd += ["mincresample"]
+        
+        #If no like file is specified, use inputFile
+        if not likeFile:
+            likeFile=inFile
+        
         # first try to generate the filenames if inFile was a filehandler
         try:
-            inputFile = inFile.getLastBasevol()
-            lFile = likeFile.getLastBasevol()
-            outDir = inFile.tmpDir
-            logDir = inFile.logDir
-            logAndOutBase = str(fh.removeBaseAndExtension(inputFile)) + "-resample.mnc"
-            self.logFile = fh.createLogFile(logDir, logAndOutBase) 
-            outfile= "%s/%s" % (outDir, logAndOutBase) 
+            #MF TODO: What if we don't want to use lastBasevol?  
+            self.inFile = self.getFileToResample(inFile)
+            self.likeFile = likeFile.getLastBasevol()
+            self.cxfm = inFile.getLastXfm()
+            self.outfile = self.setOutputFile(likeFile)
+            self.logFile = inFile.logFromFile(self.outfile) 
         except AttributeError:
+            print "In resample attribute error except"
+            print "Unexpected error: ", sys.exc_info()
             # this means it wasn't a filehandler - now assume it's a file
-            inputFile = inFile
-            lFile = likeFile
-            #MF TODO: check for output and log directories with name of file?
-            outfile=outFile
+            self.inFile = inFile
+            self.likeFile = likeFile
             self.logFile=logFile
-          
-        self.inputFiles += [inputFile]   
-        self.outputFiles += [outfile]
+            self.outfile=outFile
+            self.cxfm = cxfm
+        self.addDefaults()
+        self.finalizeCommand()
+        self.setName()
         
-        if likeFile:
-            self.cmd += ["-like", lFile] # include as an input file?
-        if cxfm:
-            self.inputFiles += [cxfm]
-            self.cmd += ["-transform", cxfm]       
-        self.cmd += ["-2", "-clobber", inputFile, outfile]
+    def addDefaults(self):
+        self.inputFiles += [self.inFile]   
+        self.outputFiles += [self.outfile]       
+        self.cmd += ["-like", self.likeFile] 
+        if not self.inputFiles.__contains__(self.likeFile): 
+                self.inputFiles += [self.likeFile]
+        if self.cxfm:
+            self.inputFiles += [self.cxfm]
+            self.cmd += ["-transform", self.cxfm]              
+    def finalizeCommand(self):
+        """Add -2, clobber, input and output files """
+        self.cmd += ["-2", "-clobber", self.inFile, self.outfile]      
+    def setName(self):
+        self.name = "mincresample " 
+    def setOutputFile(self, likeFile=None):
+        return(fh.removeFileExt(self.cxfm) + "-resampled.mnc")  
+    def getFileToResample(self, inputFile):
+        return(inputFile.getLastBasevol())  
+
+class mincresampleLabels(mincresample):
+    def __init__(self, 
+                 inFile, 
+                 outFile=None, 
+                 logFile=None, 
+                 likeFile=None, 
+                 cxfm=None, 
+                 argArray=None):
+        mincresample.__init__(self,
+                           inFile, 
+                           outFile, 
+                           logFile, 
+                           likeFile, 
+                           cxfm, 
+                           argArray)
+    def finalizeCommand(self):
+        """additional arguments needed for resampling labels"""
+        self.cmd += ["-keep_real_range", "-nearest_neighbour"]
+        mincresample.finalizeCommand(self)
+    def setOutputFile(self, likeFile):
+        """set name of output and add labels to likeFile labels array"""
+        labelFile = fh.removeFileExt(self.cxfm) + "-resampled-labels.mnc"
+        likeFile.addAndSetLabelsToUse(labelFile)
+        return(labelFile)  
+    def getFileToResample(self, inputFile):
+        return(inputFile.getLastLabels())     
