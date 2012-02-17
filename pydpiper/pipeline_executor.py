@@ -12,6 +12,8 @@ import pydpiper.queueing as q
 import traceback
 import logging
 
+POLLING_INTERVAL = 10 # poll for new jobs
+
 Pyro.config.PYRO_MOBILE_CODE=1
 
 logger = logging.getLogger("pydpiper.executor")
@@ -46,8 +48,7 @@ def runStage(serverURI, clientURI, i):
         return[s.getMem(),s.getProcs()] # If completed, return mem & processes back for re-use    
     except:
         print "Failed in executor thread"
-        print "Unexpected error: ", sys.exc_info()
-        traceback.print_tb(sys.exc_info()[2])
+        print traceback.print_exc(file=sys.stderr)
         #task_done()
         sys.exit()        
          
@@ -121,8 +122,15 @@ class pipelineExecutor():
         #initialize runningMem and Procs
         runningMem = 0.0
         runningProcs = 0               
+
+        class ChildProcess():
+            def __init__(self, result, mem, procs):
+                self.result = result
+                self.mem = mem
+                self.procs = procs                 
+                                
         runningChildren = [] # no scissors
-        
+ 
         print "Connected to ", serverURI
         print "Client URI is ", clientURI
         # loop until the pipeline sets executor.continueLoop() to false
@@ -130,35 +138,38 @@ class pipelineExecutor():
         try:
             while executor.continueLoop():
                 daemon.handleRequests(0)               
-                # Check for available stages
+                # Free up resources from any completed (successful or otherwise) stages
+                for child in [x for x in runningChildren if x.result.ready()]:
+                    runningMem -= child.mem
+                    runningProcs -= child.procs
+                    runningChildren.remove(child)
+
+                # check if we have any free processes, and even a little bit of memory
+                if not self.canRun(1, 1, runningMem, runningProcs): 
+                    time.sleep(POLLING_INTERVAL)
+                    continue
+
+                # check for available stages
                 i = p.getRunnableStageIndex()                 
                 if i == None:
                     logger.debug("No runnable stages. Sleeping...")
-                    time.sleep(5)
+                    time.sleep(POLLING_INTERVAL)
+                    continue
+
+                # Before running stage, check usable mem & procs
+                logger.debug("Considering stage %i" % i)
+                s = p.getStage(i)
+                stageMem, stageProcs = s.getMem(), s.getProcs()
+                if self.canRun(stageMem, stageProcs, runningMem, runningProcs):
+                    runningMem += stageMem
+                    runningProcs += stageProcs             
+                    result = pool.apply_async(runStage,(serverURI, clientURI, i))
+                    runningChildren.append(ChildProcess(result, stageMem, stageProcs))
                 else:
-                    logger.debug("Considering stage %i" % i)
-                    # Before running stage, check usable mem & procs
-                    completedTasks = []
-                    for j,val in enumerate(runningChildren):
-                        if val.ready():                         
-                            completedTasks.insert(0,j)
-                    for j in completedTasks:
-                        runningMem -= runningChildren[j].get()[0]
-                        runningProcs -= runningChildren[j].get()[1]
-                        del runningChildren[j]    
-                    s = p.getStage(i)
-                    stageMem = s.getMem()
-                    stageProcs = s.getProcs()
-                    if self.canRun(stageMem, stageProcs, runningMem, runningProcs):
-                        runningMem += stageMem
-                        runningProcs += stageProcs             
-                        runningChildren.append(pool.apply_async(runStage,(serverURI, clientURI, i)))
-                    else:
-                        logger.debug("Not enough resources to run stage %i" % i) 
-                        p.requeue(i)
+                    logger.debug("Not enough resources to run stage %i" % i) 
+                    p.requeue(i)
         except Exception as e:
-            print e
-            traceback.print_tb(sys.exc_info()[2])
+            print traceback.print_exc(file=sys.stderr)
             print "Shutting down executor."
             daemon.shutdown(True)
             pool.close()
@@ -189,6 +200,9 @@ if __name__ == "__main__":
     parser.add_option("--num-executors", dest="num_exec", 
                       type="int", default=1, 
                       help="Number of independent executors to launch.")
+    parser.add_option("--time", dest="time", 
+                      type="string", default="2:00:00:00", 
+                      help="Wall time to request for each executor in the format dd:hh:mm:ss")
     parser.add_option("--proc", dest="proc", 
                       type="int", default=4,
                       help="Number of processes per executor. If not specified, default is 4. Also sets max value for processor use per executor.")
