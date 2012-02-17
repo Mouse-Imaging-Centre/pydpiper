@@ -169,22 +169,22 @@ class CmdStage(PipelineStage):
         of.flush()
         print self.cmd
         
-        if self.is_effectively_complete():
-            of.write("All input/output files exist. Skipping stage.\n")
+        if self.outputs_exist():
+            of.write("All output files exist. Skipping stage.\n")
             returncode = 0
         else: 
             returncode = call(self.cmd, stdout=of, stderr=of, shell=False) #TODO: shell = False?  Is this okay?
         of.close()
         return(returncode)
     
-    def is_effectively_complete(self):
-        """check if this stage is effectively complete (if input/output files already exist)"""
-        all_files_exist = True
-        for output in self.outputFiles + self.inputFiles:
+    def outputs_exist(self):
+        """check if this stage is effectively complete (if output files already exist)"""
+        all_outputs_exist = True
+        for output in self.outputFiles:
             if not os.path.exists(output):
-                all_files_exist = False
+                all_outputs_exist = False
                 break
-        return all_files_exist
+        return all_outputs_exist
 
     def getHash(self):
         return(hash(" ".join(self.cmd)))
@@ -462,7 +462,7 @@ def sge_script(p):
         job_id,cmd,depends = i
         stage  = p.getStage(job_id)
         if isinstance(stage, CmdStage): 
-            if stage.is_effectively_complete():
+            if stage.outputs_exist():
                 skipped_stages += 1
                 continue
         name = f(job_id)
