@@ -12,34 +12,12 @@ from multiprocessing import Event
 
 Pyro.config.PYRO_MOBILE_CODE=1 
 
-class Template:
-    def __init__(self, image, labels, mask=None, outputdir=None):
-        self.image = image
-        self.labels = labels
-        self.mask = mask
-        if outputdir == None:
-            self.outputdir = dirname(image)
-        else:
-            self.outputdir = outputdir
-
 class SMATregister:
-    def __init__(self, inputFile, template, outDir=None, inputMask=None,
+    def __init__(self, inputPipeFH, templatePipeFH,
                  steps=[0.5,0.2],
                  blurs=[0.5,0.2], iterations=[80,20],
                  name="initial"):
         self.p = Pipeline()
-        self.input = inputFile
-        
-        if not outDir:
-            outDir = abspath(os.curdir)
-        
-        inputPipeFH = RegistrationPipeFH(inputFile, abspath(outDir))
-        templatePipeFH = RegistrationPipeFH(template.image, template.outputdir)
-        templatePipeFH.addAndSetLabelsToUse(template.labels)
-        
-        #MF TODO: Verify self.outDir change with Jason
-        self.outDir = inputPipeFH.basedir
-        self.inputMask = inputMask
         
         for b in blurs:
             iblur = blur(inputPipeFH, b)
@@ -52,9 +30,7 @@ class SMATregister:
         linearStage = linearminctracc(templatePipeFH, 
                                       inputPipeFH, 
                                       blur=blurs[0], 
-                                      linearparam=linearparam,
-                                      source_mask=template.mask,
-                                      target_mask=inputMask)
+                                      linearparam=linearparam)
         self.p.addStage(linearStage)
 
         # create the nonlinear registrations
@@ -62,21 +38,26 @@ class SMATregister:
             nlinStage = minctracc(templatePipeFH, 
                                   inputPipeFH, 
                                   blur=blurs[i],
-                                  source_mask=template.mask,
-                                  target_mask=inputMask,
                                   iterations=iterations[i],
                                   step=steps[i])
             self.p.addStage(nlinStage)
         
         # resample labels with final registration
         resampleStage = mincresampleLabels(templatePipeFH, likeFile=inputPipeFH)
-        self.output = resampleStage.outputFiles[0]
         self.p.addStage(resampleStage)
-        
-    
-    def getTemplate(self):
-        return(Template(self.input, self.output, self.inputMask,
-                        self.outDir))
+
+def voxelVote(inputFH):
+    labels = inputFH.returnLabels()
+    # Remove labels to use from array, these should not be averaged
+    labelsToUse = inputFH.getLabelsToUse()
+    labels.remove(labelsToUse)
+    out = fh.createBaseName(inputFH.labelsDir, inputFH.basename) 
+    out += "_votedlabels.mnc"
+    logFile = inputFH.logFromFile(out)
+    cmd = ["voxel_vote.py"] + [InputFile(l) for l in labels] + [OutputFile(out)]
+    voxel = CmdStage(cmd)
+    voxel.setLogFile(LogFile(logFile))
+    return(voxel)
 
 if __name__ == "__main__":
     usage = "%prog [options] input1.mnc ... inputn.mnc"
@@ -139,9 +120,9 @@ if __name__ == "__main__":
         roq.createPbsScripts()
     else:
         outputDir = fh.makedirsIgnoreExisting(options.template_library)
+        #MF TODO: move this into else:
         tmplDir = fh.createSubDir(outputDir, "atlas")
-        tmpl = Template(options.atlas_image, options.atlas_labels,
-                        mask=options.mask, outputdir=tmplDir)
+        
         p = Pipeline()
         p.setBackupFileLocation(outputDir)
 
@@ -154,27 +135,28 @@ if __name__ == "__main__":
             numTemplates = len(args)
             if numTemplates > options.max_templates:
                 numTemplates = options.max_templates
+                
+            # Create fileHandling classes for initial template
+            tmplPipeFH = RegistrationPipeFH(abspath(options.atlas_image), tmplDir)
+            tmplPipeFH.addLabels(abspath(options.atlas_labels))
+            tmplPipeFH.setMask(abspath(options.mask))    
     
             for nfile in range(numTemplates):
-                sp = SMATregister(args[nfile], tmpl, outDir=outputDir, inputMask=options.mask)
-                templates.append(sp.getTemplate())
+                inputPipeFH = RegistrationPipeFH(abspath(args[nfile]), outputDir)
+                inputPipeFH.setMask(abspath(options.mask))
+                sp = SMATregister(inputPipeFH, tmplPipeFH)
+                templates.append(inputPipeFH)
                 p.addPipeline(sp.p)
 
             # once the initial templates have been created, go and register each
             # inputFile to the templates
-            for inputFile in args:
+            for inputFH in templates:
                 labels = []
-                for t in templates:
-                        if t.image != inputFile:
-                            sp = SMATregister(inputFile, t, outDir=outputDir, inputMask=options.mask, name="templates")
-                            labels.append(InputFile(sp.output))
+                for tmplFH in templates:
+                        if tmplFH.getLastBasevol() != inputFH.getLastBasevol():
+                            sp = SMATregister(inputFH, tmplFH, name="templates")
                             p.addPipeline(sp.p)
-                bname = fh.removeFileExt(inputFile)
-                base = fh.createBaseName(outputDir, bname + "_votedlabels")
-                out, log = fh.createOutputAndLogFiles(base, base, ".mnc")
-                cmd = ["voxel_vote.py"] + labels + [OutputFile(out)]
-                voxel = CmdStage(cmd)
-                voxel.setLogFile(LogFile(log))
+                voxel = voxelVote(inputFH)
                 p.addStage(voxel)
 
             p.initialize()

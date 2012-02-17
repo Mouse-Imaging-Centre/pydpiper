@@ -11,8 +11,9 @@ Pyro.config.PYRO_MOBILE_CODE=1
 
 
 def removeFileExt(inputFile):
+    """removes extension only from end of abspath"""
     base, ext = splitext(inputFile)
-    return(basename(inputFile).replace(str(ext), ""))
+    return(base)
 def removeBaseAndExtension(filename):
     """removes path as well as extension from filename"""
     bname = basename(filename)
