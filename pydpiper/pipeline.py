@@ -433,9 +433,6 @@ def launchServer(pipeline, options, e):
     if options.use_ns:
         ns=Pyro.naming.NameServerLocator().getNS()
         daemon.useNameServer(ns)
-        
-    print "skipping stages..."
-    skip_completed_stages(pipeline)
     
     uri=daemon.connect(pipeline, "pipeline")
     print("Daemon is running on port: " + str(daemon.port))
@@ -519,6 +516,9 @@ def pipelineDaemon(pipeline, returnEvent, options=None, programName=None):
 
     if options.urifile==None:
         options.urifile = os.path.abspath(os.curdir + "/" + "uri")
+        
+    print "skipping stages..."
+    skip_completed_stages(pipeline)
     
     e = Event()
     process = Process(target=launchServer, args=(pipeline,options,e,))
