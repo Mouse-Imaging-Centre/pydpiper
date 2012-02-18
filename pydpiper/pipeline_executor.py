@@ -12,7 +12,7 @@ import pydpiper.queueing as q
 import traceback
 import logging
 
-POLLING_INTERVAL = 10 # poll for new jobs
+POLLING_INTERVAL = 5 # poll for new jobs
 
 Pyro.config.PYRO_MOBILE_CODE=1
 

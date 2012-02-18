@@ -169,7 +169,7 @@ class CmdStage(PipelineStage):
         of.flush()
         print self.cmd
         
-        if self.outputs_exist():
+        if self.is_effectively_complete():
             of.write("All output files exist. Skipping stage.\n")
             returncode = 0
         else: 
@@ -177,14 +177,14 @@ class CmdStage(PipelineStage):
         of.close()
         return(returncode)
     
-    def outputs_exist(self):
+    def is_effectively_complete(self):
         """check if this stage is effectively complete (if output files already exist)"""
-        all_outputs_exist = True
-        for output in self.outputFiles:
+        all_files_exist = True
+        for output in self.outputFiles + self.inputFiles:
             if not os.path.exists(output):
-                all_outputs_exist = False
+                all_files_exist = False
                 break
-        return all_outputs_exist
+        return all_files_exist
 
     def getHash(self):
         return(hash(" ".join(self.cmd)))
@@ -462,7 +462,7 @@ def sge_script(p):
         job_id,cmd,depends = i
         stage  = p.getStage(job_id)
         if isinstance(stage, CmdStage): 
-            if stage.outputs_exist():
+            if stage.is_effectively_complete():
                 skipped_stages += 1
                 continue
         name = f(job_id)

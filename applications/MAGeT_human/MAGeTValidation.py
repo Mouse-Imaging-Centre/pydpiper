@@ -73,7 +73,7 @@ class MAGeTSubSamplingCrossValidationApp(AbstractApplication):
         # create the output directories 
         # template_dir holds all of the generated templates
         # segmentation_dir holds all of the participant segmentations, including the final voted on labels
-        registrations_dir = fh.createSubDir(outputDir, "registrations")
+        registrations_dir = fh.createSubDir(outputDir, "merged")
         labels_dir = fh.createSubDir(outputDir, "labels")
         
         input_images_dir = args[0]
