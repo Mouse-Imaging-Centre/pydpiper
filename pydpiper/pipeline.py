@@ -357,12 +357,13 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
                     canRun = False
         #print("Stage " + str(index) + " Runnable: " + str(canRun) + '\n')
         return(canRun)
-    def setStageFinished(self, index):
+    def setStageFinished(self, index, save_state = True):
         """given an index, sets corresponding stage to finished and adds successors to the runnable queue"""
         print("Finished Stage " + str(index) + ": " + str(self.stages[index]))
         self.stages[index].setFinished()
         self.processedStages.append(index)
-        self.selfPickle()
+        if save_state: 
+            self.selfPickle()
         for i in self.G.successors(index):
             if self.checkIfRunnable(i):
                 self.runnable.put(i)
@@ -399,7 +400,30 @@ def launchPipelineExecutor(options, programName=None):
         pipelineExecutor.submitToQueue(programName) 
     else: 
         pipelineExecutor.launchPipeline()    
+
+def skip_completed_stages(pipeline):
+    runnable = []
+    while True:
+        i = pipeline.getRunnableStageIndex()                 
+        if i == None:
+            break
+        
+        s = pipeline.getStage(i)
+        if not isinstance(s, CmdStage):
+            runnable.append(i)
+            continue
+        
+        if not s.is_effectively_complete():
+            runnable.append(i)
+            continue
+        
+        pipeline.setStageStarted(i, "PYRO://127.0.0.1:blah")
+        pipeline.setStageFinished(i, save_state = False)
+        print "skipping stage", i
     
+    for i in runnable:
+        pipeline.requeue(i)
+        
 def launchServer(pipeline, options, e):
     """Starts Pyro Server in a separate thread"""
     Pyro.core.initServer()
@@ -409,6 +433,9 @@ def launchServer(pipeline, options, e):
     if options.use_ns:
         ns=Pyro.naming.NameServerLocator().getNS()
         daemon.useNameServer(ns)
+        
+    print "skipping stages..."
+    skip_completed_stages(pipeline)
     
     uri=daemon.connect(pipeline, "pipeline")
     print("Daemon is running on port: " + str(daemon.port))
