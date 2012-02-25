@@ -31,7 +31,7 @@ hosts = {}
 print len(active), "active tasks."
 print len(set(commands) - set(finished)), " task remaining."
 lasthostname = None
-LINELENGTH = 270
+LINELENGTH = 170
 for ip, cmd in active: 
 	hostname = hosts.get(ip, socket.gethostbyaddr(ip)[0])
 	if not hostname == lasthostname:

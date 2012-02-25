@@ -12,11 +12,12 @@ import pydpiper.queueing as q
 import traceback
 import logging
 
+logger = logging.getLogger(__name__)
+
 POLLING_INTERVAL = 5 # poll for new jobs
 
 Pyro.config.PYRO_MOBILE_CODE=1
 
-logger = logging.getLogger("pydpiper.executor")
 
 #use Pyro.core.CallbackObjBase?? - need further review of documentation
 class clientExecutor(Pyro.core.SynchronizedObjBase):
@@ -37,19 +38,23 @@ def runStage(serverURI, clientURI, i):
     
     # Run stage, set finished or failed accordingly  
     try:
-        print("Running stage " + str(i) + ": " + str(s) + "\n")
+        logger.info("Running stage %i: %s, ", i, str(s))
         p.setStageStarted(i, clientURI)
-        r = s.execStage()
-        print("Stage " + str(i) + " finished, return was: " + str(r) + "\n")
-        if r == 0:
-            p.setStageFinished(i)
-        else:
+        try:
+            r = s.execStage()
+        except:
+            logger.exception("Exception whilst running stage: %i ", i)   
             p.setStageFailed(i)
-        return[s.getMem(),s.getProcs()] # If completed, return mem & processes back for re-use    
+        else:
+            logger.info("Stage %i finished, return was: %i", i, r)
+            if r == 0:
+                p.setStageFinished(i)
+            else:
+                p.setStageFailed(i)
+
+        return [s.getMem(),s.getProcs()] # If completed, return mem & processes back for re-use    
     except:
-        print "Failed in executor thread"
-        print traceback.print_exc(file=sys.stderr)
-        #task_done()
+        logger.exception("Error communicating to server. Stopping executor...")
         sys.exit()        
          
 class pipelineExecutor():
@@ -124,7 +129,8 @@ class pipelineExecutor():
         runningProcs = 0               
 
         class ChildProcess():
-            def __init__(self, result, mem, procs):
+            def __init__(self, stage, result, mem, procs):
+                self.stage = stage
                 self.result = result
                 self.mem = mem
                 self.procs = procs                 
@@ -140,6 +146,7 @@ class pipelineExecutor():
                 daemon.handleRequests(0)               
                 # Free up resources from any completed (successful or otherwise) stages
                 for child in [x for x in runningChildren if x.result.ready()]:
+                    logger.debug("Freeing up resources for stage %i." % child.stage)
                     runningMem -= child.mem
                     runningProcs -= child.procs
                     runningChildren.remove(child)
@@ -148,7 +155,7 @@ class pipelineExecutor():
                 if not self.canRun(1, 1, runningMem, runningProcs): 
                     time.sleep(POLLING_INTERVAL)
                     continue
-
+                
                 # check for available stages
                 i = p.getRunnableStageIndex()                 
                 if i == None:
@@ -162,21 +169,21 @@ class pipelineExecutor():
                 stageMem, stageProcs = s.getMem(), s.getProcs()
                 if self.canRun(stageMem, stageProcs, runningMem, runningProcs):
                     runningMem += stageMem
-                    runningProcs += stageProcs             
+                    runningProcs += stageProcs            
                     result = pool.apply_async(runStage,(serverURI, clientURI, i))
-                    runningChildren.append(ChildProcess(result, stageMem, stageProcs))
+                    runningChildren.append(ChildProcess(i, result, stageMem, stageProcs))
+                    logger.debug("Added stage %i to the running pool." % i)
                 else:
-                    logger.debug("Not enough resources to run stage %i" % i) 
+                    logger.debug("Not enough resources to run stage %i. " % i) 
                     p.requeue(i)
         except Exception as e:
-            print traceback.print_exc(file=sys.stderr)
-            print "Shutting down executor."
+            logger.exception("Error during executor polling loop. Shutting down executor...")
             daemon.shutdown(True)
             pool.close()
             pool.join()
             sys.exit()
         else:
-            print "Server has shutdown. Killing executor thread."
+            logger.info("Server has shutdown. Killing executor thread.")
             pool.close()
             pool.join()        
             daemon.shutdown(True)
@@ -185,6 +192,9 @@ class pipelineExecutor():
 ##########     ---     Start of program     ---     ##########   
 
 if __name__ == "__main__":
+    FORMAT = '%(asctime)-15s %(name)s %(levelname)s: %(message)s'
+    logging.basicConfig(format=FORMAT, level=logging.DEBUG)
+
     usage = "%prog [options]"
     description = "pipeline executor"
 

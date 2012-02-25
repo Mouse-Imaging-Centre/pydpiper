@@ -9,9 +9,7 @@ import glob
 
 
 fh = mincFileHandling()
-test_mode = False
-logger = logging.getLogger("MAGeT")
-logging.basicConfig(filename="MAGeTApplication.log")
+logger = logging.getLogger(__name__)
 
 #Nomenclature: 
 #    Atlas    - a MINC volume and corresponding label volume

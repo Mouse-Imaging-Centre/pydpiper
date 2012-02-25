@@ -130,7 +130,7 @@ class bestlinreg(CmdStage):
         self.inputFiles = [source, target]
         self.outputFiles = [xfm]
         self.logFile = log_file
-        self.cmd = ["bestlinreg", "-clobber", source, target, xfm]
+        self.cmd = ["bestlinreg", "-clobber", "-lsq12", source, target, xfm]
         self.name = "bestlinreg " + basename(source) + " " + basename(target)
                 
 class xfmconcat(CmdStage):
