@@ -1,3 +1,4 @@
 /.settings
 /input
 /models
+*.pyc

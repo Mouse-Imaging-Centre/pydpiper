@@ -3,7 +3,7 @@
 import logging
 from pydpiper.pipeline import Pipeline, InputFile, OutputFile, LogFile, CmdStage
 from pydpiper.application import AbstractApplication
-from minctools import minctracc, nu_correct, bestlinreg, mincresample, xfmconcat, mincFileHandling
+from minctools import minctracc, nu_correct, bestlinreg, mincresample, xfmconcat, mincFileHandling, blur
 import os.path
 import glob 
 
@@ -77,13 +77,33 @@ class BasicLabelPropogationStrategy:
         p.addStage(mincresample(inuc, linres, linres_log, argarray=["-sinc", "-width", "2"], like=self.template.image, cxfm=linxfm))
         
         # non-linear registration
-        iterations = 15
+        # we register the target image to the source (source is the source of the labels, 
+        # the atlas.  target is the to-be-segmented image, ).
+         
+        # STEP 1 - blur both images.  We are going to use the linear registration of the target to the source as the target
+        source = self.template.image
+        target = linres
+        
+        blur_dir = fh.createSubDir(self.root_dir, "_blurs")
+        source_blurs_dir = fh.createSubDir(blur_dir, fh.removeFileExt(self.template.image)) + "/"
+        
+        source_8_blur, source_8_blur_log = fh.createOutputAndLogFiles(source_blurs_dir, log_base, "source_8_blur.mnc")
+        source_4_blur, source_4_blur_log = fh.createOutputAndLogFiles(source_blurs_dir, log_base, "source_4_blur.mnc")
+        
+        target_8_blur, target_8_blur_log = fh.createOutputAndLogFiles(output_base_fname, log_base, "target_8_blur.mnc")
+        target_4_blur, target_4_blur_log = fh.createOutputAndLogFiles(output_base_fname, log_base, "target_4_blur.mnc")
+        
         nl0, logfile0 = fh.createOutputAndLogFiles(output_base_fname, log_base, "nl_0.xfm")
         nl1, logfile1 = fh.createOutputAndLogFiles(output_base_fname, log_base, "nl_1.xfm")
         nl2, logfile2 = fh.createOutputAndLogFiles(output_base_fname, log_base, "nl_2.xfm")
-        p.addStage(minctracc(linres, self.template.roi, nl0, logfile0, step=4, sub_lattice=8, iterations=iterations, ident=True))
-        p.addStage(minctracc(linres, self.template.roi, nl1, logfile1, step=2, sub_lattice=8, transform=nl0, iterations=iterations, ident=True))
-        p.addStage(minctracc(linres, self.template.roi, nl2, logfile2, step=1, sub_lattice=6, transform=nl1, iterations=iterations))
+        
+        p.addStage(blur(source, source_8_blur,source_8_blur_log,"8"))
+        p.addStage(blur(source, source_4_blur,source_4_blur_log,"4"))
+        p.addStage(blur(target, target_8_blur,target_8_blur_log,"8"))
+        p.addStage(blur(target, target_4_blur,target_4_blur_log,"4"))
+        p.addStage(minctracc(target_8_blur, source_8_blur, nl0, logfile0, step=8, sub_lattice=6, iterations=30, ident=True))
+        p.addStage(minctracc(target_8_blur, source_8_blur, nl1, logfile1, step=4, sub_lattice=6, transform=nl0, iterations=30, ident=True))
+        p.addStage(minctracc(target_4_blur, source_4_blur, nl2, logfile2, step=2, sub_lattice=6, transform=nl1, iterations=10))
         nlxfm, logfile_nl = fh.createOutputAndLogFiles(output_base_fname, log_base, "reg.xfm")
         p.addStage(xfmconcat([linxfm, nl2], nlxfm, logfile_nl))
         return nlxfm
@@ -127,7 +147,7 @@ class BasicLabelPropogationStrategy:
         # resample labels with final registration
         labels_base_fname, labels_log_base, labels_output_dir = self.create_base_names(self.labels_dir)
         labels, logfile = fh.createOutputAndLogFiles(labels_base_fname, labels_log_base, "labels.mnc" )
-        p.addStage(mincresample(self.template.labels, labels, logfile, ["-nearest_neighbour", "-invert", "-byte"], cxfm=nlxfm, like=inuc))      
+        p.addStage(mincresample(self.template.labels, labels, logfile, ["-nearest_neighbour", "-invert", "-byte", "-keep_real_range"], cxfm=nlxfm, like=inuc))      
         
         output_template = Template(self.target, labels, roi=self.target, labels_dir = labels_output_dir, reg_dir = output_dir)
         
@@ -224,15 +244,15 @@ def xcorr_vote(subject_file, templates, output_dir, pipeline, reg_dir):
         subject_label_files = map(lambda x: os.path.join(x, subject_name, "labels.mnc"), template_dirs)
         
         # ... and average them
-        cmd, merged_labels_file = single_output_command_helper("mincaverage", subject_xcorr_base, "merged_labels.mnc", subject_label_files)
+        cmd, merged_labels_file = command("mincaverage", subject_xcorr_base, "merged_labels.mnc", subject_label_files)
         pipeline.addStage(cmd)
         
         # ... threshold so we only get labels
-        cmd, thesholded_labels_file = single_output_command_helper("minccalc", subject_xcorr_base, "thresholded_labels.mnc", [merged_labels_file], args=["-expression", "A[0]>0"])
+        cmd, thesholded_labels_file = command("minccalc", subject_xcorr_base, "thresholded_labels.mnc", [merged_labels_file], args=["-expression", "A[0]>0"])
         pipeline.addStage(cmd)
         
         # .. dialate to create the mask
-        cmd, label_mask_file = single_output_command_helper("mincmorph", subject_xcorr_base, "label_mask.mnc", [thesholded_labels_file], args=["-successive", "DDD"])
+        cmd, label_mask_file = command("mincmorph", subject_xcorr_base, "label_mask.mnc", [thesholded_labels_file], args=["-successive", "DDD"])
         pipeline.addStage(cmd)
         
         # STEP 2: using this mask, calculate the correlation between this subject, and all of the templates
@@ -246,14 +266,14 @@ def xcorr_vote(subject_file, templates, output_dir, pipeline, reg_dir):
             subject_template_linreg = os.path.join(subject_dir, "linres.mnc")
             subject_labels = os.path.join(template.labels_dir, subject_name, "labels.mnc")
             
-            cmd, subject_xcorr = single_output_command_helper("xcorr_vol.sh", subject_dir, "template_xcorr.txt", [subject_template_linreg, template.image, label_mask_file])
+            cmd, subject_xcorr = command("xcorr_vol.sh", subject_dir, "template_xcorr.txt", [subject_template_linreg, template.image, label_mask_file])
             pipeline.addStage(cmd)
             
             subject_xcorrs_list.append(subject_xcorr)
             subject_labels_list.append(subject_labels)
             
         # STEP 3: vote!
-        cmd, xcorr_voted_labels = single_output_command_helper("xcorr_vote.py", subject_xcorr_base, "labels.mnc", subject_labels_list + subject_xcorrs_list)
+        cmd, xcorr_voted_labels = command("xcorr_vote.py", subject_xcorr_base, "labels.mnc", subject_labels_list + subject_xcorrs_list)
         pipeline.addStage(cmd)
         return xcorr_voted_labels
         
@@ -271,17 +291,17 @@ def majority_vote_all_subjects(subject_files, templates, output_dir, pipeline):
 def majority_vote(subject, labels, output_dir, pipeline):
     subject_base_fname = fh.removeFileExt(subject)
     vote_dir = fh.createSubDir(output_dir, subject_base_fname)     
-    cmd, voted_labels = single_output_command_helper("voxel_vote.py", vote_dir, "labels.mnc", labels)
+    cmd, voted_labels = command("voxel_vote.py", vote_dir, "labels.mnc", labels)
     pipeline.addStage(cmd)
     return voted_labels
 
 def compare_similarity(image_path, expected_labels_path, computed_labels_path, output_dir, pipeline):       
     compare_base = fh.createSubDir(output_dir, fh.removeFileExt(image_path)) 
-    cmd, validation_output_file = single_output_command_helper("volume_similarity.sh", compare_base, "validation.csv", [expected_labels_path, computed_labels_path])
+    cmd, validation_output_file = command("volume_similarity.sh", compare_base, "validation.csv", [expected_labels_path, computed_labels_path])
     pipeline.addStage(cmd)
     return validation_output_file
         
-def single_output_command_helper(command_name,  output_base, output, input_files = [], args = []):
+def command(command_name,  output_base, output, input_files = [], args = []):
     """Returns a properly configured CmdStage from the given input."""
     output_base = output_base[-1] == "/" and output_base or output_base + "/"  # nasty way of verifying the trailing slash
     log_base = fh.createLogDir(output_base) + "/"

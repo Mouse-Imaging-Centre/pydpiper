@@ -4,6 +4,10 @@ from pyminc.volumes.factory import *
 from numpy import *
 from scipy.stats import *
 from optparse import OptionParser
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger('voxel_vote.py')
 
 if __name__ == "__main__":
 
@@ -28,8 +32,12 @@ if __name__ == "__main__":
     volhandles = []
 
     nfiles = len(args)-1
-    for i in range( nfiles ):
-        volhandles.append(volumeFromFile(args[i], dtype='ubyte'))
+    try:
+        for i in range( nfiles ):
+            volhandles.append(volumeFromFile(args[i], dtype='ubyte'))
+    except Exception, e:
+        logger.exception("Error whilst reading file %s", args[i])
+        raise e
 
     outfile = volumeFromInstance(volhandles[0], outfilename)
 #    outdist = volumeFromInstance(volhandles[0], outfiledist)
