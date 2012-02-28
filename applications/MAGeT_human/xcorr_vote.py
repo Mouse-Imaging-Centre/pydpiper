@@ -6,6 +6,7 @@
 #
 from optparse import OptionParser
 from subprocess import call
+import re
 DEFAULT_TOP_N = 15
 
 if __name__ == "__main__":
@@ -37,7 +38,7 @@ if __name__ == "__main__":
     outfilename = args[-1]
     
     # read in the xcorr values
-    xcorrs = [float(open(i).read()) for i in xcorr_files]
+    xcorrs = [float(re.search("\d+\.\d+", open(i).read()).group(0)) for i in xcorr_files]
     sorted_labels = [x[0] for x in sorted(zip(labels, xcorrs), key= lambda x:x[1], reverse=True)]
     
   
