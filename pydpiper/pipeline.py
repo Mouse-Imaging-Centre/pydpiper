@@ -470,7 +470,15 @@ def flatten_pipeline(p):
        Each item in the list is (id, command, [dependencies]) 
        where dependencies is a list of stages depend on this stage to be complete before they run.
     """
-    return [(i, str(p.stages[i]), p.G.predecessors(i)) for i in p.G.nodes_iter()]
+    def post(x, y):
+        if y[0] in x[2]: 
+           return 1
+        elif x[0] in y[2]:
+           return -1
+        else:
+           return 0 
+                
+    return sorted([(i, str(p.stages[i]), p.G.predecessors(i)) for i in p.G.nodes_iter()],cmp=post)
 
 def sge_script(p):
     qsub = "sge_batch_hold -l vf=2G"
@@ -481,6 +489,7 @@ def sge_script(p):
     unhold = []
     f = lambda x: "MAGeT_%i" % x
 
+    script = []
     skipped_stages = 0
     for i in flat:
         job_id,cmd,depends = i
@@ -491,13 +500,16 @@ def sge_script(p):
                 continue
         name = f(job_id)
         deps = ",".join(map(f,depends))
-        subs.append("%s -J %s %s" % (qsub, name, cmd))
+	job_cmd="%s -J %s %s" % (qsub, name, cmd)
+        script.append(job_cmd)
         if depends:
-            alter.append("qalter -hold_jid %s %s" % (deps,name))
-        unhold.append("qalter -h U %s" % name)
+	    depend_cmd="qalter -hold_jid %s %s" % (deps,name)
+            script.append(depend_cmd)
+	unhold_cmd = "qalter -h U %s" % name
+        script.append(unhold_cmd)
     
     print skipped_stages, "stages skipped (outputs exist).", len(subs), "stages to run."
-    return subs + alter + unhold
+    return script #subs + alter + unhold
 
 def pipelineDaemon(pipeline, returnEvent, options=None, programName=None):
     """Launches Pyro server and (if specified by options) pipeline executors"""
