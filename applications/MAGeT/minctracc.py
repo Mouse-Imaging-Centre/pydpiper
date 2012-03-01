@@ -116,14 +116,12 @@ class RegistrationPipeFH():
         mincANTS calls and will be used to provide a unique filename.
 
         """
-        # Could arglist contain blur information?
         sourceFilename = fh.removeBaseAndExtension(self.getLastBasevol())
         targetFilename = fh.removeBaseAndExtension(targetFH.getLastBasevol())
         # check to make sure blurs match, otherwise throw error?
         # Go through argument list to build file name
         xfmFileName = [sourceFilename, "to", targetFilename]
-        for i, j in enumerate(arglist):
-            k, l = j
+        for k, l in arglist:
             # MF TODO: Think about how to handle gradient case
             if k == 'blur':
                 xfmFileName += [str(l), "blur"]
