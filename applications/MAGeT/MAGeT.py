@@ -48,9 +48,6 @@ class SMATregister:
 
 def voxelVote(inputFH):
     labels = inputFH.returnLabels()
-    # Remove labels to use from array, these should not be averaged
-    labelsToUse = inputFH.getLabelsToUse()
-    labels.remove(labelsToUse)
     out = fh.createBaseName(inputFH.labelsDir, inputFH.basename) 
     out += "_votedlabels.mnc"
     logFile = inputFH.logFromFile(out)
@@ -138,7 +135,7 @@ if __name__ == "__main__":
                 
             # Create fileHandling classes for initial template
             tmplPipeFH = RegistrationPipeFH(abspath(options.atlas_image), tmplDir)
-            tmplPipeFH.addLabels(abspath(options.atlas_labels))
+            tmplPipeFH.setInputLabels(abspath(options.atlas_labels))
             tmplPipeFH.setMask(abspath(options.mask))    
     
             for nfile in range(numTemplates):

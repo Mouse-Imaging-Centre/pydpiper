@@ -13,7 +13,7 @@ class RegistrationGroupedFiles():
     def __init__(self, inputVolume):
         self.basevol = inputVolume
         self.labels = []
-        self.labelsToUse = None
+        self.inputLabels = None
         self.blurs = {}
         self.gradients = {}
         self.lastblur = None #This can be a gradient.
@@ -158,15 +158,13 @@ class RegistrationPipeFH():
         if not currGroup.transforms[targetFilename].__contains__(xfm):
             currGroup.transforms[targetFilename].append(xfm)
         self.setLastXfm(targetFilename, xfm)
-    def getLabelsToUse(self):
-        return(self.groupedFiles[self.currentGroupIndex].labelsToUse)
-    def setLabelsToUse(self, labels):
-        self.groupedFiles[self.currentGroupIndex].labelsToUse = labels
+    def getInputLabels(self):
+        return(self.groupedFiles[self.currentGroupIndex].inputLabels)
+    def setInputLabels(self, labels):
+        self.groupedFiles[self.currentGroupIndex].inputLabels = labels
     def addLabels(self, newLabel):
-        """Add labels to array. If array is empty, also set labels to use"""
+        """Add labels to array."""
         currGroup = self.groupedFiles[self.currentGroupIndex]
-        if not currGroup.labels:
-            self.setLabelsToUse(newLabel)
         if not currGroup.labels.__contains__(newLabel):
             currGroup.labels.append(newLabel)
     def returnLabels(self):
@@ -481,7 +479,12 @@ class mincresampleLabels(mincresample):
         """set name of output and add labels to likeFile labels array"""
         outBase = fh.removeBaseAndExtension(self.cxfm) + "-resampled-labels.mnc"
         labelFile = fh.createBaseName(likeFile.tmpDir, outBase)  
-        likeFile.addLabels(labelFile)
+        # If the likeFile has no InputLabels, use these labels. 
+        # Otherwise, add to labels array
+        if not likeFile.getInputLabels():
+            likeFile.setInputLabels(labelFile)
+        else:
+            likeFile.addLabels(labelFile)
         return(labelFile)  
     def getFileToResample(self, inputFile):
-        return(inputFile.getLabelsToUse())     
+        return(inputFile.getInputLabels())     
