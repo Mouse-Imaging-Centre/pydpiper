@@ -158,7 +158,7 @@ if __name__ == "__main__":
                             p.addPipeline(sp.p)
                 voxel = voxelVote(inputFH)
                 p.addStage(voxel)
-
+            
             p.initialize()
             p.printStages()
     

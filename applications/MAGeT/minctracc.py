@@ -11,14 +11,14 @@ Pyro.config.PYRO_MOBILE_CODE=1
 class RegistrationGroupedFiles():
     """A class to keep together all bits for a RegistrationPipeFH stage"""
     def __init__(self, inputVolume):
-        self.basevol = [inputVolume]
+        self.basevol = inputVolume
         self.labels = []
         self.labelsToUse = None
         self.blurs = {}
         self.gradients = {}
         self.lastblur = None #This can be a gradient.
-        self.transforms = []
-        self.lastTransform = None
+        self.transforms = {}
+        self.lastTransform = {}
         self.mask = None
         
     def getBlur(self, fwhm=None):
@@ -117,8 +117,8 @@ class RegistrationPipeFH():
 
         """
         # Could arglist contain blur information?
-        sourceFilename = self.basename
-        targetFilename = targetFH.basename
+        sourceFilename = fh.removeBaseAndExtension(self.getLastBasevol())
+        targetFilename = fh.removeBaseAndExtension(targetFH.getLastBasevol())
         # check to make sure blurs match, otherwise throw error?
         # Go through argument list to build file name
         xfmFileName = [sourceFilename, "to", targetFilename]
@@ -132,25 +132,32 @@ class RegistrationPipeFH():
             elif k == 'iterations':
                 xfmFileName += ["iter", str(l)]
         xfmFileWithExt = "_".join(xfmFileName) + ".xfm"
-        return(fh.createBaseName(self.tmpDir, xfmFileWithExt))
+        outputXfm = fh.createBaseName(self.tmpDir, xfmFileWithExt)
+        self.addAndSetXfmToUse(targetFilename, outputXfm)
+        return(outputXfm)
     #MF TODO: This code is getting a bit repetitive. Lets see if we can't
     # consolidate a bit.     
     def getBlur(self, fwhm=None): 
         return(self.groupedFiles[self.currentGroupIndex].getBlur(fwhm))
     def setBlurToUse(self, fwhm):
         self.groupedFiles[self.currentGroupIndex].lastblur = fwhm
-    #MF TODO: Fix the function below?
     def getLastBasevol(self):
-        return(self.groupedFiles[self.currentGroupIndex].basevol[-1])
-    def getLastXfm(self):
-        return(self.groupedFiles[self.currentGroupIndex].lastTransform)
-    def setLastXfm(self, xfm):
-        self.groupedFiles[self.currentGroupIndex].lastTransform = xfm
-    def addAndSetXfmToUse(self, xfm):
+        return(self.groupedFiles[self.currentGroupIndex].basevol)
+    def getLastXfm(self, targetFilename):
         currGroup = self.groupedFiles[self.currentGroupIndex]
-        if not currGroup.transforms.__contains__(xfm):
-            currGroup.transforms.append(xfm)
-        self.setLastXfm(xfm)
+        lastXfm = None
+        if targetFilename in currGroup.lastTransform:
+            lastXfm = currGroup.lastTransform[targetFilename]
+        return(lastXfm)
+    def setLastXfm(self, targetFilename, xfm):
+        self.groupedFiles[self.currentGroupIndex].lastTransform[targetFilename] = xfm
+    def addAndSetXfmToUse(self, targetFilename, xfm):
+        currGroup = self.groupedFiles[self.currentGroupIndex]
+        if not targetFilename in currGroup.transforms:
+            currGroup.transforms[targetFilename] = []
+        if not currGroup.transforms[targetFilename].__contains__(xfm):
+            currGroup.transforms[targetFilename].append(xfm)
+        self.setLastXfm(targetFilename, xfm)
     def getLabelsToUse(self):
         return(self.groupedFiles[self.currentGroupIndex].labelsToUse)
     def setLabelsToUse(self, labels):
@@ -233,15 +240,14 @@ class minctracc(CmdStage):
             self.target = inTarget.getBlur(blur)
             if not transform:
                 # Note: this may also be None and should be for initial call
-                self.transform = inSource.getLastXfm()
+                targetFilename = fh.removeBaseAndExtension(inTarget.getLastBasevol())
+                self.transform = inSource.getLastXfm(targetFilename)
             frame = inspect.currentframe()
             args,_,_,arglocals = inspect.getargvalues(frame)
             arglist = [(i, arglocals[i]) for i in args]
             outputXfm = inSource.registerVolume(inTarget, arglist)
             self.output = outputXfm
             self.logFile = inSource.logFromFile(outputXfm)
-            # Set new xfm as input for next time
-            inSource.addAndSetXfmToUse(outputXfm)
             self.source_mask = inSource.getMask()
             self.target_mask = inTarget.getMask()
         except AttributeError: # go with filename inputs
@@ -401,8 +407,9 @@ class mincresample(CmdStage):
         argarray could contain inFile and/or output files
 
         """
-        
-        if argArray:
+        if not argArray:
+            argArray = ["mincresample"] 
+        else:      
             argArray.insert(0, "mincresample")
         CmdStage.__init__(self, argArray)
             
@@ -415,7 +422,7 @@ class mincresample(CmdStage):
             #MF TODO: What if we don't want to use lastBasevol?  
             self.inFile = self.getFileToResample(inFile)
             self.likeFile = likeFile.getLastBasevol()
-            self.cxfm = inFile.getLastXfm()
+            self.cxfm = inFile.getLastXfm(fh.removeBaseAndExtension(self.likeFile))
             self.outfile = self.setOutputFile(likeFile)
             self.logFile = inFile.logFromFile(self.outfile) 
         except AttributeError:
