@@ -13,15 +13,18 @@ from multiprocessing import Event
 Pyro.config.PYRO_MOBILE_CODE=1 
 
 class SMATregister:
-    def __init__(self, inputPipeFH, templatePipeFH,
+    def __init__(self, inputPipeFH, 
+                 templatePipeFH,
                  steps=[0.5,0.2],
-                 blurs=[0.5,0.2], iterations=[80,20],
+                 blurs=[0.5,0.2], 
+                 gradients=[True, False],
+                 iterations=[80,20],
                  name="initial"):
         self.p = Pipeline()
         
         for b in blurs:
-            iblur = blur(inputPipeFH, b)
-            tblur = blur(templatePipeFH, b)
+            iblur = blur(inputPipeFH, b, gradient=True)
+            tblur = blur(templatePipeFH, b, gradient=True)
             self.p.addStage(iblur)
             self.p.addStage(tblur)
             
@@ -38,6 +41,7 @@ class SMATregister:
             nlinStage = minctracc(templatePipeFH, 
                                   inputPipeFH, 
                                   blur=blurs[i],
+                                  gradient=gradients[i],
                                   iterations=iterations[i],
                                   step=steps[i])
             self.p.addStage(nlinStage)

@@ -16,17 +16,26 @@ class RegistrationGroupedFiles():
         self.inputLabels = None
         self.blurs = {}
         self.gradients = {}
-        self.lastblur = None #This can be a gradient.
+        self.lastblur = None 
+        self.lastgradient = None
         self.transforms = {}
         self.lastTransform = {}
         self.mask = None
         
-    def getBlur(self, fwhm=None):
+    def getBlur(self, fwhm=None, gradient=False):
         """returns file with specified blurring kernel
-        If no blurring kernel is specified, return the last blur"""
+        If no blurring kernel is specified, return the last blur
+        If gradient is specified, return gradient instead of blur"""
+        blurToReturn = None
         if not fwhm:
             fwhm = self.lastblur
-        return(self.blurs[fwhm])
+            if gradient:
+                fwhm = self.lastgradient
+        if gradient:
+            blurToReturn = self.gradients[fwhm]
+        else:
+            blurToReturn = self.blurs[fwhm]
+        return(blurToReturn)
 
     def addBlur(self, filename, fwhm, gradient=None):
         """adds the blur with the specified kernel"""
@@ -34,6 +43,7 @@ class RegistrationGroupedFiles():
         self.lastblur = fwhm
         if gradient:
             self.gradients[fwhm] = gradient
+            self.lastgradient = fwhm
     
 class RegistrationPipeFH():
     """A class to provide file-handling support for registration pipelines
@@ -126,6 +136,9 @@ class RegistrationPipeFH():
             # MF TODO: Think about how to handle gradient case
             if k == 'blur':
                 xfmFileName += [str(l), "blur"]
+            elif k == 'gradient':
+                if l:
+                    xfmFileName += ["dxyz"]
             elif k == 'linearparam':
                 xfmFileName += [l]
             elif k == 'iterations':
@@ -157,8 +170,8 @@ class RegistrationPipeFH():
     
     #MF TODO: This code is getting a bit repetitive. Lets see if we can't
     # consolidate a bit.     
-    def getBlur(self, fwhm=None): 
-        return(self.groupedFiles[self.currentGroupIndex].getBlur(fwhm))
+    def getBlur(self, fwhm=None, gradient=False): 
+        return(self.groupedFiles[self.currentGroupIndex].getBlur(fwhm, gradient))
     def setBlurToUse(self, fwhm):
         self.groupedFiles[self.currentGroupIndex].lastblur = fwhm
     def getLastBasevol(self):
@@ -214,7 +227,7 @@ class RegistrationPipeFH():
                     "log"  : log }
         
         if gradient:
-            gradWithExt = "%s_dxyz.mnc", outputbase
+            gradWithExt = "%s_dxyz.mnc" % outputbase
             outlist["gradient"] = gradWithExt
         else:
             gradWithExt=None
@@ -247,6 +260,7 @@ class minctracc(CmdStage):
                  logFile=None,
                  defaultDir="transforms", 
                  blur=None,
+                 gradient=False,
                  linearparam="nlin",
                  source_mask=None, 
                  target_mask=None,
@@ -271,9 +285,10 @@ class minctracc(CmdStage):
         CmdStage.__init__(self, None) #don't do any arg processing in superclass
         try: 
             if isFileHandler(inSource, inTarget):
-                # if blur = None, getBlur returns lastblur 
-                self.source = inSource.getBlur(blur)
-                self.target = inTarget.getBlur(blur)
+                # if blur = None, getBlur returns lastblur
+                # if gradient is true, getBlur returns gradient instead of blur 
+                self.source = inSource.getBlur(blur, gradient)
+                self.target = inTarget.getBlur(blur, gradient)
                 if not transform:
                     # Note: this may also be None and should be for initial call
                     targetFilename = fh.removeBaseAndExtension(inTarget.getLastBasevol())
@@ -355,6 +370,7 @@ class linearminctracc(minctracc):
                  logFile=None,
                  defaultDir="transforms", 
                  blur=None,
+                 gradient=False,
                  linearparam="lsq12", 
                  source_mask=None, 
                  target_mask=None):
@@ -364,7 +380,8 @@ class linearminctracc(minctracc):
                            output, 
                            logFile,
                            defaultDir,
-                           blur, 
+                           blur,
+                           gradient, 
                            linearparam,
                            source_mask=source_mask,
                            target_mask=target_mask)
