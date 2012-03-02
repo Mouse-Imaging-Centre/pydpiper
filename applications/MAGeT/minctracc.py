@@ -121,6 +121,7 @@ class RegistrationPipeFH():
         # check to make sure blurs match, otherwise throw error?
         # Go through argument list to build file name
         xfmFileName = [sourceFilename, "to", targetFilename]
+        xfmOutputDir = self.tmpDir
         for k, l in arglist:
             # MF TODO: Think about how to handle gradient case
             if k == 'blur':
@@ -129,10 +130,31 @@ class RegistrationPipeFH():
                 xfmFileName += [l]
             elif k == 'iterations':
                 xfmFileName += ["iter", str(l)]
+            elif k == 'defaultDir':
+                xfmOutputDir = self.setOutputDirectory(str(l))
         xfmFileWithExt = "_".join(xfmFileName) + ".xfm"
-        outputXfm = fh.createBaseName(self.tmpDir, xfmFileWithExt)
+        outputXfm = fh.createBaseName(xfmOutputDir, xfmFileWithExt)
         self.addAndSetXfmToUse(targetFilename, outputXfm)
         return(outputXfm)
+    
+    def setOutputDirectory(self, defaultDir):
+        """sets output directory based on defaults for each type of call
+        allows for the possibility that an entirely new directory may be specified
+        e.g. pipeline_name_nlin or pipeline_name_lsq6 that does not depend on 
+        existing file handlers. Additional cases may be added in the future"""
+        outputDir = os.curdir
+        if defaultDir=="tmp":
+            outputDir = self.tmpDir
+        elif defaultDir=="resampled":
+            outputDir = self.resampledDir
+        elif defaultDir=="labels":
+            outputDir = self.labelsDir
+        elif defaultDir=="transforms":
+            outputDir = self.transformsDir
+        else:
+            outputDir = abspath(defaultDir)
+        return(outputDir)
+    
     #MF TODO: This code is getting a bit repetitive. Lets see if we can't
     # consolidate a bit.     
     def getBlur(self, fwhm=None): 
@@ -171,7 +193,7 @@ class RegistrationPipeFH():
         self.groupedFiles[self.currentGroupIndex].mask = inputMask
     def getMask(self):
         return(self.groupedFiles[self.currentGroupIndex].mask)
-    def blurFile(self, fwhm, gradient=False):
+    def blurFile(self, fwhm, gradient=False, defaultDir="tmp"):
         """create filename for a mincblur call
 
         Return a triplet of the basename, which mincblur needs as its
@@ -181,7 +203,8 @@ class RegistrationPipeFH():
         #MF TODO: Error handling if there is no lastBaseVol
         lastBaseVol = self.getLastBasevol()
         outputbase = fh.removeBaseAndExtension(lastBaseVol)
-        outputbase = "%s/%s_fwhm%g" % (self.tmpDir, outputbase, fwhm)
+        outputDir = self.setOutputDirectory(defaultDir)
+        outputbase = "%s/%s_fwhm%g" % (outputDir, outputbase, fwhm)
         
         withext = "%s_blur.mnc" % outputbase     
         log = self.logFromFile(withext)
@@ -222,6 +245,7 @@ class minctracc(CmdStage):
                  inTarget,
                  output=None,
                  logFile=None,
+                 defaultDir="transforms", 
                  blur=None,
                  linearparam="nlin",
                  source_mask=None, 
@@ -298,7 +322,6 @@ class minctracc(CmdStage):
                     "-stiffness", self.stiffness,
                     "-w_translations", self.w_translations,self.w_translations,self.w_translations,
                     "-step", self.step, self.step, self.step,
-
                     self.source,
                     self.target,
                     self.output]
@@ -329,7 +352,8 @@ class linearminctracc(minctracc):
                  inSource, 
                  inTarget, 
                  output=None, 
-                 logFile=None, 
+                 logFile=None,
+                 defaultDir="transforms", 
                  blur=None,
                  linearparam="lsq12", 
                  source_mask=None, 
@@ -339,6 +363,7 @@ class linearminctracc(minctracc):
                            inTarget,
                            output, 
                            logFile,
+                           defaultDir,
                            blur, 
                            linearparam,
                            source_mask=source_mask,
@@ -352,7 +377,11 @@ class linearminctracc(minctracc):
         self.name = "minctracc" + self.linearparam + " "
 
 class blur(CmdStage):
-    def __init__(self, inFile, fwhm, gradient=False):
+    def __init__(self, 
+                 inFile, 
+                 fwhm, 
+                 defaultDir="tmp",
+                 gradient=False):
         """calls mincblur with the specified 3D Gaussian kernel
 
         The inputs can be in one of two styles. The first argument can
@@ -368,7 +397,7 @@ class blur(CmdStage):
         #MF TODO: In both instances, better handle gradient option
         try:
             if isFileHandler(inFile):
-                blurlist = inFile.blurFile(fwhm, gradient)
+                blurlist = inFile.blurFile(fwhm, gradient, defaultDir)
                 self.base = blurlist["base"]
                 self.inputFiles = [inFile.lastBaseVol]
                 self.outputFiles = [blurlist["file"]]
@@ -377,7 +406,6 @@ class blur(CmdStage):
                 if gradient:
                     self.outputFiles.append(blurlist["gradient"])
             else:
-                print "inFile is string"
                 self.base = str(inFile).replace(".mnc", "")
                 self.inputFiles = [inFile]
                 blurBase = "".join([self.base, "_fwhm", str(fwhm), "_blur"])
@@ -401,7 +429,8 @@ class mincresample(CmdStage):
     def __init__(self, 
                  inFile, 
                  outFile=None, 
-                 logFile=None, 
+                 logFile=None,
+                 defaultDir="resampled", 
                  likeFile=None, 
                  cxfm=None, 
                  argArray=None):
@@ -437,7 +466,7 @@ class mincresample(CmdStage):
                 self.inFile = self.getFileToResample(inFile)
                 self.likeFile = likeFile.getLastBasevol()
                 self.cxfm = inFile.getLastXfm(fh.removeBaseAndExtension(self.likeFile))
-                self.outfile = self.setOutputFile(likeFile)
+                self.outfile = self.setOutputFile(likeFile, defaultDir)
                 self.logFile = inFile.logFromFile(self.outfile)
             else:
                 self.inFile = inFile
@@ -467,9 +496,10 @@ class mincresample(CmdStage):
         self.cmd += ["-2", "-clobber", self.inFile, self.outfile]    
     def setName(self):
         self.name = "mincresample " 
-    def setOutputFile(self, likeFile):
+    def setOutputFile(self, likeFile, defaultDir):
         outBase = fh.removeBaseAndExtension(self.cxfm) + "-resampled.mnc"
-        return(fh.createBaseName(likeFile.tmpDir, outBase))  
+        outDir = likeFile.setOutputDirectory(defaultDir)
+        return(fh.createBaseName(outDir, outBase))  
     def getFileToResample(self, inputFile):
         return(inputFile.getLastBasevol())  
 
@@ -478,6 +508,7 @@ class mincresampleLabels(mincresample):
                  inFile, 
                  outFile=None, 
                  logFile=None, 
+                 defaultDir="labels",
                  likeFile=None, 
                  cxfm=None, 
                  argArray=None):
@@ -485,6 +516,7 @@ class mincresampleLabels(mincresample):
                            inFile, 
                            outFile, 
                            logFile, 
+                           defaultDir,
                            likeFile, 
                            cxfm, 
                            argArray)
@@ -492,10 +524,11 @@ class mincresampleLabels(mincresample):
         """additional arguments needed for resampling labels"""
         self.cmd += ["-keep_real_range", "-nearest_neighbour"]
         mincresample.finalizeCommand(self)
-    def setOutputFile(self, likeFile):
+    def setOutputFile(self, likeFile, defaultDir):
         """set name of output and add labels to likeFile labels array"""
         outBase = fh.removeBaseAndExtension(self.cxfm) + "-resampled-labels.mnc"
-        labelFile = fh.createBaseName(likeFile.tmpDir, outBase)  
+        outDir = likeFile.setOutputDirectory(defaultDir)
+        labelFile = fh.createBaseName(outDir, outBase)  
         # If the likeFile has no InputLabels, use these labels. 
         # Otherwise, add to labels array
         if not likeFile.getInputLabels():
