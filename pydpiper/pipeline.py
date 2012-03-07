@@ -6,7 +6,6 @@ import Pyro.naming
 import Queue
 import cPickle as pickle
 import os
-import shutil
 import sys
 import socket
 import time
