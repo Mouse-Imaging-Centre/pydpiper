@@ -25,16 +25,11 @@ if __name__ == "__main__":
 
     (options, args) = parser.parse_args()
  
-    #TODO: check that the arguments are sensible
-
 
     num_labels = (len(args) - 1) / 2
 
     labels = args[:num_labels]
     xcorr_files = args[num_labels:-1]
-    print num_labels
-    print labels
-    print xcorr_files
     outfilename = args[-1]
     
     # read in the xcorr values
