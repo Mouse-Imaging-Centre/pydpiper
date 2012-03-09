@@ -25,16 +25,20 @@ class RegistrationGroupedFiles():
     def getBlur(self, fwhm=None, gradient=False):
         """returns file with specified blurring kernel
         If no blurring kernel is specified, return the last blur
-        If gradient is specified, return gradient instead of blur"""
+        If gradient is specified, return gradient instead of blur
+        If fwhm = -1, return basevol"""
         blurToReturn = None
-        if not fwhm:
-            fwhm = self.lastblur
-            if gradient:
-                fwhm = self.lastgradient
-        if gradient:
-            blurToReturn = self.gradients[fwhm]
+        if fwhm == -1:
+            blurToReturn = self.basevol
         else:
-            blurToReturn = self.blurs[fwhm]
+            if not fwhm:
+                fwhm = self.lastblur
+                if gradient:
+                    fwhm = self.lastgradient
+            if gradient:
+                blurToReturn = self.gradients[fwhm]
+            else:
+                blurToReturn = self.blurs[fwhm]
         return(blurToReturn)
 
     def addBlur(self, filename, fwhm, gradient=None):
@@ -135,14 +139,16 @@ class RegistrationPipeFH():
         for k, l in arglist:
             # MF TODO: Think about how to handle gradient case
             if k == 'blur':
-                xfmFileName += [str(l), "blur"]
+                xfmFileName += [str(l) + "blur"]
             elif k == 'gradient':
                 if l:
                     xfmFileName += ["dxyz"]
             elif k == 'linearparam':
                 xfmFileName += [l]
             elif k == 'iterations':
-                xfmFileName += ["iter", str(l)]
+                xfmFileName += ["iter" + str(l)]
+            elif k == 'step':
+                xfmFileName += ["step" + str(l)]
             elif k == 'defaultDir':
                 xfmOutputDir = self.setOutputDirectory(str(l))
         xfmFileWithExt = "_".join(xfmFileName) + ".xfm"
@@ -270,7 +276,8 @@ class minctracc(CmdStage):
                  weight=0.8,
                  stiffness=0.98,
                  similarity=0.3,
-                 w_translations=0.2):
+                 w_translations=0.2,
+                 simplex=1):
         """an efficient way to add a minctracc call to a pipeline
 
         The constructor needs two inputFile arguments, the source and the
@@ -285,8 +292,10 @@ class minctracc(CmdStage):
         CmdStage.__init__(self, None) #don't do any arg processing in superclass
         try: 
             if isFileHandler(inSource, inTarget):
-                # if blur = None, getBlur returns lastblur
-                # if gradient is true, getBlur returns gradient instead of blur 
+                """ if blur = None, getBlur returns lastblur
+                if gradient is true, getBlur returns gradient instead of blur 
+                if blur = -1, lastBaseVol is returned and gradient is ignored.
+                """
                 self.source = inSource.getBlur(blur, gradient)
                 self.target = inTarget.getBlur(blur, gradient)
                 if not transform:
@@ -321,6 +330,7 @@ class minctracc(CmdStage):
         self.stiffness = str(stiffness)
         self.similarity = str(similarity)
         self.w_translations = str(w_translations)
+        self.simplex = str(simplex)
 
         self.addDefaults()
         self.finalizeCommand()
@@ -328,7 +338,10 @@ class minctracc(CmdStage):
         self.colour = "red"
 
     def setName(self):
-        self.name = "minctracc nlin step: " + self.step 
+        if self.linearparam == "nlin":
+            self.name = "minctracc nlin step: " + self.step 
+        else:
+            self.name = "minctracc" + self.linearparam + " "
     def addDefaults(self):
         self.cmd = ["minctracc",
                     "-clobber",
@@ -337,6 +350,7 @@ class minctracc(CmdStage):
                     "-stiffness", self.stiffness,
                     "-w_translations", self.w_translations,self.w_translations,self.w_translations,
                     "-step", self.step, self.step, self.step,
+                    "-simplex", self.simplex,
                     self.source,
                     self.target,
                     self.output]
@@ -355,43 +369,18 @@ class minctracc(CmdStage):
         self.outputFiles = [self.output]
 
     def finalizeCommand(self):
-        """add the options for non-linear registration"""
-        # build the command itself
-        self.cmd += ["-iterations", self.iterations,
-                    "-nonlinear", "corrcoeff", "-sub_lattice", "6",
-                    "-lattice_diameter", self.lattice_diameter,
-                     self.lattice_diameter, self.lattice_diameter]
-
-class linearminctracc(minctracc):
-    def __init__(self, 
-                 inSource, 
-                 inTarget, 
-                 output=None, 
-                 logFile=None,
-                 defaultDir="transforms", 
-                 blur=None,
-                 gradient=False,
-                 linearparam="lsq12", 
-                 source_mask=None, 
-                 target_mask=None):
-        minctracc.__init__(self,
-                           inSource,
-                           inTarget,
-                           output, 
-                           logFile,
-                           defaultDir,
-                           blur,
-                           gradient, 
-                           linearparam,
-                           source_mask=source_mask,
-                           target_mask=target_mask)
-
-    def finalizeCommand(self):
-        """add the options for a linear fit"""
-        _numCmd = "-" + self.linearparam
-        self.cmd += ["-xcorr", _numCmd]
-    def setName(self):
-        self.name = "minctracc" + self.linearparam + " "
+        """add the options to finalize the command"""
+        if self.linearparam == "nlin":
+            """add options for non-linear registration"""
+            self.cmd += ["-iterations", self.iterations,
+                         "-nonlinear", "corrcoeff", "-sub_lattice", "6",
+                         "-lattice_diameter", self.lattice_diameter,
+                         self.lattice_diameter, self.lattice_diameter]
+        else:
+            #MF TODO: Enforce that options must be lsq6/7/9/12?
+            """add the options for a linear fit"""
+            _numCmd = "-" + self.linearparam
+            self.cmd += ["-xcorr", _numCmd]
 
 class blur(CmdStage):
     def __init__(self, 
@@ -407,11 +396,15 @@ class blur(CmdStage):
         blurred and the output will be determined by its blurFile
         method. Alternately, the inFile can be a string representing a
         filename, in which case the output and logfile will be set based on 
-        the inFile name.
+        the inFile name. If the fwhm specified is -1, we do not construct 
+        a command.
 
         """
+        
+        if fwhm == -1:
+            return
+        
         CmdStage.__init__(self, None)
-        #MF TODO: In both instances, better handle gradient option
         try:
             if isFileHandler(inFile):
                 blurlist = inFile.blurFile(fwhm, gradient, defaultDir)

@@ -15,26 +15,34 @@ Pyro.config.PYRO_MOBILE_CODE=1
 class SMATregister:
     def __init__(self, inputPipeFH, 
                  templatePipeFH,
-                 steps=[0.5,0.2],
-                 blurs=[0.5,0.2], 
-                 gradients=[True, False],
-                 iterations=[80,20],
+                 steps=[1,0.5,0.5,0.2,0.2,0.1],
+                 blurs=[0.25,0.25,0.25,0.25,0.25, -1], 
+                 gradients=[False, False, True, False, True, False],
+                 iterations=[60,60,60,10,10,4],
+                 simplexes=[3,3,3,1.5,1.5,1],
                  name="initial"):
         self.p = Pipeline()
         
         for b in blurs:
-            iblur = blur(inputPipeFH, b, gradient=True)
-            tblur = blur(templatePipeFH, b, gradient=True)
-            self.p.addStage(iblur)
-            self.p.addStage(tblur)
+            #MF TODO: -1 case is also handled in blur. Need here for addStage.
+            #Fix this redundancy and/or better design?
+            if b != -1:
+                iblur = blur(inputPipeFH, b, gradient=True)
+                tblur = blur(templatePipeFH, b, gradient=True)
+                self.p.addStage(iblur)
+                self.p.addStage(tblur)
             
-        # lsq12 alignment
+        # Two lsq12 stages: one using 0.25 blur, one using 0.25 gradient
         linearparam = "lsq12"
-        linearStage = linearminctracc(templatePipeFH, 
+        for g in [False, True]:       
+            linearStage = minctracc(templatePipeFH, 
                                       inputPipeFH, 
                                       blur=blurs[0], 
-                                      linearparam=linearparam)
-        self.p.addStage(linearStage)
+                                      gradient=g,                                     
+                                      linearparam=linearparam,
+                                      step=1,
+                                      similarity=0.5)
+            self.p.addStage(linearStage)
 
         # create the nonlinear registrations
         for i in range(len(steps)):
@@ -43,7 +51,9 @@ class SMATregister:
                                   blur=blurs[i],
                                   gradient=gradients[i],
                                   iterations=iterations[i],
-                                  step=steps[i])
+                                  step=steps[i],
+                                  similarity=0.8,
+                                  simplex=simplexes[i])
             self.p.addStage(nlinStage)
         
         # resample labels with final registration
