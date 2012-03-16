@@ -143,6 +143,7 @@ if __name__ == "__main__":
             # create the initial templates - either total number of files
             # or the maximum number of templates, whichever is lesser
             templates = []
+            inputs = []
             numTemplates = len(args)
             if numTemplates > options.max_templates:
                 numTemplates = options.max_templates
@@ -152,24 +153,27 @@ if __name__ == "__main__":
             tmplPipeFH.setInputLabels(abspath(options.atlas_labels))
             tmplPipeFH.setMask(abspath(options.mask))    
     
-            for nfile in range(numTemplates):
-                inputPipeFH = RegistrationPipeFH(abspath(args[nfile]), outputDir)
+            # Create fileHandling classes for images
+            for iFile in range(len(args)):
+                inputPipeFH = RegistrationPipeFH(abspath(args[iFile]), outputDir)
                 inputPipeFH.setMask(abspath(options.mask))
-                sp = SMATregister(inputPipeFH, tmplPipeFH)
-                templates.append(inputPipeFH)
+                inputs.append(inputPipeFH)
+    
+            for nfile in range(numTemplates):
+                sp = SMATregister(inputs[nfile], tmplPipeFH)
+                templates.append(inputs[nfile])
                 p.addPipeline(sp.p)
 
             # once the initial templates have been created, go and register each
             # inputFile to the templates
-            for inputFH in templates:
+            for inputFH in inputs:
                 labels = []
                 for tmplFH in templates:
-                        if tmplFH.getLastBasevol() != inputFH.getLastBasevol():
-                            sp = SMATregister(inputFH, tmplFH, name="templates")
-                            p.addPipeline(sp.p)
+                    sp = SMATregister(inputFH, tmplFH, name="templates")
+                    p.addPipeline(sp.p)
                 voxel = voxelVote(inputFH)
                 p.addStage(voxel)
-            
+                
             p.initialize()
             p.printStages()
     
