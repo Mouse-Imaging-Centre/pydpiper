@@ -22,6 +22,7 @@ class SMATregister:
                  iterations=[60,60,60,10,10,4],
                  simplexes=[3,3,3,1.5,1.5,1],
                  w_translations=0.2,
+                 linearparams = {'type' : "lsq12", 'simplex' : 3, 'step' : 1},
                  name="initial"):
         self.p = Pipeline()
         
@@ -35,14 +36,14 @@ class SMATregister:
                 self.p.addStage(tblur)
             
         # Two lsq12 stages: one using 0.25 blur, one using 0.25 gradient
-        linearparam = "lsq12"
-        for g in [False, True]:       
+        for g in [False, True]:    
             linearStage = minctracc(templatePipeFH, 
                                       inputPipeFH, 
                                       blur=blurs[0], 
                                       gradient=g,                                     
-                                      linearparam=linearparam,
-                                      step=1, ### JPL: eeek - hardcoded parameter!
+                                      linearparam=linearparams["type"],
+                                      step=linearparams["step"],
+                                      simplex=linearparams["simplex"],
                                       w_translations=w_translations,
                                       similarity=0.5)
             self.p.addStage(linearStage)
