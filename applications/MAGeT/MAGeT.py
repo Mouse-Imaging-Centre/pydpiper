@@ -12,6 +12,7 @@ from multiprocessing import Event
 
 Pyro.config.PYRO_MOBILE_CODE=1 
 
+# JPL: why is this class in MAGeT - this, except for the final label resampling, is generic hierarchical minctracc, right?
 class SMATregister:
     def __init__(self, inputPipeFH, 
                  templatePipeFH,
@@ -20,6 +21,7 @@ class SMATregister:
                  gradients=[False, False, True, False, True, False],
                  iterations=[60,60,60,10,10,4],
                  simplexes=[3,3,3,1.5,1.5,1],
+                 w_translations=0.2,
                  name="initial"):
         self.p = Pipeline()
         
@@ -40,7 +42,8 @@ class SMATregister:
                                       blur=blurs[0], 
                                       gradient=g,                                     
                                       linearparam=linearparam,
-                                      step=1,
+                                      step=1, ### JPL: eeek - hardcoded parameter!
+                                      w_translations=w_translations,
                                       similarity=0.5)
             self.p.addStage(linearStage)
 
@@ -53,12 +56,18 @@ class SMATregister:
                                   iterations=iterations[i],
                                   step=steps[i],
                                   similarity=0.8,
+                                  w_translations=w_translations,
                                   simplex=simplexes[i])
             self.p.addStage(nlinStage)
         
         # resample labels with final registration
-        resampleStage = mincresampleLabels(templatePipeFH, likeFile=inputPipeFH)
+        if len(templatePipeFH.returnLabels()) > 0:
+            resampleStage = mincresampleLabels(templatePipeFH, likeFile=inputPipeFH)
+            self.p.addStage(resampleStage)
+        # resample files
+        resampleStage = mincresample(templatePipeFH, likeFile=inputPipeFH)
         self.p.addStage(resampleStage)
+
 
 def voxelVote(inputFH):
     labels = inputFH.returnLabels()
