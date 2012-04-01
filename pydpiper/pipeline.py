@@ -9,6 +9,7 @@ import os
 import sys
 import socket
 import time
+from networkx.algorithms.traversal.depth_first_search import dfs_successor
 from datetime import datetime
 from subprocess import call
 from multiprocessing import Process, Event
@@ -283,7 +284,7 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
         """given an index, sets stage to failed, adds to processed stages array"""
         self.stages[index].setFailed()
         self.processedStages.append(index)
-        for i in nx.dfs_successors(self.G, index).keys():
+        for i in dfs_successor(self.G, index).keys():
             self.processedStages.append(index)
     def requeue(self, i):
         """If stage cannot be run due to insufficient mem/procs, executor returns it to the queue"""
