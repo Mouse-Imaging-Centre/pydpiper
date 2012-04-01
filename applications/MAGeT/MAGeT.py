@@ -22,7 +22,7 @@ class SMATregister:
                  iterations=[60,60,60,10,10,4],
                  simplexes=[3,3,3,1.5,1.5,1],
                  w_translations=0.2,
-                 linearparams = {'type' : "lsq12", 'simplex' : 3, 'step' : 1},
+                 linearparams = {'type' : "lsq12", 'simplex' : 1, 'step' : 1},
                  name="initial"):
         self.p = Pipeline()
         

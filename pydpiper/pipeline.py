@@ -283,7 +283,7 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
         """given an index, sets stage to failed, adds to processed stages array"""
         self.stages[index].setFailed()
         self.processedStages.append(index)
-        for i in nx.dfs_successor(self.G, index).keys():
+        for i in nx.dfs_successors(self.G, index).keys():
             self.processedStages.append(index)
     def requeue(self, i):
         """If stage cannot be run due to insufficient mem/procs, executor returns it to the queue"""
