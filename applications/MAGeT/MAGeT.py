@@ -183,7 +183,8 @@ if __name__ == "__main__":
                     p.addPipeline(sp.p)
                 voxel = voxelVote(inputFH)
                 p.addStage(voxel)
-                
+            
+            print "templates: " + str(numTemplates)    
             p.initialize()
             p.printStages()
     
@@ -195,6 +196,5 @@ if __name__ == "__main__":
         returnEvent = Event()
         pipelineDaemon(p, returnEvent, options, sys.argv[0])
         returnEvent.wait()
-        print "templates: " + str(numTemplates)
 
     
