@@ -12,7 +12,7 @@ my $joinStreams = 0;
 my $printJob = 0;
 my $sgeOpts = "";
 my $sgePriority = undef;
-my $sgeQueue = "main.q";
+my $sgeQueue = "all.q";
 my $sgeSMP = undef;
 
 my @command;
@@ -128,19 +128,15 @@ $jobScript .= "\n";
 # add the arguments themselves
 $jobScript .= "@command \n";
 
-$sgeOpts = "-l $sgeOpts" if $sgeOpts;
-$sgeOpts .= " -p $sgePriority" if $sgePriority;
-$sgeOpts .= " -pe smp $sgeSMP" if $sgeSMP;
-
 if ($printJob) {
     print $jobScript;
-    print "qsub -S /bin/bash $sgeOpts\n";
 }
 else {
-    open (JOBSCRIPT, '>>.jobscript');
-    print JOBSCRIPT $jobScript;
-    close(JOBSCRIPT);
-    open PIPE, "|qsub -S /bin/bash $sgeOpts"
+    $sgeOpts = "-l $sgeOpts" if $sgeOpts;
+    $sgeOpts .= " -p $sgePriority" if $sgePriority;
+    $sgeOpts .= " -pe smp $sgeSMP" if $sgeSMP;
+
+    open PIPE, "|qsub -S /bin/sh $sgeOpts"
         or die "ERROR: could not open pipe to qsub: $!\n";
     print PIPE $jobScript;
     if (! close PIPE ) {

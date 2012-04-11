@@ -14,9 +14,6 @@ from subprocess import call
 from multiprocessing import Process, Event
 import file_handling as fh
 import pipeline_executor as pe
-import logging
-
-logger = logging.getLogger(__name__)
 
 Pyro.config.PYRO_MOBILE_CODE=1 
 
@@ -113,24 +110,9 @@ class CmdStage(PipelineStage):
         of.write("Running on: " + socket.gethostname() + " at " + datetime.isoformat(datetime.now(), " ") + "\n")
         of.write(repr(self) + "\n")
         of.flush()
-
-        if self.is_effectively_complete():
-            of.write("All output files exist. Skipping stage.\n")
-            returncode = 0
-        else: 
-            returncode = call(self.cmd, stdout=of, stderr=of, shell=False) #TODO: shell = False?  Is this okay?
+        returncode = call(self.cmd, stdout=of, stderr=of)
         of.close()
         return(returncode)
-    
-    def is_effectively_complete(self):
-        """check if this stage is effectively complete (if output files already exist)"""
-        all_files_exist = True
-        for output in self.outputFiles + self.inputFiles:
-            if not os.path.exists(output):
-                all_files_exist = False
-                break
-        return all_files_exist
-
     def getHash(self):
         return(hash(" ".join(self.cmd)))
     def __repr__(self):
@@ -160,8 +142,6 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
         self.backupFileLocation = None
         # list of registered clients
         self.clients = []
-        
-        self.skipped_stages = 0
     def addStage(self, stage):
         """adds a stage to the pipeline"""
         # check if stage already exists in pipeline - if so, don't bother
@@ -170,8 +150,7 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
         # for base stages and entire command for CmdStages
         h = stage.getHash()
         if self.stagehash.has_key(h):
-            self.skipped_stages += 1 
-            #stage already exists - nothing to be done
+            pass #stage already exists - nothing to be done
         else: #stage doesn't exist - add it
             # add hash to the dict
             self.stagehash[h] = self.counter
@@ -197,12 +176,12 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
         pickle.dump(self.outputhash, open(str(self.backupFileLocation) + '/outputhash.pkl', 'wb'))
         pickle.dump(self.stagehash, open(str(self.backupFileLocation) + '/stagehash.pkl', 'wb'))
         pickle.dump(self.processedStages, open(str(self.backupFileLocation) + '/processedStages.pkl', 'wb'))
-        logger.info("Pipeline pickled")
+        print '\nPipeline pickled.\n'
     def restart(self):
         """Restarts the pipeline from previously pickled backup files."""
         if (self.backupFileLocation == None):
             self.setBackupFileLocation()
-            logger.info("Backup location not specified. Looking in the current directory.")
+            print "Backup location not specified. Looking in the current directory."
         try:
             self.G = pickle.load(open(str(self.backupFileLocation) + '/G.pkl', 'rb'))
             self.stages = pickle.load(open(str(self.backupFileLocation) + '/stages.pkl', 'rb'))
@@ -211,19 +190,17 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
             self.outputhash = pickle.load(open(str(self.backupFileLocation) + '/outputhash.pkl', 'rb'))
             self.stagehash = pickle.load(open(str(self.backupFileLocation) + '/stagehash.pkl', 'rb'))
             self.processedStages = pickle.load(open(str(self.backupFileLocation) + '/processedStages.pkl', 'rb'))
-            logger.info('Successfully reimported old data from backups.')
+            print 'Successfully reimported old data from backups.'
         except:
-            logger.exception("Backup files are not recoverable.  Pipeline restart required.")
-            sys.exit()
-
+            sys.exit("Backup files are not recoverable.  Pipeline restart required.\n")
+        print 'Previously completed stages (of ' + str(len(self.stages)) + ' total): '
         done = []
         for i in self.G.nodes_iter():
             if self.stages[i].isFinished() == True:
                 done.append(i)
-        logger.debug('Previously completed stages (of ' + str(len(self.stages)) + ' total): ' + str(done))
+        print str(done)
         self.initialize()
         self.printStages()
-
     def setBackupFileLocation(self, outputDir=None):
         """Sets location of backup files."""
         if (outputDir == None):
@@ -235,9 +212,7 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
             self.addStage(s)
     def printStages(self):
         for i in range(len(self.stages)):
-            print(str(i) + "  " + str(self.stages[i]))
-        print self.skipped_stages, "stages skipped as redundant. ", len(self.stages), "stages to run."
-                   
+            print(str(i) + "  " + str(self.stages[i]))           
     def createEdges(self):
         """computes stage dependencies by examining their inputs/outputs"""
         starttime = time.time()
@@ -249,7 +224,7 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
                 if self.outputhash.has_key(ip):
                     self.G.add_edge(self.outputhash[ip], i)
         endtime = time.time()
-        logger.info("Create Edges time: " + str(endtime-starttime))
+        print("Create Edges time: " + str(endtime-starttime))
     def computeGraphHeads(self):
         """adds stages with no incomplete predecessors to the runnable queue"""
         graphHeads = []
@@ -268,7 +243,7 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
                     if predfinished == True:
                         self.runnable.put(i) 
                         graphHeads.append(i)
-        logger.debug("Graph heads: " + str(graphHeads))
+        print "Graph heads: " + str(graphHeads) + "\n"              
     def getStage(self, i):
         """given an index, return the actual pipelineStage object"""
         return(self.stages[i])
@@ -279,50 +254,37 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
         else:
             index = self.runnable.get()
             self.stages[index].setRunning()
-            return index
-        
-    def setStageStarted(self, index, clientURI=None):
-        print "Starting Stage " + str(index) + ": " + str(self.stages[index]),
-        if clientURI:
-            print "(" + str(clientURI) + ")"
-        else: 
-            print
-
+            return(index)
     def checkIfRunnable(self, index):
         """stage added to runnable queue if all predecessors finished"""
         canRun = True
-        logger.debug("Checking if stage " + str(index) + " is runnable ...")
+        print("Checking if stage " + str(index) + " is runnable ...")
         if self.stages[index].isFinished() == True:
             canRun = False
         else:
             for i in self.G.predecessors(index):
-                #print "Predecessor: Stage " + str(i),               
+                print "Predecessor: Stage " + str(i),               
                 s = self.getStage(i)
-                #print " State: " + str(s.status) 
+                print " State: " + str(s.status) 
                 if s.isFinished() == False:
                     canRun = False
-        logger.debug("Stage " + str(index) + " Runnable: " + str(canRun))
-        return canRun
-
-    def setStageFinished(self, index, save_state = True):
+        print("Stage " + str(index) + " Runnable: " + str(canRun) + '\n')
+        return(canRun)
+    def setStageFinished(self, index):
         """given an index, sets corresponding stage to finished and adds successors to the runnable queue"""
-        print "Finished Stage " + str(index) + ": " + str(self.stages[index])
+        print("FINISHED STAGE " + str(index) + ": " + str(self.stages[index]))
         self.stages[index].setFinished()
         self.processedStages.append(index)
-        if save_state: 
-            self.selfPickle()
+        self.selfPickle()
         for i in self.G.successors(index):
             if self.checkIfRunnable(i):
                 self.runnable.put(i)
-
     def setStageFailed(self, index):
         """given an index, sets stage to failed, adds to processed stages array"""
         self.stages[index].setFailed()
-        logger.info("ERROR in Stage " + str(index) + ": " + str(self.stages[index]))
         self.processedStages.append(index)
         for i in nx.dfs_successors(self.G, index).keys():
             self.processedStages.append(index)
-
     def requeue(self, i):
         """If stage cannot be run due to insufficient mem/procs, executor returns it to the queue"""
         self.stages[i].setNone()
@@ -334,7 +296,6 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
         self.computeGraphHeads()
     def continueLoop(self):
         """Returns 1 unless all stages are finished. Used in Pyro communication."""
-        logger.debug("# stages %i. # processed: %i.", len(self.stages), len(self.processedStages))
         return(len(self.stages) > len(self.processedStages))
     def getProcessedStageCount(self):
         return(len(self.processedStages))
@@ -350,30 +311,7 @@ def launchPipelineExecutor(options, programName=None):
         pipelineExecutor.submitToQueue(programName) 
     else: 
         pipelineExecutor.launchPipeline()    
-
-def skip_completed_stages(pipeline):
-    runnable = []
-    while True:
-        i = pipeline.getRunnableStageIndex()                 
-        if i == None:
-            break
-        
-        s = pipeline.getStage(i)
-        if not isinstance(s, CmdStage):
-            runnable.append(i)
-            continue
-        
-        if not s.is_effectively_complete():
-            runnable.append(i)
-            continue
-        
-        pipeline.setStageStarted(i, "PYRO://127.0.0.1:blah")
-        pipeline.setStageFinished(i, save_state = False)
-        logger.debug("skipping stage %i" % i)
     
-    for i in runnable:
-        pipeline.requeue(i)
-        
 def launchServer(pipeline, options, e):
     """Starts Pyro Server in a separate thread"""
     Pyro.core.initServer()
@@ -399,7 +337,8 @@ def launchServer(pipeline, options, e):
     try:
         daemon.requestLoop(pipeline.continueLoop)
     except:
-        logger.exception("Failed in pipelineDaemon")
+        print "Failed in pipelineDaemon"
+        print "Unexpected error: ", sys.exc_info()
         sys.exit()
     else:
         print("Pipeline completed. Daemon unregistering " + str(len(pipeline.clients)) + " client(s) and shutting down...")
@@ -413,81 +352,21 @@ def launchServer(pipeline, options, e):
         print("Objects successfully unregistered and daemon shutdown.")
         e.clear()
 
-def flatten_pipeline(p):
-    """return a list of tuples for each stage.
-
-       Each item in the list is (id, command, [dependencies]) 
-       where dependencies is a list of stages depend on this stage to be complete before they run.
-    """
-    def post(x, y):
-        if y[0] in x[2]: 
-           return 1
-        elif x[0] in y[2]:
-           return -1
-        else:
-           return 0 
-                
-    return sorted([(i, str(p.stages[i]), p.G.predecessors(i)) for i in p.G.nodes_iter()],cmp=post)
-
-def sge_script(p):
-    qsub = "sge_batch_hold -l vf=2G"
-    flat = flatten_pipeline(p)
-
-    subs   = []
-    alter  = []
-    unhold = []
-    f = lambda x: "MAGeT_%i" % x
-
-    script = []
-    skipped_stages = 0
-    for i in flat:
-        job_id,cmd,depends = i
-        stage  = p.getStage(job_id)
-        if isinstance(stage, CmdStage): 
-            if stage.is_effectively_complete():
-                skipped_stages += 1
-                continue
-        name = f(job_id)
-        deps = ",".join(map(f,depends))
-	job_cmd="%s -J %s %s" % (qsub, name, cmd)
-        script.append(job_cmd)
-        if depends:
-	    depend_cmd="qalter -hold_jid %s %s" % (deps,name)
-            script.append(depend_cmd)
-	unhold_cmd = "qalter -h U %s" % name
-        script.append(unhold_cmd)
-    
-    print skipped_stages, "stages skipped (outputs exist).", len(subs), "stages to run."
-    return script #subs + alter + unhold
-
 def pipelineDaemon(pipeline, returnEvent, options=None, programName=None):
     """Launches Pyro server and (if specified by options) pipeline executors"""
-
+    
     #check for valid pipeline 
     if pipeline.runnable.empty()==None:
         print "Pipeline has no runnable stages. Exiting..."
         sys.exit()
 
-    if options.queue == "sge_script":
-        script = open("sge_script", "w")
-        script.write("\n".join(sge_script(pipeline)))
-        script.close()
-        print "SGE job submission script for this pipeline written to sge_script"
-        sys.exit()
-
     if options.urifile==None:
         options.urifile = os.path.abspath(os.curdir + "/" + "uri")
-        
-    logger.debug("Examining filesystem to determine skippable stages...")
-    skip_completed_stages(pipeline)
     
     e = Event()
-    logger.debug("# stages %i. # processed: %i.", len(pipeline.stages), len(pipeline.processedStages))
-    logger.debug("Starting server...")
     process = Process(target=launchServer, args=(pipeline,options,e,))
     process.start()
     e.wait()
-    logger.debug("Launching executors...")
     if options.num_exec != 0:
         processes = [Process(target=launchPipelineExecutor, args=(options,programName,)) for i in range(options.num_exec)]
         for p in processes:
@@ -498,6 +377,5 @@ def pipelineDaemon(pipeline, returnEvent, options=None, programName=None):
     #Return to calling code if pipeline has no more runnable stages:
     #Event will be cleared once clients are unregistered. 
     while e.is_set():
-        sys.stdout.flush()
         time.sleep(5)
     returnEvent.set()

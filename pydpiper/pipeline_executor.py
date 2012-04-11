@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
-import Pyro
+import Pyro.core
+import Pyro.naming
 import time
 import sys
 import os
@@ -9,15 +10,8 @@ from datetime import datetime
 from multiprocessing import Process, Pool
 from subprocess import call
 import pydpiper.queueing as q
-import traceback
-import logging
-
-logger = logging.getLogger(__name__)
-
-POLLING_INTERVAL = 5 # poll for new jobs
 
 Pyro.config.PYRO_MOBILE_CODE=1
-
 
 #use Pyro.core.CallbackObjBase?? - need further review of documentation
 class clientExecutor(Pyro.core.SynchronizedObjBase):
@@ -31,30 +25,25 @@ class clientExecutor(Pyro.core.SynchronizedObjBase):
         if serverShutdown:
             self.continueRunning = False
          
-def runStage(serverURI, clientURI, i):
+def runStage(serverURI, i):
     # Proc needs its own proxy as it's independent of executor
     p = Pyro.core.getProxyForURI(serverURI)
     s = p.getStage(i)
     
     # Run stage, set finished or failed accordingly  
     try:
-        logger.info("Running stage %i: %s, ", i, str(s))
-        p.setStageStarted(i, clientURI)
-        try:
-            r = s.execStage()
-        except:
-            logger.exception("Exception whilst running stage: %i ", i)   
-            p.setStageFailed(i)
+        print("Running stage " + str(i) + ": " + str(s) + "\n")
+        r = s.execStage()
+        print("Stage " + str(i) + " finished, return was: " + str(r) + "\n")
+        if r == 0:
+            p.setStageFinished(i)
         else:
-            logger.info("Stage %i finished, return was: %i", i, r)
-            if r == 0:
-                p.setStageFinished(i)
-            else:
-                p.setStageFailed(i)
-
-        return [s.getMem(),s.getProcs()] # If completed, return mem & processes back for re-use    
+            p.setStageFailed(i)
+        return[s.getMem(),s.getProcs()] # If completed, return mem & processes back for re-use    
     except:
-        logger.exception("Error communicating to server. Stopping executor...")
+        print "Failed in executor thread"
+        print "Unexpected error: ", sys.exc_info()
+        #task_done()
         sys.exit()        
          
 class pipelineExecutor():
@@ -84,7 +73,6 @@ class pipelineExecutor():
             # Add options for sge_batch command
             cmd = ["sge_batch", "-J", jobname, "-m", strprocs, "-l", strmem] 
             cmd += ["pipeline_executor.py", "--uri-file", self.uri, "--proc", strprocs, "--mem", str(self.mem)]
-            print(cmd)
             call(cmd)   
         else:
             print("Specified queueing system is: %s" % (self.queue))
@@ -99,8 +87,7 @@ class pipelineExecutor():
             return False
     def launchPipeline(self):  
         """Start executor that will run pipeline stages"""   
-        # initialize pipeline_executor as both client and server
-        print "Launching pipeline..."       
+        # initialize pipeline_executor as both client and server       
         Pyro.core.initClient()
         Pyro.core.initServer()
         daemon = Pyro.core.Daemon()
@@ -127,63 +114,46 @@ class pipelineExecutor():
         #initialize runningMem and Procs
         runningMem = 0.0
         runningProcs = 0               
-
-        class ChildProcess():
-            def __init__(self, stage, result, mem, procs):
-                self.stage = stage
-                self.result = result
-                self.mem = mem
-                self.procs = procs                 
-                                
         runningChildren = [] # no scissors
- 
-        print "Connected to ", serverURI
-        print "Client URI is ", clientURI
+              
         # loop until the pipeline sets executor.continueLoop() to false
         pool = Pool(processes = self.proc)
         try:
             while executor.continueLoop():
                 daemon.handleRequests(0)               
-                # Free up resources from any completed (successful or otherwise) stages
-                for child in [x for x in runningChildren if x.result.ready()]:
-                    logger.debug("Freeing up resources for stage %i." % child.stage)
-                    runningMem -= child.mem
-                    runningProcs -= child.procs
-                    runningChildren.remove(child)
-
-                # check if we have any free processes, and even a little bit of memory
-                if not self.canRun(1, 1, runningMem, runningProcs): 
-                    time.sleep(POLLING_INTERVAL)
-                    continue
-                
-                # check for available stages
+                # Check for available stages
                 i = p.getRunnableStageIndex()                 
                 if i == None:
-                    logger.debug("No runnable stages. Sleeping...")
-                    time.sleep(POLLING_INTERVAL)
-                    continue
-
-                # Before running stage, check usable mem & procs
-                logger.debug("Considering stage %i" % i)
-                s = p.getStage(i)
-                stageMem, stageProcs = s.getMem(), s.getProcs()
-                if self.canRun(stageMem, stageProcs, runningMem, runningProcs):
-                    runningMem += stageMem
-                    runningProcs += stageProcs            
-                    result = pool.apply_async(runStage,(serverURI, clientURI, i))
-                    runningChildren.append(ChildProcess(i, result, stageMem, stageProcs))
-                    logger.debug("Added stage %i to the running pool." % i)
+                    print("No runnable stages. Sleeping...")
+                    time.sleep(5)
                 else:
-                    logger.debug("Not enough resources to run stage %i. " % i) 
-                    p.requeue(i)
-        except Exception as e:
-            logger.exception("Error during executor polling loop. Shutting down executor...")
+                    # Before running stage, check usable mem & procs
+                    completedTasks = []
+                    for j,val in enumerate(runningChildren):
+                        if val.ready():                         
+                            completedTasks.insert(0,j)
+                    for j in completedTasks:
+                        runningMem -= runningChildren[j].get()[0]
+                        runningProcs -= runningChildren[j].get()[1]
+                        del runningChildren[j]    
+                    s = p.getStage(i)
+                    stageMem = s.getMem()
+                    stageProcs = s.getProcs()
+                    if self.canRun(stageMem, stageProcs, runningMem, runningProcs):
+                        runningMem += stageMem
+                        runningProcs += stageProcs             
+                        runningChildren.append(pool.apply_async(runStage,(serverURI, i)))
+                    else:
+                        p.requeue(i)
+        except:
+            print "Failed in pipeline executor."
+            print "Unexpected error: ", sys.exc_info()
             daemon.shutdown(True)
             pool.close()
             pool.join()
             sys.exit()
         else:
-            logger.info("Server has shutdown. Killing executor thread.")
+            print "Server has shutdown. Killing executor thread."
             pool.close()
             pool.join()        
             daemon.shutdown(True)
@@ -192,9 +162,6 @@ class pipelineExecutor():
 ##########     ---     Start of program     ---     ##########   
 
 if __name__ == "__main__":
-    FORMAT = '%(asctime)-15s %(name)s %(levelname)s: %(message)s'
-    logging.basicConfig(format=FORMAT, level=logging.DEBUG)
-
     usage = "%prog [options]"
     description = "pipeline executor"
 
@@ -210,9 +177,6 @@ if __name__ == "__main__":
     parser.add_option("--num-executors", dest="num_exec", 
                       type="int", default=1, 
                       help="Number of independent executors to launch.")
-    parser.add_option("--time", dest="time", 
-                      type="string", default="2:00:00:00", 
-                      help="Wall time to request for each executor in the format dd:hh:mm:ss")
     parser.add_option("--proc", dest="proc", 
                       type="int", default=4,
                       help="Number of processes per executor. If not specified, default is 4. Also sets max value for processor use per executor.")
