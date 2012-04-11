@@ -62,7 +62,7 @@ class SMATregister:
             self.p.addStage(nlinStage)
         
         # resample labels with final registration
-        if len(templatePipeFH.returnLabels()) > 0:
+        if templatePipeFH.getInputLabels():
             resampleStage = mincresampleLabels(templatePipeFH, likeFile=inputPipeFH)
             self.p.addStage(resampleStage)
         # resample files
