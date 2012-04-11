@@ -1,0 +1,14 @@
+#!/bin/bash
+JOB_NAME=MAGeT_
+NUM_EXEC=1
+PROCS_PER_EXEC=4
+MEM_PER_EXEC=8
+VF=$(echo "scale=2;$MEM_PER_EXEC / $PROCS_PER_EXEC" | bc)
+
+PYD_HOME=/home/jp/git/pydpiper
+PATH=$PATH:$PYD_HOME/pydpiper:$PYD_HOME/applications/MAGeT_human
+PYTHONPATH=$PYTHONPATH:$PYD_HOME
+for i in `seq 1 $NUM_EXEC`; do
+	N=${JOB_NAME}${RANDOM}
+	./sge_batch -o ./$N.o -e ./$N.e -J $N -m $PROCS_PER_EXEC -l vf=${VF}G pipeline_executor.py --uri-file /home/jp/git/pydpiper/uri --proc $PROCS_PER_EXEC --mem $MEM_PER_EXEC;
+done
