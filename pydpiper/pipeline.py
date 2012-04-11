@@ -415,17 +415,16 @@ def launchServer(pipeline, options, e):
 
 def flatten_pipeline(p):
     """return a list of tuples for each stage.
-
        Each item in the list is (id, command, [dependencies]) 
        where dependencies is a list of stages depend on this stage to be complete before they run.
     """
     def post(x, y):
         if y[0] in x[2]: 
-           return 1
+            return 1
         elif x[0] in y[2]:
-           return -1
+            return -1
         else:
-           return 0 
+            return 0 
                 
     return sorted([(i, str(p.stages[i]), p.G.predecessors(i)) for i in p.G.nodes_iter()],cmp=post)
 
@@ -449,12 +448,12 @@ def sge_script(p):
                 continue
         name = f(job_id)
         deps = ",".join(map(f,depends))
-	job_cmd="%s -J %s %s" % (qsub, name, cmd)
+        job_cmd="%s -J %s %s" % (qsub, name, cmd)
         script.append(job_cmd)
         if depends:
-	    depend_cmd="qalter -hold_jid %s %s" % (deps,name)
+            depend_cmd="qalter -hold_jid %s %s" % (deps,name)
             script.append(depend_cmd)
-	unhold_cmd = "qalter -h U %s" % name
+        unhold_cmd = "qalter -h U %s" % name
         script.append(unhold_cmd)
     
     print skipped_stages, "stages skipped (outputs exist).", len(subs), "stages to run."

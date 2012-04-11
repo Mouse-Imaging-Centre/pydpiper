@@ -62,8 +62,8 @@ class AbstractApplication(object):
                           action="store_true",
                           help="Restart pipeline using backup files.")
         self.parser.add_option("--backup-dir", dest="backup_directory",
-                      type="string", default=".pipeline-backup",
-                      help="Directory where this pipeline backup should be stored.")    
+                          type="string", default=".pipeline-backup",
+                          help="Directory where this pipeline backup should be stored.")    
     
     def _setup_pipeline(self):
         self.pipeline = Pipeline()
