@@ -35,7 +35,7 @@ class runOnQueueingSystem():
             executablePath = os.path.abspath(self.arguments[0])
             self.jobName = basename(executablePath)
         self.ppn = ppn
-        self.time = time
+        self.time = options.time or time
     def buildMainCommand(self):
         """Re-construct main command to be called in pbs script, removing un-necessary arguments"""
         reconstruct = ""
