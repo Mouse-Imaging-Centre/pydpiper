@@ -4,7 +4,7 @@ import Pyro.core
 import Pyro.naming
 from optparse import OptionParser
 from datetime import datetime
-from os.path import isdir, abspath, basename
+from os.path import isdir, basename
 from os import mkdir
 import os
 import time
@@ -30,7 +30,7 @@ class runOnQueueingSystem():
         if not isdir(self.jobDir):
             mkdir(self.jobDir) 
         if self.arguments==None:
-            self.jobName = "pipeline"
+            self.jobName = "pydpiper"
         else:
             executablePath = os.path.abspath(self.arguments[0])
             self.jobName = basename(executablePath)
@@ -39,11 +39,12 @@ class runOnQueueingSystem():
     def buildMainCommand(self):
         """Re-construct main command to be called in pbs script, removing un-necessary arguments"""
         reconstruct = ""
-        for i in range(len(self.arguments)):
-            if not (re.search("--num-executors", self.arguments[i]) or re.search("--proc", self.arguments[i])
-                or re.search("--queue", self.arguments[i]) or re.search("--mem", self.arguments[i])):
-                reconstruct += self.arguments[i]
-                reconstruct += " "
+        if self.arguments:
+            for i in range(len(self.arguments)):
+                if not (re.search("--num-executors", self.arguments[i]) or re.search("--proc", self.arguments[i])
+                        or re.search("--queue", self.arguments[i]) or re.search("--mem", self.arguments[i])):
+                    reconstruct += self.arguments[i]
+                    reconstruct += " "
         return reconstruct
     def constructJobFile(self, identifier, isMainFile):
         """Construct the bulk of the pbs script to be submitted via qsub"""
@@ -71,9 +72,9 @@ class runOnQueueingSystem():
         """Constructs header and commands for pbs script, based on options input from calling program"""
         self.jobFile.write("#!/bin/bash" + "\n")
         requestNodes = 1
-        execProcs = self.ppn
+        execProcs = self.proc
         mainCommand = ""
-        name = self.jobName + "-executor"
+        name = self.jobName
         launchExecs = True   
         if isMainFile:
             # Number of nodes used depends on:
@@ -83,8 +84,9 @@ class runOnQueueingSystem():
             mainCommand = self.buildMainCommand()
             if self.numexec == 0:
                 launchExecs = False
+                name += "-no-executors"
             elif self.numexec == 1:
-                name = self.jobName + "-pipeline-all"
+                name += "-all"
                 execProcs = self.proc
                 halfPpn = self.ppn/2
                 if nodes[1]<=halfPpn:
@@ -92,9 +94,10 @@ class runOnQueueingSystem():
                 else:
                     requestNodes = nodes[0] + 1               
             else:  
-                name = self.jobName + "-pipeline-plus-exec" 
-                execProcs = self.proc 
-            
+                name += "-plus-exec" 
+                execProcs = self.proc
+        else:
+            name += "-executor"    
         self.jobFile.write("#PBS -l nodes=%d:ppn=%d,walltime=%s\n" % (requestNodes, self.ppn, self.time))
         self.jobFile.write("#PBS -N %s\n\n" % name)
         self.jobFile.write("cd $PBS_O_WORKDIR\n\n")

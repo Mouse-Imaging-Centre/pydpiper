@@ -295,10 +295,8 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
         if self.stages[index].isFinished() == True:
             canRun = False
         else:
-            for i in self.G.predecessors(index):
-                #print "Predecessor: Stage " + str(i),               
+            for i in self.G.predecessors(index):              
                 s = self.getStage(i)
-                #print " State: " + str(s.status) 
                 if s.isFinished() == False:
                     canRun = False
         logger.debug("Stage " + str(index) + " Runnable: " + str(canRun))

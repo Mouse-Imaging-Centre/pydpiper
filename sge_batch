@@ -12,7 +12,7 @@ my $joinStreams = 0;
 my $printJob = 0;
 my $sgeOpts = "";
 my $sgePriority = undef;
-my $sgeQueue = "main.q";
+my $sgeQueue = "all.q";
 my $sgeSMP = undef;
 
 my @command;

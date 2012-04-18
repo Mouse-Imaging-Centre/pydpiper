@@ -6,7 +6,7 @@ import networkx as nx
 def generateFile(i):
     return("filename_" + str(i) + ".mnc")
     
-class TestBranchedPipeline():
+class TestSgeScript():
     def setup_method(self, method):
         self.p = Pipeline()
         startFileA = generateFile(1)
@@ -40,31 +40,31 @@ class TestBranchedPipeline():
         assert expected == actual
 
     def test_sge_script_simple(self):
-    	p = Pipeline()
-	p.addStage(CmdStage(["command"]))
-	p.initialize()
-	
-	assert sge_script(p) == [
-		"qsub -h -N job_0 command",
-		"qalter -h U job_0"]
-				
+        p = Pipeline()
+        p.addStage(CmdStage(["command"]))
+        p.initialize()
+
+        assert sge_script(p) == [
+                "qsub -h -N job_0 command",
+                "qalter -h U job_0"]
+
     def test_sge_script_branched(self):
-	assert sge_script(self.p) == [
-		"qsub -h -N job_0 headcommand-1 filename_0.mnc filename_1.mnc",
-		"qsub -h -N job_1 subcommand-1-2 filename_1.mnc filename_2.mnc",
-		"qsub -h -N job_2 subcommand-1-3 filename_1.mnc filename_3.mnc",
-		"qsub -h -N job_3 headcommand-5 filename_4.mnc filename_5.mnc",
-		"qsub -h -N job_4 subcommand-5-6 filename_5.mnc filename_6.mnc",
-		"qsub -h -N job_5 subcommand-5-7 filename_5.mnc filename_7.mnc",
-		"qalter -hold_jid job_0 job_1",
-		"qalter -hold_jid job_0 job_2",
-		"qalter -hold_jid job_3 job_4",
-		"qalter -hold_jid job_3 job_5",
-		"qalter -h U job_0",
-		"qalter -h U job_1",
-		"qalter -h U job_2",
-		"qalter -h U job_3",
-		"qalter -h U job_4",
-		"qalter -h U job_5",
-		]
-				
+        assert sge_script(self.p) == [
+                "qsub -h -N job_0 headcommand-1 filename_0.mnc filename_1.mnc",
+                "qsub -h -N job_1 subcommand-1-2 filename_1.mnc filename_2.mnc",
+                "qsub -h -N job_2 subcommand-1-3 filename_1.mnc filename_3.mnc",
+                "qsub -h -N job_3 headcommand-5 filename_4.mnc filename_5.mnc",
+                "qsub -h -N job_4 subcommand-5-6 filename_5.mnc filename_6.mnc",
+                "qsub -h -N job_5 subcommand-5-7 filename_5.mnc filename_7.mnc",
+                "qalter -hold_jid job_0 job_1",
+                "qalter -hold_jid job_0 job_2",
+                "qalter -hold_jid job_3 job_4",
+                "qalter -hold_jid job_3 job_5",
+                "qalter -h U job_0",
+                "qalter -h U job_1",
+                "qalter -h U job_2",
+                "qalter -h U job_3",
+                "qalter -h U job_4",
+                "qalter -h U job_5",
+                ]
+
