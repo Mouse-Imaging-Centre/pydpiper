@@ -126,12 +126,14 @@ class MAGeTApplication(AbstractApplication):
         # Create fileHandling classes for initial template
         tmplPipeFH = RegistrationPipeFH(abspath(options.atlas_image), tmplDir)
         tmplPipeFH.setInputLabels(abspath(options.atlas_labels))
-        tmplPipeFH.setMask(abspath(options.mask))    
+        if options.mask:
+            tmplPipeFH.setMask(abspath(options.mask))    
     
         # Create fileHandling classes for images
         for iFile in range(len(args)):
             inputPipeFH = RegistrationPipeFH(abspath(args[iFile]), outputDir)
-            inputPipeFH.setMask(abspath(options.mask))
+            if options.mask:
+                inputPipeFH.setMask(abspath(options.mask))
             inputs.append(inputPipeFH)
     
         for nfile in range(numTemplates):

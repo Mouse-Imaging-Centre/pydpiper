@@ -51,10 +51,10 @@ class AbstractApplication(object):
                           help="Wall time to request for each executor in the format dd:hh:mm:ss")
         self.parser.add_option("--proc", dest="proc", 
                           type="int", default=8,
-                          help="Number of processes per executor. Default is 8. Also sets max value for processor use per executor. Overridden if --num-executors not specified.")
+                          help="Number of processes per executor. Default is 8. Also sets max value for processor use per executor.")
         self.parser.add_option("--mem", dest="mem", 
                           type="float", default=16,
-                          help="Total amount of requested memory. Default is 8G. Overridden if --num-executors not specified.")
+                          help="Total amount of requested memory. Default is 16G.")
         self.parser.add_option("--queue", dest="queue", 
                           type="string", default=None,
                           help="Use specified queueing system to submit jobs. Default is None.")

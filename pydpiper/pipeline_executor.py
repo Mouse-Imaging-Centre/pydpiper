@@ -214,11 +214,11 @@ if __name__ == "__main__":
                       type="string", default="2:00:00:00", 
                       help="Wall time to request for each executor in the format dd:hh:mm:ss")
     parser.add_option("--proc", dest="proc", 
-                      type="int", default=4,
-                      help="Number of processes per executor. If not specified, default is 4. Also sets max value for processor use per executor.")
+                      type="int", default=8,
+                      help="Number of processes per executor. If not specified, default is 8. Also sets max value for processor use per executor.")
     parser.add_option("--mem", dest="mem", 
-                      type="float", default=8,
-                      help="Total amount of requested memory for all processes the executor runs. If not specified, default is 8 GB.")
+                      type="float", default=16,
+                      help="Total amount of requested memory for all processes the executor runs. If not specified, default is 16G.")
     parser.add_option("--queue", dest="queue", 
                       type="string", default=None,
                       help="Use specified queueing system to submit jobs. Default is None.")              
