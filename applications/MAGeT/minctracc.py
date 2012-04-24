@@ -345,9 +345,6 @@ class minctracc(CmdStage):
     def addDefaults(self):
         self.cmd = ["minctracc",
                     "-clobber",
-                    "-similarity", self.similarity,
-                    "-weight", self.weight,
-                    "-stiffness", self.stiffness,
                     "-w_translations", self.w_translations,self.w_translations,self.w_translations,
                     "-step", self.step, self.step, self.step,
                     "-simplex", self.simplex,
@@ -373,6 +370,9 @@ class minctracc(CmdStage):
         if self.linearparam == "nlin":
             """add options for non-linear registration"""
             self.cmd += ["-iterations", self.iterations,
+                         "-similarity", self.similarity,
+                         "-weight", self.weight,
+                         "-stiffness", self.stiffness,
                          "-nonlinear", "corrcoeff", "-sub_lattice", "6",
                          "-lattice_diameter", self.lattice_diameter,
                          self.lattice_diameter, self.lattice_diameter]
