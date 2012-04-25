@@ -14,7 +14,7 @@ import re
 Pyro.config.PYRO_MOBILE_CODE=1
 
 class runOnQueueingSystem():
-    def __init__(self, options, ppn=8, time="2:00:00:00", sysArgs=None):
+    def __init__(self, options, ppn=8, sysArgs=None):
         #Note: options are the same as whatever is in calling program
         #Options MUST also include standard pydpiper options
         self.arguments = sysArgs #sys.argv in calling program
@@ -35,7 +35,7 @@ class runOnQueueingSystem():
             executablePath = os.path.abspath(self.arguments[0])
             self.jobName = basename(executablePath)
         self.ppn = ppn
-        self.time = options.time or time
+        self.time = options.time or "2:00:00:00"
     def buildMainCommand(self):
         """Re-construct main command to be called in pbs script, removing un-necessary arguments"""
         reconstruct = ""

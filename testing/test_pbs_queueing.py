@@ -29,6 +29,7 @@ class TestPbsQueueing():
         assert roq.queue == "pbs"
         assert roq.arguments == None
         assert roq.jobName == "pydpiper"
+        assert roq.time == "2:00:00:00"
         
     def test_create_job_0exec(self, setupopts):
         """Test defaults and file creation when no executors are specified"""

@@ -84,7 +84,7 @@ class AbstractApplication(object):
         if self.options.queue=="pbs":
             ppn = 8
             time = self.options.time
-            roq = runOnQueueingSystem(self.options, ppn, time, sys.argv)
+            roq = runOnQueueingSystem(self.options, ppn, sys.argv)
             roq.createPbsScripts()
             return 
         
