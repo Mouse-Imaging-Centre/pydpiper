@@ -4,6 +4,7 @@ README
 MANIFEST
 setup.py
 pydpiper/__init__.py
+pydpiper/application.py
 pydpiper/file_handling.py
 pydpiper/pipeline.py
 pydpiper/pipeline_executor.py
