@@ -25,6 +25,9 @@ def pytest_addoption(parser):
     parser.addoption("--mem", dest="mem", 
                      type="float", default=16,
                      help="Total amount of requested memory. Default is 8G. Overridden if --num-executors not specified.")
+    parser.addoption("--ppn", dest="ppn", 
+                      type="int", default=8,
+                      help="Number of processes per node. Default is 8. Used when --queue=pbs")
     parser.addoption("--queue", dest="queue", 
                      type="string", default=None,
                      help="Use specified queueing system to submit jobs. Default is None.")
@@ -56,6 +59,9 @@ class OptsSetup():
     
     def getQueue(self):
         return self.config.option.queue
+    
+    def getPpn(self):
+        return self.config.option.ppn
     
     def getRestart(self):
         return self.config.option.restart

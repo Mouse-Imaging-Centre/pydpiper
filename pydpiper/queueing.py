@@ -14,14 +14,16 @@ import re
 Pyro.config.PYRO_MOBILE_CODE=1
 
 class runOnQueueingSystem():
-    def __init__(self, options, ppn=8, sysArgs=None):
+    def __init__(self, options, sysArgs=None):
         #Note: options are the same as whatever is in calling program
         #Options MUST also include standard pydpiper options
         self.arguments = sysArgs #sys.argv in calling program
         self.numexec = options.num_exec 
         self.mem = options.mem
         self.proc = options.proc
-        self.queue = options.queue       
+        self.queue = options.queue 
+        self.ppn = options.ppn
+        self.time = options.time or "2:00:00:00"      
         self.ns = options.use_ns
         self.uri = options.urifile
         if self.uri==None:
@@ -33,9 +35,7 @@ class runOnQueueingSystem():
             self.jobName = "pydpiper"
         else:
             executablePath = os.path.abspath(self.arguments[0])
-            self.jobName = basename(executablePath)
-        self.ppn = ppn
-        self.time = options.time or "2:00:00:00"
+            self.jobName = basename(executablePath)       
     def buildMainCommand(self):
         """Re-construct main command to be called in pbs script, removing un-necessary arguments"""
         reconstruct = ""
@@ -45,7 +45,8 @@ class runOnQueueingSystem():
                         or re.search("--proc", self.arguments[i])
                         or re.search("--queue", self.arguments[i]) 
                         or re.search("--mem", self.arguments[i])
-                        or re.search("--time", self.arguments[i])):
+                        or re.search("--time", self.arguments[i])
+                        or re.search("--ppn", self.arguments[i])):
                     reconstruct += self.arguments[i]
                     reconstruct += " "
         return reconstruct

@@ -219,6 +219,9 @@ if __name__ == "__main__":
     parser.add_option("--mem", dest="mem", 
                       type="float", default=16,
                       help="Total amount of requested memory for all processes the executor runs. If not specified, default is 16G.")
+    parser.add_option("--ppn", dest="ppn", 
+                      type="int", default=8,
+                      help="Number of processes per node. Default is 8. Used when --queue=pbs")
     parser.add_option("--queue", dest="queue", 
                       type="string", default=None,
                       help="Use specified queueing system to submit jobs. Default is None.")              

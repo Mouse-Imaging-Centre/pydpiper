@@ -62,12 +62,14 @@ class TestPbsQueueing():
         assert callsExec == True
     
     def test_create_job_multiproc(self, setupopts):
-        """This test requires specifying --num-executors=1 on command line
-           Verifies defaults and file creation when only one executor is specified"""
+        """This test requires specifying --proc=24 on command line
+           Verifies defaults and file creation when multiple nodes are needed"""
         allOptions = setupopts.returnAllOptions()
         roq = runOnQueueingSystem(allOptions)
         if roq.queue is None:
             pytest.skip("specify --queue=pbs to continue with this test")
+        if roq.ppn != 8:
+            pytest.skip("specify --ppn=8 to continue with this test")
         if roq.numexec != 1:
             pytest.skip("specify --num-executors=1 to continue with this test")
         if roq.proc != 24:
@@ -78,6 +80,31 @@ class TestPbsQueueing():
         if "nodes=3:ppn=8" in jobFileString:
                 correctNodesPpn = True
         assert correctNodesPpn == True
+    
+    def test_create_job_newppn(self, setupopts):
+        """This test requires specifying --ppn=10, --num-executors=1 and --proc=24
+           Verifies appropriate node selection"""
+        allOptions = setupopts.returnAllOptions()
+        roq = runOnQueueingSystem(allOptions)
+        if roq.queue is None:
+            pytest.skip("specify --queue=pbs to continue with this test")
+        if roq.ppn != 10:
+            pytest.skip("specify --ppn=10 to continue with this test")
+        if roq.numexec != 1:
+            pytest.skip("specify --num-executors=1 to continue with this test")
+        if roq.proc != 24:
+            pytest.skip("specify --proc==24 to continue with this test")
+        roq.createPbsScripts()
+        roq.createPbsScripts()
+        correctPpn = False
+        correctProc = False
+        jobFileString = open(roq.jobFileName).read()
+        if "nodes=2:ppn=10" in jobFileString:
+            correctPpn=True
+        if "--proc=24" in jobFileString:
+            correctProc = True
+        assert correctPpn == True
+        assert correctProc == True
         
     def test_create_job_3execs(self, setupopts):
         """This test requires specifying --num-executors=3 on command line

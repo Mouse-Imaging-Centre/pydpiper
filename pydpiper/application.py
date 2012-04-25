@@ -55,6 +55,9 @@ class AbstractApplication(object):
         self.parser.add_option("--mem", dest="mem", 
                           type="float", default=16,
                           help="Total amount of requested memory. Default is 16G.")
+        self.parser.add_option("--ppn", dest="ppn", 
+                          type="int", default=8,
+                          help="Number of processes per node. Default is 8. Used when --queue=pbs")
         self.parser.add_option("--queue", dest="queue", 
                           type="string", default=None,
                           help="Use specified queueing system to submit jobs. Default is None.")
@@ -82,9 +85,7 @@ class AbstractApplication(object):
         self._setup_pipeline()
         
         if self.options.queue=="pbs":
-            ppn = 8
-            time = self.options.time
-            roq = runOnQueueingSystem(self.options, ppn, sys.argv)
+            roq = runOnQueueingSystem(self.options, sys.argv)
             roq.createPbsScripts()
             return 
         
