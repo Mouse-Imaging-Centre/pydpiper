@@ -41,8 +41,11 @@ class runOnQueueingSystem():
         reconstruct = ""
         if self.arguments:
             for i in range(len(self.arguments)):
-                if not (re.search("--num-executors", self.arguments[i]) or re.search("--proc", self.arguments[i])
-                        or re.search("--queue", self.arguments[i]) or re.search("--mem", self.arguments[i])):
+                if not (re.search("--num-executors", self.arguments[i]) 
+                        or re.search("--proc", self.arguments[i])
+                        or re.search("--queue", self.arguments[i]) 
+                        or re.search("--mem", self.arguments[i])
+                        or re.search("--time", self.arguments[i])):
                     reconstruct += self.arguments[i]
                     reconstruct += " "
         return reconstruct
