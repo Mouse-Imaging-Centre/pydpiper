@@ -234,8 +234,12 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
         for s in p.stages:
             self.addStage(s)
     def printStages(self):
+        """Prints stages to a file, stage info to stdout"""
+        fileForPrinting = os.path.abspath(os.curdir + "/" + "pydpiper-pipeline-stages.txt")
+        pf = open(fileForPrinting, "w")
         for i in range(len(self.stages)):
-            print(str(i) + "  " + str(self.stages[i]))
+            pf.write(str(i) + "  " + str(self.stages[i]) + "\n")
+        pf.close()
         print self.skipped_stages, "stages skipped as redundant. ", len(self.stages), "stages to run."
                    
     def createEdges(self):
