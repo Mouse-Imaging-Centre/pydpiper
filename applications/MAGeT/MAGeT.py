@@ -105,7 +105,7 @@ class MAGeTApplication(AbstractApplication):
                       default=25, type="int",
                       help="Maximum number of templates to generate")
         
-        self.parser.set_usage("%prog [options] subjects_dir") 
+        self.parser.set_usage("%prog [options] input files") 
 
     def run(self):
         options = self.options
@@ -113,7 +113,6 @@ class MAGeTApplication(AbstractApplication):
         
         outputDir = fh.makedirsIgnoreExisting(options.template_library)
         tmplDir = fh.createSubDir(outputDir, "atlas")
-        self.pipeline.setBackupFileLocation(outputDir)
         
         # create the initial templates - either total number of files
         # or the maximum number of templates, whichever is lesser
