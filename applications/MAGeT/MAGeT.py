@@ -5,11 +5,11 @@ from pydpiper.queueing import *
 from pydpiper.application import AbstractApplication
 from minctracc import *
 import pydpiper.file_handling as fh
-from optparse import OptionParser
-from os.path import dirname,isdir,abspath
-from os import mkdir
-import networkx as nx
+from os.path import abspath
 from multiprocessing import Event
+import logging
+
+logger = logging.getLogger(__name__)
 
 Pyro.config.PYRO_MOBILE_CODE=1 
 
@@ -153,6 +153,10 @@ class MAGeTApplication(AbstractApplication):
     
       
 if __name__ == "__main__":
+    FORMAT = '%(asctime)-15s %(name)s %(levelname)s: %(message)s'
+    now = datetime.now()  
+    FILENAME = "MAGeT.py-" + now.strftime("%Y%m%d-%H%M%S") + ".log"
+    logging.basicConfig(filename=FILENAME, format=FORMAT, level=logging.DEBUG)
     
     application = MAGeTApplication()
     application.start()

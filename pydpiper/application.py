@@ -90,7 +90,7 @@ class AbstractApplication(object):
             return 
         
         if self.options.restart:
-            logger.info("Restarting pipeline...")
+            logger.info("Restarting pipeline from pickled files.")
             self.pipeline.restart()
         else:
             self.run()
@@ -104,11 +104,11 @@ class AbstractApplication(object):
                 
         #pipelineDaemon runs pipeline, launches Pyro client/server and executors (if specified)
         # if use_ns is specified, Pyro NameServer must be started. 
-        logger.debug("Starting server...")
+        logger.info("Starting server...")
         returnEvent = multiprocessing.Event()
         pipelineDaemon(self.pipeline, returnEvent, self.options, sys.argv[0])
         returnEvent.wait()
-        logger.debug("Server has stopped.  Quitting...")
+        logger.info("Server has stopped.  Quitting...")
 
     def setup_options(self):
         """Set up the self.options option parser with options this application needs."""

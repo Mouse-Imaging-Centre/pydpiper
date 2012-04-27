@@ -220,7 +220,7 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
         for i in self.G.nodes_iter():
             if self.stages[i].isFinished() == True:
                 done.append(i)
-        logger.debug('Previously completed stages (of ' + str(len(self.stages)) + ' total): ' + str(done))
+        logger.info('Previously completed stages (of ' + str(len(self.stages)) + ' total): ' + str(done))
         self.initialize()
         self.printStages()
 
@@ -272,7 +272,7 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
                     if predfinished == True:
                         self.runnable.put(i) 
                         graphHeads.append(i)
-        logger.debug("Graph heads: " + str(graphHeads))
+        logger.info("Graph heads: " + str(graphHeads))
     def getStage(self, i):
         """given an index, return the actual pipelineStage object"""
         return(self.stages[i])
@@ -286,11 +286,11 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
             return index
         
     def setStageStarted(self, index, clientURI=None):
-        print "Starting Stage " + str(index) + ": " + str(self.stages[index]),
+        URIstring = " "
         if clientURI:
-            print "(" + str(clientURI) + ")"
-        else: 
-            print
+            URIstring = "(" + str(clientURI) + ")"
+        logger.debug("Starting Stage " + str(index) + ": " + str(self.stages[index]) +
+                     URIstring)
 
     def checkIfRunnable(self, index):
         """stage added to runnable queue if all predecessors finished"""
@@ -308,7 +308,7 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
 
     def setStageFinished(self, index, save_state = True):
         """given an index, sets corresponding stage to finished and adds successors to the runnable queue"""
-        print "Finished Stage " + str(index) + ": " + str(self.stages[index])
+        logger.info("Finished Stage " + str(index) + ": " + str(self.stages[index]))
         self.stages[index].setFinished()
         self.processedStages.append(index)
         if save_state: 
@@ -336,7 +336,7 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
         self.computeGraphHeads()
     def continueLoop(self):
         """Returns 1 unless all stages are finished. Used in Pyro communication."""
-        logger.debug("# stages %i. # processed: %i.", len(self.stages), len(self.processedStages))
+        logger.debug("Total stages %i. Number processed: %i.", len(self.stages), len(self.processedStages))
         return(len(self.stages) > len(self.processedStages))
     def getProcessedStageCount(self):
         return(len(self.processedStages))
@@ -356,7 +356,7 @@ def launchPipelineExecutor(options, programName=None):
 def skip_completed_stages(pipeline):
     runnable = []
     while True:
-        i = pipeline.getRunnableStageIndex()                 
+        i = pipeline.getRunnableStageIndex()                
         if i == None:
             break
         
@@ -369,7 +369,7 @@ def skip_completed_stages(pipeline):
             runnable.append(i)
             continue
         
-        pipeline.setStageStarted(i, "PYRO://127.0.0.1:blah")
+        pipeline.setStageStarted(i, "PYRO://Previous.Run")
         pipeline.setStageFinished(i, save_state = False)
         logger.debug("skipping stage %i" % i)
     
@@ -483,7 +483,8 @@ def pipelineDaemon(pipeline, returnEvent, options=None, programName=None):
     skip_completed_stages(pipeline)
     
     e = Event()
-    logger.debug("# stages %i. # processed: %i.", len(pipeline.stages), len(pipeline.processedStages))
+    logger.debug("Prior to starting server, total stages %i. Number processed: %i.", 
+                 len(pipeline.stages), len(pipeline.processedStages))
     logger.debug("Starting server...")
     process = Process(target=launchServer, args=(pipeline,options,e,))
     process.start()

@@ -3,7 +3,6 @@
 from pydpiper.pipeline import * 
 from os.path import abspath, basename
 import pydpiper.file_handling as fh
-import networkx as nx
 import inspect
 
 Pyro.config.PYRO_MOBILE_CODE=1

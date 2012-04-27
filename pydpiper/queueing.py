@@ -2,13 +2,10 @@
 
 import Pyro.core
 import Pyro.naming
-from optparse import OptionParser
 from datetime import datetime
 from os.path import isdir, basename
 from os import mkdir
 import os
-import time
-import networkx as nx
 import re
 
 Pyro.config.PYRO_MOBILE_CODE=1

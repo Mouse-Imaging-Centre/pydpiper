@@ -9,7 +9,6 @@ from datetime import datetime
 from multiprocessing import Process, Pool
 from subprocess import call
 import pydpiper.queueing as q
-import traceback
 import logging
 
 logger = logging.getLogger(__name__)
@@ -17,7 +16,6 @@ logger = logging.getLogger(__name__)
 POLLING_INTERVAL = 5 # poll for new jobs
 
 Pyro.config.PYRO_MOBILE_CODE=1
-
 
 #use Pyro.core.CallbackObjBase?? - need further review of documentation
 class clientExecutor(Pyro.core.SynchronizedObjBase):
@@ -38,7 +36,7 @@ def runStage(serverURI, clientURI, i):
     
     # Run stage, set finished or failed accordingly  
     try:
-        logger.info("Running stage %i: %s, ", i, str(s))
+        logger.info("Running stage %i: ", i)
         p.setStageStarted(i, clientURI)
         try:
             r = s.execStage()
@@ -193,7 +191,9 @@ class pipelineExecutor():
 
 if __name__ == "__main__":
     FORMAT = '%(asctime)-15s %(name)s %(levelname)s: %(message)s'
-    logging.basicConfig(format=FORMAT, level=logging.DEBUG)
+    now = datetime.now()  
+    FILENAME = "pipeline_executor.py-" + now.strftime("%Y%m%d-%H%M%S") + ".log"
+    logging.basicConfig(filename=FILENAME, format=FORMAT, level=logging.DEBUG)
 
     usage = "%prog [options]"
     description = "pipeline executor"
