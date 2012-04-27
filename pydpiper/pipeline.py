@@ -336,7 +336,6 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
         self.computeGraphHeads()
     def continueLoop(self):
         """Returns 1 unless all stages are finished. Used in Pyro communication."""
-        logger.debug("Total stages %i. Number processed: %i.", len(self.stages), len(self.processedStages))
         return(len(self.stages) > len(self.processedStages))
     def getProcessedStageCount(self):
         return(len(self.processedStages))
