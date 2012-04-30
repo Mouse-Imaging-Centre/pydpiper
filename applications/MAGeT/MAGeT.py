@@ -110,6 +110,10 @@ class MAGeTApplication(AbstractApplication):
     def run(self):
         options = self.options
         args = self.args
+        reconstruct = ""
+        for i in range(len(sys.argv)):
+            reconstruct += sys.argv[i] + " "
+        logger.info("Command is: " + reconstruct)
         
         outputDir = fh.makedirsIgnoreExisting(options.template_library)
         tmplDir = fh.createSubDir(outputDir, "atlas")
@@ -149,7 +153,7 @@ class MAGeTApplication(AbstractApplication):
             voxel = voxelVote(inputFH)
             self.pipeline.addStage(voxel)
             
-        print "templates: " + str(numTemplates)    
+        logger.info("templates: " + str(numTemplates))    
     
       
 if __name__ == "__main__":
