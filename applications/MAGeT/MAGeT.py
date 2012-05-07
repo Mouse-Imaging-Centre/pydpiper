@@ -5,9 +5,12 @@ from pydpiper.queueing import *
 from pydpiper.application import AbstractApplication
 from minctracc import *
 import pydpiper.file_handling as fh
-from os.path import abspath
+from os.path import abspath, join
 from multiprocessing import Event
 import logging
+import glob
+import fnmatch
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -83,24 +86,18 @@ def voxelVote(inputFH):
 
 class MAGeTApplication(AbstractApplication):
     def setup_options(self):
-        self.parser.add_option("--atlas-labels", "-a", dest="atlas_labels",
-                      type="string", 
-                      help="MINC volume containing labelled structures")
-        self.parser.add_option("--atlas-image", "-i", dest="atlas_image",
-                      type="string",
-                      help="MINC volume of image corresponding to labels")
+        self.parser.add_option("--atlas-library", dest="atlas_lib",
+                      type="string", default="atlas_label_pairs",
+                      help="Directory of existing atlas/label pairs")
         self.parser.add_option("--template-lib", dest="template_library",
+                      type="string", default=None,
+                      help="Location of existing template library. If not specified a new one will be created from inputs.")
+        self.parser.add_option("--output-dir", dest="output_directory",
                       type="string", default=".",
-                      help="Directory where every image is an atlas pair")
+                      help="Directory where output data will be saved.")
         self.parser.add_option("--mask", dest="mask",
                       type="string",
                       help="Mask to use for all images")
-        self.parser.add_option("--create-template-lib", dest="create_templates",
-                      action="store_true", 
-                      help="Create the template library from scratch")
-        self.parser.add_option("--use-existing-template-lib", dest="create_templates",
-                      action="store_false",
-                      help="Use existing template library, location defined by the --template-lib option")
         self.parser.add_option("--max-templates", dest="max_templates",
                       default=25, type="int",
                       help="Maximum number of templates to generate")
@@ -115,34 +112,60 @@ class MAGeTApplication(AbstractApplication):
             reconstruct += sys.argv[i] + " "
         logger.info("Command is: " + reconstruct)
         
-        outputDir = fh.makedirsIgnoreExisting(options.template_library)
-        tmplDir = fh.createSubDir(outputDir, "atlas")
+        outputDir = fh.makedirsIgnoreExisting(options.output_directory)
+        atlasDir = fh.createSubDir(outputDir, "input_atlases")
         
-        # create the initial templates - either total number of files
-        # or the maximum number of templates, whichever is lesser
-        templates = []
-        inputs = []
-        numTemplates = len(args)
-        if numTemplates > options.max_templates:
-            numTemplates = options.max_templates
-                
-        # Create fileHandling classes for initial template
-        tmplPipeFH = RegistrationPipeFH(abspath(options.atlas_image), tmplDir)
-        tmplPipeFH.setInputLabels(abspath(options.atlas_labels))
-        if options.mask:
-            tmplPipeFH.setMask(abspath(options.mask))    
-    
+        """Read in atlases from directory specified in --atlas-library and 
+            create fileHandling classes. Assumes atlas/label pairs have one 
+            of the following naming schemes:
+                name_average.mnc/name_labels.mnc
+                name.mnc/name_labels.mnc"""
+        average = [] #array of input atlas averages
+        labels = [] #array of input atlas labels, one for each average
+        atlases = [] #array of RegistrationPipeFH classes for each atlas/label pair
+        numAtlases = 0
+        for inFile in glob.glob(os.path.join(options.atlas_lib, "*.mnc")):
+            if not fnmatch.fnmatch(inFile, "*labels.mnc"):
+                average.append(abspath(inFile))
+            else:
+                labels.append(abspath(inFile))
+        # check to make sure len(average)==len(labels)
+        if not len(average) == len(labels):
+            logger.error("Number of input atlas labels does not match averages.")
+            logger.error("Check " + str(options.atlas_lib) + " and try again.")
+            sys.exit()
+        else:
+        # match labels with averages and create templates 
+            numAtlases = len(labels)
+            for iLabel in labels: 
+                atlasStart = iLabel.split("_labels.mnc")
+                for iAvg in average:
+                    if re.search(atlasStart[0], iAvg):
+                        atlasPipeFH = RegistrationPipeFH(abspath(iAvg), atlasDir)
+                        break
+                atlasPipeFH.setInputLabels(abspath(iLabel))
+                if options.mask:
+                    atlasPipeFH.setMask(abspath(options.mask))  
+                atlases.append(atlasPipeFH)
+        
         # Create fileHandling classes for images
+        inputs = []
         for iFile in range(len(args)):
             inputPipeFH = RegistrationPipeFH(abspath(args[iFile]), outputDir)
             if options.mask:
                 inputPipeFH.setMask(abspath(options.mask))
             inputs.append(inputPipeFH)
-    
+        
+        templates = []
+        numTemplates = len(args)
+        if numTemplates > options.max_templates:
+            numTemplates = options.max_templates
+        # Register each atlas to each input image up to numTemplates
         for nfile in range(numTemplates):
-            sp = SMATregister(inputs[nfile], tmplPipeFH)
-            templates.append(inputs[nfile])
-            self.pipeline.addPipeline(sp.p)
+            for afile in range(numAtlases):
+                sp = SMATregister(inputs[nfile], atlases[afile])
+                templates.append(inputs[nfile])
+                self.pipeline.addPipeline(sp.p)
 
         # once the initial templates have been created, go and register each
         # inputFile to the templates
@@ -153,7 +176,8 @@ class MAGeTApplication(AbstractApplication):
             voxel = voxelVote(inputFH)
             self.pipeline.addStage(voxel)
             
-        logger.info("templates: " + str(numTemplates))    
+        logger.info("Number of input atlas/label pairs: " + str(numAtlases))   
+        logger.info("Number of templates: " + str(numTemplates))     
     
       
 if __name__ == "__main__":
