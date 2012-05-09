@@ -29,15 +29,16 @@ class SMATregister:
                  linearparams = {'type' : "lsq12", 'simplex' : 1, 'step' : 1},
                  name="initial"):
         self.p = Pipeline()
+        self.name = name
         
         for b in blurs:
             #MF TODO: -1 case is also handled in blur. Need here for addStage.
             #Fix this redundancy and/or better design?
             if b != -1:
-                iblur = blur(inputPipeFH, b, gradient=True)
                 tblur = blur(templatePipeFH, b, gradient=True)
-                self.p.addStage(iblur)
+                iblur = blur(inputPipeFH, b, gradient=True)               
                 self.p.addStage(tblur)
+                self.p.addStage(iblur)
             
         # Two lsq12 stages: one using 0.25 blur, one using 0.25 gradient
         for g in [False, True]:    
@@ -65,17 +66,33 @@ class SMATregister:
                                   simplex=simplexes[i])
             self.p.addStage(nlinStage)
         
-        # resample labels with final registration
-        if templatePipeFH.getInputLabels():
-            resampleStage = mincresampleLabels(templatePipeFH, likeFile=inputPipeFH)
-            self.p.addStage(resampleStage)
+        # Resample all inputLabels 
+        inputLabelArray = templatePipeFH.returnLabels(True)
+        if len(inputLabelArray) > 0:
+            """ for the initial registration, resulting labels should be added
+                to inputLabels array for subsequent pairwise registration
+                otherwise labels should be added to labels array for voting """
+            if self.name == "initial":
+                addOutputToInputLabels = True
+            else:
+                addOutputToInputLabels = False
+            for i in range(len(inputLabelArray)):
+                resampleStage = mincresampleLabels(templatePipeFH, 
+                                                   likeFile=inputPipeFH,
+                                                   labelIndex=i,
+                                                   setInputLabels=addOutputToInputLabels)
+                self.p.addStage(resampleStage)
         # resample files
         resampleStage = mincresample(templatePipeFH, likeFile=inputPipeFH)
         self.p.addStage(resampleStage)
 
-
-def voxelVote(inputFH):
-    labels = inputFH.returnLabels()
+def voxelVote(inputFH, pairwise):
+    # if we do pairwise crossing, use output labels for voting (Default)
+    # otherwise, return inputLabels from initial atlas-input crossing
+    useInputLabels = False
+    if not pairwise:
+        useInputLabels = True
+    labels = inputFH.returnLabels(useInputLabels)
     out = fh.createBaseName(inputFH.labelsDir, inputFH.basename) 
     out += "_votedlabels.mnc"
     logFile = inputFH.logFromFile(out)
@@ -89,9 +106,10 @@ class MAGeTApplication(AbstractApplication):
         self.parser.add_option("--atlas-library", dest="atlas_lib",
                       type="string", default="atlas_label_pairs",
                       help="Directory of existing atlas/label pairs")
-        self.parser.add_option("--template-lib", dest="template_library",
-                      type="string", default=None,
-                      help="Location of existing template library. If not specified a new one will be created from inputs.")
+        self.parser.add_option("--no-pairwise", dest="pairwise",
+                      action="store_false", default=True,
+                      help="""Pairwise crossing of templates. Default is true. 
+                          If specified, only register inputs to atlases in library""")
         self.parser.add_option("--output-dir", dest="output_directory",
                       type="string", default=".",
                       help="Directory where output data will be saved.")
@@ -135,7 +153,7 @@ class MAGeTApplication(AbstractApplication):
             logger.error("Check " + str(options.atlas_lib) + " and try again.")
             sys.exit()
         else:
-        # match labels with averages and create templates 
+        # match labels with averages
             numAtlases = len(labels)
             for iLabel in labels: 
                 atlasStart = iLabel.split("_labels.mnc")
@@ -143,7 +161,7 @@ class MAGeTApplication(AbstractApplication):
                     if re.search(atlasStart[0], iAvg):
                         atlasPipeFH = RegistrationPipeFH(abspath(iAvg), atlasDir)
                         break
-                atlasPipeFH.setInputLabels(abspath(iLabel))
+                atlasPipeFH.addLabels(abspath(iLabel), inputLabel=True)
                 if options.mask:
                     atlasPipeFH.setMask(abspath(options.mask))  
                 atlases.append(atlasPipeFH)
@@ -164,18 +182,28 @@ class MAGeTApplication(AbstractApplication):
         for nfile in range(numTemplates):
             for afile in range(numAtlases):
                 sp = SMATregister(inputs[nfile], atlases[afile])
-                templates.append(inputs[nfile])
                 self.pipeline.addPipeline(sp.p)
-
-        # once the initial templates have been created, go and register each
-        # inputFile to the templates
-        for inputFH in inputs:
-            for tmplFH in templates:
-                sp = SMATregister(inputFH, tmplFH, name="templates")
-                self.pipeline.addPipeline(sp.p)
-            voxel = voxelVote(inputFH)
-            self.pipeline.addStage(voxel)
+            # each template needs to be added only once, but will have multiple 
+            # input labels
+            templates.append(inputs[nfile])
             
+        # once the initial templates have been created, go and register each
+        # inputFile to the templates. If --pairwise=False, do voxel voting on 
+        # input-atlas registrations only
+        if options.pairwise:
+            for inputFH in inputs:
+                for tmplFH in templates:
+                    sp = SMATregister(inputFH, tmplFH, name="templates")
+                    self.pipeline.addPipeline(sp.p)
+                voxel = voxelVote(inputFH, options.pairwise)
+                self.pipeline.addStage(voxel)
+        else:
+            # only do voxel voting in this case if there was more than one input atlas
+            if numAtlases > 1:
+                for inputFH in inputs:
+                    voxel = voxelVote(inputFH, options.pairwise)
+                    self.pipeline.addStage(voxel)   
+        
         logger.info("Number of input atlas/label pairs: " + str(numAtlases))   
         logger.info("Number of templates: " + str(numTemplates))     
     
