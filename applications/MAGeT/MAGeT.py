@@ -42,8 +42,8 @@ class SMATregister:
             
         # Two lsq12 stages: one using 0.25 blur, one using 0.25 gradient
         for g in [False, True]:    
-            linearStage = minctracc(templatePipeFH, 
-                                      inputPipeFH, 
+            linearStage = minctracc(inputPipeFH, 
+                                      templatePipeFH, 
                                       blur=blurs[0], 
                                       gradient=g,                                     
                                       linearparam=linearparams["type"],
@@ -55,8 +55,8 @@ class SMATregister:
 
         # create the nonlinear registrations
         for i in range(len(steps)):
-            nlinStage = minctracc(templatePipeFH, 
-                                  inputPipeFH, 
+            nlinStage = minctracc(inputPipeFH, 
+                                  templatePipeFH, 
                                   blur=blurs[i],
                                   gradient=gradients[i],
                                   iterations=iterations[i],

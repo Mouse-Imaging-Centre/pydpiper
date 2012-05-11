@@ -479,7 +479,9 @@ class mincresample(CmdStage):
                 self.setInputLabels = setInputLabels
                 self.inFile = self.getFileToResample(inFile, labelIndex)
                 self.likeFile = likeFile.getLastBasevol()
-                self.cxfm = inFile.getLastXfm(fh.removeBaseAndExtension(self.likeFile))
+                # MF - Testing inverted transformation 5/11/2012
+                #self.cxfm = inFile.getLastXfm(fh.removeBaseAndExtension(self.likeFile))
+                self.cxfm = likeFile.getLastXfm(fh.removeBaseAndExtension(inFile.getLastBasevol()))
                 self.outfile = self.setOutputFile(likeFile, defaultDir)
                 self.logFile = inFile.logFromFile(self.outfile)
             else:
@@ -546,7 +548,7 @@ class mincresampleLabels(mincresample):
         
     def finalizeCommand(self):
         """additional arguments needed for resampling labels"""
-        self.cmd += ["-keep_real_range", "-nearest_neighbour"]
+        self.cmd += ["-keep_real_range", "-nearest_neighbour", "-invert_transform"]
         mincresample.finalizeCommand(self)
     def setOutputFile(self, likeFile, defaultDir):
         """set name of output and add labels to appropriate likeFile labels array"""
