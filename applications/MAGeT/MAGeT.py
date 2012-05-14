@@ -193,8 +193,9 @@ class MAGeTApplication(AbstractApplication):
         if options.pairwise:
             for inputFH in inputs:
                 for tmplFH in templates:
-                    sp = SMATregister(inputFH, tmplFH, name="templates")
-                    self.pipeline.addPipeline(sp.p)
+                    if tmplFH.getLastBasevol() != inputFH.getLastBasevol():
+                        sp = SMATregister(inputFH, tmplFH, name="templates")
+                        self.pipeline.addPipeline(sp.p)
                 voxel = voxelVote(inputFH, options.pairwise)
                 self.pipeline.addStage(voxel)
         else:
