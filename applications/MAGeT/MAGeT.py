@@ -56,7 +56,7 @@ class SMATregister:
         # create the nonlinear registrations
         for i in range(len(steps)):
             nlinStage = minctracc(inputPipeFH, 
-                                  templatePipeFH, 
+                                  templatePipeFH,
                                   blur=blurs[i],
                                   gradient=gradients[i],
                                   iterations=iterations[i],
@@ -79,11 +79,14 @@ class SMATregister:
             for i in range(len(inputLabelArray)):
                 resampleStage = mincresampleLabels(templatePipeFH, 
                                                    likeFile=inputPipeFH,
+                                                   argArray=["-invert"],
                                                    labelIndex=i,
                                                    setInputLabels=addOutputToInputLabels)
                 self.p.addStage(resampleStage)
         # resample files
-        resampleStage = mincresample(templatePipeFH, likeFile=inputPipeFH)
+        resampleStage = mincresample(templatePipeFH, 
+                                     likeFile=inputPipeFH,
+                                     argArray=["-invert"])
         self.p.addStage(resampleStage)
 
 def voxelVote(inputFH, pairwise):
