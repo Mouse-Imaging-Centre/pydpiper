@@ -12,7 +12,7 @@ class RegistrationGroupedFiles():
     def __init__(self, inputVolume):
         self.basevol = inputVolume
         self.labels = []
-        self.inputLabels = None
+        self.inputLabels = []
         self.blurs = {}
         self.gradients = {}
         self.lastblur = None 
@@ -196,17 +196,19 @@ class RegistrationPipeFH():
         if not currGroup.transforms[targetFilename].__contains__(xfm):
             currGroup.transforms[targetFilename].append(xfm)
         self.setLastXfm(targetFilename, xfm)
-    def getInputLabels(self):
-        return(self.groupedFiles[self.currentGroupIndex].inputLabels)
-    def setInputLabels(self, labels):
-        self.groupedFiles[self.currentGroupIndex].inputLabels = labels
-    def addLabels(self, newLabel):
+    def addLabels(self, newLabel, inputLabel=False):
         """Add labels to array."""
+        labelArray = self.returnLabels(inputLabel)
+        if not labelArray.__contains__(newLabel):
+            labelArray.append(newLabel)
+    def returnLabels(self, inputLabel=False):
+        """Return appropriate set of labels"""
         currGroup = self.groupedFiles[self.currentGroupIndex]
-        if not currGroup.labels.__contains__(newLabel):
-            currGroup.labels.append(newLabel)
-    def returnLabels(self):
-        return(self.groupedFiles[self.currentGroupIndex].labels)
+        if inputLabel:
+            labelArray = currGroup.inputLabels
+        else:
+            labelArray = currGroup.labels
+        return(labelArray)
     def setMask(self, inputMask):
         self.groupedFiles[self.currentGroupIndex].mask = inputMask
     def getMask(self):
@@ -442,7 +444,9 @@ class mincresample(CmdStage):
                  defaultDir="resampled", 
                  likeFile=None, 
                  cxfm=None, 
-                 argArray=None):
+                 argArray=None,
+                 labelIndex=-1,
+                 setInputLabels=False):
         """calls mincresample with the specified options
 
         The inFile and likeFile can be in one of two styles. 
@@ -472,17 +476,26 @@ class mincresample(CmdStage):
         try:
             #MF TODO: What if we don't want to use lastBasevol?  
             if isFileHandler(inFile, likeFile):
-                self.inFile = self.getFileToResample(inFile)
+                self.setInputLabels = setInputLabels
+                self.inFile = self.getFileToResample(inFile, labelIndex)
                 self.likeFile = likeFile.getLastBasevol()
-                self.cxfm = inFile.getLastXfm(fh.removeBaseAndExtension(self.likeFile))
+                #If we want to invert the transform, assume that xfm is from likeFile to inFile
+                #otherwise, we assume transform is from likeFile to inFile
+                if (self.cmd.__contains__("-invert") 
+                    or self.cmd.__contains__("-invert_transform")
+                    or self.cmd.__contains__("-invert_transformation")):
+                    self.cxfm = likeFile.getLastXfm(fh.removeBaseAndExtension(inFile.getLastBasevol()))
+                else:
+                    self.cxfm = inFile.getLastXfm(fh.removeBaseAndExtension(self.likeFile))
                 self.outfile = self.setOutputFile(likeFile, defaultDir)
                 self.logFile = inFile.logFromFile(self.outfile)
             else:
                 self.inFile = inFile
                 self.likeFile = likeFile
-                self.logFile=logFile
-                self.outfile=outFile
                 self.cxfm = cxfm
+                self.outfile=outFile
+                self.logFile=logFile
+    
         except:
             print "Failed in putting together resample command"
             print "Unexpected error: ", sys.exc_info()
@@ -509,7 +522,7 @@ class mincresample(CmdStage):
         outBase = fh.removeBaseAndExtension(self.cxfm) + "-resampled.mnc"
         outDir = likeFile.setOutputDirectory(defaultDir)
         return(fh.createBaseName(outDir, outBase))  
-    def getFileToResample(self, inputFile):
+    def getFileToResample(self, inputFile, index=-1):
         return(inputFile.getLastBasevol())  
 
 class mincresampleLabels(mincresample):
@@ -520,7 +533,9 @@ class mincresampleLabels(mincresample):
                  defaultDir="labels",
                  likeFile=None, 
                  cxfm=None, 
-                 argArray=None):
+                 argArray=None,
+                 labelIndex=-1, 
+                 setInputLabels=False):
         mincresample.__init__(self,
                            inFile, 
                            outFile, 
@@ -528,22 +543,35 @@ class mincresampleLabels(mincresample):
                            defaultDir,
                            likeFile, 
                            cxfm, 
-                           argArray)
+                           argArray,
+                           labelIndex,
+                           setInputLabels)
+        
+        if isFileHandler(likeFile):
+            #After other initialization, addLabels to appropriate array
+            self.addLabelsToArray(likeFile)
+        
     def finalizeCommand(self):
         """additional arguments needed for resampling labels"""
         self.cmd += ["-keep_real_range", "-nearest_neighbour"]
         mincresample.finalizeCommand(self)
     def setOutputFile(self, likeFile, defaultDir):
-        """set name of output and add labels to likeFile labels array"""
-        outBase = fh.removeBaseAndExtension(self.cxfm) + "-resampled-labels.mnc"
-        outDir = likeFile.setOutputDirectory(defaultDir)
-        labelFile = fh.createBaseName(outDir, outBase)  
-        # If the likeFile has no InputLabels, use these labels. 
-        # Otherwise, add to labels array
-        if not likeFile.getInputLabels():
-            likeFile.setInputLabels(labelFile)
+        """set name of output and add labels to appropriate likeFile labels array"""
+        if self.setInputLabels:
+            outBase = fh.removeBaseAndExtension(self.cxfm) + "-resampled-labels.mnc" 
         else:
-            likeFile.addLabels(labelFile)
-        return(labelFile)  
-    def getFileToResample(self, inputFile):
-        return(inputFile.getInputLabels())     
+            labelsToResample = fh.removeBaseAndExtension(self.inFile)
+            likeBaseVol = fh.removeBaseAndExtension(likeFile.getLastBasevol())
+            startName = labelsToResample.split("blur")
+            outBase = startName[0] + "blur-labels_to_" + likeBaseVol + "-resampled-labels.mnc"
+        outDir = likeFile.setOutputDirectory(defaultDir)
+        labelFile = fh.createBaseName(outDir, outBase)    
+        return(labelFile) 
+    def addLabelsToArray(self, likeFile):
+        likeFile.addLabels(self.outfile, inputLabel=self.setInputLabels)
+    def getFileToResample(self, inputFile, index=-1):
+        if index > -1:
+            labelArray=inputFile.returnLabels(True)
+        else:
+            labelArray[index] = None
+        return(labelArray[index]) 
