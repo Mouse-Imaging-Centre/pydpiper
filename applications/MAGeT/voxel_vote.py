@@ -32,7 +32,6 @@ if __name__ == "__main__":
         volhandles.append(volumeFromFile(args[i], dtype='ubyte'))
 
     outfile = volumeFromInstance(volhandles[0], outfilename)
-#    outdist = volumeFromInstance(volhandles[0], outfiledist)
 
     sliceArray = zeros( (nfiles,
                          volhandles[0].sizes[1],
@@ -45,14 +44,12 @@ if __name__ == "__main__":
                                             volhandles[0].sizes[2]))
             t.shape = (volhandles[0].sizes[1], volhandles[0].sizes[2])
             sliceArray[j::] = t
-            
+        
         outfile.data[i::] = mode(sliceArray)[0]
-        #outdist.data[i::] = mode(sliceArray)[1]/nfiles
 
     outfile.writeFile()
     outfile.closeVolume()
-    #outdist.writeFile()
-    # outdist.closeVolume()
+
 
                                                           
     
