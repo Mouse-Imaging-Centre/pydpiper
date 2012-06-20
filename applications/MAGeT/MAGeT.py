@@ -17,7 +17,9 @@ logger = logging.getLogger(__name__)
 Pyro.config.PYRO_MOBILE_CODE=1 
 
 # JPL: why is this class in MAGeT - this, except for the final label resampling, is generic hierarchical minctracc, right?
-class SMATregister:
+# MF: renamed as HierarchicalMinctracc, will eventually move to minctracc.py 
+# (or another relevant file as building blocks become more developed)
+class HierarchicalMinctracc:
     def __init__(self, inputPipeFH, 
                  templatePipeFH,
                  steps=[1,0.5,0.5,0.2,0.2,0.1],
@@ -154,7 +156,10 @@ class MAGeTApplication(AbstractApplication):
                       help="Directory where output data will be saved.")
         self.parser.add_option("--mask", dest="mask",
                       action="store_true", default=False,
-                      help="Create a mask for all images")
+                      help="Create a mask for all images prior to handling labels")
+        self.parser.add_option("--mask-only", dest="mask_only",
+                      action="store_true", default=False,
+                      help="Create a mask for all images only, do not run full algorithm")
         self.parser.add_option("--max-templates", dest="max_templates",
                       default=25, type="int",
                       help="Maximum number of templates to generate")
@@ -215,7 +220,7 @@ class MAGeTApplication(AbstractApplication):
                 atlasPipeFH.addLabels(abspath(iLabel), inputLabel=True) 
                 atlases.append(atlasPipeFH)
         
-        #add some checking to make sure that atlas/labels/naming all worked correctly
+        #MF TODO: add some checking to make sure that atlas/labels/naming all worked correctly
         # eg if we have A4_mask.mnc "matching" with A3_labels, we wont get right thing.
         
         # Create fileHandling classes for images
@@ -229,7 +234,7 @@ class MAGeTApplication(AbstractApplication):
         
         """ If --mask is specified and we are masking brains, do it here.
             Algorithm is as follows:
-            1. Run SMATregister with mask=True, using masks instead of labels
+            1. Run HierarchicalMinctracc with mask=True, using masks instead of labels
                 for all inputs. 
             2. Do voxel voting to find the best mask. (Or, if single atlas,
                 use that transform)
@@ -242,10 +247,10 @@ class MAGeTApplication(AbstractApplication):
                 as we want to re-set them for actual labels.
         """
 
-        if options.mask:
+        if options.mask or options.mask_only:
             for inputFH in inputs:
                 for atlasFH in atlases:
-                    sp = SMATregister(inputFH, atlasFH, createMask=True)
+                    sp = HierarchicalMinctracc(inputFH, atlasFH, createMask=True)
                     self.pipeline.addPipeline(sp.p)
             # MF to do -- may want to bring this outside options.mask loop
             # may want to always use atlasMask
@@ -258,37 +263,38 @@ class MAGeTApplication(AbstractApplication):
                 inputFH.clearLabels(True)
                 inputFH.clearLabels(False)       
         
-        if numTemplates > options.max_templates:
-            numTemplates = options.max_templates
-        # Register each atlas to each input image up to numTemplates
-        for nfile in range(numTemplates):
-            for afile in range(numAtlases):
-                sp = SMATregister(inputs[nfile], atlases[afile])
-                self.pipeline.addPipeline(sp.p)
-            # each template needs to be added only once, but will have multiple 
-            # input labels
-            templates.append(inputs[nfile])
+        if not options.mask_only:
+            if numTemplates > options.max_templates:
+                numTemplates = options.max_templates
+            # Register each atlas to each input image up to numTemplates
+            for nfile in range(numTemplates):
+                for afile in range(numAtlases):
+                    sp = HierarchicalMinctracc(inputs[nfile], atlases[afile])
+                    self.pipeline.addPipeline(sp.p)
+                # each template needs to be added only once, but will have multiple 
+                # input labels
+                templates.append(inputs[nfile])
             
-        # once the initial templates have been created, go and register each
-        # inputFile to the templates. If --pairwise=False, do voxel voting on 
-        # input-atlas registrations only
-        if options.pairwise:
-            for inputFH in inputs:
-                for tmplFH in templates:
-                    if tmplFH.getLastBasevol() != inputFH.getLastBasevol():
-                        sp = SMATregister(inputFH, tmplFH, name="templates")
-                        self.pipeline.addPipeline(sp.p)
-                voxel = voxelVote(inputFH, options.pairwise, False)
-                self.pipeline.addStage(voxel)
-        else:
-            # only do voxel voting in this case if there was more than one input atlas
-            if numAtlases > 1:
+            # once the initial templates have been created, go and register each
+            # inputFile to the templates. If --pairwise=False, do voxel voting on 
+            # input-atlas registrations only
+            if options.pairwise:
                 for inputFH in inputs:
+                    for tmplFH in templates:
+                        if tmplFH.getLastBasevol() != inputFH.getLastBasevol():
+                            sp = HierarchicalMinctracc(inputFH, tmplFH, name="templates")
+                            self.pipeline.addPipeline(sp.p)
                     voxel = voxelVote(inputFH, options.pairwise, False)
-                    self.pipeline.addStage(voxel)   
+                    self.pipeline.addStage(voxel)
+            else:
+                # only do voxel voting in this case if there was more than one input atlas
+                if numAtlases > 1:
+                    for inputFH in inputs:
+                        voxel = voxelVote(inputFH, options.pairwise, False)
+                        self.pipeline.addStage(voxel)   
         
-        logger.info("Number of input atlas/label pairs: " + str(numAtlases))   
-        logger.info("Number of templates: " + str(numTemplates))     
+            logger.info("Number of input atlas/label pairs: " + str(numAtlases))   
+            logger.info("Number of templates: " + str(numTemplates))     
     
       
 if __name__ == "__main__":
