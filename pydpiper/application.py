@@ -61,6 +61,9 @@ class AbstractApplication(object):
         self.parser.add_option("--queue", dest="queue", 
                           type="string", default=None,
                           help="Use specified queueing system to submit jobs. Default is None.")
+        self.parser.add_option("--sge-queue-opts", dest="sge_queue_opts", 
+                          type="string", default=None,
+                          help="For --queue=sge, allows you to specify different queues. If not specified, default is used.")
         self.parser.add_option("--restart", dest="restart", 
                           action="store_true",
                           help="Restart pipeline using backup files.")

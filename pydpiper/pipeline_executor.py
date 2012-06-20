@@ -60,7 +60,8 @@ class pipelineExecutor():
         #options cannot be null when used to instantiate pipelineExecutor
         self.mem = options.mem
         self.proc = options.proc
-        self.queue = options.queue       
+        self.queue = options.queue   
+        self.sge_queue_opts = options.sge_queue_opts    
         self.ns = options.use_ns
         self.uri = options.urifile
         if self.uri==None:
@@ -81,6 +82,8 @@ class pipelineExecutor():
             jobname += "pipeline-executor-" + now.strftime("%Y%m%d-%H%M%S")
             # Add options for sge_batch command
             cmd = ["sge_batch", "-J", jobname, "-m", strprocs, "-l", strmem] 
+            if self.sge_queue_opts:
+                cmd += ["-q", self.sge_queue_opts]
             cmd += ["pipeline_executor.py", "--uri-file", self.uri, "--proc", strprocs, "--mem", str(self.mem)]
             print(cmd)
             call(cmd)   
@@ -225,6 +228,9 @@ if __name__ == "__main__":
     parser.add_option("--queue", dest="queue", 
                       type="string", default=None,
                       help="Use specified queueing system to submit jobs. Default is None.")              
+    parser.add_option("--sge-queue-opts", dest="sge_queue_opts", 
+                      type="string", default=None,
+                      help="For --queue=sge, allows you to specify different queues. If not specified, default is used.")
                       
     (options,args) = parser.parse_args()
 

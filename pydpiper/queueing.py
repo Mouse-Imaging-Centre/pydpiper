@@ -19,6 +19,7 @@ class runOnQueueingSystem():
         self.mem = options.mem
         self.proc = options.proc
         self.queue = options.queue 
+        self.sge_queue_opts = options.sge_queue_opts
         self.ppn = options.ppn
         self.time = options.time or "2:00:00:00"      
         self.ns = options.use_ns
