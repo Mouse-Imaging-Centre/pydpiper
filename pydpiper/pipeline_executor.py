@@ -85,7 +85,6 @@ class pipelineExecutor():
             if self.sge_queue_opts:
                 cmd += ["-q", self.sge_queue_opts]
             cmd += ["pipeline_executor.py", "--uri-file", self.uri, "--proc", strprocs, "--mem", str(self.mem)]
-            print(cmd)
             call(cmd)   
         else:
             print("Specified queueing system is: %s" % (self.queue))
