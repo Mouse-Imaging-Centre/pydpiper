@@ -99,8 +99,7 @@ class pipelineExecutor():
             return False
     def launchPipeline(self):  
         """Start executor that will run pipeline stages"""   
-        # initialize pipeline_executor as both client and server
-        print "Launching pipeline..."       
+        # initialize pipeline_executor as both client and server      
         Pyro.core.initClient()
         Pyro.core.initServer()
         daemon = Pyro.core.Daemon()

@@ -106,7 +106,7 @@ class runOnQueueingSystem():
         if mainCommand:
             self.jobFile.write(self.buildMainCommand())
             self.jobFile.write("&\n\n")
-            self.jobFile.write("sleep 60") # sleep to ensure that PyroServer has time to start
+            self.jobFile.write("sleep 1000") # sleep to ensure that PyroServer has time to start
             self.jobFile.write("\n\n")
         if launchExecs:
             self.jobFile.write("pipeline_executor.py --uri-file=%s --proc=%d --mem=%.2f" % (self.uri, execProcs, self.mem))

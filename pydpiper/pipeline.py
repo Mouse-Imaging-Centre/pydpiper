@@ -218,9 +218,11 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
 
         done = []
         for i in self.G.nodes_iter():
-            if self.stages[i].isFinished() == True:
+            if self.stages[i].isFinished():
                 done.append(i)
-        logger.info('Previously completed stages (of ' + str(len(self.stages)) + ' total): ' + str(done))
+            else:
+                self.processedStages.pop(i)
+        logger.info('Previously completed stages (of ' + str(len(self.stages)) + ' total): ' + str(len(done)))
         self.initialize()
         self.printStages()
 
@@ -484,12 +486,14 @@ def pipelineDaemon(pipeline, returnEvent, options=None, programName=None):
     e = Event()
     logger.debug("Prior to starting server, total stages %i. Number processed: %i.", 
                  len(pipeline.stages), len(pipeline.processedStages))
+    logger.debug("Number of stages in runnable index (size of queue): %i",
+                 pipeline.runnable.qsize())
     logger.debug("Starting server...")
     process = Process(target=launchServer, args=(pipeline,options,e,))
     process.start()
     e.wait()
-    logger.debug("Launching executors...")
     if options.num_exec != 0:
+        logger.debug("Launching executors...")
         processes = [Process(target=launchPipelineExecutor, args=(options,programName,)) for i in range(options.num_exec)]
         for p in processes:
             p.start()

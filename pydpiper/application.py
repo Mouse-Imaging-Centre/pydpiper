@@ -107,7 +107,7 @@ class AbstractApplication(object):
                 
         #pipelineDaemon runs pipeline, launches Pyro client/server and executors (if specified)
         # if use_ns is specified, Pyro NameServer must be started. 
-        logger.info("Starting server...")
+        logger.info("Starting pipeline daemon...")
         returnEvent = multiprocessing.Event()
         pipelineDaemon(self.pipeline, returnEvent, self.options, sys.argv[0])
         returnEvent.wait()
