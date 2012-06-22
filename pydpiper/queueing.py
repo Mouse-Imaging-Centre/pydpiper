@@ -91,7 +91,7 @@ class runOnQueueingSystem():
                 name += "-all"
                 execProcs = self.proc
                 halfPpn = self.ppn/2
-                if nodes[1]<=halfPpn:
+                if nodes[1]<=halfPpn and nodes[0] != 0:
                     requestNodes = nodes[0]
                 else:
                     requestNodes = nodes[0] + 1               
