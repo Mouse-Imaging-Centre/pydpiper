@@ -11,6 +11,6 @@ setup(name='pydpiper',
       maintainer_email='mfriedel@phenogenomics.ca',
       url='https://github.com/mfriedel/pydpiper',
       platforms="any",
-      packages=['pydpiper'], 
-      scripts=['pydpiper/pipeline_executor.py']
+      packages=['pydpiper', 'pydpiper_apps', 'pydpiper_apps.MAGeT', "pydpiper_apps.minc_tools"], 
+      scripts=['pydpiper/pipeline_executor.py', 'pydpiper_apps/MAGeT/MAGeT.py']
       )
