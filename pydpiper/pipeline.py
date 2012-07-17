@@ -1,8 +1,7 @@
 #!/usr/bin/env python
 
 import networkx as nx
-import Pyro.core
-import Pyro.naming
+import Pyro
 import Queue
 import cPickle as pickle
 import os

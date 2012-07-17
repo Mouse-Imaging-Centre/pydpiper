@@ -1,98 +1,22 @@
 #!/usr/bin/env python
 
-from pydpiper.pipeline import *
-from pydpiper.queueing import *
+from pydpiper.pipeline import CmdStage, Pipeline, InputFile, OutputFile, LogFile
 from pydpiper.application import AbstractApplication
-from minctracc import *
 import pydpiper.file_handling as fh
+from pydpiper_apps.minc_tools.minc_modules import HierarchicalMinctracc
+from pydpiper_apps.minc_tools.registration_file_handling import RegistrationPipeFH
+import Pyro
 from os.path import abspath, join
-from multiprocessing import Event
+from datetime import datetime
 import logging
 import glob
 import fnmatch
 import re
+import sys
 
 logger = logging.getLogger(__name__)
 
 Pyro.config.PYRO_MOBILE_CODE=1 
-
-# JPL: why is this class in MAGeT - this, except for the final label resampling, is generic hierarchical minctracc, right?
-# MF: renamed as HierarchicalMinctracc, will eventually move to minctracc.py 
-# (or another relevant file as building blocks become more developed)
-class HierarchicalMinctracc:
-    def __init__(self, inputPipeFH, 
-                 templatePipeFH,
-                 steps=[1,0.5,0.5,0.2,0.2,0.1],
-                 blurs=[0.25,0.25,0.25,0.25,0.25, -1], 
-                 gradients=[False, False, True, False, True, False],
-                 iterations=[60,60,60,10,10,4],
-                 simplexes=[3,3,3,1.5,1.5,1],
-                 w_translations=0.2,
-                 linearparams = {'type' : "lsq12", 'simplex' : 1, 'step' : 1},
-                 name="initial", 
-                 createMask=False):
-        self.p = Pipeline()
-        self.name = name
-        
-        for b in blurs:
-            #MF TODO: -1 case is also handled in blur. Need here for addStage.
-            #Fix this redundancy and/or better design?
-            if b != -1:
-                tblur = blur(templatePipeFH, b, gradient=True)
-                iblur = blur(inputPipeFH, b, gradient=True)               
-                self.p.addStage(tblur)
-                self.p.addStage(iblur)
-            
-        # Two lsq12 stages: one using 0.25 blur, one using 0.25 gradient
-        for g in [False, True]:    
-            linearStage = minctracc(inputPipeFH, 
-                                      templatePipeFH, 
-                                      blur=blurs[0], 
-                                      gradient=g,                                     
-                                      linearparam=linearparams["type"],
-                                      step=linearparams["step"],
-                                      simplex=linearparams["simplex"],
-                                      w_translations=w_translations,
-                                      similarity=0.5)
-            self.p.addStage(linearStage)
-
-        # create the nonlinear registrations
-        for i in range(len(steps)):
-            nlinStage = minctracc(inputPipeFH, 
-                                  templatePipeFH,
-                                  blur=blurs[i],
-                                  gradient=gradients[i],
-                                  iterations=iterations[i],
-                                  step=steps[i],
-                                  similarity=0.8,
-                                  w_translations=w_translations,
-                                  simplex=simplexes[i])
-            self.p.addStage(nlinStage)
-        
-        
-        # Resample all inputLabels 
-        inputLabelArray = templatePipeFH.returnLabels(True)
-        if len(inputLabelArray) > 0:
-            """ for the initial registration, resulting labels should be added
-                to inputLabels array for subsequent pairwise registration
-                otherwise labels should be added to labels array for voting """
-            if self.name == "initial":
-                addOutputToInputLabels = True
-            else:
-                addOutputToInputLabels = False
-            for i in range(len(inputLabelArray)):
-                resampleStage = mincresampleLabels(templatePipeFH,
-                                                    likeFile=inputPipeFH,
-                                                    argArray=["-invert"],
-                                                    labelIndex=i,
-                                                    setInputLabels=addOutputToInputLabels,
-                                                    mask=createMask)
-                self.p.addStage(resampleStage)
-            # resample files
-            resampleStage = mincresample(templatePipeFH,
-                                            likeFile=inputPipeFH,
-                                            argArray=["-invert"])
-            self.p.addStage(resampleStage)
 
 def maskFiles(FH, atlas, numAtlases=1):
     """ Assume that if there is more than one atlas, multiple
@@ -188,7 +112,7 @@ class MAGeTApplication(AbstractApplication):
         masks = [] # array of masks, one for each average
         atlases = [] #array of RegistrationPipeFH classes for each atlas/label pair
         numAtlases = 0
-        for inFile in glob.glob(os.path.join(options.atlas_lib, "*.mnc")):
+        for inFile in glob.glob(join(options.atlas_lib, "*.mnc")):
             if fnmatch.fnmatch(inFile, "*labels.mnc"):
                 labels.append(abspath(inFile))
             elif fnmatch.fnmatch(inFile, "*mask.mnc"):
