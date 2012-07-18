@@ -193,13 +193,13 @@ class RegistrationPipeFH():
         currGroup = self.groupedFiles[self.currentGroupIndex]
         if not targetFilename in currGroup.transforms:
             currGroup.transforms[targetFilename] = []
-        if not currGroup.transforms[targetFilename].__contains__(xfm):
+        if not xfm in currGroup.transforms[targetFilename]:
             currGroup.transforms[targetFilename].append(xfm)
         self.setLastXfm(targetFilename, xfm)
     def addLabels(self, newLabel, inputLabel=False):
         """Add labels to array."""
         labelArray = self.returnLabels(inputLabel)
-        if not labelArray.__contains__(newLabel):
+        if not newLabel in labelArray:
             labelArray.append(newLabel)
     def returnLabels(self, inputLabel=False):
         """Return appropriate set of labels"""

@@ -17,6 +17,8 @@ class AbstractApplication(object):
        under various queueing systems. 
        
        Subclasses should extend the following methods:
+           setup_appName()
+           setup_logger()
            setup_options()
            run()
     
@@ -73,11 +75,12 @@ class AbstractApplication(object):
     
     def _setup_pipeline(self):
         self.pipeline = Pipeline()
+        self.setup_backupDir()
         
+    def setup_backupDir(self):
         backup_dir = os.path.abspath(self.options.backup_directory)
         if not os.path.isdir(backup_dir):
-            os.mkdir(backup_dir)
-        
+            os.mkdir(backup_dir)       
         self.pipeline.setBackupFileLocation(backup_dir)
         
     def start(self):
@@ -87,6 +90,9 @@ class AbstractApplication(object):
         self.options, self.args = self.parser.parse_args()        
         self._setup_pipeline()
         
+        self.appName = self.setup_appName()
+        self.setup_logger()
+        
         if self.options.queue=="pbs":
             roq = runOnQueueingSystem(self.options, sys.argv)
             roq.createPbsScripts()
@@ -95,10 +101,12 @@ class AbstractApplication(object):
         if self.options.restart:
             logger.info("Restarting pipeline from pickled files.")
             self.pipeline.restart()
+            self.pipeline.initialize()
+            self.pipeline.printStages(self.appName)
         else:
             self.run()
             self.pipeline.initialize()
-            self.pipeline.printStages()
+            self.pipeline.printStages(self.appName)
                             
         if self.options.create_graph:
             logger.debug("Writing dot file...")
@@ -112,6 +120,14 @@ class AbstractApplication(object):
         pipelineDaemon(self.pipeline, returnEvent, self.options, sys.argv[0])
         returnEvent.wait()
         logger.info("Server has stopped.  Quitting...")
+
+    def setup_appName(self):
+        """sets the name of the application"""
+        pass
+
+    def setup_logger(self):
+        """sets logging info specific to application"""
+        pass
 
     def setup_options(self):
         """Set up the self.options option parser with options this application needs."""

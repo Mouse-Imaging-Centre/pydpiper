@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 
-import Pyro.core
-import Pyro.naming
+import Pyro
 from datetime import datetime
 from os.path import isdir, basename
 from os import mkdir

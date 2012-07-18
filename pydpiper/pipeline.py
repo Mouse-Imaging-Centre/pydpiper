@@ -220,10 +220,9 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
             if self.stages[i].isFinished():
                 done.append(i)
             else:
-                self.processedStages.pop(i)
+                if i in self.processedStages:
+                    self.processedStages.remove(i)
         logger.info('Previously completed stages (of ' + str(len(self.stages)) + ' total): ' + str(len(done)))
-        self.initialize()
-        self.printStages()
 
     def setBackupFileLocation(self, outputDir=None):
         """Sets location of backup files."""
@@ -234,9 +233,9 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
     def addPipeline(self, p):
         for s in p.stages:
             self.addStage(s)
-    def printStages(self):
+    def printStages(self, name):
         """Prints stages to a file, stage info to stdout"""
-        fileForPrinting = os.path.abspath(os.curdir + "/" + "pydpiper-pipeline-stages.txt")
+        fileForPrinting = os.path.abspath(os.curdir + "/" + str(name) + "-pipeline-stages.txt")
         pf = open(fileForPrinting, "w")
         for i in range(len(self.stages)):
             pf.write(str(i) + "  " + str(self.stages[i]) + "\n")
