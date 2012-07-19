@@ -109,10 +109,7 @@ class MAGeTApplication(AbstractApplication):
     def run(self):
         options = self.options
         args = self.args
-        reconstruct = ""
-        for i in range(len(sys.argv)):
-            reconstruct += sys.argv[i] + " "
-        logger.info("Command is: " + reconstruct)
+        self.reconstructCommand()
         
         outputDir = fh.makedirsIgnoreExisting(options.output_directory)
         atlasDir = fh.createSubDir(outputDir, "input_atlases")
