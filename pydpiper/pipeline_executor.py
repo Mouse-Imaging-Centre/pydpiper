@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import Pyro
+import Pyro.core, Pyro.naming
 import time
 import sys
 import os
@@ -66,6 +66,14 @@ class pipelineExecutor():
         self.uri = options.urifile
         if self.uri==None:
             self.uri = os.path.abspath(os.curdir + "/" + "uri")
+        self.setLogger()
+    
+    def setLogger(self):
+        FORMAT = '%(asctime)-15s %(name)s %(levelname)s: %(message)s'
+        now = datetime.now()  
+        FILENAME = "pipeline_executor.py-" + now.strftime("%Y%m%d-%H%M%S") + ".log"
+        logging.basicConfig(filename=FILENAME, format=FORMAT, level=logging.DEBUG)
+        
     def submitToQueue(self, programName=None):
         """Submits to sge queueing system using sge_batch script""" 
         if self.queue=="sge":
@@ -191,10 +199,6 @@ class pipelineExecutor():
 ##########     ---     Start of program     ---     ##########   
 
 if __name__ == "__main__":
-    FORMAT = '%(asctime)-15s %(name)s %(levelname)s: %(message)s'
-    now = datetime.now()  
-    FILENAME = "pipeline_executor.py-" + now.strftime("%Y%m%d-%H%M%S") + ".log"
-    logging.basicConfig(filename=FILENAME, format=FORMAT, level=logging.DEBUG)
 
     usage = "%prog [options]"
     description = "pipeline executor"

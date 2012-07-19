@@ -90,6 +90,22 @@ class MAGeTApplication(AbstractApplication):
         
         self.parser.set_usage("%prog [options] input files") 
 
+    def setup_backupDir(self):
+        """Output directory set here as well. backups subdirectory automatically
+        placed here so we don't need to set via the command line"""
+        backup_dir = fh.makedirsIgnoreExisting(self.options.output_directory)    
+        self.pipeline.setBackupFileLocation(backup_dir)
+
+    def setup_appName(self):
+        appName = "MAGeT"
+        return appName
+    
+    def setup_logger(self):
+        FORMAT = '%(asctime)-15s %(name)s %(levelname)s: %(message)s'
+        now = datetime.now()  
+        FILENAME = str(self.appName) + "-" + now.strftime("%Y%m%d-%H%M%S") + ".log"
+        logging.basicConfig(filename=FILENAME, format=FORMAT, level=logging.DEBUG)
+
     def run(self):
         options = self.options
         args = self.args
@@ -222,10 +238,6 @@ class MAGeTApplication(AbstractApplication):
     
       
 if __name__ == "__main__":
-    FORMAT = '%(asctime)-15s %(name)s %(levelname)s: %(message)s'
-    now = datetime.now()  
-    FILENAME = "MAGeT.py-" + now.strftime("%Y%m%d-%H%M%S") + ".log"
-    logging.basicConfig(filename=FILENAME, format=FORMAT, level=logging.DEBUG)
     
     application = MAGeTApplication()
     application.start()

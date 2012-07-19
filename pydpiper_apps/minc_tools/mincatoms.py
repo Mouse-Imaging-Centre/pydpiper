@@ -240,6 +240,8 @@ class mincresample(CmdStage):
                 self.likeFile = likeFile.getLastBasevol()
                 #If we want to invert the transform, assume that xfm is from likeFile to inFile
                 #otherwise, we assume transform is from likeFile to inFile
+                # MF TODO: We should not be using __contains__ here, but since 
+                # this class likely needs some work, I'm leaving for now. 
                 if (self.cmd.__contains__("-invert") 
                     or self.cmd.__contains__("-invert_transform")
                     or self.cmd.__contains__("-invert_transformation")):
@@ -267,7 +269,7 @@ class mincresample(CmdStage):
         self.inputFiles += [self.inFile]   
         self.outputFiles += [self.outfile]       
         self.cmd += ["-like", self.likeFile] 
-        if not self.inputFiles.__contains__(self.likeFile): 
+        if not self.likeFile in self.inputFiles: 
                 self.inputFiles += [self.likeFile]
         if self.cxfm:
             self.inputFiles += [self.cxfm]
