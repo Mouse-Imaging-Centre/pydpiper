@@ -5,6 +5,7 @@ from pydpiper.application import AbstractApplication
 import pydpiper.file_handling as fh
 from pydpiper_apps.minc_tools.minc_modules import HierarchicalMinctracc
 from pydpiper_apps.minc_tools.registration_file_handling import RegistrationPipeFH
+from pydpiper_apps.minc_tools.registration_functions import initializeInputFiles
 import Pyro
 from os.path import abspath, join
 from datetime import datetime
@@ -161,10 +162,7 @@ class MAGeTApplication(AbstractApplication):
         # eg if we have A4_mask.mnc "matching" with A3_labels, we wont get right thing.
         
         # Create fileHandling classes for images
-        inputs = []
-        for iFile in range(len(args)):
-            inputPipeFH = RegistrationPipeFH(abspath(args[iFile]), outputDir)
-            inputs.append(inputPipeFH)
+        inputs = initializeInputFiles(args, outputDir)
         
         templates = []
         numTemplates = len(args)

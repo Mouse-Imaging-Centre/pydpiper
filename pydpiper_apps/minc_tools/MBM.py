@@ -2,9 +2,9 @@
 
 from pydpiper.application import AbstractApplication
 import pydpiper.file_handling as fh
-import registration_functions as rf
+import pydpiper_apps.minc_tools.registration_functions as rf
 import Pyro
-from datetime import datetime
+from datetime import date, datetime
 import logging
 
 
@@ -15,7 +15,7 @@ Pyro.config.PYRO_MOBILE_CODE=1
 class MBMApplication(AbstractApplication):
     def setup_options(self):
         self.parser.add_option("--pipeline-name", dest="pipeline_name",
-                      type="string", default=datetime.now().strftime("%Y%m%d-%H%M%S"),
+                      type="string", default=None,
                       help="Name of pipeline and prefix for models.")
         self.parser.add_option("--pipeline-dir", dest="pipeline_dir",
                       type="string", default=".",
@@ -26,7 +26,7 @@ class MBMApplication(AbstractApplication):
     def setup_backupDir(self):
         """Output directory set here as well. backups subdirectory automatically
         placed here so we don't need to set via the command line"""
-        backup_dir = fh.makedirsIgnoreExisting(self.options.pipeline_name)    
+        backup_dir = fh.makedirsIgnoreExisting(self.options.pipeline_dir)    
         self.pipeline.setBackupFileLocation(backup_dir)
 
     def setup_appName(self):
@@ -44,4 +44,18 @@ class MBMApplication(AbstractApplication):
         args = self.args
         self.reconstructCommand()
         
-        rf.setupPipelineDirs(options.pipeline_name)
+        # Make main pipeline directories
+        pipeDir = fh.makedirsIgnoreExisting(options.pipeline_dir)
+        if not options.pipeline_name:
+            pipeName = str(date.today()) + "_pipeline"
+            print pipeName
+        else:
+            pipeName = options.pipeline_name
+        
+        processedDirectory = fh.createSubDir(pipeDir, pipeName + "_processed")
+        inputFiles = rf.initializeInputFiles(args, processedDirectory)
+        
+if __name__ == "__main__":
+    
+    application = MBMApplication()
+    application.start()

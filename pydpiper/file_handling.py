@@ -51,7 +51,7 @@ def createLogFile(dirName, baseName):
     log = "%s/%s.log" % (dirName, baseName)
     return(log)
 def createBackupDir(output):
-    _backupDir = createSubDir(output, "backups")
+    _backupDir = createSubDir(output, "pydpiper-backups")
     return(_backupDir)
 def createOutputFileName(argArray):
     outFileName = [] #clear out any arguments from previous call    
