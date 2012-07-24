@@ -82,6 +82,12 @@ class AbstractApplication(object):
         if not os.path.isdir(backup_dir):
             os.mkdir(backup_dir)       
         self.pipeline.setBackupFileLocation(backup_dir)
+    
+    def reconstructCommand(self):    
+        reconstruct = ""
+        for i in range(len(sys.argv)):
+            reconstruct += sys.argv[i] + " "
+        logger.info("Command is: " + reconstruct)
         
     def start(self):
         self._setup_options()

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 from pydpiper.pipeline import Pipeline
-import mincatoms as ma
+import pydpiper_apps.minc_tools.minc_atoms as ma
 
 class HierarchicalMinctracc:
     def __init__(self, inputPipeFH, 
