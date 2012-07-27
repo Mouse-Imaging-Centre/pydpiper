@@ -11,6 +11,77 @@ import Pyro
 
 Pyro.config.PYRO_MOBILE_CODE=1
 
+class mincANTS(CmdStage):
+    def __init__(self,
+                 inSource,
+                 inTarget,
+                 output=None,
+                 logFile=None,
+                 defaultDir="transforms", 
+                 blur=[-1, 0.056],
+                 gradient=[False, True],
+                 source_mask=None, #ANTS only uses one mask
+                 similarity_metric=["CC", "CC"],
+                 weight=[1,1],
+                 iterations="100x100x100x0",
+                 radius_or_histo=[4,4],
+                 transformation_model="SyN[0.5]", 
+                 regularization="Gauss[5,1]",
+                 useMask=True):
+        CmdStage.__init__(self, None) #don't do any arg processing in superclass
+        try: 
+            if isFileHandler(inSource, inTarget):
+                """Same defaults as minctracc class:
+                    blur = None --> return lastblur
+                    gradient = True --> return gradient instead of blur
+                    if blur = -1 --> lastBaseVol returned and gradient ignored"""
+                self.source = []
+                self.target = []
+                # Need to check that length of blur, gradient, similarity, weight
+                # and radius_or_histo have same length
+                for i in range(len(blur)):
+                    self.source.append(inSource.getBlur(blur[i], gradient[i]))
+                    self.target.append(inTarget.getBlur(blur[i], gradient[i]))
+                #Need to set output based on input args might need new registerVol cmd
+                self.output = "tmp.xfm"
+                self.logFile = inSource.logFromFile(self.output)
+                self.useMask=useMask
+                if self.useMask:
+                    self.source_mask = inSource.getMask()
+            else:
+                self.source = inSource
+                self.target = inTarget
+                #MF TODO: Need to find a way to sepcify multiple source and targets
+                #based on blur and gradient 
+                self.output = output
+                self.logFile = logFile
+        except:
+            print "Failed in putting together mincANTS command."
+            print "Unexpected error: ", sys.exc_info()
+        
+        self.similarity_metric = similarity_metric
+        self.weight = weight 
+        self.iterations = iterations,
+        self.radius_or_histo = radius_or_histo
+        self.transformation_model = transformation_model 
+        self.regularization = regularization
+        
+        self.addDefaults()
+        self.finalizeCommand()
+        self.setName()
+        self.colour = "red"
+        
+    def setName(self):
+        self.name = "mincANTS"
+    def addDefaults(self):
+        self.cmd = ["mincANTS",
+                    "--number-of-affine-iterations", 0,
+                    ]
+    def finalizeCommand(self):
+        pass
+    
+    
+        
 class minctracc(CmdStage):
     def __init__(self, 
                  inSource,
