@@ -2,7 +2,7 @@
 
 from pydpiper.pipeline import CmdStage 
 from registration_file_handling import isFileHandler
-from os.path import abspath, basename
+from os.path import abspath, basename, join
 from os import curdir
 import pydpiper.file_handling as fh
 import inspect
@@ -38,12 +38,20 @@ class mincANTS(CmdStage):
                 self.source = []
                 self.target = []
                 # Need to check that length of blur, gradient, similarity, weight
-                # and radius_or_histo have same length
+                # and radius_or_histo are the same
+                self.checkArrayLengths(blur, 
+                                       gradient, 
+                                       similarity_metric,
+                                       weight,
+                                       radius_or_histo)
                 for i in range(len(blur)):
                     self.source.append(inSource.getBlur(blur[i], gradient[i]))
                     self.target.append(inTarget.getBlur(blur[i], gradient[i]))
-                #Need to set output based on input args might need new registerVol cmd
-                self.output = "tmp.xfm"
+                frame = inspect.currentframe()
+                args,_,_,arglocals = inspect.getargvalues(frame)
+                arglist = [(i, arglocals[i]) for i in args]
+                outputXfm = inSource.registerVolume(inTarget, arglist, "mincANTS")
+                self.output = outputXfm
                 self.logFile = inSource.logFromFile(self.output)
                 self.useMask=useMask
                 if self.useMask:
@@ -51,7 +59,7 @@ class mincANTS(CmdStage):
             else:
                 self.source = inSource
                 self.target = inTarget
-                #MF TODO: Need to find a way to sepcify multiple source and targets
+                #MF TODO: Need to find a way to specify multiple source and targets
                 #based on blur and gradient 
                 self.output = output
                 self.logFile = logFile
@@ -61,7 +69,7 @@ class mincANTS(CmdStage):
         
         self.similarity_metric = similarity_metric
         self.weight = weight 
-        self.iterations = iterations,
+        self.iterations = iterations
         self.radius_or_histo = radius_or_histo
         self.transformation_model = transformation_model 
         self.regularization = regularization
@@ -74,13 +82,39 @@ class mincANTS(CmdStage):
     def setName(self):
         self.name = "mincANTS"
     def addDefaults(self):
+        cmd = []
+        for i in range(len(self.similarity_metric)):
+            cmd.append("-m")
+            subcmd = ", ".join([str(self.source[i]), str(self.target[i]), 
+                      str(self.weight[i]), str(self.radius_or_histo[i])])
+            cmd.append("".join([str(self.similarity_metric[i]), "[", subcmd, "]"]))
         self.cmd = ["mincANTS",
                     "--number-of-affine-iterations", 0,
-                    ]
+                    [c for c in cmd],
+                    "-i", self.iterations,
+                    "-t", self.transformation_model,
+                    "-r", self.regularization,
+                    "-o", self.output]
+        for i in range(len(self.source)):
+            self.inputFiles += [self.source[i], self.target[i]]
+        self.outputFiles = self.output
+        if self.useMask:
+            self.cmd += ["-x", str(self.sourceMask)]
+            self.inputFiles += [self.sourceMask]
     def finalizeCommand(self):
         pass
     
-    
+    def checkArrayLengths(self, blur, gradient, metric, weight, radius):
+        arrayLength = len(blur)
+        errorMsg = "Array lengths for mincANTS command do not match."
+        if (len(gradient) != arrayLength 
+            or len(metric) != arrayLength
+            or len(weight) != arrayLength
+            or len(radius) != arrayLength):
+            print errorMsg
+            raise
+        else:
+            return
         
 class minctracc(CmdStage):
     def __init__(self, 
