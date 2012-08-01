@@ -10,6 +10,7 @@ import socket
 import time
 from datetime import datetime
 from subprocess import call
+from shlex import split
 from multiprocessing import Process, Event
 import file_handling as fh
 import pipeline_executor as pe
@@ -116,8 +117,9 @@ class CmdStage(PipelineStage):
         if self.is_effectively_complete():
             of.write("All output files exist. Skipping stage.\n")
             returncode = 0
-        else: 
-            returncode = call(self.cmd, stdout=of, stderr=of, shell=False) #TODO: shell = False?  Is this okay?
+        else:
+            args = split(repr(self)) 
+            returncode = call(args, stdout=of, stderr=of, shell=False) 
         of.close()
         return(returncode)
     

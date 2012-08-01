@@ -117,13 +117,15 @@ class RegistrationPipeFH():
         log = fh.createLogFile(self.logDir, logBase)
         return(log)
 
-    def registerVolume(self, targetFH, arglist):
+    def registerVolume(self, targetFH, arglist, regType="minctracc"):
         """create the filenames for a single registration call
 
-        Two input arguments - a RegistrationPipeFH instance for the
+        Two input arguments are required - a RegistrationPipeFH instance for the
         target volume and an argument list; the argument list is
         derived from function introspection in the minctracc or
         mincANTS calls and will be used to provide a unique filename.
+        The registrationType argument defaults to minctracc but if it is
+        mincANTS, will handle different types of arguments.
 
         """
         sourceFilename = fh.removeBaseAndExtension(self.getLastBasevol())
@@ -131,21 +133,34 @@ class RegistrationPipeFH():
         # check to make sure blurs match, otherwise throw error?
         # Go through argument list to build file name
         xfmFileName = [sourceFilename, "to", targetFilename]
+        if regType=="mincANTS":
+            xfmFileName += ["ANTS"]
         xfmOutputDir = self.tmpDir
         for k, l in arglist:
-            if k == 'blur':
-                xfmFileName += [str(l) + "b"]
-            elif k == 'gradient':
-                if l:
-                    xfmFileName += ["dxyz"]
-            elif k == 'linearparam':
-                xfmFileName += [l]
-            elif k == 'iterations':
-                xfmFileName += ["i" + str(l)]
-            elif k == 'step':
-                xfmFileName += ["s" + str(l)]
-            elif k == 'defaultDir':
-                xfmOutputDir = self.setOutputDirectory(str(l))
+            if regType == "minctracc":
+                if k == 'blur':
+                    xfmFileName += [str(l) + "b"]
+                elif k == 'gradient':
+                    if l:
+                        xfmFileName += ["dxyz"]
+                elif k == 'linearparam':
+                    xfmFileName += [l]
+                elif k == 'iterations':
+                    xfmFileName += ["i" + str(l)]
+                elif k == 'step':
+                    xfmFileName += ["s" + str(l)]
+                elif k == 'defaultDir':
+                    xfmOutputDir = self.setOutputDirectory(str(l))
+            elif regType == "mincANTS":
+                if k == 'similarity_metric':
+                    xfmFileName += [str(len(l))]
+                    for i in l:
+                        xfmFileName += [str(i)]
+                elif k == 'iterations':
+                    xfmFileName += ["iter" + str(l)]
+                elif k == 'defaultDir':
+                    xfmOutputDir = self.setOutputDirectory(str(l))
+                
         xfmFileWithExt = "_".join(xfmFileName) + ".xfm"
         outputXfm = fh.createBaseName(xfmOutputDir, xfmFileWithExt)
         self.addAndSetXfmToUse(targetFilename, outputXfm)
