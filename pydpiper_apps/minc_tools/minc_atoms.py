@@ -24,8 +24,8 @@ class mincANTS(CmdStage):
                  similarity_metric=["CC", "CC"],
                  weight=[1,1],
                  iterations="100x100x100x0",
-                 radius_or_histo=[4,4],
-                 transformation_model="SyN[0.5]", 
+                 radius_or_histo=[3,3],
+                 transformation_model="SyN[0.3]", 
                  regularization="Gauss[5,1]",
                  useMask=True):
         CmdStage.__init__(self, None) #don't do any arg processing in superclass
@@ -71,8 +71,11 @@ class mincANTS(CmdStage):
         self.weight = weight 
         self.iterations = iterations
         self.radius_or_histo = radius_or_histo
-        self.transformation_model = transformation_model 
-        self.regularization = regularization
+        """Single quotes needed on the command line for 
+           transformation_model and regularization
+        """
+        self.transformation_model = "'" + transformation_model + "'" 
+        self.regularization = "'" + regularization + "'"
         
         self.addDefaults()
         self.finalizeCommand()
@@ -85,22 +88,22 @@ class mincANTS(CmdStage):
         cmd = []
         for i in range(len(self.similarity_metric)):
             cmd.append("-m")
-            subcmd = ", ".join([str(self.source[i]), str(self.target[i]), 
+            subcmd = ",".join([str(self.source[i]), str(self.target[i]), 
                       str(self.weight[i]), str(self.radius_or_histo[i])])
-            cmd.append("".join([str(self.similarity_metric[i]), "[", subcmd, "]"]))
-        self.cmd = ["mincANTS",
-                    "--number-of-affine-iterations", 0,
-                    [c for c in cmd],
-                    "-i", self.iterations,
-                    "-t", self.transformation_model,
+            cmd.append("".join(["'", str(self.similarity_metric[i]), "[", subcmd, "]", "'"]))
+        self.cmd = ["mincANTS", "3", "--number-of-affine-iterations", "0"]
+        for c in cmd:
+            self.cmd += [c]
+        self.cmd += ["-t", self.transformation_model,
                     "-r", self.regularization,
+                    "-i", self.iterations,
                     "-o", self.output]
         for i in range(len(self.source)):
             self.inputFiles += [self.source[i], self.target[i]]
-        self.outputFiles = self.output
-        if self.useMask:
-            self.cmd += ["-x", str(self.sourceMask)]
-            self.inputFiles += [self.sourceMask]
+        self.outputFiles = [self.output]
+        if self.useMask and self.source_mask:
+            self.cmd += ["-x", str(self.source_mask)]
+            self.inputFiles += [self.source_mask]
     def finalizeCommand(self):
         pass
     

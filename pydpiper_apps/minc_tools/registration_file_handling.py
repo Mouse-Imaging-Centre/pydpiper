@@ -153,7 +153,11 @@ class RegistrationPipeFH():
                     xfmOutputDir = self.setOutputDirectory(str(l))
             elif regType == "mincANTS":
                 if k == 'similarity_metric':
-                    xfmFileName += [str(l)]
+                    xfmFileName += [str(len(l))]
+                    for i in l:
+                        xfmFileName += [str(i)]
+                elif k == 'iterations':
+                    xfmFileName += ["iter" + str(l)]
                 elif k == 'defaultDir':
                     xfmOutputDir = self.setOutputDirectory(str(l))
                 
