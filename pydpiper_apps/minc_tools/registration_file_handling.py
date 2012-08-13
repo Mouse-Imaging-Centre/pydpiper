@@ -104,18 +104,6 @@ class RegistrationPipeFH():
         self.transformsDir = fh.createSubDir(self.subjDir, "transforms")
         self.labelsDir = fh.createSubDir(self.subjDir, "labels")
         self.tmpDir = fh.createSubDir(self.subjDir, "tmp")
-        
-    def logFromFile(self, inFile):
-        """ creates a log file from an input filename
-
-        Takes the input file, strips out any extensions, and returns a 
-        filename with the same basename, in the log directory, and 
-        with a .log extension"""
-
-        #MF TODO: Can we move to fileHandling class?  
-        logBase = fh.removeBaseAndExtension(inFile)
-        log = fh.createLogFile(self.logDir, logBase)
-        return(log)
 
     def registerVolume(self, targetFH, arglist, regType="minctracc"):
         """create the filenames for a single registration call
@@ -248,7 +236,7 @@ class RegistrationPipeFH():
         outputbase = "%s/%s_fwhm%g" % (outputDir, outputbase, fwhm)
         
         withext = "%s_blur.mnc" % outputbase     
-        log = self.logFromFile(withext)
+        log = fh.logFromFile(self.logDir, withext)
 
         outlist = { "base" : outputbase,
                     "file" : withext,
@@ -262,20 +250,3 @@ class RegistrationPipeFH():
 
         self.groupedFiles[self.currentGroupIndex].addBlur(withext, fwhm, gradWithExt)
         return(outlist)
-
-def isFileHandler(inSource, inTarget=None):
-    """Source and target types can be either RegistrationPipeFH or strings
-    Regardless of which is chosen, they must both be the same type.
-    If this function returns True - both types are fileHandlers. If it returns
-    false, both types are strings. If there is a mismatch, the assert statement
-    should cause an error to be raised."""
-    isFileHandlingClass = True
-    assertMsg = 'source and target files must both be same type: RegistrationPipeFH or string'
-    if isinstance(inSource, RegistrationPipeFH):
-        if inTarget:
-            assert isinstance(inTarget, RegistrationPipeFH), assertMsg
-    else:
-        if inTarget:
-            assert not isinstance(inTarget, RegistrationPipeFH), assertMsg
-        isFileHandlingClass = False
-    return(isFileHandlingClass)

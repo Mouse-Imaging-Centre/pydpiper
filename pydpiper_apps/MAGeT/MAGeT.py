@@ -39,7 +39,7 @@ def maskFiles(FH, atlas, numAtlases=1):
         mincMathInput = FH.getMask()
     mincMathOutput = fh.createBaseName(FH.resampledDir, FH.basename)
     mincMathOutput += "_masked.mnc"   
-    logFile = FH.logFromFile(mincMathOutput)
+    logFile = fh.logFromFile(FH.logDir, mincMathOutput)
     cmd = ["mincmath"] + ["-clobber"] + ["-mult"]
     cmd += [InputFile(mincMathInput)] + [InputFile(FH.getLastBasevol())] 
     cmd += [OutputFile(mincMathOutput)]
@@ -61,7 +61,7 @@ def voxelVote(inputFH, pairwise, mask):
         out += "_mask.mnc"
     else: 
         out += "_votedlabels.mnc"
-    logFile = inputFH.logFromFile(out)
+    logFile = fh.logFromFile(inputFH.logDir, out)
     cmd = ["voxel_vote.py"] + [InputFile(l) for l in labels] + [OutputFile(out)]
     voxel = CmdStage(cmd)
     voxel.setLogFile(LogFile(logFile))
