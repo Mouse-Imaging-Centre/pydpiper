@@ -1,7 +1,9 @@
 #!/usr/bin/env python
 
 import pydpiper_apps.minc_tools.registration_file_handling as rfh
-from os.path import abspath
+import pydpiper.file_handling as fh
+from os.path import abspath, exists, dirname
+import sys
 
 def initializeInputFiles(args, mainDirectory):
     inputs = []
@@ -26,3 +28,55 @@ def isFileHandler(inSource, inTarget=None):
             assert not isinstance(inTarget, rfh.RegistrationPipeFH), assertMsg
         isFileHandlingClass = False
     return(isFileHandlingClass)
+
+def setupInitModel(inputModel):
+    """
+        Creates fileHandlers for the initModel by reading files from.
+        The directory where the input is specified.
+        The following files and naming scheme are required:
+            name.mnc --> File in standard registration space.
+            name_mask.mnc --> Mask for name.mnc
+        The following can optionally be included in the same directory as the above:
+            name_native.mnc --> File in native scanner space.
+            name_native_mask.mnc --> Mask for name_native.mnc
+            native_to_standard.xfm --> Transform from native space to standard space
+    """
+    errorMsg = "Failed to properly set up initModel."
+    
+    try:
+        imageFile = abspath(inputModel)
+        imageBase = fh.removeBaseAndExtension(imageFile)
+        imageDirectory = dirname(imageFile)
+        if not exists(imageFile):
+            errorMsg = "Specified --init-model does not exist: " + str(inputModel)
+            raise
+        else:
+            standardFH = rfh.RegistrationFHBase(imageFile)
+            mask = imageDirectory + "/" + imageBase + "_mask.mnc"
+            standardFH.setMask(abspath(mask))
+            #if native file exists, create FH
+            nativeFileName = imageDirectory + "/" + imageBase + "_native.mnc"
+            print nativeFileName
+            if exists(nativeFileName):
+                nativeFH = rfh.RegistrationFHBase(nativeFileName)
+                mask = imageDirectory + "/" + imageBase + "_native_mask.mnc"
+                if not exists(mask):
+                    errorMsg = "_native.mnc file included but associated mask not found"
+                    raise
+                else:
+                    nativeFH.setMask(abspath(mask))
+                    nativeToStdXfm = imageDirectory + "/native_to_standard.xfm"
+                    if exists(nativeToStdXfm):
+                        nativeFH.setLastXfm(standardFH, nativeToStdXfm)
+                    else:
+                        nativeToStdXfm = None
+            else:
+                nativeFH = None
+                nativeToStdXfm = None
+            return (standardFH, nativeFH, nativeToStdXfm)
+    except:
+        print errorMsg
+        print "Exiting..."
+        sys.exit()
+    
+    

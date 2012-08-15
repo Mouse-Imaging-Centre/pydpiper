@@ -44,44 +44,62 @@ class RegistrationGroupedFiles():
         if gradient:
             self.gradients[fwhm] = gradient
             self.lastgradient = fwhm
-    
-class RegistrationPipeFH():
-    """A class to provide file-handling support for registration pipelines
 
-    Each input file will have a separate directory underneath the
-    specified base directory. This will in turn be populated by
-    different output directories for transforms, resampled files,
-    temporary files, etc. The final directory tree will look like the
-    following:
+class RegistrationFHBase():
+    """
+        Base class for providing file-handling support to registration pipelines
+    """
+    def __init__(self, filename, basedir=None):
+        """basedir optional for base class.
+           Need to specify a basedir if any output is needed"""
+        self.groupedFiles = [RegistrationGroupedFiles(filename)]
+        # We will always have only one group for the base class.
+        self.currentGroupIndex = 0
+        self.inputFileName = filename
+        self.basename = fh.removeBaseAndExtension(self.inputFileName)
+        # If basedir is specified, create, else ignore
+        if basedir:
+            self.basedir = fh.makedirsIgnoreExisting(basedir)
+        self.lastBaseVol = filename
+    def setMask(self, inputMask):
+        self.groupedFiles[self.currentGroupIndex].mask = inputMask
+    def getMask(self):
+        return(self.groupedFiles[self.currentGroupIndex].mask)  
+    def setLastXfm(self, targetFilename, xfm):
+        self.groupedFiles[self.currentGroupIndex].lastTransform[targetFilename] = xfm
+         
+class RegistrationPipeFH(RegistrationFHBase):
+    """
+        A class to provide file-handling support for registration pipelines.
+        
+        Inherits from RegistrationFHBase
 
-    basedir/filenamebase/log -- log files
-    basedir/filenamebase/resampled -- resampled files go here
-    basedir/filenamebase/transforms -- transforms (xfms, grids, etc.) go here
-    basedir/filenamebase/labels -- any resampled labels (if necessary) go here
-    basedir/filenamebase/tmp -- intermediate temporary files go here
+        Each input file will have a separate directory underneath the
+        specified base directory. This will in turn be populated by
+        different output directories for transforms, resampled files,
+        temporary files, etc. The final directory tree will look like the
+        following:
 
-    The RegistrationPipeFH can be passed to different processing
-    functions (minctracc, blur, etc.) which will use it to derive
-    proper filenames. The RegistrationPipeFH can moreover group
-    related files (blurs, transforms, resamples) by using the newGroup
-    call.
+        basedir/filenamebase/log -- log files
+        basedir/filenamebase/resampled -- resampled files go here
+        basedir/filenamebase/transforms -- transforms (xfms, grids, etc.) go here
+        basedir/filenamebase/labels -- any resampled labels (if necessary) go here
+        basedir/filenamebase/tmp -- intermediate temporary files go here
+
+        The RegistrationPipeFH can be passed to different processing
+        functions (minctracc, blur, etc.) which will use it to derive
+        proper filenames. The RegistrationPipeFH can moreover group
+        related files (blurs, transforms, resamples) by using the newGroup
+        call.
 
     """
     def __init__(self, filename, basedir):
-        """two inputs required - an inputFile file and a base directory."""
-        self.groupedFiles = [RegistrationGroupedFiles(filename)]
+        RegistrationFHBase.__init__(self, filename, basedir)
         self.currentGroupIndex = -1 #MF why -1 instead of 0? TEST
-        #MF TODO: verify below with Jason to verify correct interpretation
-        self.inputFileName = filename
-        self.basename = fh.removeBaseAndExtension(self.inputFileName)
-        # Check to make sure that basedir exists, otherwise create:
-        self.basedir = fh.makedirsIgnoreExisting(basedir)
         # groups can be referred to by either name or index number
         self.groupNames = {'base' : 0}       
         # create directories
         self.setupNames()
-        # set lastBaseVol
-        self.lastBaseVol = filename
     
     def newGroup(self, inputVolume = None, groupName = None):
         """create a new set of grouped files"""
@@ -159,8 +177,9 @@ class RegistrationPipeFH():
         allows for the possibility that an entirely new directory may be specified
         e.g. pipeline_name_nlin or pipeline_name_lsq6 that does not depend on 
         existing file handlers. Additional cases may be added in the future"""
-        outputDir = curdir
-        if defaultDir=="tmp":
+        if not defaultDir:
+            outputDir = abspath(curdir)
+        elif defaultDir=="tmp":
             outputDir = self.tmpDir
         elif defaultDir=="resampled":
             outputDir = self.resampledDir
@@ -190,8 +209,6 @@ class RegistrationPipeFH():
         if targetFilename in currGroup.lastTransform:
             lastXfm = currGroup.lastTransform[targetFilename]
         return(lastXfm)
-    def setLastXfm(self, targetFilename, xfm):
-        self.groupedFiles[self.currentGroupIndex].lastTransform[targetFilename] = xfm
     def addAndSetXfmToUse(self, targetFilename, xfm):
         currGroup = self.groupedFiles[self.currentGroupIndex]
         if not targetFilename in currGroup.transforms:
@@ -218,10 +235,7 @@ class RegistrationPipeFH():
             del currGroup.inputLabels[:]
         else:
             del currGroup.labels[:]
-    def setMask(self, inputMask):
-        self.groupedFiles[self.currentGroupIndex].mask = inputMask
-    def getMask(self):
-        return(self.groupedFiles[self.currentGroupIndex].mask)
+    
     def blurFile(self, fwhm, gradient=False, defaultDir="tmp"):
         """create filename for a mincblur call
 

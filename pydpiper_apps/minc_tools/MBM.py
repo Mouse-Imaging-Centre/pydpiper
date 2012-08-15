@@ -3,8 +3,10 @@
 from pydpiper.application import AbstractApplication
 import pydpiper.file_handling as fh
 import pydpiper_apps.minc_tools.registration_functions as rf
+import pydpiper_apps.minc_tools.registration_file_handling as rfh
 import Pyro
 from datetime import date, datetime
+from os.path import abspath
 import logging
 
 
@@ -20,6 +22,9 @@ class MBMApplication(AbstractApplication):
         self.parser.add_option("--pipeline-dir", dest="pipeline_dir",
                       type="string", default=".",
                       help="Directory for placing pipeline results. Default is current.")
+        self.parser.add_option("--init-model", dest="init_model",
+                      type="string", default=None,
+                      help="Name of file to register towards. If unspecified, bootstrap.")
         
         self.parser.set_usage("%prog [options] input files") 
 
@@ -48,13 +53,24 @@ class MBMApplication(AbstractApplication):
         pipeDir = fh.makedirsIgnoreExisting(options.pipeline_dir)
         if not options.pipeline_name:
             pipeName = str(date.today()) + "_pipeline"
-            print pipeName
         else:
             pipeName = options.pipeline_name
         
         processedDirectory = fh.createSubDir(pipeDir, pipeName + "_processed")
         inputFiles = rf.initializeInputFiles(args, processedDirectory)
         
+        if options.init_model:
+            """setupInitModel returns a tuple containing:
+               (standardFH, nativeFH, native_to_standard.xfm)
+               First value must exist, others may be None 
+            """
+            initModel = rf.setupInitModel(options.init_model)
+        else:
+            # Bootstrap using first mouse in array. 
+            # Note that this will be a full FH class
+            initModel = (inputFiles[0], None, None)
+            
+            
 if __name__ == "__main__":
     
     application = MBMApplication()
