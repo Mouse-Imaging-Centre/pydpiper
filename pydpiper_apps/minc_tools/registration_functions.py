@@ -56,7 +56,6 @@ def setupInitModel(inputModel):
             standardFH.setMask(abspath(mask))
             #if native file exists, create FH
             nativeFileName = imageDirectory + "/" + imageBase + "_native.mnc"
-            print nativeFileName
             if exists(nativeFileName):
                 nativeFH = rfh.RegistrationFHBase(nativeFileName)
                 mask = imageDirectory + "/" + imageBase + "_native_mask.mnc"
@@ -65,7 +64,7 @@ def setupInitModel(inputModel):
                     raise
                 else:
                     nativeFH.setMask(abspath(mask))
-                    nativeToStdXfm = imageDirectory + "/native_to_standard.xfm"
+                    nativeToStdXfm = imageDirectory + "/" + imageBase + "_native_to_standard.xfm"
                     if exists(nativeToStdXfm):
                         nativeFH.setLastXfm(standardFH, nativeToStdXfm)
                     else:
