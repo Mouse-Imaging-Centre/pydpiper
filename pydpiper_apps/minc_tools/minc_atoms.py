@@ -309,6 +309,64 @@ class blur(CmdStage):
             self.cmd += ["-gradient"]       
         self.colour="blue"
 
+class autocrop(CmdStage):
+    def __init__(self, 
+                 resolution, 
+                 inFile,
+                 outFile=None,
+                 logFile=None,
+                 defaultDir="resampled"):
+        
+        """Resamples the input file to the resolution specified
+           using autocrop. The -resample flag forces the use of
+           mincresample.
+           
+           Resolutions should be specified in mm. 
+           e.g. 56 microns should be specified as 0.056    
+        """
+           
+        CmdStage.__init__(self, None)
+        self.resolution = str(resolution)
+        try:  
+            if isFileHandler(inFile):
+                self.inFile = inFile.getLastBasevol()               
+                self.outfile = self.setOutputFile(inFile, defaultDir)
+                self.logFile = fh.logFromFile(inFile.logDir, self.outfile)
+            else:
+                self.inFile = inFile
+                self.outfile = outFile
+                if not logFile:
+                    self.logFile = fh.logFromFile(abspath(curdir), outFile)
+                else:
+                    self.logFile = logFile
+    
+        except:
+            print "Failed in putting together autocrop command"
+            print "Unexpected error: ", sys.exc_info()
+            
+        self.addDefaults()
+        self.finalizeCommand()
+        self.setName()
+        
+    def addDefaults(self):
+        self.inputFiles += [self.inFile]   
+        self.outputFiles += [self.outfile]       
+        self.cmd += ["autocrop",
+                     "-resample",
+                     "-isostep", self.resolution] 
+                 
+    def finalizeCommand(self):
+        self.cmd += ["-clobber", self.inFile, self.outfile]    
+    def setName(self):
+        self.name = "autocrop " 
+    def setOutputFile(self, inFile, defaultDir):
+        outDir = inFile.setOutputDirectory(defaultDir)
+        outBase = (fh.removeBaseAndExtension(inFile.getLastBasevol()) + "_"
+                   + self.resolution + "res.mnc")
+        outputFile = fh.createBaseName(outDir, outBase)
+        inFile.setLastBasevol(outputFile, setMain=False)
+        return(outputFile)  
+    
 class mincresample(CmdStage):
     def __init__(self, 
                  inFile, 

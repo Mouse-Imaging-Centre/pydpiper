@@ -50,24 +50,53 @@ class RegistrationFHBase():
         Base class for providing file-handling support to registration pipelines
     """
     def __init__(self, filename, basedir=None):
-        """basedir optional for base class.
-           Need to specify a basedir if any output is needed"""
         self.groupedFiles = [RegistrationGroupedFiles(filename)]
         # We will always have only one group for the base class.
         self.currentGroupIndex = 0
         self.inputFileName = filename
         self.basename = fh.removeBaseAndExtension(self.inputFileName)
-        # If basedir is specified, create, else ignore
+        """basedir optional for base class.
+           If not specified, we assume we just need to read files, 
+           but don't need to write anything associated with them
+           Need to specify a basedir if any output is needed
+           If unspecified, set as current directory (but assume no writing)"""
         if basedir:
             self.basedir = fh.makedirsIgnoreExisting(basedir)
+            """ only create a logDir if we plan on writing
+            Overwritten classes should always do this """
+            self.setupNames()
+        else:
+            """Set self.basedir and self.logDir, 
+            but we shouldn't actually do any writing."""
+            self.basedir = abspath(curdir)
+            self.logDir = self.basedir
         self.lastBaseVol = filename
+    
+    def setupNames(self):
+        self.logDir = fh.createLogDir(self.basedir)    
     def setMask(self, inputMask):
         self.groupedFiles[self.currentGroupIndex].mask = inputMask
     def getMask(self):
         return(self.groupedFiles[self.currentGroupIndex].mask)  
     def setLastXfm(self, targetFilename, xfm):
         self.groupedFiles[self.currentGroupIndex].lastTransform[targetFilename] = xfm
-         
+    def getLastBasevol(self, setMain=False):
+        if setMain:
+            lastBasevol = self.lastBaseVol
+        else:
+            lastBasevol = self.groupedFiles[self.currentGroupIndex].basevol
+        return(lastBasevol)
+    def setLastBasevol(self, newBaseVol, setMain=False):
+        self.groupedFiles[self.currentGroupIndex].basevol = newBaseVol
+        if setMain:
+            self.lastBaseVol = newBaseVol
+    def setOutputDirectory(self, defaultDir):
+        if not defaultDir:
+            outputDir = abspath(curdir)
+        else:
+            outputDir = abspath(defaultDir)
+        return(outputDir)
+    
 class RegistrationPipeFH(RegistrationFHBase):
     """
         A class to provide file-handling support for registration pipelines.
@@ -97,9 +126,7 @@ class RegistrationPipeFH(RegistrationFHBase):
         RegistrationFHBase.__init__(self, filename, basedir)
         self.currentGroupIndex = -1 #MF why -1 instead of 0? TEST
         # groups can be referred to by either name or index number
-        self.groupNames = {'base' : 0}       
-        # create directories
-        self.setupNames()
+        self.groupNames = {'base' : 0}  
     
     def newGroup(self, inputVolume = None, groupName = None):
         """create a new set of grouped files"""
@@ -197,12 +224,6 @@ class RegistrationPipeFH(RegistrationFHBase):
         return(self.groupedFiles[self.currentGroupIndex].getBlur(fwhm, gradient))
     def setBlurToUse(self, fwhm):
         self.groupedFiles[self.currentGroupIndex].lastblur = fwhm
-    def getLastBasevol(self):
-        return(self.groupedFiles[self.currentGroupIndex].basevol)
-    def setLastBasevol(self, newBaseVol, setMain=False):
-        self.groupedFiles[self.currentGroupIndex].basevol = newBaseVol
-        if setMain:
-            self.lastBaseVol = newBaseVol
     def getLastXfm(self, targetFilename):
         currGroup = self.groupedFiles[self.currentGroupIndex]
         lastXfm = None

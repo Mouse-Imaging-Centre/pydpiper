@@ -2,7 +2,32 @@
 
 from pydpiper.pipeline import Pipeline
 import pydpiper_apps.minc_tools.minc_atoms as ma
+import pydpiper_apps.minc_tools.registration_file_handling as rfh
+from pyminc.volumes.factory import volumeFromFile
 
+class SetResolution:
+    def __init__(self, filesToResample, resolution):
+        """During initialization make sure all files are resampled
+           at resolution we'd like to use for each pipeline stage
+        """
+        self.p = Pipeline()
+        
+        for FH in filesToResample:
+            dirForOutput = self.getOutputDirectory(FH)
+            currentRes = volumeFromFile(FH.getLastBasevol()).separations
+            if currentRes[0] != resolution:
+                crop = ma.autocrop(resolution, FH, defaultDir=dirForOutput)
+                self.p.addStage(crop)
+        
+    def getOutputDirectory(self, FH):
+        """Sets output directory based on whether or not we have a full
+        RegistrationPipeFH class or we are just using RegistrationFHBase"""
+        if isinstance(FH, rfh.RegistrationPipeFH):
+            outputDir = "resampled"
+        else:
+            outputDir = FH.basedir
+        return outputDir
+        
 class HierarchicalMinctracc:
     def __init__(self, inputPipeFH, 
                  templatePipeFH,
