@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 from pydpiper.pipeline import CmdStage 
-from registration_file_handling import isFileHandler
+from pydpiper_apps.minc_tools.registration_functions import isFileHandler
 from os.path import abspath, basename, join
 from os import curdir
 import pydpiper.file_handling as fh
@@ -52,7 +52,7 @@ class mincANTS(CmdStage):
                 arglist = [(i, arglocals[i]) for i in args]
                 outputXfm = inSource.registerVolume(inTarget, arglist, "mincANTS")
                 self.output = outputXfm
-                self.logFile = inSource.logFromFile(self.output)
+                self.logFile = fh.logFromFile(inSource.logDir, self.output)
                 self.useMask=useMask
                 if self.useMask:
                     self.source_mask = inSource.getMask()
@@ -62,7 +62,10 @@ class mincANTS(CmdStage):
                 #MF TODO: Need to find a way to specify multiple source and targets
                 #based on blur and gradient 
                 self.output = output
-                self.logFile = logFile
+                if not logFile:
+                    self.logFile = fh.logFromFile(abspath(curdir), output)
+                else:
+                    self.logFile = logFile
         except:
             print "Failed in putting together mincANTS command."
             print "Unexpected error: ", sys.exc_info()
@@ -169,7 +172,7 @@ class minctracc(CmdStage):
                 arglist = [(i, arglocals[i]) for i in args]
                 outputXfm = inSource.registerVolume(inTarget, arglist)
                 self.output = outputXfm
-                self.logFile = inSource.logFromFile(outputXfm)
+                self.logFile = fh.logFromFile(inSource.logDir, outputXfm)
                 self.useMask = useMask
                 if self.useMask:
                     self.source_mask = inSource.getMask()
@@ -178,7 +181,10 @@ class minctracc(CmdStage):
                 self.source = inSource
                 self.target = inTarget
                 self.output = output
-                self.logFile = logFile
+                if not logFile:
+                    self.logFile = fh.logFromFile(abspath(curdir), output)
+                else:
+                    self.logFile = logFile
                 self.transform = transform
                 self.useMask = useMask
                 if self.useMask:
@@ -286,8 +292,9 @@ class blur(CmdStage):
                 self.base = str(inFile).replace(".mnc", "")
                 self.inputFiles = [inFile]
                 blurBase = "".join([self.base, "_fwhm", str(fwhm), "_blur"])
-                self.outputFiles = ["".join([blurBase, ".mnc"])]
-                self.logFile = fh.createLogDirandFile(abspath(curdir), blurBase)
+                output = "".join([blurBase, ".mnc"])
+                self.outputFiles = [output]
+                self.logFile = fh.logFromFile(abspath(curdir), output)
                 self.name = "mincblur " + str(fwhm) + " " + basename(inFile)
                 if gradient:
                     gradientBase = blurBase.replace("blur", "dxyz")
@@ -296,12 +303,70 @@ class blur(CmdStage):
             print "Failed in putting together blur command."
             print "Unexpected error: ", sys.exc_info()
             
-        self.cmd = ["mincblur", "-clobber", "-fwhm", str(fwhm),
+        self.cmd = ["mincblur", "-clobber", "-no_apodize", "-fwhm", str(fwhm),
                     self.inputFiles[0], self.base]
         if gradient:
             self.cmd += ["-gradient"]       
         self.colour="blue"
 
+class autocrop(CmdStage):
+    def __init__(self, 
+                 resolution, 
+                 inFile,
+                 outFile=None,
+                 logFile=None,
+                 defaultDir="resampled"):
+        
+        """Resamples the input file to the resolution specified
+           using autocrop. The -resample flag forces the use of
+           mincresample.
+           
+           Resolutions should be specified in mm. 
+           e.g. 56 microns should be specified as 0.056    
+        """
+           
+        CmdStage.__init__(self, None)
+        self.resolution = str(resolution)
+        try:  
+            if isFileHandler(inFile):
+                self.inFile = inFile.getLastBasevol()               
+                self.outfile = self.setOutputFile(inFile, defaultDir)
+                self.logFile = fh.logFromFile(inFile.logDir, self.outfile)
+            else:
+                self.inFile = inFile
+                self.outfile = outFile
+                if not logFile:
+                    self.logFile = fh.logFromFile(abspath(curdir), outFile)
+                else:
+                    self.logFile = logFile
+    
+        except:
+            print "Failed in putting together autocrop command"
+            print "Unexpected error: ", sys.exc_info()
+            
+        self.addDefaults()
+        self.finalizeCommand()
+        self.setName()
+        
+    def addDefaults(self):
+        self.inputFiles += [self.inFile]   
+        self.outputFiles += [self.outfile]       
+        self.cmd += ["autocrop",
+                     "-resample",
+                     "-isostep", self.resolution] 
+                 
+    def finalizeCommand(self):
+        self.cmd += ["-clobber", self.inFile, self.outfile]    
+    def setName(self):
+        self.name = "autocrop " 
+    def setOutputFile(self, inFile, defaultDir):
+        outDir = inFile.setOutputDirectory(defaultDir)
+        outBase = (fh.removeBaseAndExtension(inFile.getLastBasevol()) + "_"
+                   + self.resolution + "res.mnc")
+        outputFile = fh.createBaseName(outDir, outBase)
+        inFile.setLastBasevol(outputFile, setMain=False)
+        return(outputFile)  
+    
 class mincresample(CmdStage):
     def __init__(self, 
                  inFile, 
@@ -357,13 +422,16 @@ class mincresample(CmdStage):
                 else:
                     self.cxfm = inFile.getLastXfm(fh.removeBaseAndExtension(self.likeFile))
                 self.outfile = self.setOutputFile(likeFile, defaultDir, mask)
-                self.logFile = inFile.logFromFile(self.outfile)
+                self.logFile = fh.logFromFile(inFile.logDir, self.outfile)
             else:
                 self.inFile = inFile
                 self.likeFile = likeFile
                 self.cxfm = cxfm
                 self.outfile=outFile
-                self.logFile=logFile
+                if not logFile:
+                    self.logFile = fh.logFromFile(abspath(curdir), outFile)
+                else:
+                    self.logFile = logFile
     
         except:
             print "Failed in putting together resample command"

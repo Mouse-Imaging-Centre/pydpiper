@@ -3,6 +3,7 @@
 from pydpiper.application import AbstractApplication
 import pydpiper.file_handling as fh
 import pydpiper_apps.minc_tools.registration_functions as rf
+import pydpiper_apps.minc_tools.minc_modules as mm
 import Pyro
 from datetime import date, datetime
 import logging
@@ -20,6 +21,9 @@ class MBMApplication(AbstractApplication):
         self.parser.add_option("--pipeline-dir", dest="pipeline_dir",
                       type="string", default=".",
                       help="Directory for placing pipeline results. Default is current.")
+        self.parser.add_option("--init-model", dest="init_model",
+                      type="string", default=None,
+                      help="Name of file to register towards. If unspecified, bootstrap.")
         
         self.parser.set_usage("%prog [options] input files") 
 
@@ -48,14 +52,44 @@ class MBMApplication(AbstractApplication):
         pipeDir = fh.makedirsIgnoreExisting(options.pipeline_dir)
         if not options.pipeline_name:
             pipeName = str(date.today()) + "_pipeline"
-            print pipeName
         else:
             pipeName = options.pipeline_name
         
         processedDirectory = fh.createSubDir(pipeDir, pipeName + "_processed")
         inputFiles = rf.initializeInputFiles(args, processedDirectory)
         
+        if options.init_model:
+            """setupInitModel returns a tuple containing:
+               (standardFH, nativeFH, native_to_standard.xfm)
+               First value must exist, others may be None 
+            """
+            initModel = rf.setupInitModel(options.init_model, pipeDir)
+        else:
+            """"Bootstrap using the first image in inputFiles
+                Note: This will be a full FH class, not the base, 
+                as above
+            """
+            initModel = (inputFiles[0], None, None)
+        
+        #Pre-masking here if flagged? 
+        
+        filesToResample = [initModel[0]]
+        if initModel[1]:
+            filesToResample.append(initModel[1])
+        for i in inputFiles:
+            filesToResample.append(i)
+        
+        #NOTE: Test function, this will eventually be called from LSQ6
+        # and resolution will NOT be hardcoded. Because obviously. 
+        resolution = 0.056
+        resPipe = mm.SetResolution(filesToResample, resolution)
+        if len(resPipe.p.stages) > 0:
+            # Only add to pipeline if resampling is needed
+            self.pipeline.addPipeline(resPipe.p)
+            
+        
 if __name__ == "__main__":
     
     application = MBMApplication()
     application.start()
+    

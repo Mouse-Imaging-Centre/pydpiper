@@ -44,44 +44,89 @@ class RegistrationGroupedFiles():
         if gradient:
             self.gradients[fwhm] = gradient
             self.lastgradient = fwhm
+
+class RegistrationFHBase():
+    """
+        Base class for providing file-handling support to registration pipelines
+    """
+    def __init__(self, filename, basedir=None):
+        self.groupedFiles = [RegistrationGroupedFiles(filename)]
+        # We will always have only one group for the base class.
+        self.currentGroupIndex = 0
+        self.inputFileName = filename
+        self.basename = fh.removeBaseAndExtension(self.inputFileName)
+        """basedir optional for base class.
+           If not specified, we assume we just need to read files, 
+           but don't need to write anything associated with them
+           Need to specify a basedir if any output is needed
+           If unspecified, set as current directory (but assume no writing)"""
+        if basedir:
+            self.basedir = fh.makedirsIgnoreExisting(basedir)
+            """ only create a logDir if we plan on writing
+            Overwritten classes should always do this """
+            self.setupNames()
+        else:
+            """Set self.basedir and self.logDir, 
+            but we shouldn't actually do any writing."""
+            self.basedir = abspath(curdir)
+            self.logDir = self.basedir
+        self.lastBaseVol = filename
     
-class RegistrationPipeFH():
-    """A class to provide file-handling support for registration pipelines
+    def setupNames(self):
+        self.logDir = fh.createLogDir(self.basedir)    
+    def setMask(self, inputMask):
+        self.groupedFiles[self.currentGroupIndex].mask = inputMask
+    def getMask(self):
+        return(self.groupedFiles[self.currentGroupIndex].mask)  
+    def setLastXfm(self, targetFilename, xfm):
+        self.groupedFiles[self.currentGroupIndex].lastTransform[targetFilename] = xfm
+    def getLastBasevol(self, setMain=False):
+        if setMain:
+            lastBasevol = self.lastBaseVol
+        else:
+            lastBasevol = self.groupedFiles[self.currentGroupIndex].basevol
+        return(lastBasevol)
+    def setLastBasevol(self, newBaseVol, setMain=False):
+        self.groupedFiles[self.currentGroupIndex].basevol = newBaseVol
+        if setMain:
+            self.lastBaseVol = newBaseVol
+    def setOutputDirectory(self, defaultDir):
+        if not defaultDir:
+            outputDir = abspath(curdir)
+        else:
+            outputDir = abspath(defaultDir)
+        return(outputDir)
+    
+class RegistrationPipeFH(RegistrationFHBase):
+    """
+        A class to provide file-handling support for registration pipelines.
+        
+        Inherits from RegistrationFHBase
 
-    Each input file will have a separate directory underneath the
-    specified base directory. This will in turn be populated by
-    different output directories for transforms, resampled files,
-    temporary files, etc. The final directory tree will look like the
-    following:
+        Each input file will have a separate directory underneath the
+        specified base directory. This will in turn be populated by
+        different output directories for transforms, resampled files,
+        temporary files, etc. The final directory tree will look like the
+        following:
 
-    basedir/filenamebase/log -- log files
-    basedir/filenamebase/resampled -- resampled files go here
-    basedir/filenamebase/transforms -- transforms (xfms, grids, etc.) go here
-    basedir/filenamebase/labels -- any resampled labels (if necessary) go here
-    basedir/filenamebase/tmp -- intermediate temporary files go here
+        basedir/filenamebase/log -- log files
+        basedir/filenamebase/resampled -- resampled files go here
+        basedir/filenamebase/transforms -- transforms (xfms, grids, etc.) go here
+        basedir/filenamebase/labels -- any resampled labels (if necessary) go here
+        basedir/filenamebase/tmp -- intermediate temporary files go here
 
-    The RegistrationPipeFH can be passed to different processing
-    functions (minctracc, blur, etc.) which will use it to derive
-    proper filenames. The RegistrationPipeFH can moreover group
-    related files (blurs, transforms, resamples) by using the newGroup
-    call.
+        The RegistrationPipeFH can be passed to different processing
+        functions (minctracc, blur, etc.) which will use it to derive
+        proper filenames. The RegistrationPipeFH can moreover group
+        related files (blurs, transforms, resamples) by using the newGroup
+        call.
 
     """
     def __init__(self, filename, basedir):
-        """two inputs required - an inputFile file and a base directory."""
-        self.groupedFiles = [RegistrationGroupedFiles(filename)]
+        RegistrationFHBase.__init__(self, filename, basedir)
         self.currentGroupIndex = -1 #MF why -1 instead of 0? TEST
-        #MF TODO: verify below with Jason to verify correct interpretation
-        self.inputFileName = filename
-        self.basename = fh.removeBaseAndExtension(self.inputFileName)
-        # Check to make sure that basedir exists, otherwise create:
-        self.basedir = fh.makedirsIgnoreExisting(basedir)
         # groups can be referred to by either name or index number
-        self.groupNames = {'base' : 0}       
-        # create directories
-        self.setupNames()
-        # set lastBaseVol
-        self.lastBaseVol = filename
+        self.groupNames = {'base' : 0}  
     
     def newGroup(self, inputVolume = None, groupName = None):
         """create a new set of grouped files"""
@@ -104,18 +149,6 @@ class RegistrationPipeFH():
         self.transformsDir = fh.createSubDir(self.subjDir, "transforms")
         self.labelsDir = fh.createSubDir(self.subjDir, "labels")
         self.tmpDir = fh.createSubDir(self.subjDir, "tmp")
-        
-    def logFromFile(self, inFile):
-        """ creates a log file from an input filename
-
-        Takes the input file, strips out any extensions, and returns a 
-        filename with the same basename, in the log directory, and 
-        with a .log extension"""
-
-        #MF TODO: Can we move to fileHandling class?  
-        logBase = fh.removeBaseAndExtension(inFile)
-        log = fh.createLogFile(self.logDir, logBase)
-        return(log)
 
     def registerVolume(self, targetFH, arglist, regType="minctracc"):
         """create the filenames for a single registration call
@@ -171,8 +204,9 @@ class RegistrationPipeFH():
         allows for the possibility that an entirely new directory may be specified
         e.g. pipeline_name_nlin or pipeline_name_lsq6 that does not depend on 
         existing file handlers. Additional cases may be added in the future"""
-        outputDir = curdir
-        if defaultDir=="tmp":
+        if not defaultDir:
+            outputDir = abspath(curdir)
+        elif defaultDir=="tmp":
             outputDir = self.tmpDir
         elif defaultDir=="resampled":
             outputDir = self.resampledDir
@@ -190,20 +224,12 @@ class RegistrationPipeFH():
         return(self.groupedFiles[self.currentGroupIndex].getBlur(fwhm, gradient))
     def setBlurToUse(self, fwhm):
         self.groupedFiles[self.currentGroupIndex].lastblur = fwhm
-    def getLastBasevol(self):
-        return(self.groupedFiles[self.currentGroupIndex].basevol)
-    def setLastBasevol(self, newBaseVol, setMain=False):
-        self.groupedFiles[self.currentGroupIndex].basevol = newBaseVol
-        if setMain:
-            self.lastBaseVol = newBaseVol
     def getLastXfm(self, targetFilename):
         currGroup = self.groupedFiles[self.currentGroupIndex]
         lastXfm = None
         if targetFilename in currGroup.lastTransform:
             lastXfm = currGroup.lastTransform[targetFilename]
         return(lastXfm)
-    def setLastXfm(self, targetFilename, xfm):
-        self.groupedFiles[self.currentGroupIndex].lastTransform[targetFilename] = xfm
     def addAndSetXfmToUse(self, targetFilename, xfm):
         currGroup = self.groupedFiles[self.currentGroupIndex]
         if not targetFilename in currGroup.transforms:
@@ -230,10 +256,7 @@ class RegistrationPipeFH():
             del currGroup.inputLabels[:]
         else:
             del currGroup.labels[:]
-    def setMask(self, inputMask):
-        self.groupedFiles[self.currentGroupIndex].mask = inputMask
-    def getMask(self):
-        return(self.groupedFiles[self.currentGroupIndex].mask)
+    
     def blurFile(self, fwhm, gradient=False, defaultDir="tmp"):
         """create filename for a mincblur call
 
@@ -248,7 +271,7 @@ class RegistrationPipeFH():
         outputbase = "%s/%s_fwhm%g" % (outputDir, outputbase, fwhm)
         
         withext = "%s_blur.mnc" % outputbase     
-        log = self.logFromFile(withext)
+        log = fh.logFromFile(self.logDir, withext)
 
         outlist = { "base" : outputbase,
                     "file" : withext,
@@ -262,20 +285,3 @@ class RegistrationPipeFH():
 
         self.groupedFiles[self.currentGroupIndex].addBlur(withext, fwhm, gradWithExt)
         return(outlist)
-
-def isFileHandler(inSource, inTarget=None):
-    """Source and target types can be either RegistrationPipeFH or strings
-    Regardless of which is chosen, they must both be the same type.
-    If this function returns True - both types are fileHandlers. If it returns
-    false, both types are strings. If there is a mismatch, the assert statement
-    should cause an error to be raised."""
-    isFileHandlingClass = True
-    assertMsg = 'source and target files must both be same type: RegistrationPipeFH or string'
-    if isinstance(inSource, RegistrationPipeFH):
-        if inTarget:
-            assert isinstance(inTarget, RegistrationPipeFH), assertMsg
-    else:
-        if inTarget:
-            assert not isinstance(inTarget, RegistrationPipeFH), assertMsg
-        isFileHandlingClass = False
-    return(isFileHandlingClass)
