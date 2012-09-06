@@ -43,6 +43,17 @@ class HierarchicalMinctracc:
         self.p = Pipeline()
         self.name = name
         
+        # Set default directories based on whether or not we are creating a mask
+        # Note: blurs always go in whatever tmp directory is set to
+        if createMask:
+            traccDefault = "tmp"
+            resampleDefault = "tmp"
+            labelsDefault = "tmp"
+        else:
+            traccDefault = "transforms"
+            resampleDefault = "resampled"
+            labelsDefault = "labels"
+        
         for b in blurs:
             #MF TODO: -1 case is also handled in blur. Need here for addStage.
             #Fix this redundancy and/or better design?
@@ -55,27 +66,29 @@ class HierarchicalMinctracc:
         # Two lsq12 stages: one using 0.25 blur, one using 0.25 gradient
         for g in [False, True]:    
             linearStage = ma.minctracc(inputPipeFH, 
-                                      templatePipeFH, 
-                                      blur=blurs[0], 
-                                      gradient=g,                                     
-                                      linearparam=linearparams["type"],
-                                      step=linearparams["step"],
-                                      simplex=linearparams["simplex"],
-                                      w_translations=w_translations,
-                                      similarity=0.5)
+                                       templatePipeFH,
+                                       defaultDir=traccDefault, 
+                                       blur=blurs[0], 
+                                       gradient=g,                                     
+                                       linearparam=linearparams["type"],
+                                       step=linearparams["step"],
+                                       simplex=linearparams["simplex"],
+                                       w_translations=w_translations,
+                                       similarity=0.5)
             self.p.addStage(linearStage)
 
         # create the nonlinear registrations
         for i in range(len(steps)):
             nlinStage = ma.minctracc(inputPipeFH, 
-                                  templatePipeFH,
-                                  blur=blurs[i],
-                                  gradient=gradients[i],
-                                  iterations=iterations[i],
-                                  step=steps[i],
-                                  similarity=0.8,
-                                  w_translations=w_translations,
-                                  simplex=simplexes[i])
+                                     templatePipeFH,
+                                     defaultDir=traccDefault,
+                                     blur=blurs[i],
+                                     gradient=gradients[i],
+                                     iterations=iterations[i],
+                                     step=steps[i],
+                                     similarity=0.8,
+                                     w_translations=w_translations,
+                                     simplex=simplexes[i])
             self.p.addStage(nlinStage)
         
         
@@ -91,14 +104,16 @@ class HierarchicalMinctracc:
                 addOutputToInputLabels = False
             for i in range(len(inputLabelArray)):
                 resampleStage = ma.mincresampleLabels(templatePipeFH,
-                                                    likeFile=inputPipeFH,
-                                                    argArray=["-invert"],
-                                                    labelIndex=i,
-                                                    setInputLabels=addOutputToInputLabels,
-                                                    mask=createMask)
+                                                      defaultDir=labelsDefault,
+                                                      likeFile=inputPipeFH,
+                                                      argArray=["-invert"],
+                                                      labelIndex=i,
+                                                      setInputLabels=addOutputToInputLabels,
+                                                      mask=createMask)
                 self.p.addStage(resampleStage)
             # resample files
             resampleStage = ma.mincresample(templatePipeFH,
+                                            defaultDir=resampleDefault,
                                             likeFile=inputPipeFH,
                                             argArray=["-invert"])
             self.p.addStage(resampleStage)

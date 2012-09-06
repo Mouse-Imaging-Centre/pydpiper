@@ -180,19 +180,33 @@ class MAGeTApplication(AbstractApplication):
                 mask, we no longer care about unmasked version. 
             5. Clear out labels arrays, which were used to keep track of masks,
                 as we want to re-set them for actual labels.
+                
+            Note: All data will be placed in a newly created masking directory
+            to keep it separate from data generated during actual MAGeT. 
         """
 
         if options.mask or options.mask_only:
+            for atlasFH in atlases:
+                atlasFH.tmpDir = fh.createSubDir(atlasFH.subjDir, "masking")
+                atlasFH.logDir = fh.createLogDir(atlasFH.tmpDir)
             for inputFH in inputs:
+                inputFH.tmpDir = fh.createSubDir(inputFH.subjDir, "masking")
+                inputFH.logDir = fh.createLogDir(inputFH.tmpDir)
                 for atlasFH in atlases:
                     sp = HierarchicalMinctracc(inputFH, atlasFH, createMask=True)
                     self.pipeline.addPipeline(sp.p)
-            # MF to do -- may want to bring this outside options.mask loop
-            # may want to always use atlasMask
+            
+            """
+                Prior to final masking, set log and tmp directories as they were.
+            """
             for atlasFH in atlases:
+                atlasFH.tmpDir = fh.createSubDir(atlasFH.subjDir, "tmp")
+                atlasFH.logDir = fh.createLogDir(atlasFH.subjDir)
                 mp = maskFiles(atlasFH, True)
                 self.pipeline.addPipeline(mp)
             for inputFH in inputs:
+                inputFH.tmpDir = fh.createSubDir(inputFH.subjDir, "tmp")
+                inputFH.logDir = fh.createLogDir(inputFH.subjDir)
                 mp = maskFiles(inputFH, False, numAtlases)
                 self.pipeline.addPipeline(mp)
                 inputFH.clearLabels(True)
