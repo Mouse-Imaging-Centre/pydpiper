@@ -6,7 +6,7 @@ import sys
 import os
 from optparse import OptionParser
 from datetime import datetime
-from multiprocessing import Process, Pool
+from multiprocessing import Process, Pool, Lock
 from subprocess import call
 import pydpiper.queueing as q
 import logging
@@ -22,12 +22,16 @@ class clientExecutor(Pyro.core.SynchronizedObjBase):
     def __init__(self):
         Pyro.core.SynchronizedObjBase.__init__(self)
         self.continueRunning =  True
+        self.mutex = Lock() 
     def continueLoop(self):
+        self.mutex.acquire()
         return self.continueRunning
     def serverShutdownCall(self, serverShutdown):
         # receive call from server when all stages are processed
         if serverShutdown:
+            self.mutex.acquire()
             self.continueRunning = False
+            self.mutex.release()
          
 def runStage(serverURI, clientURI, i):
     # Proc needs its own proxy as it's independent of executor
@@ -53,7 +57,7 @@ def runStage(serverURI, clientURI, i):
         return [s.getMem(),s.getProcs()] # If completed, return mem & processes back for re-use    
     except:
         logger.exception("Error communicating to server. Stopping executor...")
-        sys.exit()        
+        raise        
          
 class pipelineExecutor():
     def __init__(self, options):
@@ -105,7 +109,7 @@ class pipelineExecutor():
             return True
         else:
             return False
-    def launchPipeline(self):  
+    def launchExecutor(self):  
         """Start executor that will run pipeline stages"""   
         # initialize pipeline_executor as both client and server      
         Pyro.core.initClient()
@@ -123,7 +127,7 @@ class pipelineExecutor():
                 uf.close()
             except:
                 print "Problem opening the specified uri file:", sys.exc_info()
-                sys.exit()
+                raise
 
         # instantiate the executor class and register the executor with the pipeline    
         executor = clientExecutor()
@@ -149,7 +153,8 @@ class pipelineExecutor():
         # loop until the pipeline sets executor.continueLoop() to false
         pool = Pool(processes = self.proc)
         try:
-            while executor.continueLoop():
+            while executor.continueLoop(): 
+                executor.mutex.release()               
                 daemon.handleRequests(0)               
                 # Free up resources from any completed (successful or otherwise) stages
                 for child in [x for x in runningChildren if x.result.ready()]:
@@ -183,14 +188,16 @@ class pipelineExecutor():
                 else:
                     logger.debug("Not enough resources to run stage %i. " % i) 
                     p.requeue(i)
-        except Exception as e:
+        except Exception:
             logger.exception("Error during executor polling loop. Shutting down executor...")
-            daemon.shutdown(True)
-            pool.close()
-            pool.join()
-            sys.exit()
+            raise
         else:
             logger.info("Server has shutdown. Killing executor thread.")
+        finally:
+            """Acquires lock if it doesn't already have it, 
+               releases lock either way"""
+            executor.mutex.acquire(False)
+            executor.mutex.release()
             pool.close()
             pool.join()        
             daemon.shutdown(True)
@@ -245,7 +252,7 @@ if __name__ == "__main__":
         for i in range(options.num_exec):
             pe.submitToQueue()        
     else:
-        processes = [Process(target=pe.launchPipeline) for i in range(options.num_exec)]
+        processes = [Process(target=pe.launchExecutor) for i in range(options.num_exec)]
         for p in processes:
             p.start()
         for p in processes:

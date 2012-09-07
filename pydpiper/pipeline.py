@@ -161,7 +161,7 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
         self.backupFileLocation = None
         # list of registered clients
         self.clients = []
-        
+        # Initially set number of skipped stages to be 0
         self.skipped_stages = 0
     def addStage(self, stage):
         """adds a stage to the pipeline"""
@@ -352,7 +352,7 @@ def launchPipelineExecutor(options, programName=None):
     if options.queue=="sge":
         pipelineExecutor.submitToQueue(programName) 
     else: 
-        pipelineExecutor.launchPipeline()    
+        pipelineExecutor.launchExecutor()    
 
 def skip_completed_stages(pipeline):
     runnable = []
@@ -400,21 +400,26 @@ def launchServer(pipeline, options, e):
     e.set()
     
     try:
-        daemon.requestLoop(pipeline.continueLoop)
+        daemon.requestLoop(pipeline.continueLoop) 
     except:
-        logger.exception("Failed in pipelineDaemon")
-        sys.exit()
-    else:
-        print("Pipeline completed. Daemon unregistering " + str(len(pipeline.clients)) + " client(s) and shutting down...")
-        for c in pipeline.clients[:]:
-            clientObj = Pyro.core.getProxyForURI(c)
-            clientObj.serverShutdownCall(True)
-            print "Made serverShutdownCall to: " + str(c)
-            pipeline.clients.remove(c)
-            print "Client deregistered from server: "  + str(c)
-        daemon.shutdown(True)
-        print("Objects successfully unregistered and daemon shutdown.")
+        logger.exception("Failed running server in daemon.requestLoop")
         e.clear()
+    else:
+        try:
+            print("All pipeline stages have been processed. Daemon unregistering " 
+                  + str(len(pipeline.clients)) + " client(s) and shutting down...")
+            for c in pipeline.clients[:]:
+                clientObj = Pyro.core.getProxyForURI(c)
+                clientObj.serverShutdownCall(True)
+                print "Made serverShutdownCall to: " + str(c)
+                pipeline.clients.remove(c)
+                print "Client deregistered from server: "  + str(c)
+            daemon.shutdown(True)
+            print("Objects successfully unregistered and daemon shutdown.")
+        except:
+            logger.exception("Failed to successfully de-register all clients")
+        finally:
+            e.clear()
 
 def flatten_pipeline(p):
     """return a list of tuples for each stage.
@@ -492,17 +497,22 @@ def pipelineDaemon(pipeline, returnEvent, options=None, programName=None):
     process = Process(target=launchServer, args=(pipeline,options,e,))
     process.start()
     e.wait()
-    if options.num_exec != 0:
-        logger.debug("Launching executors...")
-        processes = [Process(target=launchPipelineExecutor, args=(options,programName,)) for i in range(options.num_exec)]
-        for p in processes:
-            p.start()
-        for p in processes:
-            p.join()
     
-    #Return to calling code if pipeline has no more runnable stages:
-    #Event will be cleared once clients are unregistered. 
-    while e.is_set():
-        sys.stdout.flush()
-        time.sleep(5)
-    returnEvent.set()
+    try:
+        if options.num_exec != 0 and pipeline.runnable.qsize() > 0:
+            logger.debug("Launching executors...")
+            processes = [Process(target=launchPipelineExecutor, args=(options,programName,)) for i in range(options.num_exec)]
+            for p in processes:
+                p.start()
+            for p in processes:
+                p.join()
+                    
+        #Return to calling code if pipeline has no more runnable stages:
+        #Event will be cleared once clients are unregistered. 
+        while e.is_set():
+            sys.stdout.flush()
+            time.sleep(5)
+    except:
+        logger.exception("Failed when pipeline called and ran its own executors.")
+    finally:
+        returnEvent.set()
