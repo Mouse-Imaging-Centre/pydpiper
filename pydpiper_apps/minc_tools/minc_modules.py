@@ -37,22 +37,17 @@ class HierarchicalMinctracc:
                  iterations=[60,60,60,10,10,4],
                  simplexes=[3,3,3,1.5,1.5,1],
                  w_translations=0.2,
-                 linearparams = {'type' : "lsq12", 'simplex' : 1, 'step' : 1},
-                 name="initial", 
+                 linearparams = {'type' : "lsq12", 'simplex' : 1, 'step' : 1}, 
                  createMask=False):
+        
         self.p = Pipeline()
-        self.name = name
         
         # Set default directories based on whether or not we are creating a mask
         # Note: blurs always go in whatever tmp directory is set to
         if createMask:
-            traccDefault = "tmp"
-            resampleDefault = "tmp"
-            labelsDefault = "tmp"
+            defaultDirectory = "tmp"
         else:
-            traccDefault = "transforms"
-            resampleDefault = "resampled"
-            labelsDefault = "labels"
+            defaultDirectory = "transforms"
         
         for b in blurs:
             #MF TODO: -1 case is also handled in blur. Need here for addStage.
@@ -67,7 +62,7 @@ class HierarchicalMinctracc:
         for g in [False, True]:    
             linearStage = ma.minctracc(inputPipeFH, 
                                        templatePipeFH,
-                                       defaultDir=traccDefault, 
+                                       defaultDir=defaultDirectory, 
                                        blur=blurs[0], 
                                        gradient=g,                                     
                                        linearparam=linearparams["type"],
@@ -81,7 +76,7 @@ class HierarchicalMinctracc:
         for i in range(len(steps)):
             nlinStage = ma.minctracc(inputPipeFH, 
                                      templatePipeFH,
-                                     defaultDir=traccDefault,
+                                     defaultDir=defaultDirectory,
                                      blur=blurs[i],
                                      gradient=gradients[i],
                                      iterations=iterations[i],
@@ -90,8 +85,23 @@ class HierarchicalMinctracc:
                                      w_translations=w_translations,
                                      simplex=simplexes[i])
             self.p.addStage(nlinStage)
+
+class LabelAndFileResampling:
+    def __init__(self, 
+                 inputPipeFH,
+                 templatePipeFH, 
+                 name="initial", 
+                 createMask=False):  
+        self.p = Pipeline()
+        self.name = name
         
-        
+        if createMask:
+            resampleDefault = "tmp"
+            labelsDefault = "tmp"
+        else:
+            resampleDefault = "resampled"
+            labelsDefault = "labels"
+              
         # Resample all inputLabels 
         inputLabelArray = templatePipeFH.returnLabels(True)
         if len(inputLabelArray) > 0:

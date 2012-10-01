@@ -3,9 +3,10 @@
 from pydpiper.pipeline import CmdStage, Pipeline, InputFile, OutputFile, LogFile
 from pydpiper.application import AbstractApplication
 import pydpiper.file_handling as fh
-from pydpiper_apps.minc_tools.minc_modules import HierarchicalMinctracc
+from pydpiper_apps.minc_tools.minc_modules import HierarchicalMinctracc, LabelAndFileResampling
 from pydpiper_apps.minc_tools.registration_file_handling import RegistrationPipeFH
 from pydpiper_apps.minc_tools.registration_functions import initializeInputFiles
+from pydpiper_apps.minc_tools.minc_atoms import mincANTS, blur
 import Pyro
 from os.path import abspath, join
 from datetime import datetime
@@ -67,6 +68,92 @@ def voxelVote(inputFH, pairwise, mask):
     voxel.setLogFile(LogFile(logFile))
     return(voxel)
 
+def maskDirectoryStructure(FH, masking=True):
+    if masking:
+        FH.tmpDir = fh.createSubDir(FH.subjDir, "masking")
+        FH.logDir = fh.createLogDir(FH.tmpDir)
+    else:
+        FH.tmpDir = fh.createSubDir(FH.subjDir, "tmp")
+        FH.logDir = fh.createLogDir(FH.subjDir)
+    
+def MAGeTMask(atlases, inputs, numAtlases, regMethod):
+    """ Masking algorithm is as follows:
+        1. Run HierarchicalMinctracc or mincANTS with mask=True, 
+           using masks instead of labels. 
+        2. Do voxel voting to find the best mask. (Or, if single atlas,
+            use that transform)
+        3. mincMath to multiply original input by mask to get _masked.mnc file
+            (This is done for both atlases and inputs, though for atlases, voxel
+             voting is not required.)
+        4. Replace lastBasevol with masked version, since once we have created
+            mask, we no longer care about unmasked version. 
+        5. Clear out labels arrays, which were used to keep track of masks,
+            as we want to re-set them for actual labels.
+                
+        Note: All data will be placed in a newly created masking directory
+        to keep it separate from data generated during actual MAGeT. 
+        """
+    p = Pipeline()
+    for atlasFH in atlases:
+        maskDirectoryStructure(atlasFH, masking=True)
+    for inputFH in inputs:
+        maskDirectoryStructure(inputFH, masking=True)
+        for atlasFH in atlases:
+            sp = MAGeTRegister(inputFH, 
+                               atlasFH, 
+                               regMethod, 
+                               name="initial", 
+                               createMask=True)
+            p.addPipeline(sp)          
+    """ Prior to final masking, set log and tmp directories as they were."""
+    for atlasFH in atlases:
+        maskDirectoryStructure(atlasFH, masking=False)
+        mp = maskFiles(atlasFH, True)
+        p.addPipeline(mp)
+    for inputFH in inputs:
+        maskDirectoryStructure(inputFH, masking=False)
+        mp = maskFiles(inputFH, False, numAtlases)
+        p.addPipeline(mp)
+        inputFH.clearLabels(True)
+        inputFH.clearLabels(False)   
+    return(p)    
+
+def MAGeTRegister(inputFH, 
+                  templateFH, 
+                  method,
+                  name="initial", 
+                  createMask=False):
+    p = Pipeline()
+    if method == "minctracc":
+        sp = HierarchicalMinctracc(inputFH, 
+                                   templateFH, 
+                                   createMask=createMask)
+        p.addPipeline(sp.p)
+    elif method == "mincANTS":
+        if createMask:
+            defaultDir="tmp"
+        else:
+            defaultDir="transforms"
+        b = 0.056
+        tblur = blur(templateFH, b, gradient=True)
+        iblur = blur(inputFH, b, gradient=True)               
+        p.addStage(tblur)
+        p.addStage(iblur)
+        sp = mincANTS(inputFH,
+                      templateFH,
+                      defaultDir=defaultDir,
+                      similarity_metric=["MI", "CC"],
+                      iterations="100x100x50x50",
+                      radius_or_histo=[32,3],
+                      transformation_model="SyN[1.0]", 
+                      regularization="Gauss[3,1]")
+        p.addStage(sp)
+    
+    rp = LabelAndFileResampling(inputFH, templateFH, name=name, createMask=createMask)
+    p.addPipeline(rp.p)
+    
+    return(p)
+
 class MAGeTApplication(AbstractApplication):
     def setup_options(self):
         self.parser.add_option("--atlas-library", dest="atlas_lib",
@@ -88,6 +175,12 @@ class MAGeTApplication(AbstractApplication):
         self.parser.add_option("--max-templates", dest="max_templates",
                       default=25, type="int",
                       help="Maximum number of templates to generate")
+        self.parser.add_option("--registration-method", dest="reg_method",
+                      default="minctracc", type="string",
+                      help="Specify whether to use minctracc or mincANTS")
+        self.parser.add_option("--masking-method", dest="mask_method",
+                      default="minctracc", type="string",
+                      help="Specify whether to use minctracc or mincANTS for masking")
         
         self.parser.set_usage("%prog [options] input files") 
 
@@ -111,6 +204,10 @@ class MAGeTApplication(AbstractApplication):
         options = self.options
         args = self.args
         self.reconstructCommand()
+        
+        if options.reg_method != "minctracc" and options.reg_method != "mincANTS":
+            logger.error("Incorrect registration method specified: " + options.reg_method)
+            sys.exit()
         
         outputDir = fh.makedirsIgnoreExisting(options.output_directory)
         atlasDir = fh.createSubDir(outputDir, "input_atlases")
@@ -137,7 +234,7 @@ class MAGeTApplication(AbstractApplication):
         if not len(average) == len(labels):
             logger.error("Number of input atlas labels does not match averages.")
             logger.error("Check " + str(options.atlas_lib) + " and try again.")
-            sys.exit()
+            sys.exit() 
         elif not len(average) == len(masks):
             logger.error("Number of input atlas masks does not match averages.")
             logger.error("Check " + str(options.atlas_lib) + " and try again.")
@@ -167,50 +264,10 @@ class MAGeTApplication(AbstractApplication):
         templates = []
         numTemplates = len(args)
         
-        """ If --mask is specified and we are masking brains, do it here.
-            Algorithm is as follows:
-            1. Run HierarchicalMinctracc with mask=True, using masks instead of labels
-                for all inputs. 
-            2. Do voxel voting to find the best mask. (Or, if single atlas,
-                use that transform)
-            3. mincMath to multiply original input by mask to get _masked.mnc file
-                (This is done for both atlases and inputs, though for atlases, voxel
-                 voting is not required.)
-            4. Replace lastBasevol with masked version, since once we have created
-                mask, we no longer care about unmasked version. 
-            5. Clear out labels arrays, which were used to keep track of masks,
-                as we want to re-set them for actual labels.
-                
-            Note: All data will be placed in a newly created masking directory
-            to keep it separate from data generated during actual MAGeT. 
-        """
-
+        """ If --mask is specified and we are masking brains, do it here."""
         if options.mask or options.mask_only:
-            for atlasFH in atlases:
-                atlasFH.tmpDir = fh.createSubDir(atlasFH.subjDir, "masking")
-                atlasFH.logDir = fh.createLogDir(atlasFH.tmpDir)
-            for inputFH in inputs:
-                inputFH.tmpDir = fh.createSubDir(inputFH.subjDir, "masking")
-                inputFH.logDir = fh.createLogDir(inputFH.tmpDir)
-                for atlasFH in atlases:
-                    sp = HierarchicalMinctracc(inputFH, atlasFH, createMask=True)
-                    self.pipeline.addPipeline(sp.p)
-            
-            """
-                Prior to final masking, set log and tmp directories as they were.
-            """
-            for atlasFH in atlases:
-                atlasFH.tmpDir = fh.createSubDir(atlasFH.subjDir, "tmp")
-                atlasFH.logDir = fh.createLogDir(atlasFH.subjDir)
-                mp = maskFiles(atlasFH, True)
-                self.pipeline.addPipeline(mp)
-            for inputFH in inputs:
-                inputFH.tmpDir = fh.createSubDir(inputFH.subjDir, "tmp")
-                inputFH.logDir = fh.createLogDir(inputFH.subjDir)
-                mp = maskFiles(inputFH, False, numAtlases)
-                self.pipeline.addPipeline(mp)
-                inputFH.clearLabels(True)
-                inputFH.clearLabels(False)       
+            mp = MAGeTMask(atlases, inputs, numAtlases, options.mask_method)
+            self.pipeline.addPipeline(mp)
         
         if not options.mask_only:
             if numTemplates > options.max_templates:
@@ -218,8 +275,12 @@ class MAGeTApplication(AbstractApplication):
             # Register each atlas to each input image up to numTemplates
             for nfile in range(numTemplates):
                 for afile in range(numAtlases):
-                    sp = HierarchicalMinctracc(inputs[nfile], atlases[afile])
-                    self.pipeline.addPipeline(sp.p)
+                    sp = MAGeTRegister(inputs[nfile], 
+                                       atlases[afile],
+                                       options.reg_method,
+                                       name="initial",
+                                       createMask=False)
+                    self.pipeline.addPipeline(sp)
                 # each template needs to be added only once, but will have multiple 
                 # input labels
                 templates.append(inputs[nfile])
@@ -231,8 +292,12 @@ class MAGeTApplication(AbstractApplication):
                 for inputFH in inputs:
                     for tmplFH in templates:
                         if tmplFH.getLastBasevol() != inputFH.getLastBasevol():
-                            sp = HierarchicalMinctracc(inputFH, tmplFH, name="templates")
-                            self.pipeline.addPipeline(sp.p)
+                            sp = MAGeTRegister(inputFH, 
+                                               tmplFH, 
+                                               options.reg_method,
+                                               name="templates", 
+                                               createMask=False)
+                            self.pipeline.addPipeline(sp)
                     voxel = voxelVote(inputFH, options.pairwise, False)
                     self.pipeline.addStage(voxel)
             else:
