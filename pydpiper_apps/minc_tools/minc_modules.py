@@ -15,7 +15,7 @@ class SetResolution:
         for FH in filesToResample:
             dirForOutput = self.getOutputDirectory(FH)
             currentRes = volumeFromFile(FH.getLastBasevol()).separations
-            if currentRes[0] != resolution:
+            if not abs(abs(currentRes[0]) - abs(resolution)) < 0.01:
                 crop = ma.autocrop(resolution, FH, defaultDir=dirForOutput)
                 self.p.addStage(crop)
         
@@ -85,45 +85,3 @@ class HierarchicalMinctracc:
                                      w_translations=w_translations,
                                      simplex=simplexes[i])
             self.p.addStage(nlinStage)
-
-class LabelAndFileResampling:
-    def __init__(self, 
-                 inputPipeFH,
-                 templatePipeFH, 
-                 name="initial", 
-                 createMask=False):  
-        self.p = Pipeline()
-        self.name = name
-        
-        if createMask:
-            resampleDefault = "tmp"
-            labelsDefault = "tmp"
-        else:
-            resampleDefault = "resampled"
-            labelsDefault = "labels"
-              
-        # Resample all inputLabels 
-        inputLabelArray = templatePipeFH.returnLabels(True)
-        if len(inputLabelArray) > 0:
-            """ for the initial registration, resulting labels should be added
-                to inputLabels array for subsequent pairwise registration
-                otherwise labels should be added to labels array for voting """
-            if self.name == "initial":
-                addOutputToInputLabels = True
-            else:
-                addOutputToInputLabels = False
-            for i in range(len(inputLabelArray)):
-                resampleStage = ma.mincresampleLabels(templatePipeFH,
-                                                      defaultDir=labelsDefault,
-                                                      likeFile=inputPipeFH,
-                                                      argArray=["-invert"],
-                                                      labelIndex=i,
-                                                      setInputLabels=addOutputToInputLabels,
-                                                      mask=createMask)
-                self.p.addStage(resampleStage)
-            # resample files
-            resampleStage = ma.mincresample(templatePipeFH,
-                                            defaultDir=resampleDefault,
-                                            likeFile=inputPipeFH,
-                                            argArray=["-invert"])
-            self.p.addStage(resampleStage)

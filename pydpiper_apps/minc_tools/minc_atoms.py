@@ -7,6 +7,7 @@ from os import curdir
 import pydpiper.file_handling as fh
 import inspect
 import sys
+import fnmatch
 import Pyro
 
 Pyro.config.PYRO_MOBILE_CODE=1
@@ -367,18 +368,12 @@ class autocrop(CmdStage):
         inFile.setLastBasevol(outputFile, setMain=False)
         return(outputFile)  
     
-class mincresample(CmdStage):
-    def __init__(self, 
-                 inFile, 
-                 outFile=None, 
-                 logFile=None,
-                 defaultDir="resampled", 
-                 likeFile=None, 
-                 cxfm=None, 
-                 argArray=None,
-                 labelIndex=-1,
-                 setInputLabels=False, 
-                 mask=False):
+class mincresample(CmdStage):  
+    def __init__(self,              
+                 inFile,
+                 targetFile,
+                 **kwargs):
+        
         """calls mincresample with the specified options
 
         The inFile and likeFile can be in one of two styles. 
@@ -393,43 +388,54 @@ class mincresample(CmdStage):
         This class assuming use of the most commonly used flags (-2, -clobber, -like, -transform)
         Any commands above and beyond the standard will be read in from argarray
         argarray could contain inFile and/or output files
-
         """
+        
+        argArray=kwargs["argArray"]
         if not argArray:
             argArray = ["mincresample"] 
         else:      
             argArray.insert(0, "mincresample")
         CmdStage.__init__(self, argArray)
-            
-        #If no like file is specified, use inputFile
-        if not likeFile:
-            likeFile=inFile
-
+          
         try:
             #MF TODO: What if we don't want to use lastBasevol?  
-            if isFileHandler(inFile, likeFile):
-                self.setInputLabels = setInputLabels
-                self.inFile = self.getFileToResample(inFile, labelIndex, mask)
-                self.likeFile = likeFile.getLastBasevol()
-                #If we want to invert the transform, assume that xfm is from likeFile to inFile
-                #otherwise, we assume transform is from likeFile to inFile
-                # MF TODO: We should not be using __contains__ here, but since 
-                # this class likely needs some work, I'm leaving for now. 
-                if (self.cmd.__contains__("-invert") 
-                    or self.cmd.__contains__("-invert_transform")
-                    or self.cmd.__contains__("-invert_transformation")):
-                    self.cxfm = likeFile.getLastXfm(fh.removeBaseAndExtension(inFile.getLastBasevol()))
+            if isFileHandler(inFile, targetFile):              
+                self.inFile = self.getFileToResample(inFile, **kwargs)
+                self.targetFile = targetFile.getLastBasevol()
+                likeFile=kwargs["likeFile"]
+                if likeFile:
+                    if isFileHandler(likeFile):
+                        self.likeFile = likeFile.getLastBasevol() 
+                    else:
+                        print "likeFile must be RegistrationPipeFH or RegistrationFHBase."
+                        raise 
+                invert = False
+                for cmd in self.cmd:
+                    if fnmatch.fnmatch(cmd, "*-invert*"):
+                        invert = True
+                        break
+                if invert:
+                    self.cxfm = targetFile.getLastXfm(fh.removeBaseAndExtension(inFile.getLastBasevol()))
                 else:
-                    self.cxfm = inFile.getLastXfm(fh.removeBaseAndExtension(self.likeFile))
-                self.outfile = self.setOutputFile(likeFile, defaultDir, mask)
+                    self.cxfm = inFile.getLastXfm(fh.removeBaseAndExtension(self.targetFile))
+                self.outputLocation=kwargs["outputLocation"]
+                if not self.outputLocation: 
+                    self.outputLocation=inFile
+                else:
+                    if not isFileHandler(self.outputLocation):
+                        print "outputLocation must be RegistrationPipeFH or RegistrationFHBase."
+                        raise
+                self.outfile = self.setOutputFile(self.outputLocation, kwargs["defaultDir"])
                 self.logFile = fh.logFromFile(inFile.logDir, self.outfile)
             else:
                 self.inFile = inFile
+                self.targetFile = targetFile
                 self.likeFile = likeFile
-                self.cxfm = cxfm
-                self.outfile=outFile
+                self.cxfm = kwargs["cxfm"]
+                self.outfile=kwargs["outFile"]
+                logFile=kwargs["logFile"]
                 if not logFile:
-                    self.logFile = fh.logFromFile(abspath(curdir), outFile)
+                    self.logFile = fh.logFromFile(abspath(curdir), self.outfile)
                 else:
                     self.logFile = logFile
     
@@ -442,94 +448,109 @@ class mincresample(CmdStage):
         self.setName()
         
     def addDefaults(self):
-        self.inputFiles += [self.inFile]   
-        self.outputFiles += [self.outfile]       
-        self.cmd += ["-like", self.likeFile] 
-        if not self.likeFile in self.inputFiles: 
+        self.inputFiles += [self.inFile, self.targetFile]   
+        self.outputFiles += [self.outfile] 
+        if self.likeFile:
+            self.cmd += ["-like", self.likeFile] 
+            if not self.likeFile in self.inputFiles:
                 self.inputFiles += [self.likeFile]
         if self.cxfm:
             self.inputFiles += [self.cxfm]
-            self.cmd += ["-transform", self.cxfm]              
+            self.cmd += ["-transformation", self.cxfm]              
     def finalizeCommand(self):
         """Add -2, clobber, input and output files """
-        self.cmd += ["-2", "-clobber", self.inFile, self.outfile]    
+        self.cmd += ["-2", "-clobber", self.inFile, self.outfile]
     def setName(self):
         self.name = "mincresample " 
-    def setOutputFile(self, likeFile, defaultDir, mask=False):
-        outDir = likeFile.setOutputDirectory(defaultDir)
+    def setOutputFile(self, FH, defaultDir):
         outBase = fh.removeBaseAndExtension(self.cxfm) + "-resampled.mnc"
+        outDir = FH.setOutputDirectory(defaultDir)
         return(fh.createBaseName(outDir, outBase))  
-    def getFileToResample(self, inputFile, index=-1, mask=False):
+    def getFileToResample(self, inputFile, **kwargs):
         return(inputFile.getLastBasevol())  
 
 class mincresampleLabels(mincresample):
     def __init__(self, 
                  inFile, 
-                 outFile=None, 
-                 logFile=None, 
-                 defaultDir="labels",
-                 likeFile=None, 
-                 cxfm=None, 
-                 argArray=None,
-                 labelIndex=-1, 
-                 setInputLabels=False,
-                 mask=False):
+                 targetFile,
+                 **kwargs):
+        self.initInputLabels(kwargs["setInputLabels"])
         mincresample.__init__(self,
-                           inFile, 
-                           outFile, 
-                           logFile, 
-                           defaultDir,
-                           likeFile, 
-                           cxfm, 
-                           argArray,
-                           labelIndex,
-                           setInputLabels,
-                           mask)
-        
-        if isFileHandler(likeFile):
+                           inFile,
+                           targetFile, 
+                           **kwargs)
+        if isFileHandler(self.outputLocation):
             #After other initialization, addLabels to appropriate array
-            self.addLabelsToArray(likeFile)
-        
+            self.addLabelsToArray(self.outputLocation)
+    
+    def initInputLabels(self, setLabels):
+        if setLabels:
+            self.setInputLabels = setLabels
+        else:
+            self.setInputLabels = False    
     def finalizeCommand(self):
         """additional arguments needed for resampling labels"""
         self.cmd += ["-keep_real_range", "-nearest_neighbour"]
         mincresample.finalizeCommand(self)
-    def setOutputFile(self, likeFile, defaultDir, mask=False):
+    def setOutputFile(self, FH, defaultDir): 
         """set name of output and add labels to appropriate likeFile labels array"""
+        outBase = self.setOutputFileName(FH, append="labels")
+        outDir = FH.setOutputDirectory(defaultDir)
+        return(fh.createBaseName(outDir, outBase))    
+    def setOutputFileName(self, FH, **funcargs):
+        endOfFile = "-" + funcargs["append"] + ".mnc"
         if self.setInputLabels:
             outBase = fh.removeBaseAndExtension(self.cxfm)
+            if fnmatch.fnmatch(outBase, "*_minctracc_*"):
+                outputName = outBase.split("_minctracc_")[0]
+            elif fnmatch.fnmatch(outBase, "*_ANTS_*"):
+                outputName = outBase.split("_ANTS_")[0]
+            else:
+                outputName = outBase
+            outBase = outputName + "-input"
         else:
             labelsToResample = fh.removeBaseAndExtension(self.inFile)
-            likeBaseVol = fh.removeBaseAndExtension(likeFile.getLastBasevol())
-            #MF TODO: Might want to make startName more generic
-            startName = labelsToResample.split("b_")
-            outBase = startName[0] + "b-labels_to_" + likeBaseVol 
-        if mask:
-            outBase += "-mask.mnc"
-        else:
-            outBase += "-labels.mnc"
-        outDir = likeFile.setOutputDirectory(defaultDir)
-        labelFile = fh.createBaseName(outDir, outBase)    
-        return(labelFile) 
-    def addLabelsToArray(self, likeFile):
-        likeFile.addLabels(self.outfile, inputLabel=self.setInputLabels)
-    def getFileToResample(self, inputFile, index=-1, mask=False):
+            likeBaseVol = fh.removeBaseAndExtension(FH.getLastBasevol())
+            outBase = labelsToResample + "_to_" + likeBaseVol 
+        outBase += endOfFile
+        return outBase
+    def addLabelsToArray(self, FH):
+        FH.addLabels(self.outfile, inputLabel=self.setInputLabels)
+    def getFileToResample(self, inputFile, **kwargs):
+        index = kwargs["labelIndex"]
         if index > -1:
-            # Note: we are always resampling from inputLabels here
+            # We always resample from inputLabels, so use returnLabels(True)
             labelArray=inputFile.returnLabels(True)
         else:
             labelArray[index] = None
-        if mask:
-            #MF TODO: We will have to adjust this if we allow for pairwise
-            # crossing to calculate masks. 
-            """Assume we are using mask from inputFile. If this does not exist,
-                we assume inputLabels are also masks from previous iteration
-                and we can use same logic as for mask=False. 
-            """
-            maskToUse = inputFile.getMask()
-            if maskToUse:
-                return maskToUse
-            else:
-                return(labelArray[index]) 
+        return(labelArray[index]) 
+
+class mincresampleMask(mincresampleLabels):
+    def __init__(self, 
+                 inFile, 
+                 targetFile,
+                 **kwargs):
+        mincresampleLabels.__init__(self,
+                                    inFile,
+                                    targetFile, 
+                                    **kwargs)
+        
+    def getFileToResample(self, inputFile, **kwargs):
+        #MF TODO: We will have to adjust this if we allow for pairwise
+        # crossing to calculate masks. 
+        """ Assume we are using mask from inputFile. If this does not exist,
+            we assume inputLabels are also masks from previous iteration
+            and we can use same logic as for mask=False. 
+        """              
+        maskToUse = inputFile.getMask()
+        if maskToUse:
+            return maskToUse
         else:
-            return(labelArray[index]) 
+            index = kwargs["labelIndex"]
+            labelArray=inputFile.returnLabels(True)
+            return(labelArray[index])
+    def setOutputFile(self, FH, defaultDir):
+        # add -mask to appended file
+        outBase = self.setOutputFileName(FH, append="mask")
+        outDir = FH.setOutputDirectory(defaultDir)
+        return(fh.createBaseName(outDir, outBase))

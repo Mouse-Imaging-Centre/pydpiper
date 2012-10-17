@@ -166,8 +166,7 @@ class RegistrationPipeFH(RegistrationFHBase):
         # check to make sure blurs match, otherwise throw error?
         # Go through argument list to build file name
         xfmFileName = [sourceFilename, "to", targetFilename]
-        if regType=="mincANTS":
-            xfmFileName += ["ANTS"]
+        xfmFileName += [str(regType)]
         xfmOutputDir = self.tmpDir
         for k, l in arglist:
             if regType == "minctracc":
