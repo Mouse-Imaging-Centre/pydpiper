@@ -18,6 +18,14 @@ class SetResolution:
             if not abs(abs(currentRes[0]) - abs(resolution)) < 0.01:
                 crop = ma.autocrop(resolution, FH, defaultDir=dirForOutput)
                 self.p.addStage(crop)
+                mask = FH.getMask()
+                if mask:
+                    #Need to resample the mask as well.
+                    cropMask = ma.mincresampleMask(FH,
+                                                   FH,
+                                                   outputLocation=FH,
+                                                   likeFile=FH)
+                    self.p.addStage(cropMask)
         
     def getOutputDirectory(self, FH):
         """Sets output directory based on whether or not we have a full

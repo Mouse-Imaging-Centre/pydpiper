@@ -6,7 +6,7 @@ from os import curdir
 
 class RegistrationGroupedFiles():
     """A class to keep together all bits for a RegistrationPipeFH stage"""
-    def __init__(self, inputVolume):
+    def __init__(self, inputVolume, mask=None):
         self.basevol = inputVolume
         self.labels = []
         self.inputLabels = []
@@ -16,7 +16,7 @@ class RegistrationGroupedFiles():
         self.lastgradient = None
         self.transforms = {}
         self.lastTransform = {}
-        self.mask = None
+        self.mask = mask
         
     def getBlur(self, fwhm=None, gradient=False):
         """returns file with specified blurring kernel
@@ -49,11 +49,12 @@ class RegistrationFHBase():
     """
         Base class for providing file-handling support to registration pipelines
     """
-    def __init__(self, filename, basedir=None):
-        self.groupedFiles = [RegistrationGroupedFiles(filename)]
+    def __init__(self, filename, mask=None, basedir=None):
+        self.groupedFiles = [RegistrationGroupedFiles(filename, mask)]
         # We will always have only one group for the base class.
         self.currentGroupIndex = 0
         self.inputFileName = filename
+        self.mask = mask
         self.basename = fh.removeBaseAndExtension(self.inputFileName)
         """basedir optional for base class.
            If not specified, we assume we just need to read files, 
@@ -70,26 +71,19 @@ class RegistrationFHBase():
             but we shouldn't actually do any writing."""
             self.basedir = abspath(curdir)
             self.logDir = self.basedir
-        self.lastBaseVol = filename
     
     def setupNames(self):
         self.logDir = fh.createLogDir(self.basedir)    
     def setMask(self, inputMask):
         self.groupedFiles[self.currentGroupIndex].mask = inputMask
     def getMask(self):
-        return(self.groupedFiles[self.currentGroupIndex].mask)  
+        return(self.groupedFiles[self.currentGroupIndex].mask) 
     def setLastXfm(self, targetFilename, xfm):
         self.groupedFiles[self.currentGroupIndex].lastTransform[targetFilename] = xfm
-    def getLastBasevol(self, setMain=False):
-        if setMain:
-            lastBasevol = self.lastBaseVol
-        else:
-            lastBasevol = self.groupedFiles[self.currentGroupIndex].basevol
-        return(lastBasevol)
-    def setLastBasevol(self, newBaseVol, setMain=False):
+    def getLastBasevol(self):
+        return(self.groupedFiles[self.currentGroupIndex].basevol)
+    def setLastBasevol(self, newBaseVol):
         self.groupedFiles[self.currentGroupIndex].basevol = newBaseVol
-        if setMain:
-            self.lastBaseVol = newBaseVol
     def setOutputDirectory(self, defaultDir):
         if not defaultDir:
             outputDir = abspath(curdir)

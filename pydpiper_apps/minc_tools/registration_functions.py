@@ -55,19 +55,17 @@ def setupInitModel(inputModel, pipeDir=None):
             errorMsg = "Specified --init-model does not exist: " + str(inputModel)
             raise
         else:
-            standardFH = rfh.RegistrationFHBase(imageFile, initModelDir)
             mask = imageDirectory + "/" + imageBase + "_mask.mnc"
-            standardFH.setMask(abspath(mask))
+            standardFH = rfh.RegistrationFHBase(imageFile, mask=mask, basedir=initModelDir)            
             #if native file exists, create FH
             nativeFileName = imageDirectory + "/" + imageBase + "_native.mnc"
             if exists(nativeFileName):
-                nativeFH = rfh.RegistrationFHBase(nativeFileName, initModelDir)
                 mask = imageDirectory + "/" + imageBase + "_native_mask.mnc"
                 if not exists(mask):
                     errorMsg = "_native.mnc file included but associated mask not found"
                     raise
                 else:
-                    nativeFH.setMask(abspath(mask))
+                    nativeFH = rfh.RegistrationFHBase(nativeFileName, mask=mask, basedir=initModelDir)
                     nativeToStdXfm = imageDirectory + "/" + imageBase + "_native_to_standard.xfm"
                     if exists(nativeToStdXfm):
                         nativeFH.setLastXfm(standardFH, nativeToStdXfm)

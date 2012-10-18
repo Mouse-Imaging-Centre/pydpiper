@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 Pyro.config.PYRO_MOBILE_CODE=1 
 
-def maskFiles(FH, atlas, numAtlases=1):
+def maskFiles(FH, isAtlas, numAtlases=1):
     """ Assume that if there is more than one atlas, multiple
         masks were generated and we need to perform a voxel_vote. 
         Otherwise, assume we are using inputLabels from crossing with
@@ -19,7 +19,7 @@ def maskFiles(FH, atlas, numAtlases=1):
     """
     #MF TODO: Make this more general to handle pairwise option. 
     p = Pipeline()
-    if not atlas:
+    if not isAtlas:
         if numAtlases > 1:
             voxel = voxelVote(FH, False, True)
             p.addStage(voxel)
@@ -38,7 +38,7 @@ def maskFiles(FH, atlas, numAtlases=1):
     mincMath = CmdStage(cmd)
     mincMath.setLogFile(LogFile(logFile))
     p.addStage(mincMath)
-    FH.setLastBasevol(mincMathOutput, True)
+    FH.setLastBasevol(mincMathOutput)
     return(p)
 
 def voxelVote(inputFH, pairwise, mask):

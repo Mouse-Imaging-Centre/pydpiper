@@ -534,7 +534,8 @@ class mincresampleMask(mincresampleLabels):
                                     inFile,
                                     targetFile, 
                                     **kwargs)
-        
+        if isFileHandler(self.outputLocation):
+            self.outputLocation.setMask(self.outfile)
     def getFileToResample(self, inputFile, **kwargs):
         #MF TODO: We will have to adjust this if we allow for pairwise
         # crossing to calculate masks. 

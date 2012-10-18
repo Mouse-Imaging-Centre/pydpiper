@@ -110,10 +110,11 @@ class MAGeTApplication(AbstractApplication):
                 atlasStart = iLabel.split("_labels.mnc")
                 for iAvg in average:
                     if re.search(atlasStart[0], iAvg):
-                        atlasPipeFH = RegistrationPipeFH(abspath(iAvg), atlasDir)
                         for iMask in masks:
                             if re.search(atlasStart[0], iMask):
-                                atlasPipeFH.setMask(abspath(iMask))
+                                atlasPipeFH = RegistrationPipeFH(abspath(iAvg), 
+                                                                 mask=abspath(iMask),
+                                                                 basedir=atlasDir)
                                 break
                         break
                 atlasPipeFH.addLabels(abspath(iLabel), inputLabel=True) 
