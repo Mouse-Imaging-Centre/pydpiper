@@ -142,8 +142,15 @@ class minctracc(CmdStage):
                  stiffness=0.98,
                  similarity=0.3,
                  w_translations=0.2,
+                 w_rotations=0.0174533,
+                 w_scales=0.2,
+                 w_shear=0.2,
                  simplex=1,
                  useMask=True):
+        #MF TODO: Specify different w_translations, roations, scales shear in each direction?
+        # Now assumes same in all directions
+        # Go to more general **kwargs?
+        
         """an efficient way to add a minctracc call to a pipeline
 
         The constructor needs two inputFile arguments, the source and the
@@ -203,6 +210,9 @@ class minctracc(CmdStage):
         self.stiffness = str(stiffness)
         self.similarity = str(similarity)
         self.w_translations = str(w_translations)
+        self.w_rotations = str(w_rotations)
+        self.w_scales = str(w_scales)
+        self.w_shear = str(w_shear)
         self.simplex = str(simplex)
 
         self.addDefaults()
@@ -219,6 +229,9 @@ class minctracc(CmdStage):
         self.cmd = ["minctracc",
                     "-clobber",
                     "-w_translations", self.w_translations,self.w_translations,self.w_translations,
+                    "-w_rotations", self.w_rotations, self.w_rotations, self.w_rotations,
+                    "-w_scales", self.w_scales, self.w_scales, self.w_scales,
+                    "-w_shear", self.w_shear, self.w_shear, self.w_shear,
                     "-step", self.step, self.step, self.step,
                     "-simplex", self.simplex,
                     self.source,
@@ -283,7 +296,7 @@ class blur(CmdStage):
             if isFileHandler(inFile):
                 blurlist = inFile.blurFile(fwhm, gradient, defaultDir)
                 self.base = blurlist["base"]
-                self.inputFiles = [inFile.lastBaseVol]
+                self.inputFiles = [inFile.getLastBasevol()]
                 self.outputFiles = [blurlist["file"]]
                 self.logFile = blurlist["log"]
                 self.name = "mincblur " + str(fwhm) + " " + inFile.basename
@@ -390,7 +403,7 @@ class mincresample(CmdStage):
         argarray could contain inFile and/or output files
         """
         
-        argArray=kwargs["argArray"]
+        argArray = kwargs.pop("argArray", None)
         if not argArray:
             argArray = ["mincresample"] 
         else:      
@@ -402,7 +415,7 @@ class mincresample(CmdStage):
             if isFileHandler(inFile, targetFile):              
                 self.inFile = self.getFileToResample(inFile, **kwargs)
                 self.targetFile = targetFile.getLastBasevol()
-                likeFile=kwargs["likeFile"]
+                likeFile=kwargs.pop("likeFile", None)
                 if likeFile:
                     if isFileHandler(likeFile):
                         self.likeFile = likeFile.getLastBasevol() 
@@ -418,22 +431,27 @@ class mincresample(CmdStage):
                     self.cxfm = targetFile.getLastXfm(fh.removeBaseAndExtension(inFile.getLastBasevol()))
                 else:
                     self.cxfm = inFile.getLastXfm(fh.removeBaseAndExtension(self.targetFile))
-                self.outputLocation=kwargs["outputLocation"]
+                self.outputLocation=kwargs.pop("outputLocation", None)
                 if not self.outputLocation: 
                     self.outputLocation=inFile
                 else:
                     if not isFileHandler(self.outputLocation):
                         print "outputLocation must be RegistrationPipeFH or RegistrationFHBase."
                         raise
-                self.outfile = self.setOutputFile(self.outputLocation, kwargs["defaultDir"])
+                default = kwargs.pop("defaultDir", None)
+                if not default:
+                    defaultDir = "resampled"
+                else:
+                    defaultDir = default
+                self.outfile = self.setOutputFile(self.outputLocation, defaultDir)
                 self.logFile = fh.logFromFile(inFile.logDir, self.outfile)
             else:
                 self.inFile = inFile
                 self.targetFile = targetFile
                 self.likeFile = likeFile
-                self.cxfm = kwargs["cxfm"]
-                self.outfile=kwargs["outFile"]
-                logFile=kwargs["logFile"]
+                self.cxfm = kwargs.pop("cxfm", None)
+                self.outfile=kwargs.pop("outFile", None)
+                logFile=kwargs.pop("logFile", None)
                 if not logFile:
                     self.logFile = fh.logFromFile(abspath(curdir), self.outfile)
                 else:
@@ -474,7 +492,7 @@ class mincresampleLabels(mincresample):
                  inFile, 
                  targetFile,
                  **kwargs):
-        self.initInputLabels(kwargs["setInputLabels"])
+        self.initInputLabels(kwargs.pop("setInputLabels", None))
         mincresample.__init__(self,
                            inFile,
                            targetFile, 
@@ -517,7 +535,7 @@ class mincresampleLabels(mincresample):
     def addLabelsToArray(self, FH):
         FH.addLabels(self.outfile, inputLabel=self.setInputLabels)
     def getFileToResample(self, inputFile, **kwargs):
-        index = kwargs["labelIndex"]
+        index = kwargs.pop("labelIndex", None)
         if index > -1:
             # We always resample from inputLabels, so use returnLabels(True)
             labelArray=inputFile.returnLabels(True)
@@ -547,7 +565,7 @@ class mincresampleMask(mincresampleLabels):
         if maskToUse:
             return maskToUse
         else:
-            index = kwargs["labelIndex"]
+            index = kwargs.pop("labelIndex", None)
             labelArray=inputFile.returnLabels(True)
             return(labelArray[index])
     def setOutputFile(self, FH, defaultDir):

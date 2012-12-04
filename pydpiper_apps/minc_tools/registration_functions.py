@@ -9,7 +9,7 @@ import sys
 def initializeInputFiles(args, mainDirectory):
     inputs = []
     for iFile in range(len(args)):
-        inputPipeFH = rfh.RegistrationPipeFH(abspath(args[iFile]), mainDirectory)
+        inputPipeFH = rfh.RegistrationPipeFH(abspath(args[iFile]), basedir=mainDirectory)
         inputs.append(inputPipeFH)
     return inputs
 
