@@ -116,22 +116,25 @@ class RegistrationPipeFH(RegistrationFHBase):
         call.
 
     """
-    def __init__(self, filename, basedir):
-        RegistrationFHBase.__init__(self, filename, basedir)
-        self.currentGroupIndex = -1 #MF why -1 instead of 0? TEST
+    def __init__(self, filename, mask=None, basedir=None):
+        RegistrationFHBase.__init__(self, filename, mask, basedir)
+        # NOTE: currentGroupIndex set to 0 in base class init...TEST!!!!
         # groups can be referred to by either name or index number
         self.groupNames = {'base' : 0}  
     
-    def newGroup(self, inputVolume = None, groupName = None):
+    def newGroup(self, inputVolume = None, mask = None, groupName = None):
         """create a new set of grouped files"""
         groupIndex = len(self.groupedFiles) + 1
         if not inputVolume:
             inputVolume = self.getLastBasevol()
         
+        if not mask:
+            mask = self.getMask()
+        
         if not groupName:
             groupName = groupIndex
 
-        self.groupedFiles.append(RegistrationGroupedFiles(inputVolume))
+        self.groupedFiles.append(RegistrationGroupedFiles(inputVolume, mask))
         self.groupNames[groupName] = groupIndex
         self.currentGroupIndex = groupIndex
 
@@ -143,6 +146,7 @@ class RegistrationPipeFH(RegistrationFHBase):
         self.transformsDir = fh.createSubDir(self.subjDir, "transforms")
         self.labelsDir = fh.createSubDir(self.subjDir, "labels")
         self.tmpDir = fh.createSubDir(self.subjDir, "tmp")
+        self.statsDir = fh.createSubDir(self.subjDir, "stats-volumes")
 
     def registerVolume(self, targetFH, arglist, regType="minctracc"):
         """create the filenames for a single registration call
@@ -207,6 +211,8 @@ class RegistrationPipeFH(RegistrationFHBase):
             outputDir = self.labelsDir
         elif defaultDir=="transforms":
             outputDir = self.transformsDir
+        elif defaultDir=="stats":
+            outputDir = self.statsDir
         else:
             outputDir = abspath(defaultDir)
         return(outputDir)

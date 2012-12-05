@@ -427,10 +427,14 @@ class mincresample(CmdStage):
                     if fnmatch.fnmatch(cmd, "*-invert*"):
                         invert = True
                         break
-                if invert:
-                    self.cxfm = targetFile.getLastXfm(fh.removeBaseAndExtension(inFile.getLastBasevol()))
+                xfm = kwargs.pop("transform", None)
+                if xfm:
+                    self.cxfm = xfm
                 else:
-                    self.cxfm = inFile.getLastXfm(fh.removeBaseAndExtension(self.targetFile))
+                    if invert:
+                        self.cxfm = targetFile.getLastXfm(fh.removeBaseAndExtension(inFile.getLastBasevol()))
+                    else:
+                        self.cxfm = inFile.getLastXfm(fh.removeBaseAndExtension(self.targetFile))
                 self.outputLocation=kwargs.pop("outputLocation", None)
                 if not self.outputLocation: 
                     self.outputLocation=inFile
@@ -448,7 +452,7 @@ class mincresample(CmdStage):
             else:
                 self.inFile = inFile
                 self.targetFile = targetFile
-                self.likeFile = likeFile
+                self.likeFile = kwargs.pop("likeFile", None)
                 self.cxfm = kwargs.pop("cxfm", None)
                 self.outfile=kwargs.pop("outFile", None)
                 logFile=kwargs.pop("logFile", None)
