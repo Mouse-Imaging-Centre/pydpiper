@@ -172,6 +172,11 @@ class LabelAndFileResampling:
             else:
                 addOutputToInputLabels = False
             for i in range(len(inputLabelArray)):
+                """Note: templatePipeFH and inputPipeFH have the reverse order
+                   from how they are passed into this function. This is intentional
+                   because the mincresample classes use the first argument as the 
+                   one from which to get the file to be resampled. Here, either the 
+                   mask or labels to be resampled come from the template."""
                 if createMask:
                     resampleStage = ma.mincresampleMask(templatePipeFH,
                                                         inputPipeFH,

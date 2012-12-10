@@ -147,7 +147,7 @@ class minctracc(CmdStage):
                  w_shear=0.2,
                  simplex=1,
                  useMask=True):
-        #MF TODO: Specify different w_translations, roations, scales shear in each direction?
+        #MF TODO: Specify different w_translations, rotations, scales shear in each direction?
         # Now assumes same in all directions
         # Go to more general **kwargs?
         
@@ -556,8 +556,6 @@ class mincresampleMask(mincresampleLabels):
                                     inFile,
                                     targetFile, 
                                     **kwargs)
-        if isFileHandler(self.outputLocation):
-            self.outputLocation.setMask(self.outfile)
     def getFileToResample(self, inputFile, **kwargs):
         #MF TODO: We will have to adjust this if we allow for pairwise
         # crossing to calculate masks. 
