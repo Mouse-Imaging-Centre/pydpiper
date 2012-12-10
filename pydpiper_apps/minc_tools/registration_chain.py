@@ -36,17 +36,17 @@ def getLsq6AndXfms(nlinFH, subjects, lsq6Files, time, mbmDir, processedDirectory
              names in subject
     """
      
-    baseNames = walk(mbmDir).next[1]
+    baseNames = walk(mbmDir).next()[1]
     for b in baseNames:
         xfmToNative = abspath(mbmDir + "/" + b + "/transforms/" + b + "-to-native.xfm")
         xfmFromNative = abspath(mbmDir + "/" + b + "/transforms/" + b + "-from-native.xfm")
         lsq6Resampled = abspath(mbmDir + "/" + b + "/resampled/" + b + "-lsq6.mnc")
         for s in subjects:
-            if fnmatch.fnmatch(s[time], "*" + b + "*"):
-                nlinFH.setLastXfm(s[time], xfmToNative)
-                s[time].setLastXfm(nlinFH, xfmFromNative)
-                lsq6Files[s[time]] = rfh.RegistrationFHBase(lsq6Resampled, processedDirectory)
-                break
+            sFH = subjects[s][time]
+            if fnmatch.fnmatch(sFH.getLastBasevol(), "*" + b + "*"):
+                nlinFH.setLastXfm(sFH, xfmToNative)
+                sFH.setLastXfm(nlinFH, xfmFromNative)
+                lsq6Files[subjects[s][time]] = rfh.RegistrationFHBase(lsq6Resampled, processedDirectory)
 
 def concatAndResample(subjects, subjectStats, timePoint, nlinFH, blurs):
     """For each subject, take the deformation fields and resample them into the nlin-3 space.
@@ -145,9 +145,9 @@ class RegistrationChain(AbstractApplication):
         self.parser.add_option("--nlin-average", dest="nlin_avg",
                       type="string", default=None, 
                       help="Final nlin average from MBM run.")
-        self.parser.add_option("--native-or-lsq6", dest="native_or_lsq6",
-                      type="string", default="native", 
-                      help="View final output in native (default) or lsq6 space.")
+        self.parser.add_option("--lsq6-space", dest="lsq6_space",
+                      action="store_true", default=False, 
+                      help="If true, view final output in lsq6 space. Default is false (native space.)")
         
         self.parser.set_usage("%prog [options] input.csv") 
 
@@ -202,7 +202,7 @@ class RegistrationChain(AbstractApplication):
             logger.error("The --mbm-directory specified does not exist: " + abspath(options.mbm_dir))
             sys.exit()
         
-        """lsq6Files from MBM run will be file handlers indexed by s[time]"""
+        """lsq6Files from MBM run will be file handlers indexed by subjects[s][time]"""
         lsq6Files = {}
         
         """Take average time point, subtract 1 for proper indexing"""
@@ -216,10 +216,11 @@ class RegistrationChain(AbstractApplication):
                            avgTime, 
                            abspath(options.mbm_dir), 
                            processedDirectory)
-        
+            
             """Align everything to lsq6 space, with ordering depending on time point"""
-            lsq6Pipe = mm.ChainAlignLSQ6(subjects, avgTime, lsq6Files)
-            self.p.addPipeline(lsq6Pipe)
+            if options.lsq6_space:
+                lsq6Pipe = mm.ChainAlignLSQ6(subjects, avgTime, lsq6Files)
+                self.p.addPipeline(lsq6Pipe)
         else:
             logger.info("MBM directory and nlin_average not specified.")
             logger.info("Calculating registration chain only")
@@ -236,8 +237,8 @@ class RegistrationChain(AbstractApplication):
             for i in range(count - 1):
                 # Create new groups
                 # if/else here for minctracc/mincANTS
-                p = mm.HierarchicalMinctracc(s[i], s[i+1])
-                self.pipeline.addPipeline(p)
+                hm = mm.HierarchicalMinctracc(s[i], s[i+1])
+                self.pipeline.addPipeline(hm.p)
                 """Resample s[i] into space of s[i+1]""" 
                 resample = ma.mincresample(s[i], s[i+1], likeFile=nlinFH)
                 self.pipeline.addStage(resample)
