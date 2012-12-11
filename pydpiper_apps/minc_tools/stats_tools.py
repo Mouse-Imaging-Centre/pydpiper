@@ -123,7 +123,7 @@ class CalcChainStats(CalcStats):
             invertXfm = CmdStage(cmd)
             invertXfm.setLogFile(LogFile(fh.logFromFile(self.inputFH.logDir, invXfm)))
             self.p.addStage(invertXfm)
-            self.targetFH.setLastXfm(self.inputFH)
+            self.targetFH.setLastXfm(self.inputFH, invXfm)
         
         
         fullDisp = mincDisplacement(self.inputFH, self.targetFH, xfm)
@@ -170,13 +170,17 @@ class linearPartofNlin(CmdStage):
         self.setName()
         
     def addDefaults(self):
-        self.inputFiles += [self.inFile, self.mask]   
+        self.inputFiles += [self.inFile]   
         self.outputFiles += [self.outfile]       
         self.cmd += ["lin_from_nlin",
                      "-clobber", "-lsq12"] 
+        #MF TODO: Require mask for this calculation? TEST!
+        if self.mask: 
+            self.inputFiles += [self.mask]
+            self.cmd += ["-mask", self.mask]
                  
     def finalizeCommand(self):
-        self.cmd += ["-mask", self.mask, self.inFile, self.xfm, self.outfile]    
+        self.cmd += [self.inFile, self.xfm, self.outfile]   
     def setName(self):
         self.name = "lin_from_nlin " 
     def setOutputFile(self, inFile, defaultDir):

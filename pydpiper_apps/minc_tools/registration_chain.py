@@ -55,35 +55,35 @@ def concatAndResample(subjects, subjectStats, timePoint, nlinFH, blurs):
     for s in subjects:
         # xfmToNlin will be either to lsq6 or native depending on other factors
         # may need an additional argument for this function
-        xfmToNlin = s[timePoint].getLastXfm(nlinFH)
-        xfmArray = [xfmToNlin]
+        xfmToNlin = subjects[s][timePoint].getLastXfm(nlinFH, groupIndex=0)
         count = len(subjects[s])
         for b in blurs:
+            xfmArray = [xfmToNlin]
             """Do timePoint with average first"""
-            res = resampleToCommon(xfmToNlin, s[timePoint], subjectStats[s][timePoint], b, nlinFH)
+            res = resampleToCommon(xfmToNlin, subjects[s][timePoint], subjectStats[s][timePoint], b, nlinFH)
             pipeline.addPipeline(res)
             if not timePoint - 1 < 0:
                 """Average happened at time point other than first time point. 
                    Loop over points prior to average."""
                 for i in reversed(range(timePoint)):
-                    xcs = getAndConcatXfm(s[i], subjectStats[s], i, xfmArray, False)
+                    xcs = getAndConcatXfm(subjects[s][i], subjectStats[s], i, xfmArray, False)
                     pipeline.addStage(xcs)
-                    res = resampleToCommon(xcs.outputFiles[0], s[i], subjectStats[s][i], b, nlinFH)
+                    res = resampleToCommon(xcs.outputFiles[0], subjects[s][i], subjectStats[s][i], b, nlinFH)
                     pipeline.addPipeline(res)
             """Loop over points after average. If average is at first time point, this loop
                will hit all time points (other than first). If average is at subsequent time 
                point, it hits all time points not covered previously."""
             xfmArray=[xfmToNlin]    
             for i in range(timePoint + 1, count-1):
-                xcs = getAndConcatXfm(s[i], subjectStats[s], i, xfmArray, True)
+                xcs = getAndConcatXfm(subjects[s][i], subjectStats[s], i, xfmArray, True)
                 pipeline.addStage(xcs)
-                res = resampleToCommon(xcs.outputFiles[0], s[i], subjectStats[s][i], b, nlinFH)
+                res = resampleToCommon(xcs.outputFiles[0], subjects[s][i], subjectStats[s][i], b, nlinFH)
                 pipeline.addPipeline(res)
     return pipeline
 
 def getAndConcatXfm(s, subjectStats, i, xfmArray, inverse):
     """Insert xfms into array and concat, returning CmdStage
-       Note that s is s[i] and subjectStats is subjectStats[s] from calling function
+       Note that s is subjects[s][i] and subjectStats is subjectStats[s] from calling function
        inverse=True means that we need to retrieve inverse transforms"""
        
     if inverse:
@@ -100,7 +100,7 @@ def getAndConcatXfm(s, subjectStats, i, xfmArray, inverse):
     
     
 def resampleToCommon(xfm, s, subjectStats, b, nlinFH):
-    """Note that subject is s[timePoint] and
+    """Note that subject is subjects[s][timePoint] and
        subjectStats is subjectStats[s][timepoint] in calling function"""
     pipeline = Pipeline()
     outputDirectory = s.setOutputDirectory("stats")
@@ -111,10 +111,12 @@ def resampleToCommon(xfm, s, subjectStats, b, nlinFH):
         outputFile = fh.createBaseName(outputDirectory, outputBase + "_common" + ".mnc")
         logFile = fh.logFromFile(s.logDir, outputFile)
         res = ma.mincresample(f, 
-                              nlinFH.getLastBaseVol(),
-                              transform = xfm,
-                              outfile=outputFile,
+                              nlinFH.getLastBasevol(),
+                              likeFile=nlinFH.getLastBasevol(),
+                              transform=xfm,
+                              outFile=outputFile,
                               logFile=logFile) 
+        
         pipeline.addStage(res)
     
     return pipeline
@@ -250,7 +252,7 @@ class RegistrationChain(AbstractApplication):
                 s[i].newGroup(inputVolume=resample.outputFiles[0], groupName=groupName) 
                 s[i].setLastXfm(s[i+1], lastXfm)
                 # like file should be nlin-3.mnc
-                stats = st.CalcStats(s[i], s[i+1], blurs)
+                stats = st.CalcChainStats(s[i], s[i+1], blurs)
                 self.pipeline.addPipeline(stats.p)
                 subjectStats[subj][i] = stats.statsGroup
         
@@ -258,7 +260,6 @@ class RegistrationChain(AbstractApplication):
         if options.nlin_avg and options.mbm_dir:
             car = concatAndResample(subjects, subjectStats, avgTime, nlinFH, blurs) 
             self.pipeline.addPipeline(car)
-            
 
 if __name__ == "__main__":
     

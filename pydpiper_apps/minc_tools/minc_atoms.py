@@ -174,7 +174,7 @@ class minctracc(CmdStage):
                 if not transform:
                     # Note: this may also be None and should be for initial call
                     targetFilename = fh.removeBaseAndExtension(inTarget.getLastBasevol())
-                self.transform = inSource.getLastXfm(targetFilename)
+                self.transform = inSource.getLastXfm(inTarget)
                 frame = inspect.currentframe()
                 args,_,_,arglocals = inspect.getargvalues(frame)
                 arglist = [(i, arglocals[i]) for i in args]
@@ -432,9 +432,9 @@ class mincresample(CmdStage):
                     self.cxfm = xfm
                 else:
                     if invert:
-                        self.cxfm = targetFile.getLastXfm(fh.removeBaseAndExtension(inFile.getLastBasevol()))
+                        self.cxfm = targetFile.getLastXfm(inFile)
                     else:
-                        self.cxfm = inFile.getLastXfm(fh.removeBaseAndExtension(self.targetFile))
+                        self.cxfm = inFile.getLastXfm(targetFile)
                 self.outputLocation=kwargs.pop("outputLocation", None)
                 if not self.outputLocation: 
                     self.outputLocation=inFile
@@ -453,7 +453,7 @@ class mincresample(CmdStage):
                 self.inFile = inFile
                 self.targetFile = targetFile
                 self.likeFile = kwargs.pop("likeFile", None)
-                self.cxfm = kwargs.pop("cxfm", None)
+                self.cxfm = kwargs.pop("transform", None)
                 self.outfile=kwargs.pop("outFile", None)
                 logFile=kwargs.pop("logFile", None)
                 if not logFile:

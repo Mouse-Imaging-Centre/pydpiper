@@ -233,6 +233,8 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
             outputDir = os.getcwd() 
         self.backupFileLocation = fh.createBackupDir(outputDir)   
     def addPipeline(self, p):
+        if p.skipped_stages > 0:
+            self.skipped_stages += p.skipped_stages
         for s in p.stages:
             self.addStage(s)
     def printStages(self, name):

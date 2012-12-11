@@ -124,7 +124,7 @@ class RegistrationPipeFH(RegistrationFHBase):
     
     def newGroup(self, inputVolume = None, mask = None, groupName = None):
         """create a new set of grouped files"""
-        groupIndex = len(self.groupedFiles) + 1
+        groupIndex = self.currentGroupIndex + 1
         if not inputVolume:
             inputVolume = self.getLastBasevol()
         
@@ -193,7 +193,7 @@ class RegistrationPipeFH(RegistrationFHBase):
                 
         xfmFileWithExt = "_".join(xfmFileName) + ".xfm"
         outputXfm = fh.createBaseName(xfmOutputDir, xfmFileWithExt)
-        self.addAndSetXfmToUse(targetFilename, outputXfm)
+        self.addAndSetXfmToUse(targetFH, outputXfm)
         return(outputXfm)
     
     def setOutputDirectory(self, defaultDir):
@@ -223,8 +223,12 @@ class RegistrationPipeFH(RegistrationFHBase):
         return(self.groupedFiles[self.currentGroupIndex].getBlur(fwhm, gradient))
     def setBlurToUse(self, fwhm):
         self.groupedFiles[self.currentGroupIndex].lastblur = fwhm
-    def getLastXfm(self, targetFilename):
-        currGroup = self.groupedFiles[self.currentGroupIndex]
+    #MF TODO: Add optional groupIndex to addAndSetXfmToUse and setLastXfm?
+    def getLastXfm(self, targetFilename, groupIndex=-1):
+        if groupIndex >= 0:
+            currGroup = self.groupedFiles[groupIndex]
+        else:
+            currGroup = self.groupedFiles[self.currentGroupIndex]
         lastXfm = None
         if targetFilename in currGroup.lastTransform:
             lastXfm = currGroup.lastTransform[targetFilename]
