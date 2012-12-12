@@ -174,7 +174,6 @@ class linearPartofNlin(CmdStage):
         self.outputFiles += [self.outfile]       
         self.cmd += ["lin_from_nlin",
                      "-clobber", "-lsq12"] 
-        #MF TODO: Require mask for this calculation? TEST!
         if self.mask: 
             self.inputFiles += [self.mask]
             self.cmd += ["-mask", self.mask]

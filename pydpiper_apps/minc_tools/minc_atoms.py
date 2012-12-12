@@ -141,10 +141,10 @@ class minctracc(CmdStage):
                  weight=0.8,
                  stiffness=0.98,
                  similarity=0.3,
-                 w_translations=0.2,
+                 w_translations=0.4,
                  w_rotations=0.0174533,
-                 w_scales=0.2,
-                 w_shear=0.2,
+                 w_scales=0.02,
+                 w_shear=0.02,
                  simplex=1,
                  useMask=True):
         #MF TODO: Specify different w_translations, rotations, scales shear in each direction?
