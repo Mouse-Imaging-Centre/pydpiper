@@ -98,15 +98,20 @@ def MAGeTMask(atlases, inputs, numAtlases, regMethod):
             p.addPipeline(sp)          
     """ Prior to final masking, set log and tmp directories as they were."""
     for atlasFH in atlases:
+        """Retrieve labels for use in new group. Assume only one"""
+        labels = atlasFH.returnLabels(True)
         maskDirectoryStructure(atlasFH, masking=False)
         mp = maskFiles(atlasFH, True)
         p.addPipeline(mp)
+        atlasFH.newGroup()
+        atlasFH.addLabels(labels[0], inputLabel=True)
     for inputFH in inputs:
         maskDirectoryStructure(inputFH, masking=False)
         mp = maskFiles(inputFH, False, numAtlases)
         p.addPipeline(mp)
         inputFH.clearLabels(True)
-        inputFH.clearLabels(False)   
+        inputFH.clearLabels(False) 
+        inputFH.newGroup()  
     return(p)    
 
 def MAGeTRegister(inputFH, 
