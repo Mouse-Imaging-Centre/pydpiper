@@ -26,8 +26,8 @@ class mincANTS(CmdStage):
                  weight=[1,1],
                  iterations="100x100x100x0",
                  radius_or_histo=[3,3],
-                 transformation_model="SyN[0.3]", 
-                 regularization="Gauss[5,1]",
+                 transformation_model="SyN[0.05]", 
+                 regularization="Gauss[3,1]",
                  useMask=True):
         CmdStage.__init__(self, None) #don't do any arg processing in superclass
         try: 
@@ -448,7 +448,7 @@ class mincresample(CmdStage):
                 else:
                     defaultDir = default
                 self.outfile = self.setOutputFile(self.outputLocation, defaultDir)
-                self.logFile = fh.logFromFile(inFile.logDir, self.outfile)
+                self.logFile = fh.logFromFile(self.outputLocation.logDir, self.outfile)
             else:
                 self.inFile = inFile
                 self.targetFile = targetFile

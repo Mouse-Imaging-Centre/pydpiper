@@ -136,13 +136,8 @@ def MAGeTRegister(inputFH,
         p.addStage(tblur)
         p.addStage(iblur)
         sp = ma.mincANTS(inputFH,
-                      templateFH,
-                      defaultDir=defaultDir,
-                      similarity_metric=["MI", "CC"],
-                      iterations="100x100x50x50",
-                      radius_or_histo=[32,3],
-                      transformation_model="SyN[0.1]", 
-                      regularization="Gauss[3,1]")
+                         templateFH,
+                         defaultDir=defaultDir)
         p.addStage(sp)
     
     rp = LabelAndFileResampling(inputFH, templateFH, name=name, createMask=createMask)
