@@ -108,7 +108,6 @@ class RegistrationPipeFH(RegistrationFHBase):
         basedir/filenamebase/transforms -- transforms (xfms, grids, etc.) go here
         basedir/filenamebase/labels -- any resampled labels (if necessary) go here
         basedir/filenamebase/tmp -- intermediate temporary files go here
-        basedir/filenamebase/stats-volumes -- stats calculations go here
 
         The RegistrationPipeFH can be passed to different processing
         functions (minctracc, blur, etc.) which will use it to derive
@@ -119,8 +118,9 @@ class RegistrationPipeFH(RegistrationFHBase):
     """
     def __init__(self, filename, mask=None, basedir=None):
         RegistrationFHBase.__init__(self, filename, mask, basedir)
-        """groups can be referred to by either name or index number"""
-        self.groupNames = {0 : 'base'}  
+        # NOTE: currentGroupIndex set to 0 in base class init...TEST!!!!
+        # groups can be referred to by either name or index number
+        self.groupNames = {'base' : 0}  
     
     def newGroup(self, inputVolume = None, mask = None, groupName = None):
         """create a new set of grouped files"""
@@ -135,7 +135,7 @@ class RegistrationPipeFH(RegistrationFHBase):
             groupName = groupIndex
 
         self.groupedFiles.append(RegistrationGroupedFiles(inputVolume, mask))
-        self.groupNames[groupIndex] = groupName
+        self.groupNames[groupName] = groupIndex
         self.currentGroupIndex = groupIndex
 
     def setupNames(self):
@@ -148,30 +148,51 @@ class RegistrationPipeFH(RegistrationFHBase):
         self.tmpDir = fh.createSubDir(self.subjDir, "tmp")
         self.statsDir = fh.createSubDir(self.subjDir, "stats-volumes")
 
-    def registerVolume(self, targetFH, defaultDir):
+    def registerVolume(self, targetFH, arglist, regType="minctracc"):
         """create the filenames for a single registration call
 
         Two input arguments are required - a RegistrationPipeFH instance for the
-        target volume and the default directory where the output should be placed.
-        
-        The output xfm is constructed based on:
-            1. The names of the source and target base volumes.
-            2. The group name (eg. base, lsq6, etc) or index (if names are not set,
-               default is to index)
-            3. A counter at the end, based on the number of previous transforms.
-               e.g. The first transform will have _0.xfm, because the length of
-               the transforms array will be 0, the second transform will have _1.xfm
-               etc. 
+        target volume and an argument list; the argument list is
+        derived from function introspection in the minctracc or
+        mincANTS calls and will be used to provide a unique filename.
+        The registrationType argument defaults to minctracc but if it is
+        mincANTS, will handle different types of arguments.
+
         """
         sourceFilename = fh.removeBaseAndExtension(self.getLastBasevol())
         targetFilename = fh.removeBaseAndExtension(targetFH.getLastBasevol())
-        xfmFileName = [sourceFilename, "to", targetFilename, defaultDir] 
-        groupName = self.groupNames[self.currentGroupIndex]
-        numPrevXfms = len(self.groupedFiles[self.currentGroupIndex].transforms[targetFH])
-        xfmFileName += ["group", groupName, numPrevXfms]        
+        # check to make sure blurs match, otherwise throw error?
+        # Go through argument list to build file name
+        xfmFileName = [sourceFilename, "to", targetFilename]
+        xfmFileName += [str(regType)]
+        xfmOutputDir = self.tmpDir
+        for k, l in arglist:
+            if regType == "minctracc":
+                if k == 'blur':
+                    xfmFileName += [str(l) + "b"]
+                elif k == 'gradient':
+                    if l:
+                        xfmFileName += ["dxyz"]
+                elif k == 'linearparam':
+                    xfmFileName += [l]
+                elif k == 'iterations':
+                    xfmFileName += ["i" + str(l)]
+                elif k == 'step':
+                    xfmFileName += ["s" + str(l)]
+                elif k == 'defaultDir':
+                    xfmOutputDir = self.setOutputDirectory(str(l))
+            elif regType == "mincANTS":
+                if k == 'similarity_metric':
+                    xfmFileName += [str(len(l))]
+                    for i in l:
+                        xfmFileName += [str(i)]
+                elif k == 'iterations':
+                    xfmFileName += ["iter" + str(l)]
+                elif k == 'defaultDir':
+                    xfmOutputDir = self.setOutputDirectory(str(l))
+                
         xfmFileWithExt = "_".join(xfmFileName) + ".xfm"
-        # MF TO DO: Need to add in some checking for duplicate names here. 
-        outputXfm = fh.createBaseName(defaultDir, xfmFileWithExt)
+        outputXfm = fh.createBaseName(xfmOutputDir, xfmFileWithExt)
         self.addAndSetXfmToUse(targetFH, outputXfm)
         return(outputXfm)
     

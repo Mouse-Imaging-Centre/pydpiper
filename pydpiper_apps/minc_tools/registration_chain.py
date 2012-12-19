@@ -91,7 +91,7 @@ def getAndConcatXfm(s, subjectStats, i, xfmArray, inverse):
     else:
         xfm = subjectStats[i].transform
     xfmArray.insert(0, xfm)
-    output = fh.createBaseName(s.statsDir, "xfm_to_common_space.xfm")
+    output = fh.createBaseName(s.setOutputDirectory("stats"), "xfm_to_common_space.xfm")
     cmd = ["xfmconcat", "-clobber"] + [InputFile(a) for a in xfmArray] + [OutputFile(output)]
     
     xfmConcat = CmdStage(cmd)
@@ -103,7 +103,7 @@ def resampleToCommon(xfm, s, subjectStats, b, nlinFH):
     """Note that subject is subjects[s][timePoint] and
        subjectStats is subjectStats[s][timepoint] in calling function"""
     pipeline = Pipeline()
-    outputDirectory = s.statsDir
+    outputDirectory = s.setOutputDirectory("stats")
     
     filesToResample = [subjectStats.jacobians[b], subjectStats.scaledJacobians[b]]
     for f in filesToResample:
@@ -220,10 +220,9 @@ class RegistrationChain(AbstractApplication):
                            processedDirectory)
             
             """Align everything to lsq6 space, with ordering depending on time point"""
-            #Disabled now for testing purposes. 
-            #if options.lsq6_space:
-                #lsq6Pipe = mm.ChainAlignLSQ6(subjects, avgTime, lsq6Files)
-                #self.p.addPipeline(lsq6Pipe)
+            if options.lsq6_space:
+                lsq6Pipe = mm.ChainAlignLSQ6(subjects, avgTime, lsq6Files)
+                self.p.addPipeline(lsq6Pipe)
         else:
             logger.info("MBM directory and nlin_average not specified.")
             logger.info("Calculating registration chain only")
