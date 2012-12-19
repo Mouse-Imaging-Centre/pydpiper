@@ -5,7 +5,6 @@ from pydpiper_apps.minc_tools.registration_functions import isFileHandler
 from os.path import abspath, basename, join
 from os import curdir
 import pydpiper.file_handling as fh
-import inspect
 import sys
 import fnmatch
 import Pyro
@@ -48,10 +47,7 @@ class mincANTS(CmdStage):
                 for i in range(len(blur)):
                     self.source.append(inSource.getBlur(blur[i], gradient[i]))
                     self.target.append(inTarget.getBlur(blur[i], gradient[i]))
-                frame = inspect.currentframe()
-                args,_,_,arglocals = inspect.getargvalues(frame)
-                arglist = [(i, arglocals[i]) for i in args]
-                outputXfm = inSource.registerVolume(inTarget, arglist, "mincANTS")
+                outputXfm = inSource.registerVolume(inTarget, defaultDir)
                 self.output = outputXfm
                 self.logFile = fh.logFromFile(inSource.logDir, self.output)
                 self.useMask=useMask
@@ -175,10 +171,7 @@ class minctracc(CmdStage):
                     # Note: this may also be None and should be for initial call
                     targetFilename = fh.removeBaseAndExtension(inTarget.getLastBasevol())
                 self.transform = inSource.getLastXfm(inTarget)
-                frame = inspect.currentframe()
-                args,_,_,arglocals = inspect.getargvalues(frame)
-                arglist = [(i, arglocals[i]) for i in args]
-                outputXfm = inSource.registerVolume(inTarget, arglist)
+                outputXfm = inSource.registerVolume(inTarget, defaultDir)
                 self.output = outputXfm
                 self.logFile = fh.logFromFile(inSource.logDir, outputXfm)
                 self.useMask = useMask
