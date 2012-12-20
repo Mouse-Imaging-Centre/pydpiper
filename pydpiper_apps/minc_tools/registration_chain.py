@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 Pyro.config.PYRO_MOBILE_CODE=1 
 
-def getLsq6AndXfms(nlinFH, subjects, lsq6Files, time, mbmDir, processedDirectory):
+def getLsq6AndXfms(nlinFH, subjects, lsq6Files, lsq6Space, time, mbmDir, processedDirectory, pipeline):
 
     """For each file in the build-model registration (associated with the specified
        time point), do the following:
@@ -38,12 +38,22 @@ def getLsq6AndXfms(nlinFH, subjects, lsq6Files, time, mbmDir, processedDirectory
      
     baseNames = walk(mbmDir).next()[1]
     for b in baseNames:
-        xfmToNative = abspath(mbmDir + "/" + b + "/transforms/" + b + "-to-native.xfm")
-        xfmFromNative = abspath(mbmDir + "/" + b + "/transforms/" + b + "-from-native.xfm")
+        if lsq6Space:
+            xfmToNative = abspath(mbmDir + "/" + b + "/transforms/" + b + "-final-to_lsq6.xfm")
+        else:
+            xfmToNative = abspath(mbmDir + "/" + b + "/transforms/" + b + "-to-native.xfm")
+            xfmFromNative = abspath(mbmDir + "/" + b + "/transforms/" + b + "-from-native.xfm")
         lsq6Resampled = abspath(mbmDir + "/" + b + "/resampled/" + b + "-lsq6.mnc")
         for s in subjects:
             sFH = subjects[s][time]
             if fnmatch.fnmatch(sFH.getLastBasevol(), "*" + b + "*"):
+                if lsq6Space:
+                    invXfmBase = fh.removeBaseAndExtension(xfmToNative).split("-final-to_lsq6")[0]
+                    xfmFromNative = fh.createBaseName(sFH.transformsDir, invXfmBase + "_lsq6-to-final.xfm")
+                    cmd = ["xfminvert", "-clobber", InputFile(xfmToNative), OutputFile(xfmFromNative)]
+                    invertXfm = CmdStage(cmd)
+                    invertXfm.setLogFile(LogFile(fh.logFromFile(sFH.logDir, xfmFromNative)))
+                    pipeline.addStage(invertXfm)
                 nlinFH.setLastXfm(sFH, xfmToNative)
                 sFH.setLastXfm(nlinFH, xfmFromNative)
                 lsq6Files[subjects[s][time]] = rfh.RegistrationFHBase(lsq6Resampled, processedDirectory)
@@ -150,6 +160,10 @@ class RegistrationChain(AbstractApplication):
         self.parser.add_option("--lsq6-space", dest="lsq6_space",
                       action="store_true", default=False, 
                       help="If true, view final output in lsq6 space. Default is false (native space.)")
+        self.parser.add_option("--mask-dir", dest="mask_dir",
+                      type="string", default=None, 
+                      help="Directory of masks. If not specified, no masks are used. \
+                            If only one mask in directory, same mask used for all scans.")
         
         self.parser.set_usage("%prog [options] input.csv") 
 
@@ -204,6 +218,35 @@ class RegistrationChain(AbstractApplication):
             logger.error("The --mbm-directory specified does not exist: " + abspath(options.mbm_dir))
             sys.exit()
         
+        """If directory of masks is specified, apply to each file handler.
+           Two options:
+              1. One mask in directory --> use for all scans. 
+              2. Same number of masks as files, with same naming convention. Individual
+                 mask for each scan.  
+        """
+        if options.mask_dir:
+            absMaskPath = abspath(options.mask_dir)
+            masks = walk(absMaskPath).next()[2]
+            numMasks = len(masks)
+            numScans = 0
+            for s in subjects:
+                numScans += len(subjects[s])
+            if numMasks == 1:
+                for s in subjects:
+                    for i in range(len(subjects[s])):
+                        subjects[s][i].setMask(absMaskPath + "/" + masks[0])
+            elif numMasks == numScans:
+                for m in masks:
+                    maskBase = fh.removeBaseAndExtension(m).split("_mask")[0]
+                    for s in subjects:
+                        for i in range(len(subjects[s])):
+                            sFH = subjects[s][i]
+                            if fnmatch.fnmatch(sFH.getLastBasevol(), "*" + maskBase + "*"):
+                                sFH.setMask(absMaskPath + "/" + m)
+            else:
+                logger.error("Number of masks in directory does not match number of scans, but is greater than 1. Exiting...")
+                sys.exit()
+        
         """lsq6Files from MBM run will be file handlers indexed by subjects[s][time]"""
         lsq6Files = {}
         
@@ -214,15 +257,17 @@ class RegistrationChain(AbstractApplication):
         if options.nlin_avg and options.mbm_dir:
             getLsq6AndXfms(nlinFH, 
                            subjects, 
-                           lsq6Files, 
+                           lsq6Files,
+                           options.lsq6_space,  
                            avgTime, 
                            abspath(options.mbm_dir), 
-                           processedDirectory)
+                           processedDirectory, 
+                           self.pipeline) #Ugly hack!
             
             """Align everything to lsq6 space, with ordering depending on time point"""
-            if options.lsq6_space:
-                lsq6Pipe = mm.ChainAlignLSQ6(subjects, avgTime, lsq6Files)
-                self.p.addPipeline(lsq6Pipe)
+            #if options.lsq6_space:
+            #    lsq6Pipe = mm.ChainAlignLSQ6(subjects, avgTime, lsq6Files)
+            #    self.p.addPipeline(lsq6Pipe)
         else:
             logger.info("MBM directory and nlin_average not specified.")
             logger.info("Calculating registration chain only")
