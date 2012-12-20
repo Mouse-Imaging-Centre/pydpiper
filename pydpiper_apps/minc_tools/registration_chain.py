@@ -142,9 +142,9 @@ class RegistrationChain(AbstractApplication):
         self.parser.add_option("--init-model", dest="init_model",
                       type="string", default=None,
                       help="Name of file to register towards. If unspecified, bootstrap.")
-        self.parser.add_option("--reg-type", dest="reg_type",
+        self.parser.add_option("--registration-method", dest="reg_method",
                       type="string", default="mincANTS",
-                      help="Type of registration. Options are mincANTS (default) and minctracc.")
+                      help="Specify whether to use minctracc or mincANTS (default)")
         self.parser.add_option("--avg-time-point", dest="avg_time_point",
                       type="int", default=1,
                       help="Time point we average first (if doing --partial-align) to get nlin space.")
@@ -197,6 +197,11 @@ class RegistrationChain(AbstractApplication):
         
         processedDirectory = fh.createSubDir(pipeDir, pipeName + "_processed")
         
+        """Check that correct registration method was specified"""
+        if options.reg_method != "minctracc" and options.reg_method != "mincANTS":
+            logger.error("Incorrect registration method specified: " + options.reg_method)
+            sys.exit()
+        
         """Read in files from csv"""
         fileList = open(args[0], 'rb')
         subjectList = csv.reader(fileList, delimiter=',', skipinitialspace=True)
@@ -214,6 +219,8 @@ class RegistrationChain(AbstractApplication):
         """Create file handler for nlin average from MBM"""
         if options.nlin_avg:
             nlinFH = rfh.RegistrationFHBase(abspath(options.nlin_avg), processedDirectory)
+        else:
+            nlinFH = None
         if options.mbm_dir and not isdir(abspath(options.mbm_dir)):
             logger.error("The --mbm-directory specified does not exist: " + abspath(options.mbm_dir))
             sys.exit()
@@ -283,11 +290,22 @@ class RegistrationChain(AbstractApplication):
             count = len(s) 
             for i in range(count - 1):
                 # Create new groups
-                # if/else here for minctracc/mincANTS
-                hm = mm.HierarchicalMinctracc(s[i], s[i+1])
-                self.pipeline.addPipeline(hm.p)
+                # MF TODO: Make generalization of registration parameters easier. 
+                if options.reg_method == "mincANTS":
+                    b = 0.15  
+                    self.pipeline.addStage(ma.blur(s[i], b, gradient=True))
+                    self.pipeline.addStage(ma.blur(s[i+1], b, gradient=True))              
+                    self.pipeline.addStage(ma.mincANTS(s[i], 
+                                                       s[i+1],
+                                                       blur=[-1,b]))
+                elif options.reg_method == "minctracc":
+                    hm = mm.HierarchicalMinctracc(s[i], s[i+1])
+                    self.pipeline.addPipeline(hm.p)
                 """Resample s[i] into space of s[i+1]""" 
-                resample = ma.mincresample(s[i], s[i+1], likeFile=nlinFH)
+                if nlinFH:
+                    resample = ma.mincresample(s[i], s[i+1], likeFile=nlinFH)
+                else:
+                    resample = ma.mincresample(s[i], s[i+1], likeFile=s[i])
                 self.pipeline.addStage(resample)
                 lastXfm = s[i].getLastXfm(s[i+1])
                 # not sure if want to use new group or existing
@@ -296,7 +314,6 @@ class RegistrationChain(AbstractApplication):
                 groupName = "time_point_" + str(i) + "_to_" + str(i+1) 
                 s[i].newGroup(inputVolume=resample.outputFiles[0], groupName=groupName) 
                 s[i].setLastXfm(s[i+1], lastXfm)
-                # like file should be nlin-3.mnc
                 stats = st.CalcChainStats(s[i], s[i+1], blurs)
                 self.pipeline.addPipeline(stats.p)
                 subjectStats[subj][i] = stats.statsGroup

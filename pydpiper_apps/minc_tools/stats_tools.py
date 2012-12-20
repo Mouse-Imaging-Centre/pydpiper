@@ -170,7 +170,7 @@ class linearPartofNlin(CmdStage):
         self.setName()
         
     def addDefaults(self):
-        self.inputFiles += [self.inFile]   
+        self.inputFiles += [self.inFile, self.xfm]   
         self.outputFiles += [self.outfile]       
         self.cmd += ["lin_from_nlin",
                      "-clobber", "-lsq12"] 
