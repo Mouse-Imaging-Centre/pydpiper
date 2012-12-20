@@ -40,7 +40,7 @@ class CalcStats:
             """Calculate smoothed deformation field"""
             fwhm = "--fwhm=" + str(b)
             outputBase = fh.removeBaseAndExtension(self.nlinDisp).split("_nlin_displacement.mnc")[0]
-            outSmooth = fh.createBaseName(self.inputFH.tmpDir, 
+            outSmooth = fh.createBaseName(self.inputFH.setOutputDirectory("tmp"), 
                                        outputBase + "_smooth_displacement_fwhm" + str(b) + ".mnc")
             cmd = ["smooth_vector", "--clobber", "--filter", fwhm, 
                    InputFile(self.nlinDisp), OutputFile(outSmooth)]
@@ -49,13 +49,13 @@ class CalcStats:
             self.p.addStage(smoothVec)
             
             """Calculate the determinant, then add 1 (per mincblob weirdness)"""
-            outputDet = fh.createBaseName(self.inputFH.tmpDir, 
+            outputDet = fh.createBaseName(self.inputFH.setOutputDirectory("tmp"), 
                                           outputBase + "_determinant_fwhm" + str(b) + ".mnc")
             cmd = ["mincblob", "-clobber", "-determinant", InputFile(outSmooth), OutputFile(outputDet)]
             det = CmdStage(cmd)
             det.setLogFile(LogFile(fh.logFromFile(self.inputFH.logDir, outputDet)))
             self.p.addStage(det)
-            outDetShift = fh.createBaseName(self.inputFH.tmpDir, 
+            outDetShift = fh.createBaseName(self.inputFH.setOutputDirectory("tmp"), 
                                           outputBase + "_det_plus1_fwhm" + str(b) + ".mnc")
             cmd = ["mincmath", "-clobber", "-2", "-const", str(1), "-add", 
                    InputFile(outputDet), OutputFile(outDetShift)]
@@ -64,13 +64,13 @@ class CalcStats:
             self.p.addStage(det)
             
             "Calculate log determinant (jacobian) and scaled log determinant (scaled jacobian)"
-            outLogDet = fh.createBaseName(self.inputFH.statsDir, 
+            outLogDet = fh.createBaseName(self.inputFH.setOutputDirectory("stats"), 
                                           outputBase + "_log_determinant_fwhm" + str(b) + ".mnc")
             cmd = ["mincmath", "-clobber", "-2", "-log", InputFile(outDetShift), OutputFile(outLogDet)]
             det = CmdStage(cmd)
             det.setLogFile(LogFile(fh.logFromFile(self.inputFH.logDir, outLogDet)))
             self.p.addStage(det)
-            outLogDetScaled = fh.createBaseName(self.inputFH.statsDir, 
+            outLogDetScaled = fh.createBaseName(self.inputFH.setOutputDirectory("stats"), 
                                           outputBase + "_log_determinant_scaled_fwhm" + str(b) + ".mnc")
             cmd = ["scale_voxels", "-clobber", "-invert", "-log", 
                    InputFile(self.linearXfm), InputFile(outLogDet), OutputFile(outLogDetScaled)]
@@ -103,7 +103,7 @@ class CalcChainStats(CalcStats):
         self.p.addStage(lpnl)
         self.linearXfm = lpnl.outputFiles[0]
         invXfmBase = fh.removeBaseAndExtension(self.linearXfm).split(".xfm")[0]
-        invXfm = fh.createBaseName(self.inputFH.transformsDir, invXfmBase + "_inverse.xfm")
+        invXfm = fh.createBaseName(self.inputFH.setOutputDirectory("transforms"), invXfmBase + "_inverse.xfm")
         cmd = ["xfminvert", "-clobber", InputFile(self.linearXfm), OutputFile(invXfm)]
         invertXfm = CmdStage(cmd)
         invertXfm.setLogFile(LogFile(fh.logFromFile(self.inputFH.logDir, invXfm)))
@@ -118,7 +118,7 @@ class CalcChainStats(CalcStats):
         invXfm = self.targetFH.getLastXfm(self.inputFH)
         if not invXfm:
             invXfmBase = fh.removeBaseAndExtension(xfm).split(".xfm")[0]
-            invXfm = fh.createBaseName(self.inputFH.transformsDir, invXfmBase + "_inverse.xfm")
+            invXfm = fh.createBaseName(self.inputFH.setOutputDirectory("transforms"), invXfmBase + "_inverse.xfm")
             cmd = ["xfminvert", "-clobber", InputFile(xfm), OutputFile(invXfm)]
             invertXfm = CmdStage(cmd)
             invertXfm.setLogFile(LogFile(fh.logFromFile(self.inputFH.logDir, invXfm)))
@@ -135,7 +135,7 @@ class CalcChainStats(CalcStats):
         
         """Calculate nlin displacement from source to target"""
         nlinBase = fh.removeBaseAndExtension(xfm) + "_nlin_displacement.mnc"
-        nlinDisp = fh.createBaseName(self.inputFH.tmpDir, nlinBase)
+        nlinDisp = fh.createBaseName(self.inputFH.setOutputDirectory("tmp"), nlinBase)
         cmd = ["mincmath", "-clobber", "-add", InputFile(fullDisp.outputFiles[0]),
                InputFile(linDisp.outputFiles[0]), OutputFile(nlinDisp)]
         mincmath = CmdStage(cmd)
@@ -146,7 +146,7 @@ class CalcChainStats(CalcStats):
         self.nlinDisp = nlinDisp
 
 class linearPartofNlin(CmdStage):
-    def __init__(self, inputFH, targetFH, defaultDir="transforms"):
+    def __init__(self, inputFH, targetFH):
         CmdStage.__init__(self, None)
         
         try:  
@@ -154,7 +154,7 @@ class linearPartofNlin(CmdStage):
                 self.inFile = inputFH.getLastBasevol()  
                 self.mask = inputFH.getMask()   
                 self.xfm = inputFH.getLastXfm(targetFH)          
-                self.outfile = self.setOutputFile(inputFH, defaultDir)
+                self.outfile = self.setOutputFile(inputFH, "transforms")
                 self.logFile = fh.logFromFile(inputFH.logDir, self.outfile)
             else:
                 print ("linear part of nlin currently only works using file handlers. "
@@ -170,7 +170,7 @@ class linearPartofNlin(CmdStage):
         self.setName()
         
     def addDefaults(self):
-        self.inputFiles += [self.inFile]   
+        self.inputFiles += [self.inFile, self.xfm]   
         self.outputFiles += [self.outfile]       
         self.cmd += ["lin_from_nlin",
                      "-clobber", "-lsq12"] 
@@ -189,14 +189,14 @@ class linearPartofNlin(CmdStage):
         return(outputFile)  
 
 class mincDisplacement(CmdStage):
-    def __init__(self, inputFH, targetFH, transform=None, defaultDir="tmp"):
+    def __init__(self, inputFH, targetFH, transform=None):
         CmdStage.__init__(self, None)
         try:  
             if isFileHandler(inputFH, targetFH):
                 self.inFile = inputFH.getLastBasevol()  
                 self.targetFile = targetFH.getLastBasevol()
                 self.xfm = transform
-                self.outfile = self.setOutputFile(inputFH, defaultDir)
+                self.outfile = self.setOutputFile(inputFH, "tmp")
                 self.logFile = fh.logFromFile(inputFH.logDir, self.outfile)
             else:
                 print ("minc_displacement only works using file handlers. "
