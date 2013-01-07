@@ -167,9 +167,7 @@ class minctracc(CmdStage):
                 """
                 self.source = inSource.getBlur(blur, gradient)
                 self.target = inTarget.getBlur(blur, gradient)
-                if not transform:
-                    # Note: this may also be None and should be for initial call
-                    targetFilename = fh.removeBaseAndExtension(inTarget.getLastBasevol())
+                # Note: self.transform may also be None and should be for initial call 
                 self.transform = inSource.getLastXfm(inTarget)
                 outputXfm = inSource.registerVolume(inTarget, defaultDir)
                 self.output = outputXfm

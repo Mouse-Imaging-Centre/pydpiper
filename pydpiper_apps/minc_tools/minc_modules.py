@@ -184,8 +184,8 @@ class HierarchicalMinctracc:
                                        linearparam=linearparams["type"],
                                        step=linearparams["step"],
                                        simplex=linearparams["simplex"],
-                                       w_translations=w_translations,
-                                       similarity=0.5)
+                                       similarity=0.5, 
+                                       w_translations=w_translations)
             self.p.addStage(linearStage)
 
         # create the nonlinear registrations

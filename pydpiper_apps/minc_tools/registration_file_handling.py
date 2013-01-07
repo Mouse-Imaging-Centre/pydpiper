@@ -165,13 +165,18 @@ class RegistrationPipeFH(RegistrationFHBase):
         """
         sourceFilename = fh.removeBaseAndExtension(self.getLastBasevol())
         targetFilename = fh.removeBaseAndExtension(targetFH.getLastBasevol())
-        xfmFileName = [sourceFilename, "to", targetFilename, defaultDir] 
+        xfmFileName = [sourceFilename, "to", targetFilename] 
         groupName = self.groupNames[self.currentGroupIndex]
-        numPrevXfms = len(self.groupedFiles[self.currentGroupIndex].transforms[targetFH])
-        xfmFileName += ["group", groupName, numPrevXfms]        
+        xfmsDict = self.groupedFiles[self.currentGroupIndex].transforms
+        if xfmsDict.has_key(targetFH):
+            numPrevXfms = len(xfmsDict[targetFH])
+        else:
+            numPrevXfms = 0
+        xfmFileName += [groupName, str(numPrevXfms)]        
         xfmFileWithExt = "_".join(xfmFileName) + ".xfm"
+        xfmOutputDir = self.setOutputDirectory(defaultDir)
         # MF TO DO: Need to add in some checking for duplicate names here. 
-        outputXfm = fh.createBaseName(defaultDir, xfmFileWithExt)
+        outputXfm = fh.createBaseName(xfmOutputDir, xfmFileWithExt)
         self.addAndSetXfmToUse(targetFH, outputXfm)
         return(outputXfm)
     
