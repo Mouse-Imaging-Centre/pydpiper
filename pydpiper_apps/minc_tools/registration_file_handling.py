@@ -172,7 +172,7 @@ class RegistrationPipeFH(RegistrationFHBase):
             numPrevXfms = len(xfmsDict[targetFH])
         else:
             numPrevXfms = 0
-        xfmFileName += [groupName, str(numPrevXfms)]        
+        xfmFileName += [str(groupName), str(numPrevXfms)]       
         xfmFileWithExt = "_".join(xfmFileName) + ".xfm"
         xfmOutputDir = self.setOutputDirectory(defaultDir)
         # MF TO DO: Need to add in some checking for duplicate names here. 
