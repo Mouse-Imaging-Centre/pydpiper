@@ -180,7 +180,7 @@ class RegistrationChain(AbstractApplication):
     def setup_logger(self):
         FORMAT = '%(asctime)-15s %(name)s %(levelname)s: %(message)s'
         now = datetime.now()  
-        FILENAME = str(self.appName) + "-" + now.strftime("%Y%m%d-%H%M%S") + ".log"
+        FILENAME = str(self.appName) + "-" + now.strftime("%Y%m%d-%H%M%S%f") + ".log"
         logging.basicConfig(filename=FILENAME, format=FORMAT, level=logging.DEBUG)
 
     def run(self):

@@ -5,7 +5,6 @@ import Pyro
 import os.path
 import logging
 import networkx as nx
-import multiprocessing
 import sys
 
 logger = logging.getLogger(__name__)
@@ -122,9 +121,7 @@ class AbstractApplication(object):
         #pipelineDaemon runs pipeline, launches Pyro client/server and executors (if specified)
         # if use_ns is specified, Pyro NameServer must be started. 
         logger.info("Starting pipeline daemon...")
-        returnEvent = multiprocessing.Event()
-        pipelineDaemon(self.pipeline, returnEvent, self.options, sys.argv[0])
-        returnEvent.wait()
+        pipelineDaemon(self.pipeline, self.options, sys.argv[0])
         logger.info("Server has stopped.  Quitting...")
 
     def setup_appName(self):

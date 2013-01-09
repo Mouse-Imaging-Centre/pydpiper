@@ -404,18 +404,20 @@ def launchServer(pipeline, options, e):
     try:
         daemon.requestLoop(pipeline.continueLoop) 
     except:
-        logger.exception("Failed running server in daemon.requestLoop")
+        logger.exception("Failed running server in daemon.requestLoop. Server shutting down.")
         e.clear()
     else:
         try:
             print("All pipeline stages have been processed. Daemon unregistering " 
                   + str(len(pipeline.clients)) + " client(s) and shutting down...")
+            sys.stdout.flush()
             for c in pipeline.clients[:]:
                 clientObj = Pyro.core.getProxyForURI(c)
-                clientObj.serverShutdownCall(True)
+                clientObj.serverShutdownCall()
                 print "Made serverShutdownCall to: " + str(c)
                 pipeline.clients.remove(c)
                 print "Client deregistered from server: "  + str(c)
+                sys.stdout.flush()
             daemon.shutdown(True)
             print("Objects successfully unregistered and daemon shutdown.")
         except:
@@ -469,7 +471,7 @@ def sge_script(p):
     print skipped_stages, "stages skipped (outputs exist).", len(subs), "stages to run."
     return script #subs + alter + unhold
 
-def pipelineDaemon(pipeline, returnEvent, options=None, programName=None):
+def pipelineDaemon(pipeline, options=None, programName=None):
     """Launches Pyro server and (if specified by options) pipeline executors"""
 
     #check for valid pipeline 
@@ -500,21 +502,14 @@ def pipelineDaemon(pipeline, returnEvent, options=None, programName=None):
     process.start()
     e.wait()
     
-    try:
-        if options.num_exec != 0 and pipeline.runnable.qsize() > 0:
+    if options.num_exec != 0 and pipeline.runnable.qsize() > 0:
+        try:
             logger.debug("Launching executors...")
             processes = [Process(target=launchPipelineExecutor, args=(options,programName,)) for i in range(options.num_exec)]
             for p in processes:
                 p.start()
-            for p in processes:
-                p.join()
                     
-        #Return to calling code if pipeline has no more runnable stages:
-        #Event will be cleared once clients are unregistered. 
-        while e.is_set():
-            sys.stdout.flush()
-            time.sleep(5)
-    except:
-        logger.exception("Failed when pipeline called and ran its own executors.")
-    finally:
-        returnEvent.set()
+        except:
+            logger.exception("Failed when pipeline called and ran its own executors.")
+
+    process.join()

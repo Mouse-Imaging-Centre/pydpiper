@@ -26,12 +26,11 @@ class clientExecutor(Pyro.core.SynchronizedObjBase):
     def continueLoop(self):
         self.mutex.acquire()
         return self.continueRunning
-    def serverShutdownCall(self, serverShutdown):
+    def serverShutdownCall(self):
         # receive call from server when all stages are processed
-        if serverShutdown:
-            self.mutex.acquire()
-            self.continueRunning = False
-            self.mutex.release()
+        self.mutex.acquire()
+        self.continueRunning = False
+        self.mutex.release()
          
 def runStage(serverURI, clientURI, i):
     # Proc needs its own proxy as it's independent of executor
@@ -56,7 +55,8 @@ def runStage(serverURI, clientURI, i):
 
         return [s.getMem(),s.getProcs()] # If completed, return mem & processes back for re-use    
     except:
-        logger.exception("Error communicating to server. Stopping executor...")
+        logger.exception("Error communicating to server in runStage. " 
+                         "Error raised to calling thread in launchExecutor. ")
         raise        
          
 class pipelineExecutor():
@@ -75,7 +75,7 @@ class pipelineExecutor():
     def setLogger(self):
         FORMAT = '%(asctime)-15s %(name)s %(levelname)s: %(message)s'
         now = datetime.now()  
-        FILENAME = "pipeline_executor.py-" + now.strftime("%Y%m%d-%H%M%S") + ".log"
+        FILENAME = "pipeline_executor.py-" + now.strftime("%Y%m%d-%H%M%S%f") + ".log"
         logging.basicConfig(filename=FILENAME, format=FORMAT, level=logging.DEBUG)
         
     def submitToQueue(self, programName=None):
@@ -91,7 +91,7 @@ class pipelineExecutor():
                 executablePath = os.path.abspath(programName)
                 jobname = os.path.basename(executablePath) + "-" 
             now = datetime.now()
-            jobname += "pipeline-executor-" + now.strftime("%Y%m%d-%H%M%S")
+            jobname += "pipeline-executor-" + now.strftime("%Y%m%d-%H%M%S%f")
             # Add options for sge_batch command
             cmd = ["sge_batch", "-J", jobname, "-m", strprocs, "-l", strmem] 
             if self.sge_queue_opts:

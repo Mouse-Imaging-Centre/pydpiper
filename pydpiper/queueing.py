@@ -50,7 +50,7 @@ class runOnQueueingSystem():
     def constructJobFile(self, identifier, isMainFile):
         """Construct the bulk of the pbs script to be submitted via qsub"""
         now = datetime.now()  
-        jobName = self.jobName + identifier + now.strftime("%Y%m%d-%H%M%S") + ".job"
+        jobName = self.jobName + identifier + now.strftime("%Y%m%d-%H%M%S%f") + ".job"
         self.jobFileName = self.jobDir + "/" + jobName
         self.jobFile = open(self.jobFileName, "w")
         self.addHeaderAndCommands(isMainFile)
