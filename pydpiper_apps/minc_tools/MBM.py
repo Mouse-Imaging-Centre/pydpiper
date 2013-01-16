@@ -4,8 +4,9 @@ from pydpiper.application import AbstractApplication
 import pydpiper.file_handling as fh
 import pydpiper_apps.minc_tools.registration_functions as rf
 import pydpiper_apps.minc_tools.minc_modules as mm
+import pydpiper_apps.minc_tools.option_groups as og
 import Pyro
-from datetime import date, datetime
+from datetime import date
 import logging
 
 
@@ -15,15 +16,12 @@ Pyro.config.PYRO_MOBILE_CODE=1
 
 class MBMApplication(AbstractApplication):
     def setup_options(self):
-        self.parser.add_option("--pipeline-name", dest="pipeline_name",
-                      type="string", default=None,
-                      help="Name of pipeline and prefix for models.")
-        self.parser.add_option("--pipeline-dir", dest="pipeline_dir",
-                      type="string", default=".",
-                      help="Directory for placing pipeline results. Default is current.")
         self.parser.add_option("--init-model", dest="init_model",
                       type="string", default=None,
                       help="Name of file to register towards. If unspecified, bootstrap.")
+        
+        """Add option groups from specific modules"""
+        og.addMBMGroup(self.parser)
         
         self.parser.set_usage("%prog [options] input files") 
 
@@ -36,12 +34,6 @@ class MBMApplication(AbstractApplication):
     def setup_appName(self):
         appName = "MICe-build-model"
         return appName
-    
-    def setup_logger(self):
-        FORMAT = '%(asctime)-15s %(name)s %(levelname)s: %(message)s'
-        now = datetime.now()  
-        FILENAME = str(self.appName) + "-" + now.strftime("%Y%m%d-%H%M%S%f") + ".log"
-        logging.basicConfig(filename=FILENAME, format=FORMAT, level=logging.DEBUG)
 
     def run(self):
         options = self.options

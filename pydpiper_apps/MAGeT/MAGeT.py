@@ -7,7 +7,6 @@ from pydpiper_apps.minc_tools.registration_functions import initializeInputFiles
 from pydpiper_apps.MAGeT.MAGeT_modules import MAGeTMask, MAGeTRegister, voxelVote
 import Pyro
 from os.path import abspath, join
-from datetime import datetime
 import logging
 import glob
 import fnmatch
@@ -57,12 +56,6 @@ class MAGeTApplication(AbstractApplication):
     def setup_appName(self):
         appName = "MAGeT"
         return appName
-    
-    def setup_logger(self):
-        FORMAT = '%(asctime)-15s %(name)s %(levelname)s: %(message)s'
-        now = datetime.now()  
-        FILENAME = str(self.appName) + "-" + now.strftime("%Y%m%d-%H%M%S%f") + ".log"
-        logging.basicConfig(filename=FILENAME, format=FORMAT, level=logging.DEBUG)
 
     def run(self):
         options = self.options

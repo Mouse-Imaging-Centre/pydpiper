@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 from pydpiper.application import AbstractApplication
+from pydpiper.pipeline import Pipeline, CmdStage, InputFile, OutputFile, LogFile
 import pydpiper.file_handling as fh
 import pydpiper_apps.minc_tools.registration_functions as rf
 import pydpiper_apps.minc_tools.registration_file_handling as rfh
@@ -22,17 +23,17 @@ logger = logging.getLogger(__name__)
 
 Pyro.config.PYRO_MOBILE_CODE=1 
 
-class RegistrationChain(AbstractApplication):
+class PairwiseNonlinear(AbstractApplication):
     def setup_options(self):
         self.parser.add_option("--registration-method", dest="reg_method",
                       type="string", default="mincANTS",
                       help="Specify whether to use minctracc or mincANTS (default)")
-        self.parser.add_option("--avg-time-point", dest="avg_time_point",
-                      type="int", default=1,
-                      help="Time point averaged prior to this registration to get common nlin space.")
         self.parser.add_option("--lsq6-space", dest="lsq6_space",
+                      action="store_true", default=True, 
+                      help="If true (default), images have already been aligned in lsq6 space.")
+        self.parser.add_option("--lsq12-space", dest="lsq12_space",
                       action="store_true", default=False, 
-                      help="If true, view final output in lsq6 space. Default is false (native space.)")
+                      help="If true, images have already been aligned in lsq12 space. Default is false.")
         self.parser.add_option("--mask-dir", dest="mask_dir",
                       type="string", default=None, 
                       help="Directory of masks. If not specified, no masks are used. \
@@ -42,7 +43,7 @@ class RegistrationChain(AbstractApplication):
         og.tmpLongitudinalOptionGroup(self.parser)
         st.addStatsOptions(self.parser)
         
-        self.parser.set_usage("%prog [options] input.csv") 
+        self.parser.set_usage("%prog [options] input files") 
 
     def setup_backupDir(self):
         """Output directory set here as well. backups subdirectory automatically
@@ -51,7 +52,7 @@ class RegistrationChain(AbstractApplication):
         self.pipeline.setBackupFileLocation(backup_dir)
 
     def setup_appName(self):
-        appName = "Registration-chain"
+        appName = "Pairwise-nonlinear"
         return appName
 
     def run(self):
@@ -73,14 +74,8 @@ class RegistrationChain(AbstractApplication):
             logger.error("Incorrect registration method specified: " + options.reg_method)
             sys.exit()
         
-        """Read in files from csv"""
-        fileList = open(args[0], 'rb')
-        subjectList = csv.reader(fileList, delimiter=',', skipinitialspace=True)
-        subjects = {} # One array of images for each subject
-        index = 0 
-        for subj in subjectList:
-            subjects[index] = rf.initializeInputFiles(subj, processedDirectory)
-            index += 1
+        """Create file handling classes for each image"""
+        inputs = rf.initializeInputFiles(args, processedDirectory)
         
         """Put blurs into array"""
         blurs = []
@@ -106,91 +101,69 @@ class RegistrationChain(AbstractApplication):
             absMaskPath = abspath(options.mask_dir)
             masks = walk(absMaskPath).next()[2]
             numMasks = len(masks)
-            numScans = 0
-            for s in subjects:
-                numScans += len(subjects[s])
+            numScans = len(inputs)
             if numMasks == 1:
-                for s in subjects:
-                    for i in range(len(subjects[s])):
-                        subjects[s][i].setMask(absMaskPath + "/" + masks[0])
+                for inputFH in inputs:
+                    inputFH.setMask(absMaskPath + "/" + masks[0])
             elif numMasks == numScans:
                 for m in masks:
                     maskBase = fh.removeBaseAndExtension(m).split("_mask")[0]
-                    for s in subjects:
-                        for i in range(len(subjects[s])):
-                            sFH = subjects[s][i]
-                            if fnmatch.fnmatch(sFH.getLastBasevol(), "*" + maskBase + "*"):
-                                sFH.setMask(absMaskPath + "/" + m)
+                    for inputFH in inputs:
+                        if fnmatch.fnmatch(inputFH.getLastBasevol(), "*" + maskBase + "*"):
+                            inputFH.setMask(absMaskPath + "/" + m)
             else:
                 logger.error("Number of masks in directory does not match number of scans, but is greater than 1. Exiting...")
                 sys.exit()
         
-        """Take average time point, subtract 1 for proper indexing"""
-        avgTime = options.avg_time_point - 1
-        
-        """Get transforms from inputs to final nlin average and vice versa"""
+        """Get transforms from inputs to final nlin average and vice versa as well as lsq6 files"""
         if options.nlin_avg and options.mbm_dir:
-            xfmsPipe = ombm.getXfms(nlinFH, subjects, options.lsq6_space, abspath(options.mbm_dir), time=avgTime)
+            xfmsPipe = ombm.getXfms(nlinFH, inputs, options.lsq6_space, abspath(options.mbm_dir))
             if len(xfmsPipe.stages) > 0:
                 self.pipeline.addPipeline(xfmsPipe)
-            
-            """Align everything to lsq6 space, with ordering depending on time point"""
-            #Disabled now for testing purposes. 
-            #if options.lsq6_space:
-                #"""lsq6Files from MBM run will be file handlers indexed by subjects[s][time]"""
-                #lsq6Files = ombm.getLsq6Files(abspath(options.mbm_dir), subjects, avgTime, processedDirectory)
-                #lsq6Pipe = mm.ChainAlignLSQ6(subjects, avgTime, lsq6Files)
-                #self.p.addPipeline(lsq6Pipe)
         else:
             logger.info("MBM directory and nlin_average not specified.")
             logger.info("Calculating registration chain only")
         
         """Create a dictionary of statistics. Each subject gets an array of statistics
-           indexed by timepoint. The indexing on the subjectStats dictionary should match
-           the subjects dictionary"""
+           indexed by inputFile."""
         subjectStats = {}
         
-        for subj in subjects:
-            subjectStats[subj] = {}
-            s = subjects[subj]
-            count = len(s) 
-            for i in range(count - 1):
-                # Create new groups
+        """Register each image with every other image."""
+        for inputFH in inputs:
+            subjectStats[inputFH] = {}
+            for targetFH in inputs:
+                if inputFH != targetFH:
                 # MF TODO: Make generalization of registration parameters easier. 
-                if options.reg_method == "mincANTS":
-                    b = 0.15  
-                    self.pipeline.addStage(ma.blur(s[i], b, gradient=True))
-                    self.pipeline.addStage(ma.blur(s[i+1], b, gradient=True))              
-                    self.pipeline.addStage(ma.mincANTS(s[i], 
-                                                       s[i+1],
-                                                       blur=[-1,b]))
-                elif options.reg_method == "minctracc":
-                    hm = mm.HierarchicalMinctracc(s[i], s[i+1])
-                    self.pipeline.addPipeline(hm.p)
-                """Resample s[i] into space of s[i+1]""" 
-                if nlinFH:
-                    resample = ma.mincresample(s[i], s[i+1], likeFile=nlinFH)
-                else:
-                    resample = ma.mincresample(s[i], s[i+1], likeFile=s[i])
-                self.pipeline.addStage(resample)
-                lastXfm = s[i].getLastXfm(s[i+1])
-                # not sure if want to use new group or existing
-                """Initialize newGroup with initial file as i resampled to i+1 
-                   space and setLastXfm to be final xfm from original group"""
-                groupName = "time_point_" + str(i) + "_to_" + str(i+1) 
-                s[i].newGroup(inputVolume=resample.outputFiles[0], groupName=groupName) 
-                s[i].setLastXfm(s[i+1], lastXfm)
-                stats = st.CalcChainStats(s[i], s[i+1], blurs)
-                stats.fullStatsCalc()
-                self.pipeline.addPipeline(stats.p)
-                subjectStats[subj][i] = stats.statsGroup
-        
-        """Now that all registration is complete, concat transforms and resample"""
-        if options.nlin_avg and options.mbm_dir:
-            car = ombm.concatAndResample(subjects, subjectStats, avgTime, nlinFH, blurs) 
-            self.pipeline.addPipeline(car)
+                    if options.reg_method == "mincANTS":
+                        b = 0.056  
+                        self.pipeline.addStage(ma.blur(inputFH, b, gradient=True))
+                        self.pipeline.addStage(ma.blur(targetFH, b, gradient=True))              
+                        self.pipeline.addStage(ma.mincANTS(inputFH, 
+                                                           targetFH,
+                                                           blur=[-1,b]))
+                    elif options.reg_method == "minctracc":
+                        hm = mm.HierarchicalMinctracc(inputFH, targetFH)
+                        self.pipeline.addPipeline(hm.p)
+                    if nlinFH:
+                        resample = ma.mincresample(inputFH, targetFH, likeFile=nlinFH)
+                    else:
+                        resample = ma.mincresample(inputFH, targetFH, likeFile=inputFH)
+                    self.pipeline.addStage(resample)
+                    inputFH.setLastBasevol(resample.outputFiles[0])
+                    """Calculate statistics"""
+                    stats = st.CalcChainStats(inputFH, targetFH, blurs)
+                    stats.fullStatsCalc()
+                    self.pipeline.addPipeline(stats.p)
+                    subjectStats[inputFH][targetFH] = stats.statsGroup
+                    """Resample to nlin space from previous build model run, if specified"""
+                    if options.nlin_avg and options.mbm_dir:
+                        xfmToNlin = inputFH.getLastXfm(nlinFH, groupIndex=0)
+                        for b in blurs:
+                            res = ombm.resampleToCommon(xfmToNlin, inputFH, subjectStats[inputFH][targetFH], b, nlinFH)
+                            self.pipeline.addPipeline(res)
+                    inputFH.setLastBasevol(inputFH.inputFileName)
 
 if __name__ == "__main__":
     
-    application = RegistrationChain()
+    application = PairwiseNonlinear()
     application.start()

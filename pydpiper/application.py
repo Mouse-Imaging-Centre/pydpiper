@@ -1,6 +1,7 @@
 from optparse import OptionParser
 from pydpiper.pipeline import Pipeline, pipelineDaemon
 from pydpiper.queueing import runOnQueueingSystem
+from datetime import datetime
 import Pyro
 import os.path
 import logging
@@ -17,7 +18,7 @@ class AbstractApplication(object):
        
        Subclasses should extend the following methods:
            setup_appName()
-           setup_logger()
+           setup_logger() [optional, default method is defined here]
            setup_options()
            run()
     
@@ -130,7 +131,10 @@ class AbstractApplication(object):
 
     def setup_logger(self):
         """sets logging info specific to application"""
-        pass
+        FORMAT = '%(asctime)-15s %(name)s %(levelname)s: %(message)s'
+        now = datetime.now()  
+        FILENAME = str(self.appName) + "-" + now.strftime("%Y%m%d-%H%M%S%f") + ".log"
+        logging.basicConfig(filename=FILENAME, format=FORMAT, level=logging.DEBUG)
 
     def setup_options(self):
         """Set up the self.options option parser with options this application needs."""

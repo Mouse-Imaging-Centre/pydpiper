@@ -1,10 +1,19 @@
 from pydpiper.pipeline import Pipeline, CmdStage, InputFile, OutputFile, LogFile
 from pydpiper_apps.minc_tools.registration_functions import isFileHandler
 import pydpiper.file_handling as fh
+from optparse import OptionParser, OptionGroup
 import sys
 import Pyro
 
 Pyro.config.PYRO_MOBILE_CODE=1
+
+def addStatsOptions(parser):
+    group = OptionGroup(parser, "statistics options", 
+                        "Options for calculating statistics.")
+    group.add_option("--stats-kernels", dest="stats_kernels",
+                      type="string", default="1.0,0.5,0.2,0.1", 
+                      help="comma separated list of blurring kernels for analysis. Default is: 1.0,0.5,0.2,0.1")
+    parser.add_option_group(group)
 
 class StatsGroup:
     """This group saves the key output from each instance for CalcStats, 
@@ -23,6 +32,7 @@ class CalcStats:
         self.blurs = blurs
         self.statsGroup = StatsGroup()
     
+    def fullStatsCalc(self):
         self.linAndNlinDisplacement()
         self.calcDetAndLogDet()  
         
@@ -153,7 +163,7 @@ class linearPartofNlin(CmdStage):
             if isFileHandler(inputFH, targetFH):
                 self.inFile = inputFH.getLastBasevol()  
                 self.mask = inputFH.getMask()   
-                self.xfm = inputFH.getLastXfm(targetFH)          
+                self.xfm = inputFH.getLastXfm(targetFH)     
                 self.outfile = self.setOutputFile(inputFH, defaultDir)
                 self.logFile = fh.logFromFile(inputFH.logDir, self.outfile)
             else:
