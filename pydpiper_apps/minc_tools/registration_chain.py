@@ -44,37 +44,27 @@ class RegistrationChain(AbstractApplication):
         
         self.parser.set_usage("%prog [options] input.csv") 
 
-    def setup_backupDir(self):
-        """Output directory set here as well. backups subdirectory automatically
-        placed here so we don't need to set via the command line"""
-        backup_dir = fh.makedirsIgnoreExisting(self.options.pipeline_dir)    
-        self.pipeline.setBackupFileLocation(backup_dir)
-
     def setup_appName(self):
         appName = "Registration-chain"
         return appName
 
     def run(self):
-        options = self.options
-        args = self.args
-        self.reconstructCommand()
         
         """Directory handling etc as in MBM"""
-        pipeDir = fh.makedirsIgnoreExisting(options.pipeline_dir)
-        if not options.pipeline_name:
+        if not self.options.pipeline_name:
             pipeName = str(date.today()) + "_pipeline"
         else:
-            pipeName = options.pipeline_name
+            pipeName = self.options.pipeline_name
         
-        processedDirectory = fh.createSubDir(pipeDir, pipeName + "_processed")
+        processedDirectory = fh.createSubDir(self.outputDir, pipeName + "_processed")
         
         """Check that correct registration method was specified"""
-        if options.reg_method != "minctracc" and options.reg_method != "mincANTS":
-            logger.error("Incorrect registration method specified: " + options.reg_method)
+        if self.options.reg_method != "minctracc" and self.options.reg_method != "mincANTS":
+            logger.error("Incorrect registration method specified: " + self.options.reg_method)
             sys.exit()
         
         """Read in files from csv"""
-        fileList = open(args[0], 'rb')
+        fileList = open(self.args[0], 'rb')
         subjectList = csv.reader(fileList, delimiter=',', skipinitialspace=True)
         subjects = {} # One array of images for each subject
         index = 0 
@@ -84,16 +74,16 @@ class RegistrationChain(AbstractApplication):
         
         """Put blurs into array"""
         blurs = []
-        for i in options.stats_kernels.split(","):
+        for i in self.options.stats_kernels.split(","):
             blurs.append(float(i))
         
         """Create file handler for nlin average from MBM"""
-        if options.nlin_avg:
-            nlinFH = rfh.RegistrationFHBase(abspath(options.nlin_avg), processedDirectory)
+        if self.options.nlin_avg:
+            nlinFH = rfh.RegistrationFHBase(abspath(self.options.nlin_avg), processedDirectory)
         else:
             nlinFH = None
-        if options.mbm_dir and not isdir(abspath(options.mbm_dir)):
-            logger.error("The --mbm-directory specified does not exist: " + abspath(options.mbm_dir))
+        if self.options.mbm_dir and not isdir(abspath(self.options.mbm_dir)):
+            logger.error("The --mbm-directory specified does not exist: " + abspath(self.options.mbm_dir))
             sys.exit()
         
         """If directory of masks is specified, apply to each file handler.
@@ -102,8 +92,8 @@ class RegistrationChain(AbstractApplication):
               2. Same number of masks as files, with same naming convention. Individual
                  mask for each scan.  
         """
-        if options.mask_dir:
-            absMaskPath = abspath(options.mask_dir)
+        if self.options.mask_dir:
+            absMaskPath = abspath(self.options.mask_dir)
             masks = walk(absMaskPath).next()[2]
             numMasks = len(masks)
             numScans = 0
@@ -126,11 +116,11 @@ class RegistrationChain(AbstractApplication):
                 sys.exit()
         
         """Take average time point, subtract 1 for proper indexing"""
-        avgTime = options.avg_time_point - 1
+        avgTime = self.options.avg_time_point - 1
         
         """Get transforms from inputs to final nlin average and vice versa"""
-        if options.nlin_avg and options.mbm_dir:
-            xfmsPipe = ombm.getXfms(nlinFH, subjects, options.lsq6_space, abspath(options.mbm_dir), time=avgTime)
+        if self.options.nlin_avg and self.options.mbm_dir:
+            xfmsPipe = ombm.getXfms(nlinFH, subjects, self.options.lsq6_space, abspath(self.options.mbm_dir), time=avgTime)
             if len(xfmsPipe.stages) > 0:
                 self.pipeline.addPipeline(xfmsPipe)
             
@@ -157,14 +147,14 @@ class RegistrationChain(AbstractApplication):
             for i in range(count - 1):
                 # Create new groups
                 # MF TODO: Make generalization of registration parameters easier. 
-                if options.reg_method == "mincANTS":
+                if self.options.reg_method == "mincANTS":
                     b = 0.15  
                     self.pipeline.addStage(ma.blur(s[i], b, gradient=True))
                     self.pipeline.addStage(ma.blur(s[i+1], b, gradient=True))              
                     self.pipeline.addStage(ma.mincANTS(s[i], 
                                                        s[i+1],
                                                        blur=[-1,b]))
-                elif options.reg_method == "minctracc":
+                elif self.options.reg_method == "minctracc":
                     hm = mm.HierarchicalMinctracc(s[i], s[i+1])
                     self.pipeline.addPipeline(hm.p)
                 """Resample s[i] into space of s[i+1]""" 
@@ -186,7 +176,7 @@ class RegistrationChain(AbstractApplication):
                 subjectStats[subj][i] = stats.statsGroup
         
         """Now that all registration is complete, concat transforms and resample"""
-        if options.nlin_avg and options.mbm_dir:
+        if self.options.nlin_avg and self.options.mbm_dir:
             car = ombm.concatAndResample(subjects, subjectStats, avgTime, nlinFH, blurs) 
             self.pipeline.addPipeline(car)
 

@@ -38,7 +38,6 @@ class MBMApplication(AbstractApplication):
     def run(self):
         options = self.options
         args = self.args
-        self.reconstructCommand()
         
         # Make main pipeline directories
         pipeDir = fh.makedirsIgnoreExisting(options.pipeline_dir)

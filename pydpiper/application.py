@@ -1,9 +1,9 @@
 from optparse import OptionParser
 from pydpiper.pipeline import Pipeline, pipelineDaemon
 from pydpiper.queueing import runOnQueueingSystem
+from pydpiper.file_handling import makedirsIgnoreExisting
 from datetime import datetime
 import Pyro
-import os.path
 import logging
 import networkx as nx
 import sys
@@ -69,19 +69,18 @@ class AbstractApplication(object):
         self.parser.add_option("--restart", dest="restart", 
                           action="store_true",
                           help="Restart pipeline using backup files.")
-        self.parser.add_option("--backup-dir", dest="backup_directory",
-                          type="string", default="pydpiper-backups",
-                          help="Directory where this pipeline backup should be stored.")    
+        self.parser.add_option("--output-dir", dest="output_directory",
+                          type="string", default=".",
+                          help="Directory where output data and backups will be saved.")   
     
     def _setup_pipeline(self):
         self.pipeline = Pipeline()
-        self.setup_backupDir()
+        self.setup_directories()
         
-    def setup_backupDir(self):
-        backup_dir = os.path.abspath(self.options.backup_directory)
-        if not os.path.isdir(backup_dir):
-            os.mkdir(backup_dir)       
-        self.pipeline.setBackupFileLocation(backup_dir)
+    def setup_directories(self):
+        """Output and backup directories setup here."""
+        self.outputDir = makedirsIgnoreExisting(self.options.output_directory)
+        self.pipeline.setBackupFileLocation(self.outputDir)
     
     def reconstructCommand(self):    
         reconstruct = ""
@@ -110,6 +109,7 @@ class AbstractApplication(object):
             self.pipeline.initialize()
             self.pipeline.printStages(self.appName)
         else:
+            self.reconstructCommand()
             self.run()
             self.pipeline.initialize()
             self.pipeline.printStages(self.appName)

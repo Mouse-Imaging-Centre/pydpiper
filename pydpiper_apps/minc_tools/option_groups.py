@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-from optparse import OptionParser, OptionGroup
+from optparse import OptionGroup
 
 def addMBMGroup(parser):
     group = OptionGroup(parser, "MBM options", 
@@ -8,11 +8,7 @@ def addMBMGroup(parser):
     group.add_option("--pipeline-name", dest="pipeline_name",
                     type="string", default=None,
                     help="Name of pipeline and prefix for models.")
-    group.add_option("--pipeline-dir", dest="pipeline_dir",
-                      type="string", default=".",
-                      help="Directory for placing pipeline results. Default is current.")
     parser.add_option_group(group)
-    
     
 def tmpLongitudinalOptionGroup(parser):
     group = OptionGroup(parser, "Temporary options for longitudinal registrations", 

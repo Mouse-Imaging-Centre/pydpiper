@@ -26,9 +26,6 @@ class MAGeTApplication(AbstractApplication):
                       action="store_false", default=True,
                       help="""Pairwise crossing of templates. Default is true. 
                           If specified, only register inputs to atlases in library""")
-        self.parser.add_option("--output-dir", dest="output_directory",
-                      type="string", default=".",
-                      help="Directory where output data will be saved.")
         self.parser.add_option("--mask", dest="mask",
                       action="store_true", default=False,
                       help="Create a mask for all images prior to handling labels")
@@ -47,27 +44,17 @@ class MAGeTApplication(AbstractApplication):
         
         self.parser.set_usage("%prog [options] input files") 
 
-    def setup_backupDir(self):
-        """Output directory set here as well. backups subdirectory automatically
-        placed here so we don't need to set via the command line"""
-        backup_dir = fh.makedirsIgnoreExisting(self.options.output_directory)    
-        self.pipeline.setBackupFileLocation(backup_dir)
-
     def setup_appName(self):
         appName = "MAGeT"
         return appName
 
     def run(self):
-        options = self.options
-        args = self.args
-        self.reconstructCommand()
         
-        if options.reg_method != "minctracc" and options.reg_method != "mincANTS":
-            logger.error("Incorrect registration method specified: " + options.reg_method)
+        if self.options.reg_method != "minctracc" and self.options.reg_method != "mincANTS":
+            logger.error("Incorrect registration method specified: " + self.options.reg_method)
             sys.exit()
         
-        outputDir = fh.makedirsIgnoreExisting(options.output_directory)
-        atlasDir = fh.createSubDir(outputDir, "input_atlases")
+        atlasDir = fh.createSubDir(self.outputDir, "input_atlases")
         
         """Read in atlases from directory specified in --atlas-library and 
             create fileHandling classes. Assumes atlas/label/mask groups have one 
@@ -80,7 +67,7 @@ class MAGeTApplication(AbstractApplication):
         masks = [] # array of masks, one for each average
         atlases = [] #array of RegistrationPipeFH classes for each atlas/label pair
         numAtlases = 0
-        for inFile in glob.glob(join(options.atlas_lib, "*.mnc")):
+        for inFile in glob.glob(join(self.options.atlas_lib, "*.mnc")):
             if fnmatch.fnmatch(inFile, "*labels.mnc"):
                 labels.append(abspath(inFile))
             elif fnmatch.fnmatch(inFile, "*mask.mnc"):
@@ -90,11 +77,11 @@ class MAGeTApplication(AbstractApplication):
         # check to make sure len(average)==len(labels)
         if not len(average) == len(labels):
             logger.error("Number of input atlas labels does not match averages.")
-            logger.error("Check " + str(options.atlas_lib) + " and try again.")
+            logger.error("Check " + str(self.options.atlas_lib) + " and try again.")
             sys.exit() 
         elif not len(average) == len(masks):
             logger.error("Number of input atlas masks does not match averages.")
-            logger.error("Check " + str(options.atlas_lib) + " and try again.")
+            logger.error("Check " + str(self.options.atlas_lib) + " and try again.")
             sys.exit()
         else:
         # match labels with averages
@@ -117,25 +104,25 @@ class MAGeTApplication(AbstractApplication):
         # eg if we have A4_mask.mnc "matching" with A3_labels, we wont get right thing.
         
         # Create fileHandling classes for images
-        inputs = initializeInputFiles(args, outputDir)
+        inputs = initializeInputFiles(self.args, self.outputDir)
         
         templates = []
-        numTemplates = len(args)
+        numTemplates = len(self.args)
         
         """ If --mask is specified and we are masking brains, do it here."""
-        if options.mask or options.mask_only:
-            mp = MAGeTMask(atlases, inputs, numAtlases, options.mask_method)
+        if self.options.mask or self.options.mask_only:
+            mp = MAGeTMask(atlases, inputs, numAtlases, self.options.mask_method)
             self.pipeline.addPipeline(mp)
         
-        if not options.mask_only:
-            if numTemplates > options.max_templates:
-                numTemplates = options.max_templates
+        if not self.options.mask_only:
+            if numTemplates > self.options.max_templates:
+                numTemplates = self.options.max_templates
             # Register each atlas to each input image up to numTemplates
             for nfile in range(numTemplates):
                 for afile in range(numAtlases):
                     sp = MAGeTRegister(inputs[nfile], 
                                        atlases[afile],
-                                       options.reg_method,
+                                       self.options.reg_method,
                                        name="initial",
                                        createMask=False)
                     self.pipeline.addPipeline(sp)
@@ -146,23 +133,23 @@ class MAGeTApplication(AbstractApplication):
             # once the initial templates have been created, go and register each
             # inputFile to the templates. If --pairwise=False, do voxel voting on 
             # input-atlas registrations only
-            if options.pairwise:
+            if self.options.pairwise:
                 for inputFH in inputs:
                     for tmplFH in templates:
                         if tmplFH.getLastBasevol() != inputFH.getLastBasevol():
                             sp = MAGeTRegister(inputFH, 
                                                tmplFH, 
-                                               options.reg_method,
+                                               self.options.reg_method,
                                                name="templates", 
                                                createMask=False)
                             self.pipeline.addPipeline(sp)
-                    voxel = voxelVote(inputFH, options.pairwise, False)
+                    voxel = voxelVote(inputFH, self.options.pairwise, False)
                     self.pipeline.addStage(voxel)
             else:
                 # only do voxel voting in this case if there was more than one input atlas
                 if numAtlases > 1:
                     for inputFH in inputs:
-                        voxel = voxelVote(inputFH, options.pairwise, False)
+                        voxel = voxelVote(inputFH, self.options.pairwise, False)
                         self.pipeline.addStage(voxel)   
         
             logger.info("Number of input atlas/label pairs: " + str(numAtlases))   

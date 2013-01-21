@@ -42,7 +42,7 @@ def createBackupDir(output):
     _backupDir = createSubDir(output, "pydpiper-backups")
     return(_backupDir)
 def makedirsIgnoreExisting(dirname):
-    """os.makedirs which fails silently if dir exists"""
+    """os.makedirs which fails if dir exists"""
     try:
         newDir = abspath(dirname)
         if not isdir(newDir):
