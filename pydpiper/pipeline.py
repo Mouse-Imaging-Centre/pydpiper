@@ -405,7 +405,6 @@ def launchServer(pipeline, options, e):
         daemon.requestLoop(pipeline.continueLoop) 
     except:
         logger.exception("Failed running server in daemon.requestLoop. Server shutting down.")
-        e.clear()
     else:
         try:
             print("All pipeline stages have been processed. Daemon unregistering " 
@@ -422,8 +421,6 @@ def launchServer(pipeline, options, e):
             print("Objects successfully unregistered and daemon shutdown.")
         except:
             logger.exception("Failed to successfully de-register all clients")
-        finally:
-            e.clear()
 
 def flatten_pipeline(p):
     """return a list of tuples for each stage.
