@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 
 from pydpiper.application import AbstractApplication
-from pydpiper.pipeline import Pipeline, CmdStage, InputFile, OutputFile, LogFile
 import pydpiper.file_handling as fh
 import pydpiper_apps.minc_tools.registration_functions as rf
 import pydpiper_apps.minc_tools.registration_file_handling as rfh
@@ -11,12 +10,12 @@ import pydpiper_apps.minc_tools.stats_tools as st
 import pydpiper_apps.minc_tools.option_groups as og
 import pydpiper_apps.minc_tools.old_MBM_interface_functions as ombm
 import Pyro
+from optparse import OptionGroup
 from datetime import date
 from os.path import abspath, isdir
 from os import walk
 import fnmatch
 import logging
-import csv
 import sys
 
 logger = logging.getLogger(__name__)
@@ -25,19 +24,21 @@ Pyro.config.PYRO_MOBILE_CODE=1
 
 class PairwiseNonlinear(AbstractApplication):
     def setup_options(self):
-        self.parser.add_option("--registration-method", dest="reg_method",
+        group = OptionGroup(self.parser, "Pairwise non-linear options", 
+                        "Options for pairwise non-linear registration of lsq6 or lsq12 aligned brains.")
+        group.add_option("--registration-method", dest="reg_method",
                       type="string", default="mincANTS",
                       help="Specify whether to use minctracc or mincANTS (default)")
-        self.parser.add_option("--lsq6-space", dest="lsq6_space",
+        group.add_option("--lsq6-space", dest="lsq6_space",
                       action="store_true", default=True, 
                       help="If true (default), images have already been aligned in lsq6 space.")
-        self.parser.add_option("--lsq12-space", dest="lsq12_space",
+        group.add_option("--lsq12-space", dest="lsq12_space",
                       action="store_true", default=False, 
                       help="If true, images have already been aligned in lsq12 space. Default is false.")
-        self.parser.add_option("--mask-dir", dest="mask_dir",
+        group.add_option("--mask-dir", dest="mask_dir",
                       type="string", default=None, 
-                      help="Directory of masks. If not specified, no masks are used. \
-                            If only one mask in directory, same mask used for all scans.")
+                      help="Directory of masks. If not specified, no masks are used. If only one mask in directory, same mask used for all scans.")
+        self.parser.add_option_group(group)
         """Add option groups from specific modules"""
         og.addMBMGroup(self.parser)
         og.tmpLongitudinalOptionGroup(self.parser)

@@ -4,7 +4,7 @@ from pydpiper.application import AbstractApplication
 import pydpiper.file_handling as fh
 from pydpiper_apps.minc_tools.registration_file_handling import RegistrationPipeFH
 from pydpiper_apps.minc_tools.registration_functions import initializeInputFiles
-from pydpiper_apps.MAGeT.MAGeT_modules import MAGeTMask, MAGeTRegister, voxelVote
+from pydpiper_apps.MAGeT.MAGeT_modules import MAGeTMask, MAGeTRegister, voxelVote, addMAGeTOptionGroup
 import Pyro
 from os.path import abspath, join
 import logging
@@ -19,29 +19,7 @@ Pyro.config.PYRO_MOBILE_CODE=1
 
 class MAGeTApplication(AbstractApplication):
     def setup_options(self):
-        self.parser.add_option("--atlas-library", dest="atlas_lib",
-                      type="string", default="atlas_label_pairs",
-                      help="Directory of existing atlas/label pairs")
-        self.parser.add_option("--no-pairwise", dest="pairwise",
-                      action="store_false", default=True,
-                      help="""Pairwise crossing of templates. Default is true. 
-                          If specified, only register inputs to atlases in library""")
-        self.parser.add_option("--mask", dest="mask",
-                      action="store_true", default=False,
-                      help="Create a mask for all images prior to handling labels")
-        self.parser.add_option("--mask-only", dest="mask_only",
-                      action="store_true", default=False,
-                      help="Create a mask for all images only, do not run full algorithm")
-        self.parser.add_option("--max-templates", dest="max_templates",
-                      default=25, type="int",
-                      help="Maximum number of templates to generate")
-        self.parser.add_option("--registration-method", dest="reg_method",
-                      default="minctracc", type="string",
-                      help="Specify whether to use minctracc or mincANTS")
-        self.parser.add_option("--masking-method", dest="mask_method",
-                      default="minctracc", type="string",
-                      help="Specify whether to use minctracc or mincANTS for masking")
-        
+        addMAGeTOptionGroup(self.parser)
         self.parser.set_usage("%prog [options] input files") 
 
     def setup_appName(self):

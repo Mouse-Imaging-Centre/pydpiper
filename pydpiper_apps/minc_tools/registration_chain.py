@@ -10,6 +10,7 @@ import pydpiper_apps.minc_tools.stats_tools as st
 import pydpiper_apps.minc_tools.option_groups as og
 import pydpiper_apps.minc_tools.old_MBM_interface_functions as ombm
 import Pyro
+from optparse import OptionGroup
 from datetime import date
 from os.path import abspath, isdir
 from os import walk
@@ -24,19 +25,21 @@ Pyro.config.PYRO_MOBILE_CODE=1
 
 class RegistrationChain(AbstractApplication):
     def setup_options(self):
-        self.parser.add_option("--registration-method", dest="reg_method",
+        group = OptionGroup(self.parser, "Registration-chain options", 
+                        "Options for registering consecutive timepoints of longitudinal data.")
+        group.add_option("--registration-method", dest="reg_method",
                       type="string", default="mincANTS",
                       help="Specify whether to use minctracc or mincANTS (default)")
-        self.parser.add_option("--avg-time-point", dest="avg_time_point",
+        group.add_option("--avg-time-point", dest="avg_time_point",
                       type="int", default=1,
                       help="Time point averaged prior to this registration to get common nlin space.")
-        self.parser.add_option("--lsq6-space", dest="lsq6_space",
+        group.add_option("--lsq6-space", dest="lsq6_space",
                       action="store_true", default=False, 
                       help="If true, view final output in lsq6 space. Default is false (native space.)")
-        self.parser.add_option("--mask-dir", dest="mask_dir",
+        group.add_option("--mask-dir", dest="mask_dir",
                       type="string", default=None, 
-                      help="Directory of masks. If not specified, no masks are used. \
-                            If only one mask in directory, same mask used for all scans.")
+                      help="Directory of masks. If not specified, no masks are used.If only one mask in directory, same mask used for all scans.")
+        self.parser.add_option_group(group)
         """Add option groups from specific modules"""
         og.addMBMGroup(self.parser)
         og.tmpLongitudinalOptionGroup(self.parser)

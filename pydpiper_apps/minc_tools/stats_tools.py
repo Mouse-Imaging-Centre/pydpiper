@@ -1,14 +1,14 @@
 from pydpiper.pipeline import Pipeline, CmdStage, InputFile, OutputFile, LogFile
 from pydpiper_apps.minc_tools.registration_functions import isFileHandler
 import pydpiper.file_handling as fh
-from optparse import OptionParser, OptionGroup
+from optparse import OptionGroup
 import sys
 import Pyro
 
 Pyro.config.PYRO_MOBILE_CODE=1
 
 def addStatsOptions(parser):
-    group = OptionGroup(parser, "statistics options", 
+    group = OptionGroup(parser, "Statistics options", 
                         "Options for calculating statistics.")
     group.add_option("--stats-kernels", dest="stats_kernels",
                       type="string", default="1.0,0.5,0.2,0.1", 
