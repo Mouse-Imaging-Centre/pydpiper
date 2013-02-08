@@ -82,8 +82,11 @@ class RegistrationFHBase():
         self.groupedFiles[self.currentGroupIndex].lastTransform[targetFilename] = xfm
     def getLastBasevol(self):
         return(self.groupedFiles[self.currentGroupIndex].basevol)
-    def setLastBasevol(self, newBaseVol):
-        self.groupedFiles[self.currentGroupIndex].basevol = newBaseVol
+    def setLastBasevol(self, newBaseVol=None):
+        if not newBaseVol:
+            self.groupedFiles[self.currentGroupIndex].basevol = self.inputFileName
+        else:
+            self.groupedFiles[self.currentGroupIndex].basevol = newBaseVol
     def setOutputDirectory(self, defaultDir):
         if not defaultDir:
             outputDir = abspath(curdir)

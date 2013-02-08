@@ -38,7 +38,7 @@ class RegistrationChain(AbstractApplication):
                       help="If true, view final output in lsq6 space. Default is false (native space.)")
         group.add_option("--mask-dir", dest="mask_dir",
                       type="string", default=None, 
-                      help="Directory of masks. If not specified, no masks are used.If only one mask in directory, same mask used for all scans.")
+                      help="Directory of masks. If not specified, no masks are used. If only one mask in directory, same mask used for all scans.")
         self.parser.add_option_group(group)
         """Add option groups from specific modules"""
         og.addMBMGroup(self.parser)

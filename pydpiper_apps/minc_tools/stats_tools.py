@@ -73,24 +73,25 @@ class CalcStats:
             det.setLogFile(LogFile(fh.logFromFile(self.inputFH.logDir, outDetShift)))
             self.p.addStage(det)
             
-            "Calculate log determinant (jacobian) and scaled log determinant (scaled jacobian)"
+            """Calculate log determinant (jacobian) and add to statsGroup."""
             outLogDet = fh.createBaseName(self.inputFH.statsDir, 
                                           outputBase + "_log_determinant_fwhm" + str(b) + ".mnc")
             cmd = ["mincmath", "-clobber", "-2", "-log", InputFile(outDetShift), OutputFile(outLogDet)]
             det = CmdStage(cmd)
             det.setLogFile(LogFile(fh.logFromFile(self.inputFH.logDir, outLogDet)))
             self.p.addStage(det)
-            outLogDetScaled = fh.createBaseName(self.inputFH.statsDir, 
-                                          outputBase + "_log_determinant_scaled_fwhm" + str(b) + ".mnc")
-            cmd = ["scale_voxels", "-clobber", "-invert", "-log", 
-                   InputFile(self.linearXfm), InputFile(outLogDet), OutputFile(outLogDetScaled)]
-            det = CmdStage(cmd)
-            det.setLogFile(LogFile(fh.logFromFile(self.inputFH.logDir, outLogDetScaled)))
-            self.p.addStage(det)
-            
-            """Add determinants and scaled determinants to stats group"""
             self.statsGroup.jacobians[b] = outLogDet
-            self.statsGroup.scaledJacobians[b] = outLogDetScaled
+            
+            """If self.linearXfm present, calculate scaled log determinant (scaled jacobian) and add to statsGroup"""
+            if self.linearXfm:
+                outLogDetScaled = fh.createBaseName(self.inputFH.statsDir, 
+                                                    outputBase + "_log_determinant_scaled_fwhm" + str(b) + ".mnc")
+                cmd = ["scale_voxels", "-clobber", "-invert", "-log", 
+                       InputFile(self.linearXfm), InputFile(outLogDet), OutputFile(outLogDetScaled)]
+                det = CmdStage(cmd)
+                det.setLogFile(LogFile(fh.logFromFile(self.inputFH.logDir, outLogDetScaled)))
+                self.p.addStage(det)
+                self.statsGroup.scaledJacobians[b] = outLogDetScaled
 
 class CalcChainStats(CalcStats):
     """This class calculates multiple displacement fields, jacobians and scaled jacobians"""

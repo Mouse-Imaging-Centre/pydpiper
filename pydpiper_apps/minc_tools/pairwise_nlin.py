@@ -152,7 +152,8 @@ class PairwiseNonlinear(AbstractApplication):
                         for b in blurs:
                             res = ombm.resampleToCommon(xfmToNlin, inputFH, subjectStats[inputFH][targetFH], b, nlinFH)
                             self.pipeline.addPipeline(res)
-                    inputFH.setLastBasevol(inputFH.inputFileName)
+                    """Reset last base volume to original input before continuing to next pair in loop."""
+                    inputFH.setLastBasevol()
 
 if __name__ == "__main__":
     

@@ -369,7 +369,7 @@ class autocrop(CmdStage):
         outBase = (fh.removeBaseAndExtension(inFile.getLastBasevol()) + "_"
                    + self.resolution + "res.mnc")
         outputFile = fh.createBaseName(outDir, outBase)
-        inFile.setLastBasevol(outputFile, setMain=False)
+        inFile.setLastBasevol(outputFile)
         return(outputFile)  
     
 class mincresample(CmdStage):  
