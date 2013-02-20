@@ -16,12 +16,9 @@ Pyro.config.PYRO_MOBILE_CODE=1
 
 class MBMApplication(AbstractApplication):
     def setup_options(self):
-        self.parser.add_option("--init-model", dest="init_model",
-                      type="string", default=None,
-                      help="Name of file to register towards. If unspecified, bootstrap.")
-        
         """Add option groups from specific modules"""
         og.addMBMGroup(self.parser)
+        rf.addGenRegOptionGroup(self.parser)
         
         self.parser.set_usage("%prog [options] input files") 
 

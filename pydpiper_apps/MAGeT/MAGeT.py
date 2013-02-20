@@ -3,7 +3,7 @@
 from pydpiper.application import AbstractApplication
 import pydpiper.file_handling as fh
 from pydpiper_apps.minc_tools.registration_file_handling import RegistrationPipeFH
-from pydpiper_apps.minc_tools.registration_functions import initializeInputFiles
+from pydpiper_apps.minc_tools.registration_functions import initializeInputFiles, addGenRegOptionGroup
 from pydpiper_apps.MAGeT.MAGeT_modules import MAGeTMask, MAGeTRegister, voxelVote, addMAGeTOptionGroup
 import Pyro
 from os.path import abspath, join
@@ -19,6 +19,7 @@ Pyro.config.PYRO_MOBILE_CODE=1
 
 class MAGeTApplication(AbstractApplication):
     def setup_options(self):
+        addGenRegOptionGroup(self.parser)
         addMAGeTOptionGroup(self.parser)
         self.parser.set_usage("%prog [options] input files") 
 
@@ -81,8 +82,9 @@ class MAGeTApplication(AbstractApplication):
         #MF TODO: add some checking to make sure that atlas/labels/naming all worked correctly
         # eg if we have A4_mask.mnc "matching" with A3_labels, we wont get right thing.
         
-        # Create fileHandling classes for images
-        inputs = initializeInputFiles(self.args, self.outputDir)
+        """ Create fileHandling classes for images. If a directory of masks is specified, 
+            they will be assigned to the appropriate input file handlers."""
+        inputs = initializeInputFiles(self.args, self.outputDir, self.options.mask_dir)
         
         templates = []
         numTemplates = len(self.args)

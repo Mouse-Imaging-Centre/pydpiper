@@ -4,10 +4,10 @@ from optparse import OptionGroup
 
 def addMBMGroup(parser):
     group = OptionGroup(parser, "MBM options", 
-                        "Options for MICe-build-model and related programs.")
-    group.add_option("--pipeline-name", dest="pipeline_name",
-                    type="string", default=None,
-                    help="Name of pipeline and prefix for models.")
+                        "Options for MICe-build-model.")
+    group.add_option("--init-model", dest="init_model",
+                      type="string", default=None,
+                      help="Name of file to register towards. If unspecified, bootstrap.")
     parser.add_option_group(group)
     
 def tmpLongitudinalOptionGroup(parser):

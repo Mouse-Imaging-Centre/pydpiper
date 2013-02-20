@@ -13,8 +13,6 @@ import Pyro
 from optparse import OptionGroup
 from datetime import date
 from os.path import abspath, isdir
-from os import walk
-import fnmatch
 import logging
 import sys
 
@@ -26,21 +24,15 @@ class PairwiseNonlinear(AbstractApplication):
     def setup_options(self):
         group = OptionGroup(self.parser, "Pairwise non-linear options", 
                         "Options for pairwise non-linear registration of lsq6 or lsq12 aligned brains.")
-        group.add_option("--registration-method", dest="reg_method",
-                      type="string", default="mincANTS",
-                      help="Specify whether to use minctracc or mincANTS (default)")
         group.add_option("--lsq6-space", dest="lsq6_space",
                       action="store_true", default=True, 
                       help="If true (default), images have already been aligned in lsq6 space.")
         group.add_option("--lsq12-space", dest="lsq12_space",
                       action="store_true", default=False, 
                       help="If true, images have already been aligned in lsq12 space. Default is false.")
-        group.add_option("--mask-dir", dest="mask_dir",
-                      type="string", default=None, 
-                      help="Directory of masks. If not specified, no masks are used. If only one mask in directory, same mask used for all scans.")
         self.parser.add_option_group(group)
         """Add option groups from specific modules"""
-        og.addMBMGroup(self.parser)
+        rf.addGenRegOptionGroup(self.parser)
         og.tmpLongitudinalOptionGroup(self.parser)
         st.addStatsOptions(self.parser)
         
@@ -66,7 +58,7 @@ class PairwiseNonlinear(AbstractApplication):
             sys.exit()
         
         """Create file handling classes for each image"""
-        inputs = rf.initializeInputFiles(self.args, processedDirectory)
+        inputs = rf.initializeInputFiles(self.args, processedDirectory, self.options.mask_dir)
         
         """Put blurs into array"""
         blurs = []
@@ -82,30 +74,6 @@ class PairwiseNonlinear(AbstractApplication):
             logger.error("The --mbm-directory specified does not exist: " + abspath(self.options.mbm_dir))
             sys.exit()
         
-        """If directory of masks is specified, apply to each file handler.
-           Two options:
-              1. One mask in directory --> use for all scans. 
-              2. Same number of masks as files, with same naming convention. Individual
-                 mask for each scan.  
-        """
-        if self.options.mask_dir:
-            absMaskPath = abspath(self.options.mask_dir)
-            masks = walk(absMaskPath).next()[2]
-            numMasks = len(masks)
-            numScans = len(inputs)
-            if numMasks == 1:
-                for inputFH in inputs:
-                    inputFH.setMask(absMaskPath + "/" + masks[0])
-            elif numMasks == numScans:
-                for m in masks:
-                    maskBase = fh.removeBaseAndExtension(m).split("_mask")[0]
-                    for inputFH in inputs:
-                        if fnmatch.fnmatch(inputFH.getLastBasevol(), "*" + maskBase + "*"):
-                            inputFH.setMask(absMaskPath + "/" + m)
-            else:
-                logger.error("Number of masks in directory does not match number of scans, but is greater than 1. Exiting...")
-                sys.exit()
-        
         """Get transforms from inputs to final nlin average and vice versa as well as lsq6 files"""
         if self.options.nlin_avg and self.options.mbm_dir:
             xfmsPipe = ombm.getXfms(nlinFH, inputs, self.options.lsq6_space, abspath(self.options.mbm_dir))
@@ -113,7 +81,7 @@ class PairwiseNonlinear(AbstractApplication):
                 self.pipeline.addPipeline(xfmsPipe)
         else:
             logger.info("MBM directory and nlin_average not specified.")
-            logger.info("Calculating registration chain only")
+            logger.info("Calculating pairwise nlin only without resampling to common space.")
         
         """Create a dictionary of statistics. Each subject gets an array of statistics
            indexed by inputFile."""

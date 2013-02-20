@@ -13,8 +13,6 @@ import Pyro
 from optparse import OptionGroup
 from datetime import date
 from os.path import abspath, isdir
-from os import walk
-import fnmatch
 import logging
 import csv
 import sys
@@ -27,21 +25,15 @@ class RegistrationChain(AbstractApplication):
     def setup_options(self):
         group = OptionGroup(self.parser, "Registration-chain options", 
                         "Options for registering consecutive timepoints of longitudinal data.")
-        group.add_option("--registration-method", dest="reg_method",
-                      type="string", default="mincANTS",
-                      help="Specify whether to use minctracc or mincANTS (default)")
         group.add_option("--avg-time-point", dest="avg_time_point",
                       type="int", default=1,
                       help="Time point averaged prior to this registration to get common nlin space.")
         group.add_option("--lsq6-space", dest="lsq6_space",
                       action="store_true", default=False, 
                       help="If true, view final output in lsq6 space. Default is false (native space.)")
-        group.add_option("--mask-dir", dest="mask_dir",
-                      type="string", default=None, 
-                      help="Directory of masks. If not specified, no masks are used. If only one mask in directory, same mask used for all scans.")
         self.parser.add_option_group(group)
         """Add option groups from specific modules"""
-        og.addMBMGroup(self.parser)
+        rf.addGenRegOptionGroup(self.parser)
         og.tmpLongitudinalOptionGroup(self.parser)
         st.addStatsOptions(self.parser)
         
@@ -72,7 +64,7 @@ class RegistrationChain(AbstractApplication):
         subjects = {} # One array of images for each subject
         index = 0 
         for subj in subjectList:
-            subjects[index] = rf.initializeInputFiles(subj, processedDirectory)
+            subjects[index] = rf.initializeInputFiles(subj, processedDirectory, self.options.mask_dir)
             index += 1
         
         """Put blurs into array"""
@@ -88,35 +80,6 @@ class RegistrationChain(AbstractApplication):
         if self.options.mbm_dir and not isdir(abspath(self.options.mbm_dir)):
             logger.error("The --mbm-directory specified does not exist: " + abspath(self.options.mbm_dir))
             sys.exit()
-        
-        """If directory of masks is specified, apply to each file handler.
-           Two options:
-              1. One mask in directory --> use for all scans. 
-              2. Same number of masks as files, with same naming convention. Individual
-                 mask for each scan.  
-        """
-        if self.options.mask_dir:
-            absMaskPath = abspath(self.options.mask_dir)
-            masks = walk(absMaskPath).next()[2]
-            numMasks = len(masks)
-            numScans = 0
-            for s in subjects:
-                numScans += len(subjects[s])
-            if numMasks == 1:
-                for s in subjects:
-                    for i in range(len(subjects[s])):
-                        subjects[s][i].setMask(absMaskPath + "/" + masks[0])
-            elif numMasks == numScans:
-                for m in masks:
-                    maskBase = fh.removeBaseAndExtension(m).split("_mask")[0]
-                    for s in subjects:
-                        for i in range(len(subjects[s])):
-                            sFH = subjects[s][i]
-                            if fnmatch.fnmatch(sFH.getLastBasevol(), "*" + maskBase + "*"):
-                                sFH.setMask(absMaskPath + "/" + m)
-            else:
-                logger.error("Number of masks in directory does not match number of scans, but is greater than 1. Exiting...")
-                sys.exit()
         
         """Take average time point, subtract 1 for proper indexing"""
         avgTime = self.options.avg_time_point - 1

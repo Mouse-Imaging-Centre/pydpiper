@@ -30,9 +30,6 @@ def addMAGeTOptionGroup(parser):
     group.add_option("--max-templates", dest="max_templates",
                       default=25, type="int",
                       help="Maximum number of templates to generate")
-    group.add_option("--registration-method", dest="reg_method",
-                      default="minctracc", type="string",
-                      help="Specify whether to use minctracc or mincANTS")
     group.add_option("--masking-method", dest="mask_method",
                       default="minctracc", type="string",
                       help="Specify whether to use minctracc or mincANTS for masking")

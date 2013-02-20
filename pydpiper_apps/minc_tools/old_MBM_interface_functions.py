@@ -61,7 +61,7 @@ def getXfms(nlinFH, subjects, lsq6Space, mbmDir, time=None):
                     pipeline.addStage(invertXfm)
                 nlinFH.setLastXfm(inputFH, xfmToNative)
                 inputFH.setLastXfm(nlinFH, xfmFromNative)
-        return pipeline
+    return pipeline
                 
 def getLsq6Files(mbmDir, subjects, time, processedDirectory):
     """For each subject, find the lsq6 file in the specified directory"""
@@ -110,7 +110,6 @@ def getAndConcatXfm(s, subjectStats, i, xfmArray, inverse):
     """Insert xfms into array and concat, returning CmdStage
        Note that s is subjects[s][i] and subjectStats is subjectStats[s] from calling function
        inverse=True means that we need to retrieve inverse transforms"""
-       
     if inverse:
         xfm = subjectStats[i-1].inverseXfm
     else:
@@ -118,7 +117,6 @@ def getAndConcatXfm(s, subjectStats, i, xfmArray, inverse):
     xfmArray.insert(0, xfm)
     output = fh.createBaseName(s.statsDir, "xfm_to_common_space.xfm")
     cmd = ["xfmconcat", "-clobber"] + [InputFile(a) for a in xfmArray] + [OutputFile(output)]
-    
     xfmConcat = CmdStage(cmd)
     xfmConcat.setLogFile(LogFile(fh.logFromFile(s.logDir, output)))
     return xfmConcat
