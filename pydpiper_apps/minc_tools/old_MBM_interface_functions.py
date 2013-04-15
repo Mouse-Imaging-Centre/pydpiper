@@ -125,7 +125,9 @@ def getAndConcatXfm(s, subjectStats, i, xfmArray, inverse):
 def resampleToCommon(xfm, FH, statsGroup, b, nlinFH):
     pipeline = Pipeline()
     outputDirectory = FH.statsDir
-    filesToResample = [statsGroup.jacobians[b], statsGroup.scaledJacobians[b]]
+    filesToResample = [statsGroup.jacobians[b]]
+    if statsGroup.scaledJacobians:
+        filesToResample.append(statsGroup.scaledJacobians[b])
     for f in filesToResample:
         outputBase = fh.removeBaseAndExtension(f).split(".mnc")[0]
         outputFile = fh.createBaseName(outputDirectory, outputBase + "_common" + ".mnc")

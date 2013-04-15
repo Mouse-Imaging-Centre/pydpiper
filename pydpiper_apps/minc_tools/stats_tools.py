@@ -35,6 +35,13 @@ class CalcStats:
     def fullStatsCalc(self):
         self.linAndNlinDisplacement()
         self.calcDetAndLogDet()  
+    
+    def calcFullDisplacement(self):
+        """Calculates the full displacement without removing the linear part"""
+        xfm = self.inputFH.getLastXfm(self.targetFH)
+        fullDisp = mincDisplacement(self.inputFH, self.targetFH, xfm)
+        self.p.addStage(fullDisp)
+        self.fullDisp = fullDisp.outputFiles[0]
         
     def linAndNlinDisplacement(self):
         """Need to fill in this function and combine with version in CalcChainStats
@@ -44,16 +51,21 @@ class CalcStats:
         pass
         
          
-    def calcDetAndLogDet(self):  
-        #Lots of repetition here--let's see if we can't make some functions.      
+    def calcDetAndLogDet(self, useFullDisp=False):  
+        #Lots of repetition here--let's see if we can't make some functions.
+        """useFullDisp indicates whether or not """ 
+        if useFullDisp:
+            dispToUse = self.fullDisp
+        else:
+            dispToUse = self.nlinDisp
         for b in self.blurs:
             """Calculate smoothed deformation field"""
             fwhm = "--fwhm=" + str(b)
-            outputBase = fh.removeBaseAndExtension(self.nlinDisp).split("_nlin_displacement.mnc")[0]
+            outputBase = fh.removeBaseAndExtension(dispToUse).split("_displacement")[0]
             outSmooth = fh.createBaseName(self.inputFH.tmpDir, 
                                        outputBase + "_smooth_displacement_fwhm" + str(b) + ".mnc")
             cmd = ["smooth_vector", "--clobber", "--filter", fwhm, 
-                   InputFile(self.nlinDisp), OutputFile(outSmooth)]
+                   InputFile(dispToUse), OutputFile(outSmooth)]
             smoothVec = CmdStage(cmd)
             smoothVec.setLogFile(LogFile(fh.logFromFile(self.inputFH.logDir, outSmooth)))
             self.p.addStage(smoothVec)
@@ -83,7 +95,7 @@ class CalcStats:
             self.statsGroup.jacobians[b] = outLogDet
             
             """If self.linearXfm present, calculate scaled log determinant (scaled jacobian) and add to statsGroup"""
-            if self.linearXfm:
+            if not useFullDisp:
                 outLogDetScaled = fh.createBaseName(self.inputFH.statsDir, 
                                                     outputBase + "_log_determinant_scaled_fwhm" + str(b) + ".mnc")
                 cmd = ["scale_voxels", "-clobber", "-invert", "-log", 
@@ -92,6 +104,8 @@ class CalcStats:
                 det.setLogFile(LogFile(fh.logFromFile(self.inputFH.logDir, outLogDetScaled)))
                 self.p.addStage(det)
                 self.statsGroup.scaledJacobians[b] = outLogDetScaled
+            else:
+                self.statsGroup.scaledJacobians = None
 
 class CalcChainStats(CalcStats):
     """This class calculates multiple displacement fields, jacobians and scaled jacobians"""
@@ -121,40 +135,24 @@ class CalcChainStats(CalcStats):
         self.p.addStage(invertXfm)
         linDisp = mincDisplacement(self.inputFH, self.targetFH, invXfm)
         self.p.addStage(linDisp)
+        self.linDisp = linDisp.outputFiles[0]
         
         """Calculate full displacement from target to source
            invert lastXfm and use this to calculate"""
-        # Review that getting and setting of lastXfms are correct for both xfm and invxfm
-        xfm = self.inputFH.getLastXfm(self.targetFH)
-        invXfm = self.targetFH.getLastXfm(self.inputFH)
-        if not invXfm:
-            invXfmBase = fh.removeBaseAndExtension(xfm).split(".xfm")[0]
-            invXfm = fh.createBaseName(self.inputFH.transformsDir, invXfmBase + "_inverse.xfm")
-            cmd = ["xfminvert", "-clobber", InputFile(xfm), OutputFile(invXfm)]
-            invertXfm = CmdStage(cmd)
-            invertXfm.setLogFile(LogFile(fh.logFromFile(self.inputFH.logDir, invXfm)))
-            self.p.addStage(invertXfm)
-            self.targetFH.setLastXfm(self.inputFH, invXfm)
-        
-        
-        fullDisp = mincDisplacement(self.inputFH, self.targetFH, xfm)
-        self.p.addStage(fullDisp)
-        
+        self.calcFullDisplacement()
+                
         """Add transforms to StatsGroup"""
+        xfm = self.inputFH.getLastXfm(self.targetFH)
         self.statsGroup.transform = xfm
-        self.statsGroup.inverseXfm = invXfm
         
         """Calculate nlin displacement from source to target"""
         nlinBase = fh.removeBaseAndExtension(xfm) + "_nlin_displacement.mnc"
-        nlinDisp = fh.createBaseName(self.inputFH.tmpDir, nlinBase)
-        cmd = ["mincmath", "-clobber", "-add", InputFile(fullDisp.outputFiles[0]),
-               InputFile(linDisp.outputFiles[0]), OutputFile(nlinDisp)]
+        self.nlinDisp = fh.createBaseName(self.inputFH.tmpDir, nlinBase)
+        cmd = ["mincmath", "-clobber", "-add", InputFile(self.fullDisp.outputFiles[0]),
+               InputFile(self.linDisp.outputFiles[0]), OutputFile(self.nlinDisp)]
         mincmath = CmdStage(cmd)
-        mincmath.setLogFile(LogFile(fh.logFromFile(self.inputFH.logDir, nlinDisp)))
+        mincmath.setLogFile(LogFile(fh.logFromFile(self.inputFH.logDir, self.nlinDisp)))
         self.p.addStage(mincmath)
-        
-        """Set variables that we will need for jacobian deformation fields"""
-        self.nlinDisp = nlinDisp
 
 class linearPartofNlin(CmdStage):
     def __init__(self, inputFH, targetFH, defaultDir="transforms"):
