@@ -24,12 +24,9 @@ class PairwiseNonlinear(AbstractApplication):
     def setup_options(self):
         group = OptionGroup(self.parser, "Pairwise non-linear options", 
                         "Options for pairwise non-linear registration of lsq6 or lsq12 aligned brains.")
-        group.add_option("--lsq6-space", dest="lsq6_space",
-                      action="store_true", default=True, 
-                      help="If true (default), images have already been aligned in lsq6 space.")
-        group.add_option("--lsq12-space", dest="lsq12_space",
-                      action="store_true", default=False, 
-                      help="If true, images have already been aligned in lsq12 space. Default is false.")
+        group.add_option("--input-space", dest="input_space",
+                      type="string", default="lsq6", 
+                      help="Option to specify space of input-files. Can be lsq6 (default), lsq12 or native.")
         self.parser.add_option_group(group)
         """Add option groups from specific modules"""
         rf.addGenRegOptionGroup(self.parser)
@@ -76,7 +73,7 @@ class PairwiseNonlinear(AbstractApplication):
         
         """Get transforms from inputs to final nlin average and vice versa as well as lsq6 files"""
         if self.options.nlin_avg and self.options.mbm_dir:
-            xfmsPipe = ombm.getXfms(nlinFH, inputs, self.options.lsq6_space, abspath(self.options.mbm_dir))
+            xfmsPipe = ombm.getXfms(nlinFH, inputs, self.options.input_space, abspath(self.options.mbm_dir))
             if len(xfmsPipe.stages) > 0:
                 self.pipeline.addPipeline(xfmsPipe)
         else:
@@ -111,7 +108,8 @@ class PairwiseNonlinear(AbstractApplication):
                     inputFH.setLastBasevol(resample.outputFiles[0])
                     """Calculate statistics"""
                     stats = st.CalcChainStats(inputFH, targetFH, blurs)
-                    stats.fullStatsCalc()
+                    stats.calcFullDisplacement()
+                    stats.calcDetAndLogDet(useFullDisp=True)
                     self.pipeline.addPipeline(stats.p)
                     subjectStats[inputFH][targetFH] = stats.statsGroup
                     """Resample to nlin space from previous build model run, if specified"""

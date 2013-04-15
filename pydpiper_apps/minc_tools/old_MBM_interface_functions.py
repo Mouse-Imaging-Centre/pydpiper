@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 Pyro.config.PYRO_MOBILE_CODE=1 
 
-def getXfms(nlinFH, subjects, lsq6Space, mbmDir, time=None):
+def getXfms(nlinFH, subjects, space, mbmDir, time=None):
 
     """For each file in the build-model registration (associated with the specified
        time point), do the following:
@@ -45,14 +45,20 @@ def getXfms(nlinFH, subjects, lsq6Space, mbmDir, time=None):
     pipeline = Pipeline()
     baseNames = walk(mbmDir).next()[1]
     for b in baseNames:
-        if lsq6Space:
+        if space == "lsq6":
             xfmToNative = abspath(mbmDir + "/" + b + "/transforms/" + b + "-final-to_lsq6.xfm")
-        else:
+        elif space == "lsq12":
+            xfmToNative = abspath(mbmDir + "/" + b + "/transforms/" + b + "-final-nlin.xfm")
+            xfmFromNative = abspath(mbmDir + "/" + b + "/transforms/" + b + "_inv_nonlinear.xfm")
+        elif space == "native":
             xfmToNative = abspath(mbmDir + "/" + b + "/transforms/" + b + "-to-native.xfm")
             xfmFromNative = abspath(mbmDir + "/" + b + "/transforms/" + b + "-from-native.xfm")
+        else:
+            logger.error("getXfms can only retrieve transforms to and from native, lsq6 or lsq12 space. Invalid parameter has been passed.")
+            sys.exit()
         for inputFH in inputs:
             if fnmatch.fnmatch(inputFH.getLastBasevol(), "*" + b + "*"):
-                if lsq6Space:
+                if space=="lsq6":
                     invXfmBase = fh.removeBaseAndExtension(xfmToNative).split("-final-to_lsq6")[0]
                     xfmFromNative = fh.createBaseName(inputFH.transformsDir, invXfmBase + "_lsq6-to-final.xfm")
                     cmd = ["xfminvert", "-clobber", InputFile(xfmToNative), OutputFile(xfmFromNative)]

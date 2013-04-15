@@ -96,6 +96,7 @@ class CalcStats:
             
             """If self.linearXfm present, calculate scaled log determinant (scaled jacobian) and add to statsGroup"""
             if not useFullDisp:
+                #MF TODO: Depending on which space inputs are in, may need to handle additional lsq12 transform, as in build-model
                 outLogDetScaled = fh.createBaseName(self.inputFH.statsDir, 
                                                     outputBase + "_log_determinant_scaled_fwhm" + str(b) + ".mnc")
                 cmd = ["scale_voxels", "-clobber", "-invert", "-log", 
@@ -148,8 +149,8 @@ class CalcChainStats(CalcStats):
         """Calculate nlin displacement from source to target"""
         nlinBase = fh.removeBaseAndExtension(xfm) + "_nlin_displacement.mnc"
         self.nlinDisp = fh.createBaseName(self.inputFH.tmpDir, nlinBase)
-        cmd = ["mincmath", "-clobber", "-add", InputFile(self.fullDisp.outputFiles[0]),
-               InputFile(self.linDisp.outputFiles[0]), OutputFile(self.nlinDisp)]
+        cmd = ["mincmath", "-clobber", "-add", InputFile(self.fullDisp),
+               InputFile(self.linDisp), OutputFile(self.nlinDisp)]
         mincmath = CmdStage(cmd)
         mincmath.setLogFile(LogFile(fh.logFromFile(self.inputFH.logDir, self.nlinDisp)))
         self.p.addStage(mincmath)

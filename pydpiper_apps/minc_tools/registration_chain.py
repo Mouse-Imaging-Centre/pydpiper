@@ -28,9 +28,9 @@ class RegistrationChain(AbstractApplication):
         group.add_option("--avg-time-point", dest="avg_time_point",
                       type="int", default=1,
                       help="Time point averaged prior to this registration to get common nlin space.")
-        group.add_option("--lsq6-space", dest="lsq6_space",
-                      action="store_true", default=False, 
-                      help="If true, view final output in lsq6 space. Default is false (native space.)")
+        group.add_option("--input-space", dest="input_space",
+                      type="string", default="lsq6", 
+                      help="Option to specify space of input-files. Can be lsq6 (default), lsq12 or native.")
         self.parser.add_option_group(group)
         """Add option groups from specific modules"""
         rf.addGenRegOptionGroup(self.parser)
@@ -86,7 +86,7 @@ class RegistrationChain(AbstractApplication):
         
         """Get transforms from inputs to final nlin average and vice versa"""
         if self.options.nlin_avg and self.options.mbm_dir:
-            xfmsPipe = ombm.getXfms(nlinFH, subjects, self.options.lsq6_space, abspath(self.options.mbm_dir), time=avgTime)
+            xfmsPipe = ombm.getXfms(nlinFH, subjects, self.options.input_space, abspath(self.options.mbm_dir), time=avgTime)
             if len(xfmsPipe.stages) > 0:
                 self.pipeline.addPipeline(xfmsPipe)
             
