@@ -164,10 +164,13 @@ class minctracc(CmdStage):
                 """ if blur = None, getBlur returns lastblur
                 if gradient is true, getBlur returns gradient instead of blur 
                 if blur = -1, lastBaseVol is returned and gradient is ignored.
+                
+                self.transform will be None if there is no previous transform
+                between input and target. If this is the case, lsq6 and lsq12
+                defaults are added in the setTransforms function
                 """
                 self.source = inSource.getBlur(blur, gradient)
                 self.target = inTarget.getBlur(blur, gradient)
-                # Note: self.transform may also be None and should be for initial call 
                 self.transform = inSource.getLastXfm(inTarget)
                 outputXfm = inSource.registerVolume(inTarget, defaultDir)
                 self.output = outputXfm
@@ -208,6 +211,7 @@ class minctracc(CmdStage):
 
         self.addDefaults()
         self.finalizeCommand()
+        self.setTransform()
         self.setName()
         self.colour = "red"
 
@@ -238,11 +242,24 @@ class minctracc(CmdStage):
             if self.target_mask:
                 self.inputFiles += [self.target_mask]
                 self.cmd += ["-model_mask", self.target_mask]
-        if self.transform:
-            self.inputFiles += [self.transform]
-            self.cmd += ["-transform", self.transform]
         self.outputFiles = [self.output]
 
+    def setTransform(self):
+        """If there is no last transform between the input and target (if using file handlers)
+           or if there is no transform specified as an argument (if not using file handlers)
+           set defaults based on linear parameter. If a transform is specified, use that one.
+           Note that nothing is specified for nonlinear registrations with no transform,
+           the minctracc defaults are fine. 
+        """
+        if not self.transform:
+            if self.linearparam == "lsq6":
+                self.cmd += ["-est_center", "-est_translations"]
+            elif self.linearparam == "lsq12":
+                self.cmd += ["-identity"]
+        else:
+            self.inputFiles += [self.transform]
+            self.cmd += ["-transform", self.transform]
+        
     def finalizeCommand(self):
         """add the options to finalize the command"""
         if self.linearparam == "nlin":
@@ -259,6 +276,7 @@ class minctracc(CmdStage):
             """add the options for a linear fit"""
             _numCmd = "-" + self.linearparam
             self.cmd += ["-xcorr", _numCmd]
+            self.cmd += ["-tol", str(0.0001)]
 
 class blur(CmdStage):
     def __init__(self, 

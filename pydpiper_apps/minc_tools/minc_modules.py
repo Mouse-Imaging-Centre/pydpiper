@@ -68,8 +68,45 @@ class ChainAlignLSQ6:
         resample = ma.mincresample(inputFH, templateFH, outputLocation=inputFH, likeFile=templateFH)
         self.p.addStage(resample)
         self.lsq6Files[inputFH] = rfh.RegistrationFHBase(resample.outputFiles[0], inputFH.subjDir)
-                                       
+
+class LSQ12:
+    """Basic LSQ12 class. Eventually this and any related classes will be moved to its own .py file.
+    """
+    def __init__(self,
+                 inputFH,
+                 targetFH, 
+                 blurs=[0.3, 0.2, 0.15]):                                      
     
+        self.p = Pipeline()
+        self.inputFH = inputFH
+        self.targetFH = targetFH
+        self.blurs = blurs
+        
+        self.blurFiles()
+        self.buildCommand()
+    
+    def blurFiles(self):
+        for b in self.blurs:
+            if b != -1:
+                tblur = ma.blur(self.targetFH, b, gradient=True)
+                iblur = ma.blur(self.inputFH, b, gradient=True)               
+                self.p.addStage(tblur)
+                self.p.addStage(iblur)
+        
+    def buildCommand(self):
+        gradient=[False,True,False]
+        step=[1,0.5,0.333333333333333]
+        simplex=[3,1.5,1]
+        for i in range(len(self.blurs)):    
+            linearStage = ma.minctracc(self.inputFH, 
+                                       self.targetFH, 
+                                       blur=self.blurs[i], 
+                                       gradient=gradient[i],                                     
+                                       linearparam="lsq12",
+                                       step=step[i],
+                                       simplex=simplex[i])
+            self.p.addStage(linearStage)
+        
 #Might want to move all HierarchicalMinctracc classes to their own file
 class LinearHierarchicalMinctracc:
     """Default LinearHierarchicalMinctracc class

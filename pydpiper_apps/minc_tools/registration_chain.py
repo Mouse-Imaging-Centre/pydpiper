@@ -114,7 +114,12 @@ class RegistrationChain(AbstractApplication):
                 # Create new groups
                 # MF TODO: Make generalization of registration parameters easier. 
                 if self.options.reg_method == "mincANTS":
-                    b = 0.15  
+                    """First, run a standard lsq12 registration on the brains if input is lsq6."""
+                    if self.options.input_space=="lsq6":
+                        lsq12 = mm.LSQ12(s[i], s[i+1])
+                        self.pipeline.addPipeline(lsq12.p)
+                    """Then run a single generation mincANTS call"""
+                    b = 0.056  
                     self.pipeline.addStage(ma.blur(s[i], b, gradient=True))
                     self.pipeline.addStage(ma.blur(s[i+1], b, gradient=True))              
                     self.pipeline.addStage(ma.mincANTS(s[i], 
