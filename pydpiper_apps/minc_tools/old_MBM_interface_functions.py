@@ -90,13 +90,14 @@ def concatAndResample(subjects, subjectStats, timePoint, nlinFH, blurs):
         count = len(subjects[s])
         for b in blurs:
             xfmArray = [xfmToNlin]
-            """Do timePoint with average first"""
-            res = resampleToCommon(xfmToNlin, subjects[s][timePoint], subjectStats[s][timePoint], b, nlinFH)
-            pipeline.addPipeline(res)
+            """Do timePoint with average first if average is not final subject"""
+            if count - timePoint > 1:
+                res = resampleToCommon(xfmToNlin, subjects[s][timePoint], subjectStats[s][timePoint], b, nlinFH)
+                pipeline.addPipeline(res)
             if not timePoint - 1 < 0:
                 """Average happened at time point other than first time point. 
                    Loop over points prior to average."""
-                for i in reversed(range(timePoint)):
+                for i in reversed(range(timePoint)): 
                     xcs = getAndConcatXfm(subjects[s][i], subjectStats[s], i, xfmArray, False)
                     pipeline.addStage(xcs)
                     res = resampleToCommon(xcs.outputFiles[0], subjects[s][i], subjectStats[s][i], b, nlinFH)
