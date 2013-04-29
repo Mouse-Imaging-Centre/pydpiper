@@ -91,17 +91,8 @@ class PairwiseNonlinear(AbstractApplication):
                 if inputFH != targetFH:
                 # MF TODO: Make generalization of registration parameters easier. 
                     if self.options.reg_method == "mincANTS":
-                        """First, run a standard lsq12 registration on the brains if input is lsq6."""
-                        if self.options.input_space=="lsq6":
-                            lsq12 = mm.LSQ12(inputFH, targetFH)
-                            self.pipeline.addPipeline(lsq12.p)
-                        """Then run a single generation mincANTS call"""
-                        b = 0.056  
-                        self.pipeline.addStage(ma.blur(inputFH, b, gradient=True))
-                        self.pipeline.addStage(ma.blur(targetFH, b, gradient=True))              
-                        self.pipeline.addStage(ma.mincANTS(inputFH, 
-                                                           targetFH,
-                                                           blur=[-1,b]))
+                        register = mm.LSQ12ANTSNlin(inputFH, targetFH)
+                        self.pipeline.addPipeline(register.p)
                     elif self.options.reg_method == "minctracc":
                         hm = mm.HierarchicalMinctracc(inputFH, targetFH)
                         self.pipeline.addPipeline(hm.p)

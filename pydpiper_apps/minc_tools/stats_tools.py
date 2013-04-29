@@ -31,6 +31,26 @@ class CalcStats:
         self.targetFH = targetFH
         self.blurs = blurs
         self.statsGroup = StatsGroup()
+        """Set-up normal and inverse transforms """
+        self.setupXfms()
+        
+    def setupXfms(self):
+        self.xfm = self.inputFH.getLastXfm(self.targetFH)
+        self.statsGroup.transform = self.xfm
+        if not self.xfm:
+            print "Cannot calculate statistics. No transform between input and target specified."
+            sys.exit()
+        self.inverseXfm = self.targetFH.getLastXfm(self.inputFH)
+        if not self.inverseXfm:
+            "invert xfm and calculate"
+            invXfmBase = fh.removeBaseAndExtension(self.xfm).split(".xfm")[0]
+            invXfm = fh.createBaseName(self.inputFH.transformsDir, invXfmBase + "_inverse.xfm")
+            cmd = ["xfminvert", "-clobber", InputFile(self.xfm), OutputFile(invXfm)]
+            invertXfm = CmdStage(cmd)
+            invertXfm.setLogFile(LogFile(fh.logFromFile(self.inputFH.logDir, invXfm)))
+            self.p.addStage(invertXfm)
+            self.inverseXfm = invXfm
+        self.statsGroup.inverseXfm = self.inverseXfm
     
     def fullStatsCalc(self):
         self.linAndNlinDisplacement()
@@ -38,8 +58,7 @@ class CalcStats:
     
     def calcFullDisplacement(self):
         """Calculates the full displacement without removing the linear part"""
-        xfm = self.inputFH.getLastXfm(self.targetFH)
-        fullDisp = mincDisplacement(self.inputFH, self.targetFH, xfm)
+        fullDisp = mincDisplacement(self.inputFH, self.targetFH, self.xfm)
         self.p.addStage(fullDisp)
         self.fullDisp = fullDisp.outputFiles[0]
         
@@ -141,13 +160,9 @@ class CalcChainStats(CalcStats):
         """Calculate full displacement from target to source
            invert lastXfm and use this to calculate"""
         self.calcFullDisplacement()
-                
-        """Add transforms to StatsGroup"""
-        xfm = self.inputFH.getLastXfm(self.targetFH)
-        self.statsGroup.transform = xfm
         
         """Calculate nlin displacement from source to target"""
-        nlinBase = fh.removeBaseAndExtension(xfm) + "_nlin_displacement.mnc"
+        nlinBase = fh.removeBaseAndExtension(self.xfm) + "_nlin_displacement.mnc"
         self.nlinDisp = fh.createBaseName(self.inputFH.tmpDir, nlinBase)
         cmd = ["mincmath", "-clobber", "-add", InputFile(self.fullDisp),
                InputFile(self.linDisp), OutputFile(self.nlinDisp)]

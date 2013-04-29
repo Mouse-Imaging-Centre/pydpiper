@@ -69,6 +69,58 @@ class ChainAlignLSQ6:
         self.p.addStage(resample)
         self.lsq6Files[inputFH] = rfh.RegistrationFHBase(resample.outputFiles[0], inputFH.subjDir)
 
+class LSQ12ANTSNlin:
+    """Class that runs a basic LSQ12 registration, followed by a single mincANTS call.
+       Currently used in MAGeT, registration_chain and pairwise_nlin."""
+    def __init__(self,
+                 inputFH,
+                 targetFH,
+                 lsq12Blurs=[0.3, 0.2, 0.15],
+                 ANTSBlur=0.056,
+                 defaultDir="tmp"):
+        
+        self.p = Pipeline()
+        self.inputFH = inputFH
+        self.targetFH = targetFH
+        self.lsq12Blurs = lsq12Blurs
+        self.defaultDir = defaultDir
+        self.ANTSBlur = ANTSBlur
+        
+        self.buildPipeline()    
+    
+    def buildPipeline(self):
+        """Run lsq12 registration prior to non-linear"""
+        lsq12 = LSQ12(self.inputFH, self.targetFH)
+        self.p.addPipeline(lsq12.p)
+        """Resample input using final lsq12 transform"""
+        res = ma.mincresample(self.inputFH, self.targetFH, likeFile=self.targetFH)   
+        self.p.addStage(res)
+        self.inputFH.setLastBasevol(res.outputFiles[0])
+        # MF TODO: For future implementations, perhaps keep track of the xfm
+        # by creating a new registration group. Not necessary for current use,
+        # but could be essential in the future.  
+        lsq12xfm = self.inputFH.getLastXfm(self.targetFH)
+        """Blur input and template files prior to running mincANTS command"""
+        tblur = ma.blur(self.targetFH, self.ANTSBlur, gradient=True)
+        iblur = ma.blur(self.inputFH, self.ANTSBlur, gradient=True)               
+        self.p.addStage(tblur)
+        self.p.addStage(iblur)
+        sp = ma.mincANTS(self.inputFH,
+                         self.targetFH,
+                         defaultDir=self.defaultDir, 
+                         blur=[-1, self.ANTSBlur])
+        self.p.addStage(sp)
+        nlinXfm = sp.outputFiles[0]
+        """Reset last base volume to original input for future registrations."""
+        self.inputFH.setLastBasevol()
+        """Concatenate transforms to get final lsq12 + nlin. Register volume handles naming and setting of lastXfm"""
+        #MF TODO: May want to change the output name to include a "concat" to indicate lsq12 and nlin concatenation?
+        output = self.inputFH.registerVolume(self.targetFH, "transforms")
+        cmd = ["xfmconcat", "-clobber"] + [lsq12xfm] + [nlinXfm] + [OutputFile(output)]
+        xfmConcat = CmdStage(cmd)
+        xfmConcat.setLogFile(LogFile(fh.logFromFile(self.inputFH.logDir, output)))
+        self.p.addStage(xfmConcat)
+
 class LSQ12:
     """Basic LSQ12 class. Eventually this and any related classes will be moved to its own .py file.
     """
@@ -83,7 +135,7 @@ class LSQ12:
         self.blurs = blurs
         
         self.blurFiles()
-        self.buildCommand()
+        self.buildPipeline()
     
     def blurFiles(self):
         for b in self.blurs:
@@ -93,7 +145,7 @@ class LSQ12:
                 self.p.addStage(tblur)
                 self.p.addStage(iblur)
         
-    def buildCommand(self):
+    def buildPipeline(self):
         gradient=[False,True,False]
         step=[1,0.5,0.333333333333333]
         simplex=[3,1.5,1]
@@ -191,16 +243,9 @@ class HierarchicalMinctracc:
                  simplexes=[3,3,3,1.5,1.5,1],
                  w_translations=0.2,
                  linearparams = {'type' : "lsq12", 'simplex' : 1, 'step' : 1}, 
-                 createMask=False):
+                 defaultDir="tmp"):
         
         self.p = Pipeline()
-        
-        # Set default directories based on whether or not we are creating a mask
-        # Note: blurs always go in whatever tmp directory is set to
-        if createMask:
-            defaultDirectory = "tmp"
-        else:
-            defaultDirectory = "transforms"
         
         for b in blurs:
             #MF TODO: -1 case is also handled in blur. Need here for addStage.
@@ -215,7 +260,7 @@ class HierarchicalMinctracc:
         for g in [False, True]:    
             linearStage = ma.minctracc(inputPipeFH, 
                                        templatePipeFH,
-                                       defaultDir=defaultDirectory, 
+                                       defaultDir=defaultDir, 
                                        blur=blurs[0], 
                                        gradient=g,                                     
                                        linearparam=linearparams["type"],
@@ -229,7 +274,7 @@ class HierarchicalMinctracc:
         for i in range(len(steps)):
             nlinStage = ma.minctracc(inputPipeFH, 
                                      templatePipeFH,
-                                     defaultDir=defaultDirectory,
+                                     defaultDir=defaultDir,
                                      blur=blurs[i],
                                      gradient=gradients[i],
                                      iterations=iterations[i],

@@ -2,7 +2,7 @@
 
 from pydpiper.pipeline import CmdStage, Pipeline, InputFile, OutputFile, LogFile
 import pydpiper.file_handling as fh
-from pydpiper_apps.minc_tools.minc_modules import HierarchicalMinctracc
+from pydpiper_apps.minc_tools.minc_modules import HierarchicalMinctracc, LSQ12ANTSNlin
 import pydpiper_apps.minc_tools.minc_atoms as ma
 from optparse import OptionGroup
 import Pyro
@@ -31,7 +31,7 @@ def addMAGeTOptionGroup(parser):
                       default=25, type="int",
                       help="Maximum number of templates to generate")
     group.add_option("--masking-method", dest="mask_method",
-                      default="minctracc", type="string",
+                      default="mincANTS", type="string",
                       help="Specify whether to use minctracc or mincANTS for masking")
     parser.add_option_group(group)
 
@@ -143,27 +143,19 @@ def MAGeTRegister(inputFH,
                   method,
                   name="initial", 
                   createMask=False):
+    
     p = Pipeline()
+    if createMask:
+        defaultDir="tmp"
+    else:
+        defaultDir="transforms"
     if method == "minctracc":
-        sp = HierarchicalMinctracc(inputFH, 
-                                   templateFH, 
-                                   createMask=createMask)
+        sp = HierarchicalMinctracc(inputFH, templateFH, defaultDir=defaultDir)
         p.addPipeline(sp.p)
     elif method == "mincANTS":
-        if createMask:
-            defaultDir="tmp"
-        else:
-            defaultDir="transforms"
-        b = 0.056
-        tblur = ma.blur(templateFH, b, gradient=True)
-        iblur = ma.blur(inputFH, b, gradient=True)               
-        p.addStage(tblur)
-        p.addStage(iblur)
-        sp = ma.mincANTS(inputFH,
-                         templateFH,
-                         defaultDir=defaultDir)
-        p.addStage(sp)
-    
+        register = LSQ12ANTSNlin(inputFH, templateFH, defaultDir=defaultDir)
+        p.addPipeline(register.p)
+        
     rp = LabelAndFileResampling(inputFH, templateFH, name=name, createMask=createMask)
     p.addPipeline(rp.p)
     

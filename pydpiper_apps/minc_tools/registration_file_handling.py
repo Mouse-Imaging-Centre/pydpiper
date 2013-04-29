@@ -8,6 +8,7 @@ class RegistrationGroupedFiles():
     """A class to keep together all bits for a RegistrationPipeFH stage"""
     def __init__(self, inputVolume, mask=None):
         self.basevol = inputVolume
+        self.origGroupVol = inputVolume
         self.labels = []
         self.inputLabels = []
         self.blurs = {}
@@ -84,7 +85,7 @@ class RegistrationFHBase():
         return(self.groupedFiles[self.currentGroupIndex].basevol)
     def setLastBasevol(self, newBaseVol=None):
         if not newBaseVol:
-            self.groupedFiles[self.currentGroupIndex].basevol = self.inputFileName
+            self.groupedFiles[self.currentGroupIndex].basevol = self.groupedFiles[self.currentGroupIndex].origGroupVol
         else:
             self.groupedFiles[self.currentGroupIndex].basevol = newBaseVol
     def setOutputDirectory(self, defaultDir):

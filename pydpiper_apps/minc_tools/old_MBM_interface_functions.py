@@ -144,7 +144,6 @@ def resampleToCommon(xfm, FH, statsGroup, b, nlinFH):
                               transform=xfm,
                               outFile=outputFile,
                               logFile=logFile) 
-        
         pipeline.addStage(res)
     
     return pipeline
