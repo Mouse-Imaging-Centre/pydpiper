@@ -116,7 +116,7 @@ class LSQ12ANTSNlin:
         """Concatenate transforms to get final lsq12 + nlin. Register volume handles naming and setting of lastXfm"""
         #MF TODO: May want to change the output name to include a "concat" to indicate lsq12 and nlin concatenation?
         output = self.inputFH.registerVolume(self.targetFH, "transforms")
-        cmd = ["xfmconcat", "-clobber"] + [lsq12xfm] + [nlinXfm] + [OutputFile(output)]
+        cmd = ["xfmconcat", "-clobber"] + [InputFile(lsq12xfm)] + [InputFile(nlinXfm)] + [OutputFile(output)]
         xfmConcat = CmdStage(cmd)
         xfmConcat.setLogFile(LogFile(fh.logFromFile(self.inputFH.logDir, output)))
         self.p.addStage(xfmConcat)
