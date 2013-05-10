@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 from pydpiper.application import AbstractApplication
+from pydpiper.pipeline import CmdStage, InputFile, OutputFile, LogFile
 import pydpiper.file_handling as fh
 import pydpiper_apps.minc_tools.registration_functions as rf
 import pydpiper_apps.minc_tools.registration_file_handling as rfh
@@ -101,13 +102,7 @@ class RegistrationChain(AbstractApplication):
             logger.info("MBM directory and nlin_average not specified.")
             logger.info("Calculating registration chain only")
         
-        """Create a dictionary of statistics. Each subject gets an array of statistics
-           indexed by timepoint. The indexing on the subjectStats dictionary should match
-           the subjects dictionary"""
-        subjectStats = {}
-        
         for subj in subjects:
-            subjectStats[subj] = {}
             s = subjects[subj]
             count = len(s) 
             for i in range(count - 1):
@@ -125,23 +120,22 @@ class RegistrationChain(AbstractApplication):
                 else:
                     resample = ma.mincresample(s[i], s[i+1], likeFile=s[i])
                 self.pipeline.addStage(resample)
+                """Invert transforms for use later in stats"""
                 lastXfm = s[i].getLastXfm(s[i+1])
-                # not sure if want to use new group or existing
-                """Initialize newGroup with initial file as i resampled to i+1 
-                   space and setLastXfm to be final xfm from original group"""
-                groupName = "time_point_" + str(i) + "_to_" + str(i+1) 
-                s[i].newGroup(inputVolume=resample.outputFiles[0], groupName=groupName) 
-                s[i].setLastXfm(s[i+1], lastXfm)
-                stats = st.CalcChainStats(s[i], s[i+1], blurs)
-                stats.calcFullDisplacement()
-                stats.calcDetAndLogDet(useFullDisp=True)
-                self.pipeline.addPipeline(stats.p)
-                subjectStats[subj][i] = stats.statsGroup
+                inverseXfm = s[i+1].getLastXfm(s[i])
+                if not inverseXfm:
+                    "invert xfm and calculate"
+                    invXfmBase = fh.removeBaseAndExtension(lastXfm).split(".xfm")[0]
+                    invXfm = fh.createBaseName(s[i].transformsDir, invXfmBase + "_inverse.xfm")
+                    cmd = ["xfminvert", "-clobber", InputFile(lastXfm), OutputFile(invXfm)]
+                    invertXfm = CmdStage(cmd)
+                    invertXfm.setLogFile(LogFile(fh.logFromFile(s[i].logDir, invXfm)))
+                    self.pipeline.addStage(invertXfm)
+                    s[i+1].addAndSetXfmToUse(s[i], invXfm)
         
-        """Now that all registration is complete, concat transforms and resample"""
-        if self.options.nlin_avg and self.options.mbm_dir:
-            car = ombm.concatAndResample(subjects, subjectStats, avgTime, nlinFH, blurs) 
-            self.pipeline.addPipeline(car)
+        """Now that all registration is complete, calculate stats, concat transforms and resample"""
+        car = ombm.LongitudinalStatsConcatAndResample(subjects, avgTime, nlinFH, blurs) 
+        self.pipeline.addPipeline(car.p)
 
 if __name__ == "__main__":
     

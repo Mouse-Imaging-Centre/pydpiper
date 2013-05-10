@@ -19,8 +19,6 @@ class StatsGroup:
     """This group saves the key output from each instance for CalcStats, 
        so it can easily be retrieved later."""
     def __init__(self):
-        self.transform = None
-        self.inverseXfm = None
         self.jacobians = {}
         self.scaledJacobians = {}        
 
@@ -31,26 +29,13 @@ class CalcStats:
         self.targetFH = targetFH
         self.blurs = blurs
         self.statsGroup = StatsGroup()
-        """Set-up normal and inverse transforms """
         self.setupXfms()
         
     def setupXfms(self):
         self.xfm = self.inputFH.getLastXfm(self.targetFH)
-        self.statsGroup.transform = self.xfm
         if not self.xfm:
             print "Cannot calculate statistics. No transform between input and target specified."
             sys.exit()
-        self.inverseXfm = self.targetFH.getLastXfm(self.inputFH)
-        if not self.inverseXfm:
-            "invert xfm and calculate"
-            invXfmBase = fh.removeBaseAndExtension(self.xfm).split(".xfm")[0]
-            invXfm = fh.createBaseName(self.inputFH.transformsDir, invXfmBase + "_inverse.xfm")
-            cmd = ["xfminvert", "-clobber", InputFile(self.xfm), OutputFile(invXfm)]
-            invertXfm = CmdStage(cmd)
-            invertXfm.setLogFile(LogFile(fh.logFromFile(self.inputFH.logDir, invXfm)))
-            self.p.addStage(invertXfm)
-            self.inverseXfm = invXfm
-        self.statsGroup.inverseXfm = self.inverseXfm
     
     def fullStatsCalc(self):
         self.linAndNlinDisplacement()
@@ -220,7 +205,10 @@ class mincDisplacement(CmdStage):
             if isFileHandler(inputFH, targetFH):
                 self.inFile = inputFH.getLastBasevol()  
                 self.targetFile = targetFH.getLastBasevol()
-                self.xfm = transform
+                if not transform:
+                    self.xfm = inputFH.getLastXfm(targetFH)
+                else:
+                    self.xfm = transform
                 self.outfile = self.setOutputFile(inputFH, defaultDir)
                 self.logFile = fh.logFromFile(inputFH.logDir, self.outfile)
             else:
@@ -237,13 +225,13 @@ class mincDisplacement(CmdStage):
         self.setName()
         
     def addDefaults(self):
-        self.inputFiles += [self.inFile, self.targetFile, self.xfm]   
+        self.inputFiles += [self.inFile, self.xfm]   
         self.outputFiles += [self.outfile]       
         self.cmd += ["minc_displacement",
                      "-clobber"] 
                  
     def finalizeCommand(self):
-        self.cmd += [self.targetFile, self.xfm, self.outfile]    
+        self.cmd += [self.inFile, self.xfm, self.outfile]    
     def setName(self):
         self.name = "minc_displacement " 
     def setOutputFile(self, inFile, defaultDir):
