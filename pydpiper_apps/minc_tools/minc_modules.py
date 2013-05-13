@@ -1,8 +1,10 @@
 #!/usr/bin/env python
 
 from pydpiper.pipeline import Pipeline, CmdStage, InputFile, OutputFile, LogFile
+from pydpiper_apps.minc_tools.hierarchical_minctracc import RotationalMinctracc
 import pydpiper_apps.minc_tools.minc_atoms as ma
 import pydpiper_apps.minc_tools.registration_file_handling as rfh
+import pydpiper_apps.minc_tools.stats_tools as st
 import pydpiper.file_handling as fh
 from pyminc.volumes.factory import volumeFromFile
 
@@ -158,128 +160,122 @@ class LSQ12:
                                        step=step[i],
                                        simplex=simplex[i])
             self.p.addStage(linearStage)
-        
-#Might want to move all HierarchicalMinctracc classes to their own file
-class LinearHierarchicalMinctracc:
-    """Default LinearHierarchicalMinctracc class
-       Assumes lsq6 registration using the identity transform"""
-    def __init__(self, 
-                 inputPipeFH, 
-                 templatePipeFH,
-                 blurs=[1, 0.5, 0.3]):
-        
-        self.p = Pipeline()
-        self.inputPipeFH = inputPipeFH
-        self.templatePipeFH = templatePipeFH
-        
-        self.blurFiles(blurs)
-        
-    def blurFiles(self, blurs):
-        for b in blurs:
-            if b != -1:
-                tblur = ma.blur(self.templatePipeFH, b, gradient=True)
-                iblur = ma.blur(self.inputPipeFH, b, gradient=True)               
-                self.p.addStage(tblur)
-                self.p.addStage(iblur)
 
-class RotationalMinctracc:
-    """Default RotationalMinctracc class
-       Currently just calls rotational_minctracc.py 
-       with minimal updates. Ultimately, we will do
-       a more substantial overhaul. 
+class LongitudinalStatsConcatAndResample:
+    """ For each subject:
+        1. Calculate stats (displacement, jacobians, scaled jacobians) between i and i+1 time points 
+        2. Concatenate transforms between ith time point and average, and ith time point and common space.
+        3. Calculate stats between ith timePoint and average time point. 
+        4. Resample all stats into common space. (i to i+1 and i to average time point)
     """
-    def __init__(self, 
-                 inputPipeFH, 
-                 templatePipeFH,
-                 blurs=[0.5]):
+    def __init__(self, subjects, timePoint, nlinFH, blurs):
+        
+        self.subjects = subjects
+        self.timePoint = timePoint
+        self.nlinFH = nlinFH
+        self.blurs = blurs 
         
         self.p = Pipeline()
-        self.inputPipeFH = inputPipeFH
-        self.templatePipeFH = templatePipeFH
         
-        self.blurFiles(blurs) 
-        for b in blurs:
-            self.buildCmd(b)
-        
-    def blurFiles(self, blurs):
-        for b in blurs:
-            if b != -1:
-                tblur = ma.blur(self.templatePipeFH, b, gradient=True)
-                iblur = ma.blur(self.inputPipeFH, b, gradient=True)               
-                self.p.addStage(tblur)
-                self.p.addStage(iblur)
+        self.buildPipeline()
     
-    def buildCmd(self, b):
-        """Only -w_translations override rotational_minctracc.py defaults. 
-           Keep this here. Rather than giving the option to override other
-           defaults. We will eventually re-write this code.
-        """
-        w_trans = str(0.4)
-        cmd = ["rotational_minctracc.py", "-t", "/dev/shm/", "-w", w_trans, w_trans, w_trans]
-        source = self.inputPipeFH.getBlur(b)
-        target = self.templatePipeFH.getBlur(b)
-        mask = self.templatePipeFH.getMask()
-        if mask:
-            cmd += ["-m", InputFile(mask)]
-        outputXfm = self.inputPipeFH.registerVolume(self.templatePipeFH)
-        cmd +=[InputFile(source), InputFile(target), OutputFile(outputXfm), "/dev/null"]
-        rm = CmdStage(cmd)
-        rm.setLogFile(LogFile(fh.logFromFile(self.inputPipeFH.logDir, outputXfm)))
-        self.p.addStage(rm)
+    def statsAndResample(self, inputFH, targetFH, xfm):
+        """Calculate stats between input and target, resample to common space using xfm"""
+        stats = st.CalcChainStats(inputFH, targetFH, self.blurs)
+        stats.calcFullDisplacement()
+        stats.calcDetAndLogDet(useFullDisp=True)
+        self.p.addPipeline(stats.p)
+        res = resampleToCommon(xfm, inputFH, stats.statsGroup, self.blurs, self.nlinFH)
+        self.p.addPipeline(res)
+    
+    def buildXfmArrays(self, inputFH, targetFH):
+        xfm = inputFH.getLastXfm(targetFH)
+        self.xfmToCommon.insert(0, xfm)
+        self.xfmToAvg.insert(0, xfm)
+        self.xtc = self.returnConcattedXfm(inputFH, self.xfmToCommon, fh.createBaseName(inputFH.transformsDir, "xfm_to_common_space.xfm"))
         
-
-class HierarchicalMinctracc:
-    """Default HierarchicalMinctracc currently does:
-        1. 2 lsq12 stages with a blur of 0.25
-        2. 5 nlin stages with a blur of 0.25
-        3. 1 nlin stage with no blur"""
-    def __init__(self, 
-                 inputPipeFH, 
-                 templatePipeFH,
-                 steps=[1,0.5,0.5,0.2,0.2,0.1],
-                 blurs=[0.25,0.25,0.25,0.25,0.25, -1], 
-                 gradients=[False, False, True, False, True, False],
-                 iterations=[60,60,60,10,10,4],
-                 simplexes=[3,3,3,1.5,1.5,1],
-                 w_translations=0.2,
-                 linearparams = {'type' : "lsq12", 'simplex' : 1, 'step' : 1}, 
-                 defaultDir="tmp"):
+    def returnConcattedXfm(self, FH, xfmArray, outputName):
+        xcs = concatXfm(FH, xfmArray, outputName)
+        self.p.addStage(xcs)
+        return xcs.outputFiles[0]
+    
+    def nonAdjacentTimePtToAvg(self, inputFH, targetFH):
+        if len(self.xfmToAvg) > 1: 
+            outputName = inputFH.registerVolume(targetFH, "transforms")
+            xta = self.returnConcattedXfm(inputFH, self.xfmToAvg, outputName)
+        """Resample input to average"""
+        resample = ma.mincresample(inputFH, targetFH, likeFile=self.nlinFH)
+        self.p.addStage(resample)
+        """Calculate stats from input to target and resample to common space"""
+        self.statsAndResample(inputFH, targetFH, self.xtc)
         
-        self.p = Pipeline()
-        
-        for b in blurs:
-            #MF TODO: -1 case is also handled in blur. Need here for addStage.
-            #Fix this redundancy and/or better design?
-            if b != -1:
-                tblur = ma.blur(templatePipeFH, b, gradient=True)
-                iblur = ma.blur(inputPipeFH, b, gradient=True)               
-                self.p.addStage(tblur)
-                self.p.addStage(iblur)
+    def buildPipeline(self):
+        for subj in self.subjects:
+            s = self.subjects[subj]
+            # xfmToNlin will be either to lsq6 or native depending on other factors
+            # may need an additional argument for this function
+            xfmToNlin = s[self.timePoint].getLastXfm(self.nlinFH, groupIndex=0)
+            count = len(s)
+            self.xfmToCommon = [xfmToNlin]
+            self.xfmToAvg = []
+            """Do timePoint with average first if average is not final subject"""
+            if count - self.timePoint > 1:
+                self.statsAndResample(s[self.timePoint], s[self.timePoint+1], xfmToNlin)
+            if not self.timePoint - 1 < 0:
+                """ Average happened at time point other than first time point. 
+                    Loop over points prior to average."""
+                for i in reversed(range(self.timePoint)): 
+                    """Create transform arrays, concat xfmToCommon, calculate stats and resample """
+                    self.buildXfmArrays(s[i], s[i+1])
+                    self.statsAndResample(s[i], s[i+1], self.xtc)
+                    if self.timePoint - i > 1:
+                        """For timePoints not directly adjacent to average, calc stats to average."""
+                        self.nonAdjacentTimePtToAvg(s[i], s[self.timePoint])
+                                     
+            """ Loop over points after average. If average is at first time point, this loop
+                will hit all time points (other than first). If average is at subsequent time 
+                point, it hits all time points not covered previously."""
+            self.xfmToCommon=[xfmToNlin]  
+            self.xfmToAvg = []  
+            for i in range(self.timePoint + 1, count-1):
+                """Create transform arrays, concat xfmToCommon, calculate stats and resample """
+                self.buildXfmArrays(s[i], s[i-1])
+                self.statsAndResample(s[i], s[i+1], self.xtc)
+                if i - self.timePoint > 1:
+                    """For timePoints not directly adjacent to average, calc stats to average."""
+                    self.nonAdjacentTimePtToAvg(s[i], s[self.timePoint])
             
-        # Two lsq12 stages: one using 0.25 blur, one using 0.25 gradient
-        for g in [False, True]:    
-            linearStage = ma.minctracc(inputPipeFH, 
-                                       templatePipeFH,
-                                       defaultDir=defaultDir, 
-                                       blur=blurs[0], 
-                                       gradient=g,                                     
-                                       linearparam=linearparams["type"],
-                                       step=linearparams["step"],
-                                       simplex=linearparams["simplex"],
-                                       similarity=0.5, 
-                                       w_translations=w_translations)
-            self.p.addStage(linearStage)
+            """ Handle final time point as special case , since it will not have normal stats calc
+                Only do this step if final time point is not also average time point """
+            if count - self.timePoint > 1:
+                self.buildXfmArrays(s[count-1], s[count-2])
+                self.nonAdjacentTimePtToAvg(s[count-1], s[self.timePoint])  
 
-        # create the nonlinear registrations
-        for i in range(len(steps)):
-            nlinStage = ma.minctracc(inputPipeFH, 
-                                     templatePipeFH,
-                                     defaultDir=defaultDir,
-                                     blur=blurs[i],
-                                     gradient=gradients[i],
-                                     iterations=iterations[i],
-                                     step=steps[i],
-                                     similarity=0.8,
-                                     w_translations=w_translations,
-                                     simplex=simplexes[i])
-            self.p.addStage(nlinStage)
+def concatXfm(FH, xfmArray, output): 
+    cmd = ["xfmconcat", "-clobber"] + [InputFile(a) for a in xfmArray] + [OutputFile(output)]
+    xfmConcat = CmdStage(cmd)
+    xfmConcat.setLogFile(LogFile(fh.logFromFile(FH.logDir, output)))
+    return xfmConcat
+    
+    
+def resampleToCommon(xfm, FH, statsGroup, blurs, nlinFH):
+    pipeline = Pipeline()
+    outputDirectory = FH.statsDir
+    filesToResample = []
+    for b in blurs:
+        filesToResample.append(statsGroup.jacobians[b])
+        if statsGroup.scaledJacobians:
+            filesToResample.append(statsGroup.scaledJacobians[b])
+    for f in filesToResample:
+        outputBase = fh.removeBaseAndExtension(f).split(".mnc")[0]
+        outputFile = fh.createBaseName(outputDirectory, outputBase + "_common" + ".mnc")
+        logFile = fh.logFromFile(FH.logDir, outputFile)
+        res = ma.mincresample(f, 
+                              nlinFH.getLastBasevol(),
+                              likeFile=nlinFH.getLastBasevol(),
+                              transform=xfm,
+                              outFile=outputFile,
+                              logFile=logFile) 
+        pipeline.addStage(res)
+    
+    return pipeline

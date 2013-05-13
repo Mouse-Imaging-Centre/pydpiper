@@ -2,7 +2,8 @@
 
 from pydpiper.pipeline import CmdStage, Pipeline, InputFile, OutputFile, LogFile
 import pydpiper.file_handling as fh
-from pydpiper_apps.minc_tools.minc_modules import HierarchicalMinctracc, LSQ12ANTSNlin
+from pydpiper_apps.minc_tools.minc_modules import LSQ12ANTSNlin
+from pydpiper_apps.minc_tools.hierarchical_minctracc import HierarchicalMinctracc
 import pydpiper_apps.minc_tools.minc_atoms as ma
 from optparse import OptionGroup
 import Pyro

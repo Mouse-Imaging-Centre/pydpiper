@@ -8,6 +8,7 @@ import pydpiper_apps.minc_tools.minc_modules as mm
 import pydpiper_apps.minc_tools.minc_atoms as ma
 import pydpiper_apps.minc_tools.stats_tools as st
 import pydpiper_apps.minc_tools.option_groups as og
+import pydpiper_apps.minc_tools.hierarchical_minctracc as hmt
 import pydpiper_apps.minc_tools.old_MBM_interface_functions as ombm
 import Pyro
 from optparse import OptionGroup
@@ -94,7 +95,7 @@ class PairwiseNonlinear(AbstractApplication):
                         register = mm.LSQ12ANTSNlin(inputFH, targetFH)
                         self.pipeline.addPipeline(register.p)
                     elif self.options.reg_method == "minctracc":
-                        hm = mm.HierarchicalMinctracc(inputFH, targetFH)
+                        hm = hmt.HierarchicalMinctracc(inputFH, targetFH)
                         self.pipeline.addPipeline(hm.p)
                     if nlinFH:
                         resample = ma.mincresample(inputFH, targetFH, likeFile=nlinFH)
@@ -111,9 +112,8 @@ class PairwiseNonlinear(AbstractApplication):
                     """Resample to nlin space from previous build model run, if specified"""
                     if self.options.nlin_avg and self.options.mbm_dir:
                         xfmToNlin = inputFH.getLastXfm(nlinFH, groupIndex=0)
-                        for b in blurs:
-                            res = ombm.resampleToCommon(xfmToNlin, inputFH, subjectStats[inputFH][targetFH], b, nlinFH)
-                            self.pipeline.addPipeline(res)
+                        res = mm.resampleToCommon(xfmToNlin, inputFH, subjectStats[inputFH][targetFH], blurs, nlinFH)
+                        self.pipeline.addPipeline(res)
                     """Reset last base volume to original input before continuing to next pair in loop."""
                     inputFH.setLastBasevol()
 

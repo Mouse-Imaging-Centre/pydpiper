@@ -9,6 +9,7 @@ import pydpiper_apps.minc_tools.minc_modules as mm
 import pydpiper_apps.minc_tools.minc_atoms as ma
 import pydpiper_apps.minc_tools.stats_tools as st
 import pydpiper_apps.minc_tools.option_groups as og
+import pydpiper_apps.minc_tools.hierarchical_minctracc as hmt
 import pydpiper_apps.minc_tools.old_MBM_interface_functions as ombm
 import Pyro
 from optparse import OptionGroup
@@ -112,7 +113,7 @@ class RegistrationChain(AbstractApplication):
                     register = mm.LSQ12ANTSNlin(s[i], s[i+1])
                     self.pipeline.addPipeline(register.p)
                 elif self.options.reg_method == "minctracc":
-                    hm = mm.HierarchicalMinctracc(s[i], s[i+1])
+                    hm = hmt.HierarchicalMinctracc(s[i], s[i+1])
                     self.pipeline.addPipeline(hm.p)
                 """Resample s[i] into space of s[i+1]""" 
                 if nlinFH:
@@ -134,7 +135,7 @@ class RegistrationChain(AbstractApplication):
                     s[i+1].addAndSetXfmToUse(s[i], invXfm)
         
         """Now that all registration is complete, calculate stats, concat transforms and resample"""
-        car = ombm.LongitudinalStatsConcatAndResample(subjects, avgTime, nlinFH, blurs) 
+        car = mm.LongitudinalStatsConcatAndResample(subjects, avgTime, nlinFH, blurs) 
         self.pipeline.addPipeline(car.p)
 
 if __name__ == "__main__":
