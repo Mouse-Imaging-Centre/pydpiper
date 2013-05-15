@@ -176,6 +176,7 @@ class LongitudinalStatsConcatAndResample:
         self.blurs = blurs 
         
         self.p = Pipeline()
+        self.xtcDict = {}
         
         self.buildPipeline()
     
@@ -192,22 +193,17 @@ class LongitudinalStatsConcatAndResample:
         xfm = inputFH.getLastXfm(targetFH)
         self.xfmToCommon.insert(0, xfm)
         self.xfmToAvg.insert(0, xfm)
-        self.xtc = self.returnConcattedXfm(inputFH, self.xfmToCommon, fh.createBaseName(inputFH.transformsDir, "xfm_to_common_space.xfm"))
-        
-    def returnConcattedXfm(self, FH, xfmArray, outputName):
-        xcs = concatXfm(FH, xfmArray, outputName)
-        self.p.addStage(xcs)
-        return xcs.outputFiles[0]
     
     def nonAdjacentTimePtToAvg(self, inputFH, targetFH):
         if len(self.xfmToAvg) > 1: 
-            outputName = inputFH.registerVolume(targetFH, "transforms")
-            xta = self.returnConcattedXfm(inputFH, self.xfmToAvg, outputName)
+            if not inputFH.getLastXfm(targetFH):
+                outputName = inputFH.registerVolume(targetFH, "transforms")
+                self.p.addStage(concatXfm(inputFH, self.xfmToAvg, outputName))
         """Resample input to average"""
         resample = ma.mincresample(inputFH, targetFH, likeFile=self.nlinFH)
         self.p.addStage(resample)
         """Calculate stats from input to target and resample to common space"""
-        self.statsAndResample(inputFH, targetFH, self.xtc)
+        self.statsAndResample(inputFH, targetFH, self.xtcDict[inputFH])
         
     def buildPipeline(self):
         for subj in self.subjects:
@@ -226,8 +222,10 @@ class LongitudinalStatsConcatAndResample:
                     Loop over points prior to average."""
                 for i in reversed(range(self.timePoint)): 
                     """Create transform arrays, concat xfmToCommon, calculate stats and resample """
-                    self.buildXfmArrays(s[i], s[i+1])
-                    self.statsAndResample(s[i], s[i+1], self.xtc)
+                    self.buildXfmArrays(s[i], s[i+1]) 
+                    self.xtcDict[s[i]] = fh.createBaseName(s[i].transformsDir, "xfm_to_common_space.xfm")
+                    self.p.addStage(concatXfm(s[i], self.xfmToCommon, self.xtcDict[s[i]]))
+                    self.statsAndResample(s[i], s[i+1], self.xtcDict[s[i]])
                     if self.timePoint - i > 1:
                         """For timePoints not directly adjacent to average, calc stats to average."""
                         self.nonAdjacentTimePtToAvg(s[i], s[self.timePoint])
@@ -240,7 +238,9 @@ class LongitudinalStatsConcatAndResample:
             for i in range(self.timePoint + 1, count-1):
                 """Create transform arrays, concat xfmToCommon, calculate stats and resample """
                 self.buildXfmArrays(s[i], s[i-1])
-                self.statsAndResample(s[i], s[i+1], self.xtc)
+                self.xtcDict[s[i]] = fh.createBaseName(s[i].transformsDir, "xfm_to_common_space.xfm")
+                self.p.addStage(concatXfm(s[i], self.xfmToCommon, self.xtcDict[s[i]]))
+                self.statsAndResample(s[i], s[i+1], self.xtcDict[s[i]])
                 if i - self.timePoint > 1:
                     """For timePoints not directly adjacent to average, calc stats to average."""
                     self.nonAdjacentTimePtToAvg(s[i], s[self.timePoint])
@@ -249,7 +249,16 @@ class LongitudinalStatsConcatAndResample:
                 Only do this step if final time point is not also average time point """
             if count - self.timePoint > 1:
                 self.buildXfmArrays(s[count-1], s[count-2])
+                self.xtcDict[s[count-1]] = fh.createBaseName(s[count-1].transformsDir, "xfm_to_common_space.xfm")
+                self.p.addStage(concatXfm(s[count-1], self.xfmToCommon, self.xtcDict[s[count-1]]))
                 self.nonAdjacentTimePtToAvg(s[count-1], s[self.timePoint])  
+                
+            """Calculate stats for first time point to all others. 
+               Note that stats from first to second time points should have been done previously"""
+            self.xfmToAvg = [s[0].getLastXfm(s[1])]
+            for i in range(1, count-1):
+                self.xfmToAvg.append(s[i].getLastXfm(s[i+1]))
+                self.nonAdjacentTimePtToAvg(s[0], s[i+1])
 
 def concatXfm(FH, xfmArray, output): 
     cmd = ["xfmconcat", "-clobber"] + [InputFile(a) for a in xfmArray] + [OutputFile(output)]
