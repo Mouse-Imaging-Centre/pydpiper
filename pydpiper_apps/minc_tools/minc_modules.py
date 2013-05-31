@@ -186,8 +186,14 @@ class LongitudinalStatsConcatAndResample:
         stats.calcFullDisplacement()
         stats.calcDetAndLogDet(useFullDisp=True)
         self.p.addPipeline(stats.p)
-        res = resampleToCommon(xfm, inputFH, stats.statsGroup, self.blurs, self.nlinFH)
-        self.p.addPipeline(res)
+        """Only resampleToCommon space if we have the appropriate transform"""
+        if xfm:
+            if not self.nlinFH:
+                likeFH = targetFH
+            else:
+                likeFH = self.nlinFH
+            res = resampleToCommon(xfm, inputFH, stats.statsGroup, self.blurs, likeFH)
+            self.p.addPipeline(res)
     
     def buildXfmArrays(self, inputFH, targetFH):
         xfm = inputFH.getLastXfm(targetFH)
@@ -200,7 +206,11 @@ class LongitudinalStatsConcatAndResample:
                 outputName = inputFH.registerVolume(targetFH, "transforms")
                 self.p.addStage(concatXfm(inputFH, self.xfmToAvg, outputName))
         """Resample input to average"""
-        resample = ma.mincresample(inputFH, targetFH, likeFile=self.nlinFH)
+        if not self.nlinFH:
+            likeFH = targetFH
+        else:
+            likeFH = self.nlinFH
+        resample = ma.mincresample(inputFH, targetFH, likeFile=likeFH)
         self.p.addStage(resample)
         """Calculate stats from input to target and resample to common space"""
         self.statsAndResample(inputFH, targetFH, self.xtcDict[inputFH])
@@ -212,7 +222,10 @@ class LongitudinalStatsConcatAndResample:
             # may need an additional argument for this function
             xfmToNlin = s[self.timePoint].getLastXfm(self.nlinFH, groupIndex=0)
             count = len(s)
-            self.xfmToCommon = [xfmToNlin]
+            if xfmToNlin:
+                self.xfmToCommon = [xfmToNlin]
+            else:
+                self.xfmToCommon = []
             self.xfmToAvg = []
             """Do timePoint with average first if average is not final subject"""
             if count - self.timePoint > 1:
@@ -233,7 +246,10 @@ class LongitudinalStatsConcatAndResample:
             """ Loop over points after average. If average is at first time point, this loop
                 will hit all time points (other than first). If average is at subsequent time 
                 point, it hits all time points not covered previously."""
-            self.xfmToCommon=[xfmToNlin]  
+            if xfmToNlin:
+                self.xfmToCommon = [xfmToNlin]
+            else:
+                self.xfmToCommon = [] 
             self.xfmToAvg = []  
             for i in range(self.timePoint + 1, count-1):
                 """Create transform arrays, concat xfmToCommon, calculate stats and resample """
@@ -279,6 +295,7 @@ def resampleToCommon(xfm, FH, statsGroup, blurs, nlinFH):
         outputBase = fh.removeBaseAndExtension(f).split(".mnc")[0]
         outputFile = fh.createBaseName(outputDirectory, outputBase + "_common" + ".mnc")
         logFile = fh.logFromFile(FH.logDir, outputFile)
+        likeFile=nlinFH.getLastBasevol()
         res = ma.mincresample(f, 
                               nlinFH.getLastBasevol(),
                               likeFile=nlinFH.getLastBasevol(),
