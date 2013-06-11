@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 
 from pydpiper.pipeline import Pipeline, CmdStage, InputFile, OutputFile, LogFile
-from pydpiper_apps.minc_tools.hierarchical_minctracc import RotationalMinctracc
 import pydpiper_apps.minc_tools.minc_atoms as ma
 import pydpiper_apps.minc_tools.registration_file_handling as rfh
 import pydpiper_apps.minc_tools.stats_tools as st
@@ -39,38 +38,6 @@ class SetResolution:
             outputDir = FH.basedir
         return outputDir
 
-class ChainAlignLSQ6:
-    def __init__(self, subjects, timePoint, lsq6Files):
-        
-        self.p = Pipeline()
-        self.lsq6Files = lsq6Files
-        
-        for s in subjects:
-            count = len(subjects[s])
-            if timePoint - 1 < 0:
-                """Average happened at time point other than first time point. 
-                   Loop over points prior to average."""
-                for i in reversed(range(timePoint)):
-                    self.resampletoLSQ6Space(s[i-1], lsq6Files[s[i]])
-            """Loop over points after average. If average is at first time point, this loop
-               will hit all time points (other than first). If average is at subsequent time 
-               point, it hits all time points not covered previously."""
-            for i in range(timePoint, count-1):
-                self.resampletoLSQ6Space(s[i+1], lsq6Files[s[i]])
-        
-        """After LSQ6 alignment, setLastBasevol for each to be lsq6File. Get and set xfms?"""
-    
-    def resampletoLSQ6Space(self, inputFH, templateFH):
-        """1. Rotational Minctracc from inputFH to templateFH
-           2. Resample inputFH into templateFH space
-           3. Add resampledFile to lsq6 array for subsequent timepoints
-        """
-        rmp = RotationalMinctracc(inputFH, templateFH)
-        self.p.addPipeline(rmp)
-        resample = ma.mincresample(inputFH, templateFH, outputLocation=inputFH, likeFile=templateFH)
-        self.p.addStage(resample)
-        self.lsq6Files[inputFH] = rfh.RegistrationFHBase(resample.outputFiles[0], inputFH.subjDir)
-
 class LSQ12ANTSNlin:
     """Class that runs a basic LSQ12 registration, followed by a single mincANTS call.
        Currently used in MAGeT, registration_chain and pairwise_nlin."""
@@ -92,7 +59,10 @@ class LSQ12ANTSNlin:
     
     def buildPipeline(self):
         """Run lsq12 registration prior to non-linear"""
-        lsq12 = LSQ12(self.inputFH, self.targetFH)
+        lsq12 = LSQ12(self.inputFH, 
+                      self.targetFH, 
+                      blurs=self.lsq12Blurs,
+                      defaultDir=self.defaultDir)
         self.p.addPipeline(lsq12.p)
         """Resample input using final lsq12 transform"""
         res = ma.mincresample(self.inputFH, self.targetFH, likeFile=self.targetFH)   
@@ -129,12 +99,14 @@ class LSQ12:
     def __init__(self,
                  inputFH,
                  targetFH, 
-                 blurs=[0.3, 0.2, 0.15]):                                      
+                 blurs=[0.3, 0.2, 0.15], 
+                 defaultDir="tmp"):                                      
     
         self.p = Pipeline()
         self.inputFH = inputFH
         self.targetFH = targetFH
         self.blurs = blurs
+        self.defaultDir = defaultDir
         
         self.blurFiles()
         self.buildPipeline()
@@ -155,6 +127,7 @@ class LSQ12:
             linearStage = ma.minctracc(self.inputFH, 
                                        self.targetFH, 
                                        blur=self.blurs[i], 
+                                       defaultDir=self.defaultDir,
                                        gradient=gradient[i],                                     
                                        linearparam="lsq12",
                                        step=step[i],

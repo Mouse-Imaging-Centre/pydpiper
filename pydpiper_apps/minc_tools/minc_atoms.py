@@ -23,10 +23,10 @@ class mincANTS(CmdStage):
                  source_mask=None, #ANTS only uses one mask
                  similarity_metric=["CC", "CC"],
                  weight=[1,1],
-                 iterations="100x100x100x0",
+                 iterations="100x100x100x150",
                  radius_or_histo=[3,3],
-                 transformation_model="SyN[0.05]", 
-                 regularization="Gauss[3,1]",
+                 transformation_model="SyN[0.1]", 
+                 regularization="Gauss[2,1]",
                  useMask=True):
         CmdStage.__init__(self, None) #don't do any arg processing in superclass
         try: 

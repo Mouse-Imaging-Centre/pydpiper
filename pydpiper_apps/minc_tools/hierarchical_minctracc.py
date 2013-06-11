@@ -1,6 +1,9 @@
 from pydpiper.pipeline import Pipeline, CmdStage, InputFile, OutputFile, LogFile
 import pydpiper_apps.minc_tools.minc_atoms as ma
+import pydpiper_apps.minc_tools.minc_modules as mm
 import pydpiper.file_handling as fh
+
+"""LinearHierarchicalMinctracc and RotationalMinctracc are currently broken/not fully tested."""
 
 class LinearHierarchicalMinctracc:
     """Default LinearHierarchicalMinctracc class
@@ -98,22 +101,17 @@ class HierarchicalMinctracc:
                 self.p.addStage(tblur)
                 self.p.addStage(iblur)
             
-        # Two lsq12 stages: one using 0.25 blur, one using 0.25 gradient
-        for g in [False, True]:    
-            linearStage = ma.minctracc(inputPipeFH, 
-                                       templatePipeFH,
-                                       defaultDir=defaultDir, 
-                                       blur=blurs[0], 
-                                       gradient=g,                                     
-                                       linearparam=linearparams["type"],
-                                       step=linearparams["step"],
-                                       simplex=linearparams["simplex"],
-                                       similarity=0.5, 
-                                       w_translations=w_translations)
-            self.p.addStage(linearStage)
-
+        # Do standard LSQ12 alignment prior to non-linear stages 
+        lsq12 = mm.LSQ12(inputPipeFH, 
+                         templatePipeFH, 
+                         defaultDir=defaultDir)
+        self.p.addPipeline(lsq12.p)
+        
         # create the nonlinear registrations
         for i in range(len(steps)):
+            """For the final stage, make sure the output directory is transforms."""
+            if i == (len(steps) - 1):
+                defaultDir = "transforms"
             nlinStage = ma.minctracc(inputPipeFH, 
                                      templatePipeFH,
                                      defaultDir=defaultDir,

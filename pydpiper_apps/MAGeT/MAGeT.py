@@ -10,7 +10,6 @@ from os.path import abspath, join
 import logging
 import glob
 import fnmatch
-import re
 import sys
 
 logger = logging.getLogger(__name__)
@@ -68,9 +67,11 @@ class MAGeTApplication(AbstractApplication):
             for iLabel in labels: 
                 atlasStart = iLabel.split("_labels.mnc")
                 for iAvg in average:
-                    if re.search(atlasStart[0], iAvg):
+                    avgStart = iAvg.split("_average.mnc")
+                    if fnmatch.fnmatch(atlasStart[0], avgStart[0]):
                         for iMask in masks:
-                            if re.search(atlasStart[0], iMask):
+                            maskStart = iMask.split("_mask.mnc")
+                            if fnmatch.fnmatch(atlasStart[0], maskStart[0]):
                                 atlasPipeFH = RegistrationPipeFH(abspath(iAvg), 
                                                                  mask=abspath(iMask),
                                                                  basedir=atlasDir)

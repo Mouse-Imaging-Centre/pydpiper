@@ -32,8 +32,8 @@ def addMAGeTOptionGroup(parser):
                       default=25, type="int",
                       help="Maximum number of templates to generate")
     group.add_option("--masking-method", dest="mask_method",
-                      default="mincANTS", type="string",
-                      help="Specify whether to use minctracc or mincANTS for masking")
+                      default="minctracc", type="string",
+                      help="Specify whether to use minctracc or mincANTS for masking. Default is minctracc.")
     parser.add_option_group(group)
 
 def maskFiles(FH, isAtlas, numAtlases=1):

@@ -18,8 +18,8 @@ def addGenRegOptionGroup(parser):
                       type="string", default=None,
                       help="Name of pipeline and prefix for models.")
     group.add_option("--registration-method", dest="reg_method",
-                      default="mincANTS", type="string",
-                      help="Specify whether to use minctracc or mincANTS. Default is mincANTS")
+                      default="minctracc", type="string",
+                      help="Specify whether to use minctracc or mincANTS. Default is minctracc")
     group.add_option("--mask-dir", dest="mask_dir",
                       type="string", default=None, 
                       help="Directory of masks. If not specified, no masks are used. If only one mask in directory, same mask used for all inputs.")

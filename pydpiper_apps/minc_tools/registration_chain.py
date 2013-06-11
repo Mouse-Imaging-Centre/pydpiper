@@ -92,13 +92,10 @@ class RegistrationChain(AbstractApplication):
             if len(xfmsPipe.stages) > 0:
                 self.pipeline.addPipeline(xfmsPipe)
             
-            """Align everything to lsq6 space, with ordering depending on time point"""
-            #Disabled now for testing purposes. 
-            #if options.lsq6_space:
-                #"""lsq6Files from MBM run will be file handlers indexed by subjects[s][time]"""
-                #lsq6Files = ombm.getLsq6Files(abspath(options.mbm_dir), subjects, avgTime, processedDirectory)
-                #lsq6Pipe = mm.ChainAlignLSQ6(subjects, avgTime, lsq6Files)
-                #self.p.addPipeline(lsq6Pipe)
+            """ Possible TODO: Align everything to lsq6 space, with ordering depending on time point.
+                This functionality was previously partially implemented (ChainAlignLSQ6), but was removed, as it was
+                never fully working or tested. Leaving this comment as a place holder in case we want to re-implement. 
+            """
         else:
             logger.info("MBM directory and nlin_average not specified.")
             logger.info("Calculating registration chain only")
