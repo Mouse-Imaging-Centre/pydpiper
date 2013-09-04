@@ -6,8 +6,9 @@
 <pydev_property name="org.python.pydev.PYTHON_PROJECT_VERSION">python 2.6</pydev_property>
 <pydev_pathproperty name="org.python.pydev.PROJECT_SOURCE_PATH">
 <path>/pydpiper</path>
-<path>/pydpiper/testing</path>
 <path>/pydpiper/pydpiper_apps</path>
+<path>/pydpiper/pydpiper_apps_testing</path>
+<path>/pydpiper/pydpiper_testing</path>
 </pydev_pathproperty>
 <pydev_pathproperty name="org.python.pydev.PROJECT_EXTERNAL_SOURCE_PATH">
 </pydev_pathproperty>
