@@ -17,6 +17,9 @@ def addGenRegOptionGroup(parser):
     group.add_option("--pipeline-name", dest="pipeline_name",
                       type="string", default=None,
                       help="Name of pipeline and prefix for models.")
+    group.add_option("--pipeline-dir", dest="pipeline_dir",
+                      type="string", default=".",
+                      help="Directory for placing registration output. Default is current directory.")
     group.add_option("--registration-method", dest="reg_method",
                       default="minctracc", type="string",
                       help="Specify whether to use minctracc or mincANTS. Default is minctracc")

@@ -584,3 +584,55 @@ class mincresampleMask(mincresampleLabels):
         outBase = self.setOutputFileName(FH, append="mask")
         outDir = FH.setOutputDirectory(defaultDir)
         return(fh.createBaseName(outDir, outBase))
+
+class mincAverage(CmdStage):
+    def __init__(self, 
+                 inputArray, 
+                 outFile, 
+                 logFile=None, 
+                 defaultDir=None):
+        CmdStage.__init__(self, None)
+        
+        try:  
+            """If outFile is fileHandler, we assume input array is as well"""
+            if isFileHandler(outFile):
+                self.filesToAvg = []
+                for i in range(len(inputArray)):
+                    self.filesToAvg.append(inputArray[i].getLastBasevol())               
+                self.outfile = self.setOutputFile(outFile, defaultDir)
+                self.logFile = fh.logFromFile(outFile.logDir, self.outfile)
+            else:
+                self.filesToAvg = inputArray
+                self.outfile = outFile
+                if not logFile:
+                    self.logFile = fh.logFromFile(abspath(curdir), outFile)
+                else:
+                    self.logFile = logFile
+    
+        except:
+            print "Failed in putting together mincaverage command"
+            print "Unexpected error: ", sys.exc_info()
+            
+        self.addDefaults()
+        self.finalizeCommand()
+        self.setName()
+        
+    def addDefaults(self):
+        for i in range(len(self.filesToAvg)):
+            self.inputFiles.append(self.filesToAvg[i])   
+        self.outputFiles += [self.outfile]       
+        self.cmd += ["mincaverage",
+                     "-clobber", "-normalize", "-sdfile", "-max_buffer_size_in_kb", str(409620)] 
+                 
+    def finalizeCommand(self):
+        for i in range(len(self.filesToAvg)):
+            self.cmd.append(self.filesToAvg[i])
+        self.cmd.append(self.outfile)    
+    def setName(self):
+        self.name = "mincaverage " 
+    def setOutputFile(self, inFile, defaultDir):
+        outDir = inFile.setOutputDirectory(defaultDir)
+        outBase = (fh.removeBaseAndExtension(inFile.getLastBasevol()) + "_" + "avg.mnc")
+        outputFile = fh.createBaseName(outDir, outBase)
+        inFile.setLastBasevol(outputFile)
+        return(outputFile)  
