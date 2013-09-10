@@ -25,6 +25,11 @@ def addGenRegOptionGroup(parser):
                       help="Directory of masks. If not specified, no masks are used. If only one mask in directory, same mask used for all inputs.")
     parser.add_option_group(group)
     
+
+"""
+    the "args" argument to this function must be a list.  If only
+    one argument is supplied, make sure you don't pass it as a string 
+"""
 def initializeInputFiles(args, mainDirectory, maskDir=None):
     inputs = []
     for iFile in range(len(args)):
@@ -101,6 +106,9 @@ def setupInitModel(inputModel, pipeDir=None):
             raise
         else:
             mask = imageDirectory + "/" + imageBase + "_mask.mnc"
+            if not exists(mask):
+                errorMsg = "Required mask for the --init-model does not exist: " + str(mask)
+                raise
             standardFH = rfh.RegistrationFHBase(imageFile, mask=mask, basedir=initModelDir)            
             #if native file exists, create FH
             nativeFileName = imageDirectory + "/" + imageBase + "_native.mnc"

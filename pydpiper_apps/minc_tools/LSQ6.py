@@ -1,12 +1,15 @@
 #!/usr/bin/env python
 
 from pydpiper.application import AbstractApplication
-from os.path import splitext
+import pydpiper.file_handling as fh
+import pydpiper_apps.minc_tools.registration_functions as rf
+from os.path import splitext, abspath
 import logging
 import Pyro
 from optparse import OptionGroup
 import sys
 import re
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -100,9 +103,38 @@ class LSQ6Registration(AbstractApplication):
             print "Error: please specify only one of the options: --target  --init-model\n"
             sys.exit()
         
+        mainDirectory = None
+        if(options.output_directory == None):
+            mainDirectory = os.getcwd()
+        else:
+            mainDirectory = fh.makedirsIgnoreExisting(options.output_directory)
+        
+        # not sure yet what the best directory structure for all of this is...
+        # create file handles for the source and target:
+        inputPipeFH = rf.initializeInputFiles([abspath(args[0])], mainDirectory=mainDirectory)
+        
+        """
+            Option 1) run a simple lsq6: the input files are assumed to be in the
+            same space and roughly in the same orientation.
+        """
+        
+        """
+            Option 2) run an lsq6 registration where the centre of the input files
+            is estimated.  Orientation is assumed to be similar, space is not.
+        """
+        
+        """
+            Option 3) run a brute force rotational minctracc.  Input files can be
+            in any random orientation and space.
+        """
+        if(options.lsq6_method == "lsq6_large_rotations"):
+            """
+                Run some form of rotational minctracc... 
+            """
+            print inputPipeFH[0].getLastBasevol()
         
         print "Helloooooo thereeerrreeerrere!!"
-        print "We are using the following option: ", self.options.lsq6_method
+        print "We are using the following option: ", options.lsq6_method
 
 
 
