@@ -8,6 +8,7 @@ from os import curdir, walk
 import sys
 import logging
 import fnmatch
+from pyminc.volumes.factory import volumeFromFile
 
 logger = logging.getLogger(__name__)
 
@@ -132,5 +133,18 @@ def setupInitModel(inputModel, pipeDir=None):
         print errorMsg
         print "Exiting..."
         sys.exit()
+
+
+def getHighestResolution(inSource):
+    """
+        This function will return the highest (or finest) resolution 
+        present in the inSource file.     
+    """
+    imageResolution = []
+    if isFileHandler(inSource):
+        imageResolution = volumeFromFile(inSource.getLastBasevol()).separations
+    else: 
+        imageResolution = volumeFromFile(inSource).separations
     
+    return min(abs(imageResolution))
     
