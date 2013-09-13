@@ -2,7 +2,7 @@
 
 from pydpiper.pipeline import CmdStage 
 from pydpiper_apps.minc_tools.registration_functions import isFileHandler
-from os.path import abspath, basename, join
+from os.path import abspath, basename, splitext, join
 from os import curdir
 import pydpiper.file_handling as fh
 import sys
@@ -20,7 +20,7 @@ class mincANTS(CmdStage):
                  defaultDir="transforms", 
                  blur=[-1, 0.056],
                  gradient=[False, True],
-                 source_mask=None, #ANTS only uses one mask
+                 target_mask=None, #ANTS only uses one mask
                  similarity_metric=["CC", "CC"],
                  weight=[1,1],
                  iterations="100x100x100x150",
@@ -52,7 +52,7 @@ class mincANTS(CmdStage):
                 self.logFile = fh.logFromFile(inSource.logDir, self.output)
                 self.useMask=useMask
                 if self.useMask:
-                    self.source_mask = inSource.getMask()
+                    self.target_mask = inTarget.getMask()
             else:
                 self.source = inSource
                 self.target = inTarget
@@ -63,6 +63,9 @@ class mincANTS(CmdStage):
                     self.logFile = fh.logFromFile(abspath(curdir), output)
                 else:
                     self.logFile = logFile
+                self.useMask=useMask
+                if self.useMask:
+                    self.target_mask = target_mask
         except:
             print "Failed in putting together mincANTS command."
             print "Unexpected error: ", sys.exc_info()
@@ -101,9 +104,9 @@ class mincANTS(CmdStage):
         for i in range(len(self.source)):
             self.inputFiles += [self.source[i], self.target[i]]
         self.outputFiles = [self.output]
-        if self.useMask and self.source_mask:
-            self.cmd += ["-x", str(self.source_mask)]
-            self.inputFiles += [self.source_mask]
+        if self.useMask and self.target_mask:
+            self.cmd += ["-x", str(self.target_mask)]
+            self.inputFiles += [self.target_mask]
     def finalizeCommand(self):
         pass
     
@@ -136,7 +139,7 @@ class minctracc(CmdStage):
                  transform=None,
                  weight=0.8,
                  stiffness=0.98,
-                 similarity=0.3,
+                 similarity=0.8,
                  w_translations=0.4,
                  w_rotations=0.0174533,
                  w_scales=0.02,
@@ -198,7 +201,7 @@ class minctracc(CmdStage):
         
         self.linearparam = linearparam       
         self.iterations = str(iterations)
-        self.lattice_diameter = str(step*3)
+        self.lattice_diameter = str(step*3.0)
         self.step = str(step)       
         self.weight = str(weight)
         self.stiffness = str(stiffness)
@@ -228,7 +231,7 @@ class minctracc(CmdStage):
                     "-w_scales", self.w_scales, self.w_scales, self.w_scales,
                     "-w_shear", self.w_shear, self.w_shear, self.w_shear,
                     "-step", self.step, self.step, self.step,
-                    "-simplex", self.simplex,
+                    "-simplex", self.simplex, "-use_simplex",
                     self.source,
                     self.target,
                     self.output]
@@ -254,7 +257,7 @@ class minctracc(CmdStage):
         if not self.transform:
             if self.linearparam == "lsq6":
                 self.cmd += ["-est_center", "-est_translations"]
-            elif self.linearparam == "lsq12":
+            elif self.linearparam == "lsq12" or self.linearparam=="nlin":
                 self.cmd += ["-identity"]
         else:
             self.inputFiles += [self.transform]
@@ -262,6 +265,7 @@ class minctracc(CmdStage):
         
     def finalizeCommand(self):
         """add the options to finalize the command"""
+        # Remove -xcorr and -tol after testing is done. 
         if self.linearparam == "nlin":
             """add options for non-linear registration"""
             self.cmd += ["-iterations", self.iterations,
@@ -270,7 +274,9 @@ class minctracc(CmdStage):
                          "-stiffness", self.stiffness,
                          "-nonlinear", "corrcoeff", "-sub_lattice", "6",
                          "-lattice_diameter", self.lattice_diameter,
-                         self.lattice_diameter, self.lattice_diameter]
+                         self.lattice_diameter, self.lattice_diameter, 
+                         "-max_def_magnitude", str(1),
+                         "-debug", "-xcorr", "-tol", str(0.0001)]
         else:
             #MF TODO: Enforce that options must be lsq6/7/9/12?
             """add the options for a linear fit"""
@@ -619,10 +625,11 @@ class mincAverage(CmdStage):
         
     def addDefaults(self):
         for i in range(len(self.filesToAvg)):
-            self.inputFiles.append(self.filesToAvg[i])   
-        self.outputFiles += [self.outfile]       
+            self.inputFiles.append(self.filesToAvg[i]) 
+        self.sd = splitext(self.outfile)[0] + "-sd.mnc"  
+        self.outputFiles += [self.outfile, self.sd]       
         self.cmd += ["mincaverage",
-                     "-clobber", "-normalize", "-sdfile", "-max_buffer_size_in_kb", str(409620)] 
+                     "-clobber", "-normalize", "-sdfile", self.sd, "-max_buffer_size_in_kb", str(409620)] 
                  
     def finalizeCommand(self):
         for i in range(len(self.filesToAvg)):
@@ -634,5 +641,4 @@ class mincAverage(CmdStage):
         outDir = inFile.setOutputDirectory(defaultDir)
         outBase = (fh.removeBaseAndExtension(inFile.getLastBasevol()) + "_" + "avg.mnc")
         outputFile = fh.createBaseName(outDir, outBase)
-        inFile.setLastBasevol(outputFile)
         return(outputFile)  
