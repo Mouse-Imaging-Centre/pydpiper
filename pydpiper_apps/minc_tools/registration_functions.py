@@ -146,5 +146,12 @@ def getHighestResolution(inSource):
     else: 
         imageResolution = volumeFromFile(inSource).separations
     
-    return min(abs(imageResolution))
+    # the abs function does not work on lists... so we have to loop over it.  This 
+    # to avoid issues with negative step sizes.  Initialize with first dimension
+    highestRes = abs(imageResolution[0])
+    for i in range(1, len(imageResolution)):
+        if(abs(imageResolution[i]) < highestRes):
+            highestRes = abs(imageResolution[i])
+    
+    return highestRes
     

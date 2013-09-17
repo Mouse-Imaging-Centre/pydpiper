@@ -2,6 +2,8 @@ from pydpiper.pipeline import Pipeline, CmdStage, InputFile, OutputFile, LogFile
 import pydpiper_apps.minc_tools.minc_atoms as ma
 import pydpiper_apps.minc_tools.minc_modules as mm
 import pydpiper.file_handling as fh
+import pydpiper_apps.minc_tools.registration_functions as rf
+import sys
 
 """LinearHierarchicalMinctracc and RotationalMinctracc are currently broken/not fully tested."""
 
@@ -27,50 +29,102 @@ class LinearHierarchicalMinctracc:
                 self.p.addStage(tblur)
                 self.p.addStage(iblur)
 
-class RotationalMinctracc:
-    """Default RotationalMinctracc class
-       Currently just calls rotational_minctracc.py 
-       with minimal updates. Ultimately, we will do
-       a more substantial overhaul. 
+class RotationalMinctracc(CmdStage):
+    """
+        This class runs a rotational_minctracc.py call on its two input 
+        files.  That program performs a 6 parameter (rigid) registration
+        by doing a brute force search in the x,y,z rotation space.  Normally
+        the input files have unknown orientation.
+        
+        The input files are assumed to have already been blurred appropriately
+        
+        There are a number of parameters that have to be set and this 
+        will be done using factors that depend on the resolution of the
+        input files.  Here is the list:
+        
+        argument to be set   --  default factor  -- (for 56 micron, translates to)
+                blur                  10                        (560 micron)
+          resample stepsize            4                        (224 micron)
+        registration stepsize         10                        (560 micron)
+          w_translations               8                        (448 micron)
+         
+        Specifying -1 for the blur argument will not perform any blurring.
+        The two other parameters that can be set are (in degrees) have defaults:
+        
+            rotational range          50
+            rotational interval       10
+        
+        Whether or not a mask will be used is based on the presence of a mask. 
     """
     def __init__(self, 
-                 inputPipeFH, 
-                 templatePipeFH,
-                 blurs=[0.5]):
+                 inSource, 
+                 inTarget,
+                 output = None, # ability to specify output transform when using strings for input
+                 logFile = None,
+                 defaultDir="transforms",
+                 blur=10,
+                 resample_step=4,
+                 registration_step=10,
+                 w_translations=8,
+                 rotational_range=50,
+                 rotational_interval=10):
         
-        self.p = Pipeline()
-        self.inputPipeFH = inputPipeFH
-        self.templatePipeFH = templatePipeFH
+        CmdStage.__init__(self, None) #don't do any arg processing in superclass
+        self.name   = "rotational-minctracc"
+        self.colour = "green"
+
+        highestResolution = rf.getHighestResolution(inSource)
+        adjustedBlur = blur
+        if(adjustedBlur != -1):
+            adjustedBlur = adjustedBlur * highestResolution
         
-        self.blurFiles(blurs) 
-        for b in blurs:
-            self.buildCmd(b)
+        # handling of the input files
+        try: 
+            if rf.isFileHandler(inSource, inTarget):
+                self.source = inSource.getBlur(fwhm=adjustedBlur)
+                self.target = inTarget.getBlur(fwhm=adjustedBlur)
+                self.inputFiles = [self.source, self.target] 
+                self.output = inSource.registerVolume(inTarget, defaultDir)
+                self.outputFiles = [self.output]
+                self.logFile = fh.logFromFile(inSource.logDir, self.output)
+            else:
+                self.source = inSource
+                self.target = inTarget
+        except:
+            print "Failed in putting together RotationalMinctracc command."
+            print "Unexpected error: ", sys.exc_info()
         
-    def blurFiles(self, blurs):
-        for b in blurs:
-            if b != -1:
-                tblur = ma.blur(self.templatePipeFH, b, gradient=True)
-                iblur = ma.blur(self.inputPipeFH, b, gradient=True)               
-                self.p.addStage(tblur)
-                self.p.addStage(iblur)
-    
-    def buildCmd(self, b):
-        """Only -w_translations override rotational_minctracc.py defaults. 
-           Keep this here. Rather than giving the option to override other
-           defaults. We will eventually re-write this code.
-        """
-        w_trans = str(0.4)
-        cmd = ["rotational_minctracc.py", "-t", "/dev/shm/", "-w", w_trans, w_trans, w_trans]
-        source = self.inputPipeFH.getBlur(b)
-        target = self.templatePipeFH.getBlur(b)
-        mask = self.templatePipeFH.getMask()
-        if mask:
-            cmd += ["-m", InputFile(mask)]
-        outputXfm = self.inputPipeFH.registerVolume(self.templatePipeFH)
-        cmd +=[InputFile(source), InputFile(target), OutputFile(outputXfm), "/dev/null"]
-        rm = CmdStage(cmd)
-        rm.setLogFile(LogFile(fh.logFromFile(self.inputPipeFH.logDir, outputXfm)))
-        self.p.addStage(rm)
+        #self.blurFiles(adjustedBlur)
+        self.buildCmd(resample_step     * highestResolution,
+                      registration_step * highestResolution,
+                      w_translations    * highestResolution,
+                      int(rotational_range),
+                      int(rotational_interval))
+
+    def buildCmd(self,
+                 resamp_step,
+                 reg_step,
+                 w_trans,
+                 rot_range,
+                 rot_interval):
+        
+        w_trans_string = str(w_trans) + ',' + str(w_trans) + ',' + str(w_trans)
+        cmd = ["rotational_minctracc.py", 
+               "-t", "/dev/shm/", 
+               "-w", w_trans_string,
+               "-s", str(resamp_step),
+               "-g", str(reg_step),
+               "-r", str(rot_range),
+               "-i", str(rot_interval),
+               self.source,
+               self.target,
+               self.output,
+               "/dev/null"]
+        
+        #mask = self.target.getMask()
+        #if mask:
+        #    cmd += ["-m", InputFile(mask)]
+        self.cmd = cmd
         
 
 class HierarchicalMinctracc:

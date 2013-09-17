@@ -3,6 +3,8 @@
 from pydpiper.application import AbstractApplication
 import pydpiper.file_handling as fh
 import pydpiper_apps.minc_tools.registration_functions as rf
+import pydpiper_apps.minc_tools.hierarchical_minctracc as hm
+import pydpiper_apps.minc_tools.minc_atoms as ma
 from os.path import splitext, abspath
 import logging
 import Pyro
@@ -65,13 +67,16 @@ class LSQ6Registration(AbstractApplication):
         self.parser.set_defaults(lsq6_method="lsq6_large_rotations")
         group.add_option("--lsq6-simple", dest="lsq6_method",
                          action="store_const", const="lsq6_simple",
-                         help="Run a 6 parameter alignment assuming that the input files are roughly aligned: same space, similar orientation.")
+                         help="Run a 6 parameter alignment assuming that the input files are roughly aligned: same space, similar orientation. [default: --lsq6-large-rotations]")
         group.add_option("--lsq6-centre-estimation", dest="lsq6_method",
                          action="store_const", const="lsq6_centre_estimation",
-                         help="Run a 6 parameter alignment assuming that the input files have a similar orientation, but are scanned in different coils/spaces.")
+                         help="Run a 6 parameter alignment assuming that the input files have a similar orientation, but are scanned in different coils/spaces. [default: --lsq6-large-rotations]")
         group.add_option("--lsq6-large-rotations", dest="lsq6_method",
                          action="store_const", const="lsq6_large_rotations",
-                         help="Run a 6 parameter alignment assuming that the input files have a random orientation and are scanned in different coils/spaces. A brute force search over the x,y,z rotation space is performed to find the best 6 parameter alignment.")
+                         help="Run a 6 parameter alignment assuming that the input files have a random orientation and are scanned in different coils/spaces. A brute force search over the x,y,z rotation space is performed to find the best 6 parameter alignment. [default: --lsq6-large-rotations]")
+        group.add_option("--lsq6-large-rotations-parameters", dest="large_rotation_parameters",
+                         type="string", default="10,4,10,8,50,10",
+                         help="Settings for the large rotation alignment. factor=factor based on smallest file resolution: 1) blur factor, 2) resample step size factor, 3) registration step size factor, 4) w_translations factor, 5) rotational range in degrees, 6) rotational interval in degrees. [default: %default]")
         self.parser.add_option_group(group)
         self.parser.set_usage("%prog [options] source.mnc [--target target.mnc or --init-model /init/model/file.mnc]") 
 
@@ -112,6 +117,10 @@ class LSQ6Registration(AbstractApplication):
         # not sure yet what the best directory structure for all of this is...
         # create file handles for the source and target:
         inputPipeFH = rf.initializeInputFiles([abspath(args[0])], mainDirectory=mainDirectory)
+        targetPipeFH = rf.initializeInputFiles([abspath(options.target)], mainDirectory=mainDirectory)
+        
+        # create a new group to indicate in the output file names that this is the lsq6 stage
+        inputPipeFH[0].newGroup(groupName="lsq6")
         
         """
             Option 1) run a simple lsq6: the input files are assumed to be in the
@@ -128,16 +137,30 @@ class LSQ6Registration(AbstractApplication):
             in any random orientation and space.
         """
         if(options.lsq6_method == "lsq6_large_rotations"):
-            """
-                Run some form of rotational minctracc... 
-            """
-            print inputPipeFH[0].getLastBasevol()
-        
-        print "Helloooooo thereeerrreeerrere!!"
-        print "We are using the following option: ", options.lsq6_method
+            # We should take care of the appropriate amount of blurring
+            # for the input files here 
+            parameterList = options.large_rotation_parameters.split(',')
+            blurFactor= float(parameterList[0])
+            blurAtResolution = -1
+            highestResolution = rf.getHighestResolution(inputPipeFH[0])
+            if(blurFactor != -1):
+                blurAtResolution = blurFactor * highestResolution
+            
+            self.pipeline.addStage(ma.blur(inputPipeFH[0], fwhm=blurAtResolution))
+            self.pipeline.addStage(ma.blur(targetPipeFH[0], fwhm=blurAtResolution))
+            
+            self.pipeline.addStage((hm.RotationalMinctracc(inputPipeFH[0],
+                                                           targetPipeFH[0],
+                                                           blur               = float(parameterList[0]),
+                                                           resample_step      = float(parameterList[1]),
+                                                           registration_step  = float(parameterList[2]),
+                                                           w_translations     = float(parameterList[3]),
+                                                           rotational_range   = int(parameterList[4]),
+                                                           rotational_interval= int(parameterList[5]) )))
 
-
-
+            self.pipeline.addStage(ma.mincresample(inputPipeFH[0],
+                                                   targetPipeFH[0],
+                                                   likeFile=targetPipeFH[0]))
 
 
 if __name__ == "__main__":
