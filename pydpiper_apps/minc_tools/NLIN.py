@@ -90,7 +90,6 @@ class NLINANTS(object):
            These parameters are for the standard mincANTS protocol in 
            the current iteration of build-model.
         """
-        self.ANTSBlur = 0.056
         self.iterations = ["100x100x100x0", "100x100x100x20", "100x100x100x50"]
         self.transformationModel = ["SyN[0.5]", "SyN[0.4]", "SyN[0.4]"]
         self.regularization = ["Gauss[5,1]", "Gauss[5,1]", "Gauss[5,1]"]
@@ -159,13 +158,10 @@ class NLINminctracc(object):
             Default minctracc parameters for 6 generations. 
             As with the NLINANTS class, we need a way to set these generally. 
         """
-        #self.blurs = [self.fileRes*5.0, self.fileRes*(10.0/3.0), self.fileRes*(10.0/3.0),
-        #              self.fileRes*(10.0/3.0), self.fileRes*(5.0/3.0), self.fileRes]
-        #self.steps = [self.fileRes*(35.0/3.0), self.fileRes*10.0, self.fileRes*(25.0/3.0),
-        #              self.fileRes*4.0, self.fileRes*2.0, self.fileRes]
-        """Hard coded blurs and steps for testing"""
-        self.blurs = [0.3,0.2,0.2,0.2,0.1,0.06]
-        self.steps = [0.7,0.6,0.5,0.24,0.12,0.06]
+        self.blurs = [self.fileRes*5.0, self.fileRes*(10.0/3.0), self.fileRes*(10.0/3.0),
+                      self.fileRes*(10.0/3.0), self.fileRes*(5.0/3.0), self.fileRes]
+        self.steps = [self.fileRes*(35.0/3.0), self.fileRes*10.0, self.fileRes*(25.0/3.0),
+                      self.fileRes*4.0, self.fileRes*2.0, self.fileRes]
         self.iterations = [20,6,8,8,8,8]
         self.simplex = [5,2,2,2,2,2]
         

@@ -265,7 +265,6 @@ class minctracc(CmdStage):
         
     def finalizeCommand(self):
         """add the options to finalize the command"""
-        # Remove -xcorr and -tol after testing is done. 
         if self.linearparam == "nlin":
             """add options for non-linear registration"""
             self.cmd += ["-iterations", self.iterations,
@@ -276,7 +275,7 @@ class minctracc(CmdStage):
                          "-lattice_diameter", self.lattice_diameter,
                          self.lattice_diameter, self.lattice_diameter, 
                          "-max_def_magnitude", str(1),
-                         "-debug", "-xcorr", "-tol", str(0.0001)]
+                         "-debug"]
         else:
             #MF TODO: Enforce that options must be lsq6/7/9/12?
             """add the options for a linear fit"""
