@@ -8,7 +8,8 @@ from pydpiper.file_handling import createLogFile, createSubDir, makedirsIgnoreEx
 from pydpiper.application import AbstractApplication
 from pydpiper_apps.minc_tools.registration_file_handling import RegistrationPipeFH
 from pydpiper_apps.minc_tools.registration_functions import addGenRegOptionGroup, initializeInputFiles
-from pydpiper_apps.minc_tools.minc_atoms import blur, mincresample, mincANTS, mincAverage, minctracc
+from pydpiper_apps.minc_tools.minc_atoms import blur, mincresample, mincANTS, mincAverage, mincAverageDisp, minctracc
+from pydpiper_apps.minc_tools.stats_tools import addStatsOptions, CalcStats
 from pyminc.volumes.factory import volumeFromFile
 import sys
 import logging
@@ -28,6 +29,7 @@ class NonlinearRegistration(AbstractApplication):
         self.parser.add_option_group(group)
         """Add option groups from specific modules"""
         addGenRegOptionGroup(self.parser)
+        addStatsOptions(self.parser)
         
         self.parser.set_usage("%prog [options] input files") 
 
@@ -55,20 +57,36 @@ class NonlinearRegistration(AbstractApplication):
         inputFiles = initializeInputFiles(args, processedDirectory, maskDir=options.mask_dir)
         initialTarget = RegistrationPipeFH(options.lsq12_avg, mask=options.lsq12_mask, basedir=nlinDirectory)
         
-        """Based on cmdline option, specify minctracc or mincANTS"""
+        """Based on cmdline option, register with minctracc or mincANTS"""
         if options.reg_method=="mincANTS":
             ants = NLINANTS(inputFiles, initialTarget, nlinDirectory, 3)
             ants.iterate()
             self.pipeline.addPipeline(ants.p)
+            self.nlinAvg = ants.nlinAvg
         elif options.reg_method == "minctracc":
             tracc = NLINminctracc(inputFiles, initialTarget, nlinDirectory, 6)
             tracc.iterate()
             self.pipeline.addPipeline(tracc.p)
+            self.nlinAvg = tracc.nlinAvg
         else:
             logger.error("Incorrect registration method specified: " + options.reg_method)
             sys.exit()
             
-           
+        """Calculate statistics between final nlin average and individual mice"""
+        if options.calc_stats:
+            """Get blurs from command line option and put into array"""
+            blurs = []
+            for i in options.stats_kernels.split(","):
+                blurs.append(float(i))
+            """Choose final average from array of nlin averages"""
+            numGens = len(self.nlinAvg)
+            finalNlin = self.nlinAvg[numGens-1]
+            """For each input file, calculate statistics"""
+            for inputFH in inputFiles:
+                stats = CalcStats(inputFH, finalNlin, blurs, inputFiles)
+                stats.fullStatsCalc()
+                self.p.addPipeline(stats.p)
+            
 class NLINANTS(object):
     def __init__(self, inputArray, targetFH, nlinOutputDir, numberOfGenerations):
         self.p = Pipeline()

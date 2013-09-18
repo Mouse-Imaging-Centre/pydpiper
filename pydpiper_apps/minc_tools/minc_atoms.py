@@ -641,3 +641,18 @@ class mincAverage(CmdStage):
         outBase = (fh.removeBaseAndExtension(inFile.getLastBasevol()) + "_" + "avg.mnc")
         outputFile = fh.createBaseName(outDir, outBase)
         return(outputFile)  
+
+class mincAverageDisp(mincAverage):
+    def __init__(self, 
+                 inputArray, 
+                 outFile, 
+                 logFile=None, 
+                 defaultDir=None):
+        mincAverage.__init__(self, None)
+        
+    def addDefaults(self):
+        for i in range(len(self.filesToAvg)):
+            self.inputFiles.append(self.filesToAvg[i]) 
+        self.outputFiles += [self.outfile]       
+        self.cmd += ["mincaverage", "-clobber"] 
+                 

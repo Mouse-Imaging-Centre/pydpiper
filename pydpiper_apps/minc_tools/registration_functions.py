@@ -26,6 +26,9 @@ def addGenRegOptionGroup(parser):
     group.add_option("--mask-dir", dest="mask_dir",
                       type="string", default=None, 
                       help="Directory of masks. If not specified, no masks are used. If only one mask in directory, same mask used for all inputs.")
+    group.add_option("--calc-stats", dest="calc_stats",
+                      action="store_true", default=True, 
+                      help="Calculate statistics at the end of the registration. Default is True.")
     parser.add_option_group(group)
     
 def initializeInputFiles(args, mainDirectory, maskDir=None):
