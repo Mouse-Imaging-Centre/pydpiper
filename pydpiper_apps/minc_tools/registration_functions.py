@@ -33,6 +33,10 @@ def addGenRegOptionGroup(parser):
 """
 def initializeInputFiles(args, mainDirectory, maskDir=None):
     inputs = []
+    # the assumption in the following line is that args is a list
+    # if that is not the case, convert it to one
+    if(not(type(args) is list)):
+        args = [args]
     for iFile in range(len(args)):
         inputPipeFH = rfh.RegistrationPipeFH(abspath(args[iFile]), basedir=mainDirectory)
         inputs.append(inputPipeFH)
@@ -91,7 +95,7 @@ def setupInitModel(inputModel, pipeDir=None):
         The following can optionally be included in the same directory as the above:
             name_native.mnc --> File in native scanner space.
             name_native_mask.mnc --> Mask for name_native.mnc
-            native_to_standard.xfm --> Transform from native space to standard space
+            name_native_to_standard.xfm --> Transform from native space to standard space
     """
     errorMsg = "Failed to properly set up initModel."
     
@@ -110,7 +114,7 @@ def setupInitModel(inputModel, pipeDir=None):
             if not exists(mask):
                 errorMsg = "Required mask for the --init-model does not exist: " + str(mask)
                 raise
-            standardFH = rfh.RegistrationFHBase(imageFile, mask=mask, basedir=initModelDir)            
+            standardFH = rfh.RegistrationPipeFH(imageFile, mask=mask, basedir=initModelDir)            
             #if native file exists, create FH
             nativeFileName = imageDirectory + "/" + imageBase + "_native.mnc"
             if exists(nativeFileName):
@@ -119,7 +123,7 @@ def setupInitModel(inputModel, pipeDir=None):
                     errorMsg = "_native.mnc file included but associated mask not found"
                     raise
                 else:
-                    nativeFH = rfh.RegistrationFHBase(nativeFileName, mask=mask, basedir=initModelDir)
+                    nativeFH = rfh.RegistrationPipeFH(nativeFileName, mask=mask, basedir=initModelDir)
                     nativeToStdXfm = imageDirectory + "/" + imageBase + "_native_to_standard.xfm"
                     if exists(nativeToStdXfm):
                         nativeFH.setLastXfm(standardFH, nativeToStdXfm)
