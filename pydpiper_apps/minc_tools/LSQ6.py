@@ -1,10 +1,13 @@
 #!/usr/bin/env python
 
 from pydpiper.application import AbstractApplication
+from pydpiper.pipeline import Pipeline, CmdStage, InputFile, OutputFile, LogFile
 import pydpiper.file_handling as fh
 import pydpiper_apps.minc_tools.registration_functions as rf
 import pydpiper_apps.minc_tools.hierarchical_minctracc as hm
+import pydpiper_apps.minc_tools.registration_file_handling as rfh
 import pydpiper_apps.minc_tools.minc_atoms as ma
+import pydpiper_apps.minc_tools.minc_modules as mm
 from os.path import splitext, abspath
 import logging
 import Pyro
@@ -12,6 +15,7 @@ from optparse import OptionGroup
 import sys
 import re
 import os
+from datetime import date
 
 logger = logging.getLogger(__name__)
 
@@ -19,10 +23,11 @@ Pyro.config.PYRO_MOBILE_CODE=1
 
 class LSQ6Registration(AbstractApplication):
     """ 
-        This class handles a 6 parameter (rigid) registration between two files. 
+        This class handles a 6 parameter (rigid) registration between one or more files
+        and a single target. 
         
         Source:
-            Single input file with or without a mask
+            One or more files with or without a mask
         
         Target:
             Single input file:
@@ -78,7 +83,9 @@ class LSQ6Registration(AbstractApplication):
                          type="string", default="10,4,10,8,50,10",
                          help="Settings for the large rotation alignment. factor=factor based on smallest file resolution: 1) blur factor, 2) resample step size factor, 3) registration step size factor, 4) w_translations factor, 5) rotational range in degrees, 6) rotational interval in degrees. [default: %default]")
         self.parser.add_option_group(group)
-        self.parser.set_usage("%prog [options] source.mnc [--target target.mnc or --init-model /init/model/file.mnc]") 
+        """Add option groups from specific modules"""
+        rf.addGenRegOptionGroup(self.parser)
+        self.parser.set_usage("%prog [options] [--target target.mnc or --init-model /init/model/file.mnc] input file(s)") 
 
     def setup_appName(self):
         appName = "LSQ6-registration"
@@ -88,18 +95,16 @@ class LSQ6Registration(AbstractApplication):
         options = self.options
         args = self.args
         
-        # initial error handling:  verify that only one input file is specified and that it is a MINC file
+        # initial error handling:  verify that at least one input file is specified and that it is a MINC file
         if(len(args) < 1):
             print "Error: no source image provided\n"
             sys.exit()
-        elif(len(args) > 1):
-            print "Error: more than one source image provided: ", args, "\n"
-            sys.exit()
-        ext = splitext(args[0])[1]
-        if(re.match(".mnc", ext) == None):
-            print "Error: input file is not a MINC file:, ", args[0], "\n"
-            sys.exit()
-        
+        for i in range(len(args)):
+            ext = splitext(args[i])[1]
+            if(re.match(".mnc", ext) == None):
+                print "Error: input file is not a MINC file:, ", args[i], "\n"
+                sys.exit()
+
         # verify that we have some sort of target specified
         if(options.init_model == None and options.target == None):
             print "Error: please specify either a target file for the registration (--target), or an initial model (--init-model)\n"
@@ -114,13 +119,38 @@ class LSQ6Registration(AbstractApplication):
         else:
             mainDirectory = fh.makedirsIgnoreExisting(options.output_directory)
         
-        # not sure yet what the best directory structure for all of this is...
-        # create file handles for the source and target:
-        inputPipeFH = rf.initializeInputFiles([abspath(args[0])], mainDirectory=mainDirectory)
-        targetPipeFH = rf.initializeInputFiles([abspath(options.target)], mainDirectory=mainDirectory)
+        """Make main pipeline directories"""
+        # TODO: change this as soon as mbm-redesign has been merged into master!!
+        #pipeDir = fh.makedirsIgnoreExisting(options.pipeline_dir)
+        if not options.pipeline_name:
+            pipeName = str(date.today()) + "_pipeline"
+        else:
+            pipeName = options.pipeline_name
+        #nlinDirectory = createSubDir(pipeDir, pipeName + "_nlin")
+        lsq6Directory = fh.createSubDir(mainDirectory, pipeName + "_lsq6")
+        processedDirectory = fh.createSubDir(mainDirectory, pipeName + "_processed")
+        
+        # create file handles for the input file(s) 
+        inputFiles = rf.initializeInputFiles(args, mainDirectory=processedDirectory)
+
+        # TODO: fix this when an initial model is supplied
+        if(options.target != None):
+            targetPipeFH = rf.initializeInputFiles([abspath(options.target)], mainDirectory=lsq6Directory)
+        else: # options.init_model != None  
+            initModel = rf.setupInitModel(options.init_model, mainDirectory)
+            if (initModel[1] != None):
+                # we have a target in "native" space 
+                targetPipeFH = [initModel[1]]
+            else:
+                # we will use the target in "standard" space
+                targetPipeFH = [initModel[0]]
         
         # create a new group to indicate in the output file names that this is the lsq6 stage
-        inputPipeFH[0].newGroup(groupName="lsq6")
+        for i in range(len(inputFiles)):
+            inputFiles[i].newGroup(groupName="lsq6")
+        
+        # store the resampled lsq6 files in order to create an average at the end
+        filesToAvg = []
         
         """
             Option 1) run a simple lsq6: the input files are assumed to be in the
@@ -141,26 +171,75 @@ class LSQ6Registration(AbstractApplication):
             # for the input files here 
             parameterList = options.large_rotation_parameters.split(',')
             blurFactor= float(parameterList[0])
+            
             blurAtResolution = -1
-            highestResolution = rf.getHighestResolution(inputPipeFH[0])
+            highestResolution = rf.getHighestResolution(inputFiles[0])
             if(blurFactor != -1):
                 blurAtResolution = blurFactor * highestResolution
             
-            self.pipeline.addStage(ma.blur(inputPipeFH[0], fwhm=blurAtResolution))
             self.pipeline.addStage(ma.blur(targetPipeFH[0], fwhm=blurAtResolution))
             
-            self.pipeline.addStage((hm.RotationalMinctracc(inputPipeFH[0],
-                                                           targetPipeFH[0],
-                                                           blur               = float(parameterList[0]),
-                                                           resample_step      = float(parameterList[1]),
-                                                           registration_step  = float(parameterList[2]),
-                                                           w_translations     = float(parameterList[3]),
-                                                           rotational_range   = int(parameterList[4]),
-                                                           rotational_interval= int(parameterList[5]) )))
-
-            self.pipeline.addStage(ma.mincresample(inputPipeFH[0],
-                                                   targetPipeFH[0],
-                                                   likeFile=targetPipeFH[0]))
+            for inputFH in inputFiles:
+                
+                self.pipeline.addStage(ma.blur(inputFH, fwhm=blurAtResolution))
+            
+                self.pipeline.addStage((hm.RotationalMinctracc(inputFH,
+                                                               targetPipeFH[0],
+                                                               blur               = float(parameterList[0]),
+                                                               resample_step      = float(parameterList[1]),
+                                                               registration_step  = float(parameterList[2]),
+                                                               w_translations     = float(parameterList[3]),
+                                                               rotational_range   = int(parameterList[4]),
+                                                               rotational_interval= int(parameterList[5]) )))
+                # if an initial model is used, we might have to concatenate
+                # the transformation from the rotational minctracc command
+                # with the transformation from the inital model
+                if(options.init_model != None):
+                    if(initModel[2] != None):
+                        prevxfm = inputFH.getLastXfm(targetPipeFH[0])
+                        # the transform that is created will bring the input file to 
+                        # standard space, and hence he use that file as the target here:
+                        #newxfm = inputFH.registerVolume(initModel[0], "transforms")
+                        #concat = mm.concatXfm(inputFH,[targetPipeFH[0].getLastXfm(inputFH),initModel[2]], newxfm)
+                        #cmd = ["xfmconcat", "-clobber"] + [prevxfm] + [InputFile(initModel[2]).filename] + [OutputFile(newxfm)]
+                        #print "Current command: ", cmd
+                        #return
+                        xfmConcat = CmdStage([])
+                        #xfmConcat = CmdStage.__init__(self, None) #don't do any arg processing in superclass
+                        xfmConcat.name   = "concatenate-native-to-standard"
+                        xfmConcat.colour = "yellow"
+                        # file that used to get the rotational minctracc transformation
+                        xfmConcat.source = inputFH.getBlur(fwhm=blurAtResolution)
+                        xfmConcat.target = initModel[0]
+                        xfmConcat.inputFiles = [inputFH.getLastXfm(targetPipeFH[0]), initModel[2]]
+                        newxfm = inputFH.registerVolume(initModel[0], "transforms")
+                        xfmConcat.output = newxfm
+                        xfmConcat.outputFiles = [newxfm]
+                        xfmConcat.logFile = fh.logFromFile(inputFH.logDir, newxfm)
+                        cmd = ["xfmconcat", "-clobber"] + [prevxfm] + [initModel[2]] + [newxfm]
+                        print "xfmconcat command      : ", cmd
+                        xfmConcat.cmd = cmd
+                        self.pipeline.addStage(xfmConcat)
+                        #self.pipeline.addStage(concat)
+                likeFileForResample =  targetPipeFH[0]
+                targetFHforResample = targetPipeFH[0]
+                if(options.init_model != None):
+                    if(initModel[1] != None):
+                        likeFileForResample = initModel[0]
+                        targetFHforResample = initModel[0]
+                rs = ma.mincresample(inputFH,targetFHforResample,likeFile=likeFileForResample)
+                filesToAvg.append(rs.outputFiles[0])
+                self.pipeline.addStage(rs)
+            
+        # Create the lsq6 average after all has been done...
+        if(len(filesToAvg) > 1):
+            lsq6AvgOutput = abspath(lsq6Directory) + "/" + "lsq6_average.mnc"
+            # TODO: fix mask issue
+            lsq6FH = rfh.RegistrationPipeFH(lsq6AvgOutput, mask=None, basedir=lsq6Directory)
+            logBase = fh.removeBaseAndExtension(lsq6AvgOutput)
+            avgLog = fh.createLogFile(lsq6FH.logDir, logBase)
+            avg = ma.mincAverage(filesToAvg, lsq6AvgOutput, logFile=avgLog)
+            self.pipeline.addStage(avg)
 
 
 if __name__ == "__main__":
