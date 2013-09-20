@@ -46,11 +46,11 @@ class CalcStats(object):
        It should be called once for each inputFH in your pipeline.  
        General functionality as follows:
        1. Class instantiated with input, target and blurs. May optionally specify
-          array of input file handlers so that recentering can be appropriately
+          array of input file handlers so that re-centering can be appropriately
           calculated. 
        2. If needed, invert transform between input and target in setupXfms()
        3. Call fullStatsCalc in calling class, which calculates linear and 
-          pure nonlinear displacement, as well as recentering average, before
+          pure nonlinear displacement, as well as re-centering average, before
           calculating determinants and log determinants. 
        4. Alternate is to call calcFullDisplacement followed by calcDetAndLogDet, 
           which will use full displacement (rather than just non-linear component)
@@ -113,14 +113,12 @@ class CalcStats(object):
         self.fullDisp = fullDisp.outputFiles[0]
         
     def linAndNlinDisplacement(self):
-        """Need to fill in this function and combine with version in CalcChainStats
-           Main diffs: 1. target is common space, so inv_nlin used for full nlin (as in MBM)
-           2. Need to average and centre displacement after calculating (this might be separate)"""
-        
-        """The function calculates both the linear and nonlinear
+        """
+           The function calculates both the linear and nonlinear
            portions of the displacement, in order to find 
            pure nonlinear. Common space here is the target (usually
-           an average of some sort)
+           an average of some sort). We also recentre pure non linear 
+           displacement. 
            
         """
         
@@ -151,7 +149,7 @@ class CalcStats(object):
         
         if self.dispToAvg:
             """Calculate average inverse displacement"""
-            avgOutput = abspath(self.targetFH.baseDir) + "/" + "average_inv_pure_displacement.mnc"
+            avgOutput = abspath(self.targetFH.basedir) + "/" + "average_inv_pure_displacement.mnc"
             logBase = fh.removeBaseAndExtension(avgOutput)
             avgLog = fh.createLogFile(self.targetFH.logDir, logBase)
             avg = mincAverageDisp(self.dispToAvg, avgOutput, logFile=avgLog)
@@ -282,7 +280,7 @@ class CalcChainStats(CalcStats):
         xfmConcat = CmdStage(cmd)
         xfmConcat.setLogFile(LogFile(fh.logFromFile(self.inputFH.logDir, nlinXfm)))
         self.p.addStage(xfmConcat)
-        nlinDisp = mincDisplacement(self.inputFH, transform=nlinXfm)
+        nlinDisp = mincDisplacement(self.inputFH, self.inputFH, nlinXfm)
         self.p.addStage(nlinDisp)
         self.nlinDisp = nlinDisp.outputFiles[0]
         

@@ -595,7 +595,7 @@ class mincAverage(CmdStage):
                  inputArray, 
                  outFile, 
                  logFile=None, 
-                 defaultDir=None):
+                 defaultDir="tmp"):
         CmdStage.__init__(self, None)
         
         try:  
@@ -648,7 +648,7 @@ class mincAverageDisp(mincAverage):
                  outFile, 
                  logFile=None, 
                  defaultDir=None):
-        mincAverage.__init__(self, None)
+        mincAverage.__init__(self, inputArray,outFile,logFile,defaultDir)
         
     def addDefaults(self):
         for i in range(len(self.filesToAvg)):

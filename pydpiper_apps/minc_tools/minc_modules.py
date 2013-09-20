@@ -156,8 +156,7 @@ class LongitudinalStatsConcatAndResample:
     def statsAndResample(self, inputFH, targetFH, xfm):
         """Calculate stats between input and target, resample to common space using xfm"""
         stats = st.CalcChainStats(inputFH, targetFH, self.blurs)
-        stats.calcFullDisplacement()
-        stats.calcDetAndLogDet(useFullDisp=True)
+        stats.fullStatsCalc()
         self.p.addPipeline(stats.p)
         """Only resampleToCommon space if we have the appropriate transform"""
         if xfm:

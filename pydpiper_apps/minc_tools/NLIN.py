@@ -81,11 +81,14 @@ class NonlinearRegistration(AbstractApplication):
             """Choose final average from array of nlin averages"""
             numGens = len(self.nlinAvg)
             finalNlin = self.nlinAvg[numGens-1]
+            """Hack to set lastXfms until I setup proper stats group"""
+            for inputFH in inputFiles:
+                inputFH.setLastXfm(finalNlin, inputFH.getLastXfm(self.nlinAvg[numGens-2]))
             """For each input file, calculate statistics"""
             for inputFH in inputFiles:
                 stats = CalcStats(inputFH, finalNlin, blurs, inputFiles)
                 stats.fullStatsCalc()
-                self.p.addPipeline(stats.p)
+                self.pipeline.addPipeline(stats.p)
             
 class NLINANTS(object):
     def __init__(self, inputArray, targetFH, nlinOutputDir, numberOfGenerations):
@@ -129,7 +132,8 @@ class NLINANTS(object):
                 self.p.addStage(iblur)
                 ma = mincANTS(inputFH, 
                               self.target, 
-                              defaultDir="tmp", 
+                              defaultDir="tmp",
+                              blur=[-1,self.ANTSBlur], 
                               iterations=self.iterations[i],
                               transformation_model = self.transformationModel[i],
                               regularization=self.regularization[i],
