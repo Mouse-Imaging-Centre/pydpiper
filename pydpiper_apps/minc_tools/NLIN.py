@@ -12,6 +12,7 @@ from pydpiper_apps.minc_tools.minc_atoms import blur, mincresample, mincANTS, mi
 from pydpiper_apps.minc_tools.stats_tools import addStatsOptions, CalcStats
 from pyminc.volumes.factory import volumeFromFile
 import sys
+import csv
 import logging
 
 logger = logging.getLogger(__name__)
@@ -24,8 +25,11 @@ class NonlinearRegistration(AbstractApplication):
                       type="string", default=None,
                       help="Starting target for non-linear alignment.")
         group.add_option("--lsq12-mask", dest="lsq12_mask",
-                      type="string", default="None", 
+                      type="string", default=None, 
                       help="Optional mask for target.")
+        group.add_option("--nlin-protocol", dest="nlin_protocol",
+                      type="string", default=None, 
+                      help="Can optionally specify a nonlinear protocol that is different from defaults. Default is None.")
         self.parser.add_option_group(group)
         """Add option groups from specific modules"""
         addGenRegOptionGroup(self.parser)
@@ -59,12 +63,12 @@ class NonlinearRegistration(AbstractApplication):
         
         """Based on cmdline option, register with minctracc or mincANTS"""
         if options.reg_method=="mincANTS":
-            ants = NLINANTS(inputFiles, initialTarget, nlinDirectory, 3)
+            ants = NLINANTS(inputFiles, initialTarget, nlinDirectory, options.nlin_protocol)
             ants.iterate()
             self.pipeline.addPipeline(ants.p)
             self.nlinAvg = ants.nlinAvg
         elif options.reg_method == "minctracc":
-            tracc = NLINminctracc(inputFiles, initialTarget, nlinDirectory, 6)
+            tracc = NLINminctracc(inputFiles, initialTarget, nlinDirectory, options.nlin_protocol, 6)
             tracc.iterate()
             self.pipeline.addPipeline(tracc.p)
             self.nlinAvg = tracc.nlinAvg
@@ -91,7 +95,7 @@ class NonlinearRegistration(AbstractApplication):
                 self.pipeline.addPipeline(stats.p)
             
 class NLINANTS(object):
-    def __init__(self, inputArray, targetFH, nlinOutputDir, numberOfGenerations):
+    def __init__(self, inputArray, targetFH, nlinOutputDir, nlin_protocol=None):
         self.p = Pipeline()
         """Initial inputs should be an array of fileHandlers with lastBasevol in lsq12 space"""
         self.inputs = inputArray
@@ -99,42 +103,171 @@ class NLINANTS(object):
         self.target = targetFH 
         """Output directory should be _nlin """
         self.nlinDir = nlinOutputDir
-        """number of generations/iterations"""
-        self.generations = numberOfGenerations
         """Empty array that we will fill with averages as we create them"""
         self.nlinAvg = [] 
         """Create the blurring resolution from the file resolution"""
         self.ANTSBlur = volumeFromFile(self.target.getLastBasevol()).separations[0]
         
-        """Below are ANTS parameters for each generation that differ from defaults.
-           Defaults in mincANTS class currently derived from SyN[0.2] protocol.
-           These parameters are for the standard mincANTS protocol in 
-           the current iteration of build-model.
+        """Below are ANTS parameters for each generation that are
+           defaults for this alignment. If a non linear protocol is specified,
+           some or all of these defaults may be overridden. 
+           
+           Note that for each generation, the blurs, gradient, similarity_metric,
+           weight and radius/histogram are arrays. This is to allow for the one
+           or more similarity metrics (and their associated parameters) to be specified
+           for each mincANTS call. We typically use two, but the mincANTS atom allows
+           for more or less if desired. 
         """
-        self.iterations = ["100x100x100x0", "100x100x100x20", "100x100x100x50"]
+        self.blurs = [[-1, self.ANTSBlur], [-1, self.ANTSBlur],[-1, self.ANTSBlur]] 
+        self.gradient = [[False,True], [False,True], [False,True]]
+        self.similarityMetric = [["CC", "CC"],["CC", "CC"],["CC", "CC"]]
+        self.weight = [[1,1],[1,1],[1,1]]
+        self.radiusHisto = [[3,3],[3,3],[3,3]]
         self.transformationModel = ["SyN[0.5]", "SyN[0.4]", "SyN[0.4]"]
         self.regularization = ["Gauss[5,1]", "Gauss[5,1]", "Gauss[5,1]"]
+        self.iterations = ["100x100x100x0", "100x100x100x20", "100x100x100x50"]
         self.useMask = [False, True, True]
         
-        
-        """ In init, need to add the following things:
-              ANTSBlur may want to be set elsewhere, but should be set from resolution.
-              Need a function that reads registration params that override above. 
-        """
+        """If a non-linear protocol was specified, use this to override the
+           default non-linear registration parameters. Currently, this protocol must
+           be a csv file that uses a SEMI-COLON to separate the fields. Each row in the
+           csv is a different input to the mincANTS call (e.g. iterations, regularization, etc)
+           Although the number of entries in each row (e.g. generations) is variable, the
+           specific parameters are fixed. For example, one could specify a subset of the
+           allowed parameters (e.g. similarity_metric only) but could not rename any parameters
+           or use additional ones that haven't already been defined without subclassing. See
+           documentation for additional details. 
+           
+           If a non-linear protocol is not specified, default parameters will be used."""
+        if nlin_protocol:
+            self.setParams(nlin_protocol)
             
+        """Get number of generations based on length of parameter arrays. This is based on
+           either defaults or whatever was specified from an external non-linear protocol.
+           If the number of generations in each array does not match, an error is thrown and
+           the program exits. """
+        self.generations = self.getGenerations()
+    
+    def getGenerations(self):
+        arrayLength = len(self.blurs)
+        errorMsg = "Array lengths in non-linear mincANTS protocol do not match."
+        if (len(self.gradient) != arrayLength 
+            or len(self.similarityMetric) != arrayLength
+            or len(self.weight) != arrayLength
+            or len(self.radiusHisto) != arrayLength
+            or len(self.transformationModel) != arrayLength
+            or len(self.regularization) != arrayLength
+            or len(self.iterations) != arrayLength
+            or len(self.useMask) != arrayLength):
+            print errorMsg
+            raise
+        else:
+            return arrayLength
+            
+    def setParams(self, nlin_protocol):
+        """Set parameters from specified protocol"""
+        
+        """Read parameters into array from csv."""
+        inputCsv = open(abspath(nlin_protocol), 'rb')
+        csvReader = csv.reader(inputCsv, delimiter=';', skipinitialspace=True)
+        params = []
+        for r in csvReader:
+            params.append(r)
+        """initialize arrays """
+        self.blurs = []
+        self.gradient = []
+        self.similarityMetric = []
+        self.weight = []
+        self.radiusHisto = []
+        self.transformationModel = []
+        self.regularization = []
+        self.iterations = []
+        self.useMask = []
+        """Parse through rows and assign appropriate values to each parameter array.
+           Everything is read in as strings, but in some cases, must be converted to 
+           floats, booleans or gradients. 
+        """
+        for p in params:
+            if p[0]=="blur":
+                """Blurs must be converted to floats."""
+                for i in range(1,len(p)):
+                    b = []
+                    for j in p[i].split(","):
+                        b.append(float(j)) 
+                    self.blurs.append(b)
+            elif p[0]=="gradient":
+                """Gradients must be converted to bools."""
+                for i in range(1,len(p)):
+                    g = []
+                    for j in p[i].split(","):
+                        if j=="True" or j=="TRUE":
+                            g.append(True)
+                        elif j=="False" or j=="FALSE":
+                            g.append(False)
+                    self.gradient.append(g)
+            elif p[0]=="similarity_metric":
+                """Similarity metric does not need to be converted, but must be stored as an array for each generation."""
+                for i in range(1,len(p)):
+                    g = []
+                    for j in p[i].split(","):
+                        g.append(j)
+                    self.similarityMetric.append(g)
+            elif p[0]=="weight":
+                """Weights are strings but must be converted to an int."""
+                for i in range(1,len(p)):
+                    w = []
+                    for j in p[i].split(","):
+                        w.append(int(j)) 
+                    self.weight.append(w)
+            elif p[0]=="radius_or_histo":
+                """The radius or histogram parameter is a string, but must be converted to an int"""
+                for i in range(1,len(p)):
+                    r = []
+                    for j in p[i].split(","):
+                        r.append(int(j)) 
+                    self.radiusHisto.append(r)
+            elif p[0]=="transformation":
+                for i in range(1,len(p)):
+                    self.transformationModel.append(p[i])
+            elif p[0]=="regularization":
+                for i in range(1,len(p)):
+                    self.regularization.append(p[i])
+            elif p[0]=="iterations":
+                for i in range(1,len(p)):
+                    self.iterations.append(p[i])
+            elif p[0]=="useMask":
+                for i in range(1,len(p)):
+                    """useMask must be converted to a bool."""
+                    if p[i] == "True" or p[i] == "TRUE":
+                        self.useMask.append(True)
+                    elif p[i] == "False" or p[i] == "FALSE":
+                        self.useMask.append(False)
+            else:
+                print "Improper parameter specified for mincANTS protocol: " + str(p[0])
+                print "Exiting..."
+                sys.exit()
+         
     def iterate(self):
         for i in range(self.generations):
-            tblur = blur(self.target, self.ANTSBlur, gradient=True)              
-            self.p.addStage(tblur)
+            for j in self.blurs[i]:
+                if j != -1:
+                    tblur = blur(self.target, j, gradient=True)              
+                    self.p.addStage(tblur)
             filesToAvg = []
             for inputFH in self.inputs:
-                iblur = blur(inputFH, self.ANTSBlur, gradient=True)
-                self.p.addStage(iblur)
+                for j in self.blurs[i]:
+                    if j != -1:
+                        iblur = blur(inputFH, j, gradient=True)
+                        self.p.addStage(iblur) 
                 ma = mincANTS(inputFH, 
                               self.target, 
                               defaultDir="tmp",
-                              blur=[-1,self.ANTSBlur], 
+                              blur=self.blurs[i],
+                              gradient=self.gradient[i], 
+                              similarity_metric=self.similarityMetric[i],
+                              weight=self.weight[i], 
                               iterations=self.iterations[i],
+                              radius_or_histo=self.radiusHisto[i],
                               transformation_model = self.transformationModel[i],
                               regularization=self.regularization[i],
                               useMask=self.useMask[i])

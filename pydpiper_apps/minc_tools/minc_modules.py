@@ -65,7 +65,7 @@ class LSQ12ANTSNlin:
                       defaultDir=self.defaultDir)
         self.p.addPipeline(lsq12.p)
         """Resample input using final lsq12 transform"""
-        res = ma.mincresample(self.inputFH, self.targetFH, likeFile=self.targetFH)   
+        res = ma.mincresample(self.inputFH, self.targetFH, likeFile=self.targetFH, argArray=["-sinc"])   
         self.p.addStage(res)
         self.inputFH.setLastBasevol(res.outputFiles[0])
         # MF TODO: For future implementations, perhaps keep track of the xfm
@@ -182,7 +182,7 @@ class LongitudinalStatsConcatAndResample:
             likeFH = targetFH
         else:
             likeFH = self.nlinFH
-        resample = ma.mincresample(inputFH, targetFH, likeFile=likeFH)
+        resample = ma.mincresample(inputFH, targetFH, likeFile=likeFH, argArray=["-sinc"])
         self.p.addStage(resample)
         """Calculate stats from input to target and resample to common space"""
         self.statsAndResample(inputFH, targetFH, self.xtcDict[inputFH])
@@ -273,7 +273,8 @@ def resampleToCommon(xfm, FH, statsGroup, blurs, nlinFH):
                               likeFile=nlinFH.getLastBasevol(),
                               transform=xfm,
                               outFile=outputFile,
-                              logFile=logFile) 
+                              logFile=logFile,
+                              argArray=["-sinc"]) 
         pipeline.addStage(res)
     
     return pipeline
