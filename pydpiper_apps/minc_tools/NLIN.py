@@ -17,21 +17,25 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+def addNlinRegOptionGroup(parser):
+    """option group for the command line argument parser"""
+    group = OptionGroup(parser, "Nonlinear registration options",
+                        "Options for performing a non-linear registration")
+    group.add_option("--lsq12-avg", dest="lsq12_avg",
+                     type="string", default=None,
+                     help="Starting target for non-linear alignment.")
+    group.add_option("--lsq12-mask", dest="lsq12_mask",
+                     type="string", default=None,
+                     help="Optional mask for target.")
+    group.add_option("--nlin-protocol", dest="nlin_protocol",
+                     type="string", default=None,
+                     help="Can optionally specify a nonlinear protocol that is different from defaults. Default is None.")
+    parser.add_option_group(group)
+
 class NonlinearRegistration(AbstractApplication):
     def setup_options(self):
-        group = OptionGroup(self.parser, "Nonlinear registration options", 
-                        "Options for performing a non-linear registration")
-        group.add_option("--lsq12-avg", dest="lsq12_avg",
-                      type="string", default=None,
-                      help="Starting target for non-linear alignment.")
-        group.add_option("--lsq12-mask", dest="lsq12_mask",
-                      type="string", default=None, 
-                      help="Optional mask for target.")
-        group.add_option("--nlin-protocol", dest="nlin_protocol",
-                      type="string", default=None, 
-                      help="Can optionally specify a nonlinear protocol that is different from defaults. Default is None.")
-        self.parser.add_option_group(group)
         """Add option groups from specific modules"""
+        addNlinRegOptionGroup(self.parser)
         addGenRegOptionGroup(self.parser)
         addStatsOptions(self.parser)
         
