@@ -139,7 +139,7 @@ def setupInitModel(inputModel, pipeDir=None):
         sys.exit()
 
 
-def getHighestResolution(inSource):
+def getFinestResolution(inSource):
     """
         This function will return the highest (or finest) resolution 
         present in the inSource file.     
@@ -152,10 +152,10 @@ def getHighestResolution(inSource):
     
     # the abs function does not work on lists... so we have to loop over it.  This 
     # to avoid issues with negative step sizes.  Initialize with first dimension
-    highestRes = abs(imageResolution[0])
+    finestRes = abs(imageResolution[0])
     for i in range(1, len(imageResolution)):
-        if(abs(imageResolution[i]) < highestRes):
-            highestRes = abs(imageResolution[i])
+        if(abs(imageResolution[i]) < finestRes):
+            finestRes = abs(imageResolution[i])
     
-    return highestRes
+    return finestRes
     
