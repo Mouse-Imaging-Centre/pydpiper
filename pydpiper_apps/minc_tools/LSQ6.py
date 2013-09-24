@@ -133,17 +133,16 @@ class LSQ6Registration(AbstractApplication):
         # create file handles for the input file(s) 
         inputFiles = rf.initializeInputFiles(args, mainDirectory=processedDirectory)
 
-        # TODO: fix this when an initial model is supplied
         if(options.target != None):
-            targetPipeFH = rf.initializeInputFiles([abspath(options.target)], mainDirectory=lsq6Directory)
+            targetPipeFH = rfh.RegistrationPipeFH(abspath(options.target), basedir=lsq6Directory)
         else: # options.init_model != None  
             initModel = rf.setupInitModel(options.init_model, mainDirectory)
             if (initModel[1] != None):
                 # we have a target in "native" space 
-                targetPipeFH = [initModel[1]]
+                targetPipeFH = initModel[1]
             else:
                 # we will use the target in "standard" space
-                targetPipeFH = [initModel[0]]
+                targetPipeFH = initModel[0]
         
         # create a new group to indicate in the output file names that this is the lsq6 stage
         for i in range(len(inputFiles)):
@@ -173,19 +172,20 @@ class LSQ6Registration(AbstractApplication):
             blurFactor= float(parameterList[0])
             
             blurAtResolution = -1
-            highestResolution = rf.getHighestResolution(inputFiles[0])
+            # assumption: all files have the same resolution, so we take input file 1
+            highestResolution = rf.getFinestResolution(inputFiles[0])
             if(blurFactor != -1):
                 blurAtResolution = blurFactor * highestResolution
             
-            self.pipeline.addStage(ma.blur(targetPipeFH[0], fwhm=blurAtResolution))
+            self.pipeline.addStage(ma.blur(targetPipeFH, fwhm=blurAtResolution))
             
             for inputFH in inputFiles:
                 
                 self.pipeline.addStage(ma.blur(inputFH, fwhm=blurAtResolution))
             
-                self.pipeline.addStage((hm.RotationalMinctracc(inputFH,
-                                                               targetPipeFH[0],
-                                                               blur               = float(parameterList[0]),
+                self.pipeline.addStage((ma.RotationalMinctracc(inputFH,
+                                                               targetPipeFH,
+                                                               blur               = blurAtResolution,
                                                                resample_step      = float(parameterList[1]),
                                                                registration_step  = float(parameterList[2]),
                                                                w_translations     = float(parameterList[3]),
@@ -196,33 +196,14 @@ class LSQ6Registration(AbstractApplication):
                 # with the transformation from the inital model
                 if(options.init_model != None):
                     if(initModel[2] != None):
-                        prevxfm = inputFH.getLastXfm(targetPipeFH[0])
-                        # the transform that is created will bring the input file to 
-                        # standard space, and hence he use that file as the target here:
-                        #newxfm = inputFH.registerVolume(initModel[0], "transforms")
-                        #concat = mm.concatXfm(inputFH,[targetPipeFH[0].getLastXfm(inputFH),initModel[2]], newxfm)
-                        #cmd = ["xfmconcat", "-clobber"] + [prevxfm] + [InputFile(initModel[2]).filename] + [OutputFile(newxfm)]
-                        #print "Current command: ", cmd
-                        #return
-                        xfmConcat = CmdStage([])
-                        #xfmConcat = CmdStage.__init__(self, None) #don't do any arg processing in superclass
-                        xfmConcat.name   = "concatenate-native-to-standard"
-                        xfmConcat.colour = "yellow"
-                        # file that used to get the rotational minctracc transformation
-                        xfmConcat.source = inputFH.getBlur(fwhm=blurAtResolution)
-                        xfmConcat.target = initModel[0]
-                        xfmConcat.inputFiles = [inputFH.getLastXfm(targetPipeFH[0]), initModel[2]]
+                        prevxfm = inputFH.getLastXfm(targetPipeFH)
                         newxfm = inputFH.registerVolume(initModel[0], "transforms")
-                        xfmConcat.output = newxfm
-                        xfmConcat.outputFiles = [newxfm]
-                        xfmConcat.logFile = fh.logFromFile(inputFH.logDir, newxfm)
-                        cmd = ["xfmconcat", "-clobber"] + [prevxfm] + [initModel[2]] + [newxfm]
-                        print "xfmconcat command      : ", cmd
-                        xfmConcat.cmd = cmd
-                        self.pipeline.addStage(xfmConcat)
-                        #self.pipeline.addStage(concat)
-                likeFileForResample =  targetPipeFH[0]
-                targetFHforResample = targetPipeFH[0]
+                        logFile = fh.logFromFile(inputFH.logDir, newxfm)
+                        self.pipeline.addStage(ma.xfmConcat([prevxfm,initModel[2]],
+                                                            newxfm,
+                                                            logFile))
+                likeFileForResample =  targetPipeFH
+                targetFHforResample = targetPipeFH
                 if(options.init_model != None):
                     if(initModel[1] != None):
                         likeFileForResample = initModel[0]
