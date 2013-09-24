@@ -8,6 +8,7 @@ from os import curdir, walk
 import sys
 import logging
 import fnmatch
+from pyminc.volumes.factory import volumeFromFile
 
 logger = logging.getLogger(__name__)
 
@@ -25,8 +26,17 @@ def addGenRegOptionGroup(parser):
                       help="Directory of masks. If not specified, no masks are used. If only one mask in directory, same mask used for all inputs.")
     parser.add_option_group(group)
     
+
+"""
+    the "args" argument to this function must be a list.  If only
+    one argument is supplied, make sure you don't pass it as a string 
+"""
 def initializeInputFiles(args, mainDirectory, maskDir=None):
     inputs = []
+    # the assumption in the following line is that args is a list
+    # if that is not the case, convert it to one
+    if(not(type(args) is list)):
+        args = [args]
     for iFile in range(len(args)):
         inputPipeFH = rfh.RegistrationPipeFH(abspath(args[iFile]), basedir=mainDirectory)
         inputs.append(inputPipeFH)
@@ -85,7 +95,7 @@ def setupInitModel(inputModel, pipeDir=None):
         The following can optionally be included in the same directory as the above:
             name_native.mnc --> File in native scanner space.
             name_native_mask.mnc --> Mask for name_native.mnc
-            native_to_standard.xfm --> Transform from native space to standard space
+            name_native_to_standard.xfm --> Transform from native space to standard space
     """
     errorMsg = "Failed to properly set up initModel."
     
@@ -101,7 +111,10 @@ def setupInitModel(inputModel, pipeDir=None):
             raise
         else:
             mask = imageDirectory + "/" + imageBase + "_mask.mnc"
-            standardFH = rfh.RegistrationFHBase(imageFile, mask=mask, basedir=initModelDir)            
+            if not exists(mask):
+                errorMsg = "Required mask for the --init-model does not exist: " + str(mask)
+                raise
+            standardFH = rfh.RegistrationPipeFH(imageFile, mask=mask, basedir=initModelDir)            
             #if native file exists, create FH
             nativeFileName = imageDirectory + "/" + imageBase + "_native.mnc"
             if exists(nativeFileName):
@@ -110,7 +123,7 @@ def setupInitModel(inputModel, pipeDir=None):
                     errorMsg = "_native.mnc file included but associated mask not found"
                     raise
                 else:
-                    nativeFH = rfh.RegistrationFHBase(nativeFileName, mask=mask, basedir=initModelDir)
+                    nativeFH = rfh.RegistrationPipeFH(nativeFileName, mask=mask, basedir=initModelDir)
                     nativeToStdXfm = imageDirectory + "/" + imageBase + "_native_to_standard.xfm"
                     if exists(nativeToStdXfm):
                         nativeFH.setLastXfm(standardFH, nativeToStdXfm)
@@ -124,5 +137,25 @@ def setupInitModel(inputModel, pipeDir=None):
         print errorMsg
         print "Exiting..."
         sys.exit()
+
+
+def getFinestResolution(inSource):
+    """
+        This function will return the highest (or finest) resolution 
+        present in the inSource file.     
+    """
+    imageResolution = []
+    if isFileHandler(inSource):
+        imageResolution = volumeFromFile(inSource.getLastBasevol()).separations
+    else: 
+        imageResolution = volumeFromFile(inSource).separations
     
+    # the abs function does not work on lists... so we have to loop over it.  This 
+    # to avoid issues with negative step sizes.  Initialize with first dimension
+    finestRes = abs(imageResolution[0])
+    for i in range(1, len(imageResolution)):
+        if(abs(imageResolution[i]) < finestRes):
+            finestRes = abs(imageResolution[i])
+    
+    return finestRes
     
