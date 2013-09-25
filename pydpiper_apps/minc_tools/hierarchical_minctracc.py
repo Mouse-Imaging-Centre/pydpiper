@@ -2,8 +2,9 @@ from pydpiper.pipeline import Pipeline, CmdStage, InputFile, OutputFile, LogFile
 import pydpiper_apps.minc_tools.minc_atoms as ma
 import pydpiper_apps.minc_tools.minc_modules as mm
 import pydpiper.file_handling as fh
+import sys
 
-"""LinearHierarchicalMinctracc and RotationalMinctracc are currently broken/not fully tested."""
+"""LinearHierarchicalMinctracc is currently broken/not fully tested."""
 
 class LinearHierarchicalMinctracc:
     """Default LinearHierarchicalMinctracc class
@@ -25,53 +26,7 @@ class LinearHierarchicalMinctracc:
                 tblur = ma.blur(self.templatePipeFH, b, gradient=True)
                 iblur = ma.blur(self.inputPipeFH, b, gradient=True)               
                 self.p.addStage(tblur)
-                self.p.addStage(iblur)
-
-class RotationalMinctracc:
-    """Default RotationalMinctracc class
-       Currently just calls rotational_minctracc.py 
-       with minimal updates. Ultimately, we will do
-       a more substantial overhaul. 
-    """
-    def __init__(self, 
-                 inputPipeFH, 
-                 templatePipeFH,
-                 blurs=[0.5]):
-        
-        self.p = Pipeline()
-        self.inputPipeFH = inputPipeFH
-        self.templatePipeFH = templatePipeFH
-        
-        self.blurFiles(blurs) 
-        for b in blurs:
-            self.buildCmd(b)
-        
-    def blurFiles(self, blurs):
-        for b in blurs:
-            if b != -1:
-                tblur = ma.blur(self.templatePipeFH, b, gradient=True)
-                iblur = ma.blur(self.inputPipeFH, b, gradient=True)               
-                self.p.addStage(tblur)
-                self.p.addStage(iblur)
-    
-    def buildCmd(self, b):
-        """Only -w_translations override rotational_minctracc.py defaults. 
-           Keep this here. Rather than giving the option to override other
-           defaults. We will eventually re-write this code.
-        """
-        w_trans = str(0.4)
-        cmd = ["rotational_minctracc.py", "-t", "/dev/shm/", "-w", w_trans, w_trans, w_trans]
-        source = self.inputPipeFH.getBlur(b)
-        target = self.templatePipeFH.getBlur(b)
-        mask = self.templatePipeFH.getMask()
-        if mask:
-            cmd += ["-m", InputFile(mask)]
-        outputXfm = self.inputPipeFH.registerVolume(self.templatePipeFH)
-        cmd +=[InputFile(source), InputFile(target), OutputFile(outputXfm), "/dev/null"]
-        rm = CmdStage(cmd)
-        rm.setLogFile(LogFile(fh.logFromFile(self.inputPipeFH.logDir, outputXfm)))
-        self.p.addStage(rm)
-        
+                self.p.addStage(iblur)        
 
 class HierarchicalMinctracc:
     """Default HierarchicalMinctracc currently does:

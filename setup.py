@@ -12,7 +12,6 @@ setup(name='pydpiper',
       url='https://github.com/mfriedel/pydpiper',
       platforms="any",
       packages=['pydpiper', 'pydpiper_apps', 'pydpiper_apps.MAGeT', "pydpiper_apps.minc_tools"], 
-      scripts=['pydpiper/pipeline_executor.py', 'pydpiper_apps/MAGeT/MAGeT.py', 'pydpiper_apps/minc_tools/MBM.py',
+      scripts=['pydpiper/pipeline_executor.py', 'pydpiper_apps/MAGeT/MAGeT.py', 'pydpiper_apps/minc_tools/MBM.py', 
                'pydpiper_apps/minc_tools/registration_chain.py', 'pydpiper_apps/minc_tools/pairwise_nlin.py', 
-               'pydpiper_apps/minc_tools/NLIN.py']
-      )
+               'pydpiper_apps/minc_tools/NLIN.py', 'pydpiper_apps/minc_tools/LSQ6.py'])

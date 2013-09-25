@@ -3,6 +3,7 @@
 import pydpiper.file_handling as fh
 from os.path import abspath, join
 from os import curdir
+import sys
 
 class RegistrationGroupedFiles():
     """A class to keep together all bits for a RegistrationPipeFH stage"""
@@ -33,9 +34,20 @@ class RegistrationGroupedFiles():
                 if gradient:
                     fwhm = self.lastgradient
             if gradient:
-                blurToReturn = self.gradients[fwhm]
+                # these might not exist, so we need to try this
+                try:
+                    blurToReturn = self.gradients[fwhm]
+                except:
+                    print "Error: the gradient file with fwhm ", fwhm, " does not exist for file ", self.basevol
+                    print "Unexpected error: ", sys.exc_info()
+                    raise
             else:
-                blurToReturn = self.blurs[fwhm]
+                try:
+                    blurToReturn = self.blurs[fwhm]
+                except:
+                    print "Error: the blur file with fwhm ", fwhm, " does not exist for file ", self.basevol
+                    print "Unexpected error: ", sys.exc_info()
+                    raise
         return(blurToReturn)
 
     def addBlur(self, filename, fwhm, gradient=None):

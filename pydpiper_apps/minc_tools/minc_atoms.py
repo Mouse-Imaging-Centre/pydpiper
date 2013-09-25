@@ -2,12 +2,14 @@
 
 from pydpiper.pipeline import CmdStage 
 from pydpiper_apps.minc_tools.registration_functions import isFileHandler
-from os.path import abspath, basename, splitext, join
+import pydpiper_apps.minc_tools.registration_functions as rf
+from os.path import abspath, basename, join
 from os import curdir
 import pydpiper.file_handling as fh
 import sys
 import fnmatch
 import Pyro
+from os.path import splitext
 
 Pyro.config.PYRO_MOBILE_CODE=1
 
@@ -657,4 +659,170 @@ class mincAverageDisp(mincAverage):
             self.inputFiles.append(self.filesToAvg[i]) 
         self.outputFiles += [self.outfile]       
         self.cmd += ["mincaverage", "-clobber"] 
-                 
+
+class RotationalMinctracc(CmdStage):
+    """
+        This class runs a rotational_minctracc.py call on its two input 
+        files.  That program performs a 6 parameter (rigid) registration
+        by doing a brute force search in the x,y,z rotation space.  Normally
+        the input files have unknown orientation.  Input and output files
+        can be specified either as file handlers, or as string representing
+        the filenames.
+        
+        * The input files are assumed to have already been blurred appropriately
+        
+        There are a number of parameters that have to be set and this 
+        will be done using factors that depend on the resolution of the
+        input files.  The blur parameter is given in mm, not as a factor 
+        of the input resolution.  The blur parameter is necessary in order
+        to retrieve the correct blur file from the file handler.  Here is the list:
+        
+        argument to be set   --  default (factor)  -- (for 56 micron, translates to)
+                blur                  0.56 (mm)                 (560 micron) (note, this is in mm, not a factor)
+          resample stepsize            4                        (224 micron)
+        registration stepsize         10                        (560 micron)
+          w_translations               8                        (448 micron)
+         
+        Specifying -1 for the blur argument will result in retrieving an unblurred file.
+        The two other parameters that can be set are (in degrees) have defaults:
+        
+            rotational range          50
+            rotational interval       10
+        
+        Whether or not a mask will be used is based on the presence of a mask 
+        in the target file.  Alternatively, a mask can be specified using the
+        maskFile argument.
+    """
+    def __init__(self, 
+                 inSource, 
+                 inTarget,
+                 output = None, # ability to specify output transform when using strings for input
+                 logFile = None,
+                 maskFile = None,
+                 defaultDir="transforms",
+                 blur=0.56,
+                 resample_step=4,
+                 registration_step=10,
+                 w_translations=8,
+                 rotational_range=50,
+                 rotational_interval=10):
+        
+        CmdStage.__init__(self, None) #don't do any arg processing in superclass
+        # handling of the input files
+        try: 
+            if rf.isFileHandler(inSource, inTarget):
+                # TODO: create a check to see whether the blur exists...
+                self.source = inSource.getBlur(fwhm=blur)
+                self.target = inTarget.getBlur(fwhm=blur)  
+                if(output == None):
+                    self.output = inSource.registerVolume(inTarget, defaultDir)
+                else:
+                    self.output = output
+                if(logFile == None):
+                    self.logFile = fh.logFromFile(inSource.logDir, self.output)
+                else:
+                    self.logFile = logFile
+            else:
+                # TODO: fix this to work with string input files
+                self.source = inSource
+                self.target = inTarget
+        except:
+            print "Failed in putting together RotationalMinctracc command."
+            print "Unexpected error: ", sys.exc_info()
+            raise
+        
+        highestResolution = rf.getFinestResolution(inSource)
+        
+        self.addDefaults(resample_step     * highestResolution,
+                      registration_step * highestResolution,
+                      w_translations    * highestResolution,
+                      int(rotational_range),
+                      int(rotational_interval))
+        # potentially add a mask to the command
+        self.finalizeCommand(inTarget, maskFile)
+        self.setName()
+        self.colour = "green"
+
+    def setName(self):
+        self.name = "rotational-minctracc" 
+
+    def addDefaults(self,
+                 resamp_step,
+                 reg_step,
+                 w_trans,
+                 rot_range,
+                 rot_interval):
+        
+        w_trans_string = str(w_trans) + ',' + str(w_trans) + ',' + str(w_trans)
+        cmd = ["rotational_minctracc.py", 
+               "-t", "/dev/shm/", 
+               "-w", w_trans_string,
+               "-s", str(resamp_step),
+               "-g", str(reg_step),
+               "-r", str(rot_range),
+               "-i", str(rot_interval),
+               self.source,
+               self.target,
+               self.output,
+               "/dev/null"]
+        self.inputFiles = [self.source, self.target] 
+        self.outputFiles = [self.output] 
+        self.cmd = cmd
+        
+    def finalizeCommand(self,
+                        inTarget,
+                        maskFile):
+        if(maskFile):
+            # a mask file have been given directly, choose
+            # this one over the potential mask present
+            # in the target
+            self.cmd += ["-m", maskFile]
+            self.inputFiles.append(maskFile)
+        else:
+            try:
+                mask = inTarget.getMask()
+                if mask:
+                    self.cmd += ["-m", mask]
+                    self.inputFiles.append(mask)
+            except:
+                print "Failed retrieving information about a mask for the target in RotationalMinctracc."
+                print "Unexpected error: ", sys.exc_info()
+                raise
+
+
+class xfmConcat(CmdStage):
+    """
+        Calls xfmconcat on one or more input transformations
+        
+        inputFiles: these are assumed to be passed in as input filename  
+        strings.  If more than one input file is passed, they should be 
+        passed as a list
+        
+        outputFile: string representing the output filename 
+        
+        logFile: string representing the output filename for the log
+        file for this command 
+    """
+    def __init__(self, 
+                 inputFiles,
+                 outputFile,
+                 logFile):
+        CmdStage.__init__(self, None)
+        
+        # in case there is a single input file... (it's actually possible)
+        if(not(type(inputFiles) is list)):
+            inputFiles = [inputFiles]
+        
+        self.inputFiles = inputFiles
+        self.outputFiles = [outputFile]
+        self.output = outputFile
+        self.logFile = logFile
+        self.cmd = ["xfmconcat", "-clobber"]
+        self.cmd += inputFiles
+        self.cmd += [outputFile]
+        self.name   = "xfm-concat"
+        self.colour = "yellow"
+                        
+                        
+                        
+                        
