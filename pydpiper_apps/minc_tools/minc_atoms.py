@@ -145,6 +145,7 @@ class minctracc(CmdStage):
                  w_scales=0.02,
                  w_shear=0.02,
                  simplex=1,
+                 optimization="-use_simplex",
                  useMask=True):
         #MF TODO: Specify different w_translations, rotations, scales shear in each direction?
         # Now assumes same in all directions
@@ -211,6 +212,7 @@ class minctracc(CmdStage):
         self.w_scales = str(w_scales)
         self.w_shear = str(w_shear)
         self.simplex = str(simplex)
+        self.optimization = str(optimization)
 
         self.addDefaults()
         self.finalizeCommand()
@@ -231,7 +233,8 @@ class minctracc(CmdStage):
                     "-w_scales", self.w_scales, self.w_scales, self.w_scales,
                     "-w_shear", self.w_shear, self.w_shear, self.w_shear,
                     "-step", self.step, self.step, self.step,
-                    "-simplex", self.simplex, "-use_simplex",
+                    "-simplex", self.simplex, self.optimization,
+                    "-tol", str(0.0001), 
                     self.source,
                     self.target,
                     self.output]
@@ -275,13 +278,12 @@ class minctracc(CmdStage):
                          "-lattice_diameter", self.lattice_diameter,
                          self.lattice_diameter, self.lattice_diameter, 
                          "-max_def_magnitude", str(1),
-                         "-debug"]
+                         "-debug", "-xcorr"]
         else:
             #MF TODO: Enforce that options must be lsq6/7/9/12?
             """add the options for a linear fit"""
             _numCmd = "-" + self.linearparam
             self.cmd += ["-xcorr", _numCmd]
-            self.cmd += ["-tol", str(0.0001)]
 
 class blur(CmdStage):
     def __init__(self, 
