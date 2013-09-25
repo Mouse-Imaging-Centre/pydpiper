@@ -114,9 +114,9 @@ class RegistrationChain(AbstractApplication):
                     self.pipeline.addPipeline(hm.p)
                 """Resample s[i] into space of s[i+1]""" 
                 if nlinFH:
-                    resample = ma.mincresample(s[i], s[i+1], likeFile=nlinFH)
+                    resample = ma.mincresample(s[i], s[i+1], likeFile=nlinFH, argArray=["-sinc"])
                 else:
-                    resample = ma.mincresample(s[i], s[i+1], likeFile=s[i])
+                    resample = ma.mincresample(s[i], s[i+1], likeFile=s[i], argArray=["-sinc"])
                 self.pipeline.addStage(resample)
                 """Invert transforms for use later in stats"""
                 lastXfm = s[i].getLastXfm(s[i+1])

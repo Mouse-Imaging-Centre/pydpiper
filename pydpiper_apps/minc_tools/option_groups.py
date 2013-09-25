@@ -1,14 +1,6 @@
 #!/usr/bin/env python
 
 from optparse import OptionGroup
-
-def addMBMGroup(parser):
-    group = OptionGroup(parser, "MBM options", 
-                        "Options for MICe-build-model.")
-    group.add_option("--init-model", dest="init_model",
-                      type="string", default=None,
-                      help="Name of file to register towards. If unspecified, bootstrap.")
-    parser.add_option_group(group)
     
 def tmpLongitudinalOptionGroup(parser):
     group = OptionGroup(parser, "Temporary options for longitudinal registrations", 

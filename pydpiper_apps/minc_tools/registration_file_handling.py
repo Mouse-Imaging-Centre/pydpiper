@@ -76,14 +76,12 @@ class RegistrationFHBase():
            If unspecified, set as current directory (but assume no writing)"""
         if basedir:
             self.basedir = fh.makedirsIgnoreExisting(basedir)
-            """ only create a logDir if we plan on writing
-            Overwritten classes should always do this """
-            self.setupNames()
         else:
-            """Set self.basedir and self.logDir, 
-            but we shouldn't actually do any writing."""
             self.basedir = abspath(curdir)
-            self.logDir = self.basedir
+            
+        """Set up logDir in base directory.
+           Subclasses will create additional directories as well."""
+        self.setupNames()
     
     def setupNames(self):
         self.logDir = fh.createLogDir(self.basedir)    

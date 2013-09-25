@@ -1,0 +1,9 @@
+"blur";-1,0.056;-1,0.056;-1,0.056
+"gradient";False,True;False,True;False,True
+"similarity_metric";"CC,CC";"CC,CC";"CC,CC"
+"weight";"1,1";"1,1";"1,1"
+"radius_or_histo";"3,3";"3,3";"3,3"
+"transformation";"SyN[0.1]";"SyN[0.1]";"SyN[0.1]"
+"regularization";"Gauss[2,1]";"Gauss[2,1]";"Gauss[2,1]"
+"iterations";"100x100x100x0";"100x100x100x40";"100x100x100x150"
+"useMask";False;True;True

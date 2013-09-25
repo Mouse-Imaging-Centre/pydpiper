@@ -4,8 +4,9 @@ from pydpiper.application import AbstractApplication
 import pydpiper.file_handling as fh
 import pydpiper_apps.minc_tools.registration_functions as rf
 import pydpiper_apps.minc_tools.minc_modules as mm
-import pydpiper_apps.minc_tools.option_groups as og
+from pydpiper_apps.minc_tools.NLIN import NLINANTS
 import Pyro
+from optparse import OptionGroup
 from datetime import date
 import logging
 
@@ -14,10 +15,18 @@ logger = logging.getLogger(__name__)
 
 Pyro.config.PYRO_MOBILE_CODE=1 
 
+def addMBMGroup(parser):
+    group = OptionGroup(parser, "MBM options", 
+                        "Options for MICe-build-model.")
+    group.add_option("--init-model", dest="init_model",
+                      type="string", default=None,
+                      help="Name of file to register towards. If unspecified, bootstrap.")
+    parser.add_option_group(group)
+
 class MBMApplication(AbstractApplication):
     def setup_options(self):
         """Add option groups from specific modules"""
-        og.addMBMGroup(self.parser)
+        addMBMGroup(self.parser)
         rf.addGenRegOptionGroup(self.parser)
         
         self.parser.set_usage("%prog [options] input files") 
@@ -36,15 +45,18 @@ class MBMApplication(AbstractApplication):
         options = self.options
         args = self.args
         
-        # Make main pipeline directories
+        """Make main pipeline directories"""
         pipeDir = fh.makedirsIgnoreExisting(options.pipeline_dir)
         if not options.pipeline_name:
             pipeName = str(date.today()) + "_pipeline"
         else:
             pipeName = options.pipeline_name
         
+        lsq6Directory = fh.createSubDir(pipeDir, pipeName + "_lsq6")
+        lsq12Directory = fh.createSubDir(pipeDir, pipeName + "_lsq12")
+        nlinDirectory = fh.createSubDir(pipeDir, pipeName + "_nlin")
         processedDirectory = fh.createSubDir(pipeDir, pipeName + "_processed")
-        inputFiles = rf.initializeInputFiles(args, processedDirectory)
+        inputFiles = rf.initializeInputFiles(args, processedDirectory, maskDir=options.mask_dir)
         
         if options.init_model:
             """setupInitModel returns a tuple containing:
@@ -75,6 +87,11 @@ class MBMApplication(AbstractApplication):
             # Only add to pipeline if resampling is needed
             self.pipeline.addPipeline(resPipe.p)
             
+        #LSQ6 MODULE
+        
+        #LSQ12 MODULE
+        
+        #NLIN MODULE
         
 if __name__ == "__main__":
     
