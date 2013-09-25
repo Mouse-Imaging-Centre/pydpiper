@@ -749,7 +749,6 @@ class xfmConcat(CmdStage):
         self.cmd = ["xfmconcat", "-clobber"]
         self.cmd += inputFiles
         self.cmd += [outputFile]
-        print "xfm concat: ", self.cmd
         self.name   = "xfm-concat"
         self.colour = "yellow"
                         
