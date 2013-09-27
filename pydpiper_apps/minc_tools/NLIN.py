@@ -110,7 +110,12 @@ class NLINANTS(object):
         """Empty array that we will fill with averages as we create them"""
         self.nlinAvg = [] 
         """Create the blurring resolution from the file resolution"""
-        self.ANTSBlur = volumeFromFile(self.target.getLastBasevol()).separations[0]
+        try: # the attempt to access the minc volume will fail if it doesn't yet exist at pipeline creation
+            self.ANTSBlur = volumeFromFile(self.target.getLastBasevol()).separations[0]
+        except: 
+            # if it indeed failed, just put in a hardcoded number. Can be overwritten by the user
+            # through specifying a nonlinear protocol.
+            self.ANTSBlur = 0.2
         
         """Below are ANTS parameters for each generation that are
            defaults for this alignment. If a non linear protocol is specified,
