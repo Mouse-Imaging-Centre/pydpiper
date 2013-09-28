@@ -45,8 +45,8 @@ class AbstractApplication(object):
                                action="store_true",
                                help="Use the Pyro NameServer to store object locations")
         basic_group.add_option("--create-graph", dest="create_graph",
-                               action="store_true",
-                               help="Create a .dot file with graphical representation of pipeline relationships")
+                               action="store_true", default=False,
+                               help="Create a .dot file with graphical representation of pipeline relationships [default = %default]")
         basic_group.add_option("--num-executors", dest="num_exec", 
                                type="int", default=0, 
                                help="Launch executors automatically without having to run pipeline_excutor.py independently.")
