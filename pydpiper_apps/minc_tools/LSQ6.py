@@ -133,6 +133,7 @@ class LSQ6Registration(AbstractApplication):
         # create file handles for the input file(s) 
         inputFiles = rf.initializeInputFiles(args, mainDirectory=processedDirectory)
 
+        initModel = None
         if(options.target != None):
             targetPipeFH = rfh.RegistrationPipeFH(abspath(options.target), basedir=lsq6Directory)
         else: # options.init_model != None  
@@ -144,84 +145,337 @@ class LSQ6Registration(AbstractApplication):
                 # we will use the target in "standard" space
                 targetPipeFH = initModel[0]
         
-        # create a new group to indicate in the output file names that this is the lsq6 stage
-        for i in range(len(inputFiles)):
-            inputFiles[i].newGroup(groupName="lsq6")
-        
-        # store the resampled lsq6 files in order to create an average at the end
-        filesToAvg = []
-        
         """
             Option 1) run a simple lsq6: the input files are assumed to be in the
             same space and roughly in the same orientation.
         """
+        if(options.lsq6_method == "lsq6_simple"):
+            lsq6minctracc =  LSQ6Minctracc(inputFiles,
+                                           targetPipeFH,
+                                           initial_model    = initModel,
+                                           lsq6OutputDir    = lsq6Directory,
+                                           inital_transform = "identity")
+            lsq6minctracc.createLSQ6Transformation()
+            lsq6minctracc.finalize()
+            self.pipeline.addPipeline(lsq6minctracc.p)
         
         """
             Option 2) run an lsq6 registration where the centre of the input files
             is estimated.  Orientation is assumed to be similar, space is not.
         """
-        
+        if(options.lsq6_method == "lsq6_centre_estimation"):
+            lsq6minctracc =  LSQ6Minctracc(inputFiles,
+                                           targetPipeFH,
+                                           initial_model     = initModel,
+                                           lsq6OutputDir     = lsq6Directory,
+                                           initial_transform = "estimate")
+            lsq6minctracc.createLSQ6Transformation()
+            lsq6minctracc.finalize()
+            self.pipeline.addPipeline(lsq6minctracc.p)
         """
             Option 3) run a brute force rotational minctracc.  Input files can be
             in any random orientation and space.
         """
         if(options.lsq6_method == "lsq6_large_rotations"):
-            # We should take care of the appropriate amount of blurring
-            # for the input files here 
-            parameterList = options.large_rotation_parameters.split(',')
-            blurFactor= float(parameterList[0])
-            
-            blurAtResolution = -1
-            # assumption: all files have the same resolution, so we take input file 1
-            highestResolution = rf.getFinestResolution(inputFiles[0])
-            if(blurFactor != -1):
-                blurAtResolution = blurFactor * highestResolution
-            
-            self.pipeline.addStage(ma.blur(targetPipeFH, fwhm=blurAtResolution))
-            
-            for inputFH in inputFiles:
-                
-                self.pipeline.addStage(ma.blur(inputFH, fwhm=blurAtResolution))
-            
-                self.pipeline.addStage((ma.RotationalMinctracc(inputFH,
-                                                               targetPipeFH,
-                                                               blur               = blurAtResolution,
-                                                               resample_step      = float(parameterList[1]),
-                                                               registration_step  = float(parameterList[2]),
-                                                               w_translations     = float(parameterList[3]),
-                                                               rotational_range   = int(parameterList[4]),
-                                                               rotational_interval= int(parameterList[5]) )))
-                # if an initial model is used, we might have to concatenate
-                # the transformation from the rotational minctracc command
-                # with the transformation from the inital model
-                if(options.init_model != None):
-                    if(initModel[2] != None):
-                        prevxfm = inputFH.getLastXfm(targetPipeFH)
-                        newxfm = inputFH.registerVolume(initModel[0], "transforms")
-                        logFile = fh.logFromFile(inputFH.logDir, newxfm)
-                        self.pipeline.addStage(ma.xfmConcat([prevxfm,initModel[2]],
-                                                            newxfm,
-                                                            logFile))
-                likeFileForResample =  targetPipeFH
-                targetFHforResample = targetPipeFH
-                if(options.init_model != None):
-                    if(initModel[1] != None):
-                        likeFileForResample = initModel[0]
-                        targetFHforResample = initModel[0]
-                rs = ma.mincresample(inputFH,targetFHforResample,likeFile=likeFileForResample)
-                filesToAvg.append(rs.outputFiles[0])
-                self.pipeline.addStage(rs)
-            
-        # Create the lsq6 average after all has been done...
-        if(len(filesToAvg) > 1):
-            lsq6AvgOutput = abspath(lsq6Directory) + "/" + "lsq6_average.mnc"
+            lsq6rot = LSQ6RotationalMinctracc(inputFiles,
+                                             targetPipeFH,
+                                             initial_model = initModel,
+                                             lsq6OutputDir = lsq6Directory,
+                                             large_rotation_parameters = options.large_rotation_parameters)
+            lsq6rot.createLSQ6Transformation()
+            lsq6rot.finalize()
+            self.pipeline.addPipeline(lsq6rot.p)
+
+
+class LSQ6Base(object):
+    """
+        This is the parent class for any lsq6 registration method.  It implements the following:
+        
+        - check input files (at the moment assumed to be file handlers
+        - check whether an lsq6 directory is provided when more than 1 input file is given
+        - creates a new group for the input files: "lsq6"
+        
+        (the child classes will fill in the function createLSQ6Transform)
+        
+        - handle a potential ...native_to_standard.xfm transform from an initial model
+        - resample the input files
+        - create an average if at least 2 input files are given
+    """
+    def __init__(self,
+                 inputFiles,
+                 targetFile,
+                 initial_model = None,
+                 lsq6OutputDir = None):
+        self.p              = Pipeline()
+        self.inputs         = inputFiles
+        self.target         = targetFile
+        self.initial_model  = initial_model
+        self.lsq6OutputDir  = lsq6OutputDir 
+        self.lsq6Avg        = None # will contain file handler to lsq6 average
+        self.filesToAvg     = [] # store the resampled lsq6 files in order to create an average at the end
+        
+        self.check_inputs()
+        self.check_lsq6_folder()
+        self.setLSQ6GroupToInputs()
+        
+        
+    def check_inputs(self):
+        """
+            Currently only file handlers are covered in these classes.  This function
+            check whether both input and target files are given as file handlers 
+        """
+        # input file checking...    
+        if(not(type(self.inputs) is list)):
+            if(not rf.isFileHandler(self.inputs)):
+                print "My apologies... the LSQ6 modules currently only work with file handlers (input file)...\nGoodbye"
+                sys.exit()
+            else:
+                # for ease of use, turn into a list
+                self.inputs = [self.inputs]
+        else:
+            for inputfile in self.inputs:
+                if(not rf.isFileHandler(inputfile)):
+                    print "My apologies... the LSQ6 modules currently only work with file handlers (input files)...\nGoodbye"
+                    sys.exit()
+        if(not rf.isFileHandler(self.target)):
+            print "My apologies... the LSQ6 modules currently only work with file handlers (target file)...\nGoodbye"
+            sys.exit()
+    
+    def check_lsq6_folder(self):
+        """
+            Make sure that the output directory for the lsq6 average is 
+            defined is at least 2 input files are provided
+        """
+        if(len(self.inputs) > 1 and not(self.lsq6OutputDir)):
+            print "Error: ", len(self.inputs), " input files were provided to the LSQ6 module but no output directory for the average was given. Don't know where to put it...\nGoodbye."
+            sys.exit()
+        
+        # just in case this directory was not created yet
+        if(self.lsq6OutputDir):
+            fh.makedirsIgnoreExisting(self.lsq6OutputDir)
+
+    def setLSQ6GroupToInputs(self):
+        """
+            make sure that by default any input file handler is 
+            given the group "lsq6"
+        """
+        # create a new group to indicate in the output file names that this is the lsq6 stage
+        for i in range(len(self.inputs)):
+            self.inputs[i].newGroup(groupName="lsq6")
+
+    def createLSQ6Transformation(self):
+        """
+            This function is to be filled in the child classes.  For instance
+            a rotational minctracc could be called here, or a hierarchical
+            6 parameter minctracc call
+        """
+        pass
+
+    def addNativeToStandardFromInitModel(self):
+        """
+            If an initial model is used, we might have to concatenate
+            the 6 parameter transformation that was created with the 
+            transformation from the inital model.  This function does
+            that if necessary
+        """
+        if(self.initial_model != None):
+            if(self.initial_model[2] != None):
+                for inputFH in self.inputs:
+                    prevxfm = inputFH.getLastXfm(self.target)
+                    newxfm = inputFH.registerVolume(self.initial_model[0], "transforms")
+                    logFile = fh.logFromFile(inputFH.logDir, newxfm)
+                    self.p.addStage(ma.xfmConcat([prevxfm, self.initial_model[2]],
+                                             newxfm,
+                                             logFile))
+    
+    def resampleInputFiles(self):
+        """
+            resample input files using the last transformation
+        """
+        for inputfile in self.inputs:
+            likeFileForResample =  self.target
+            targetFHforResample = self.target
+            if(self.initial_model != None):
+                if(self.initial_model[1] != None):
+                    likeFileForResample = self.initial_model[0]
+                    targetFHforResample = self.initial_model[0]
+            rs = ma.mincresample(inputfile,targetFHforResample,likeFile=likeFileForResample)
+            self.filesToAvg.append(rs.outputFiles[0])
+            self.p.addStage(rs)
+
+    def createAverage(self):
+        """
+            Create the lsq6 average after all has been done...
+        """
+        if(len(self.filesToAvg) > 1):
+            lsq6AvgOutput = abspath(self.lsq6OutputDir) + "/" + "lsq6_average.mnc"
             # TODO: fix mask issue
-            lsq6FH = rfh.RegistrationPipeFH(lsq6AvgOutput, mask=None, basedir=lsq6Directory)
+            lsq6FH = rfh.RegistrationPipeFH(lsq6AvgOutput, mask=None, basedir=self.lsq6OutputDir)
             logBase = fh.removeBaseAndExtension(lsq6AvgOutput)
             avgLog = fh.createLogFile(lsq6FH.logDir, logBase)
-            avg = ma.mincAverage(filesToAvg, lsq6AvgOutput, logFile=avgLog)
-            self.pipeline.addStage(avg)
+            avg = ma.mincAverage(self.filesToAvg, lsq6AvgOutput, logFile=avgLog)
+            self.p.addStage(avg)
+            self.lsq6Avg = lsq6FH
 
+    def finalize(self):
+        """
+            Within one call, take care of the potential initial model transformation,
+            the resampling of input files and create an average 
+        """
+        self.addNativeToStandardFromInitModel()
+        self.resampleInputFiles()
+        self.createAverage()
+
+class LSQ6RotationalMinctracc(LSQ6Base):
+    """
+        This class performs an lsq6 registration using rotational minctracc
+        from start to end.  That means that it takes care of blurring the
+        input files and target, running RotationalMinctracc, resample the 
+        input files, and create an average if at least 2 input files are provided.
+        
+        * Assumptions/input:
+            - inputFiles are provided in the form of file handlers
+            - targetFile is provided as a file handler
+            - large_rotation_parameters as the same as RotationalMinctracc() in minc_atoms,
+            please see that module for more information
+            - if an initial model is provided, the input to the parameter
+            initial_model is assumed to be the output of the function 
+            setupInitModel()
+            - lsq6OutputDir is a string indicating where the the potential average should go
+        
+        Output:
+            - (self.lsq6Avg) if at least 2 input files were provided, this class will 
+            store the file handler for the average in the variable lsq6Avg 
+            
+    """
+    def __init__(self, 
+                 inputFiles,
+                 targetFile,
+                 initial_model = None,
+                 lsq6OutputDir = None,
+                 large_rotation_parameters="10,4,10,8,50,10"):
+        # initialize all the defaults in 
+        LSQ6Base.__init__(self, inputFiles, targetFile, initial_model, lsq6OutputDir)
+        
+        self.parameters     = large_rotation_parameters
+        
+    def createLSQ6Transformation(self):    
+        # We should take care of the appropriate amount of blurring
+        # for the input files here 
+        parameterList = self.parameters.split(',')
+        blurFactor= float(parameterList[0])
+        
+        blurAtResolution = -1
+        # assumption: all files have the same resolution, so we take input file 1
+        highestResolution = rf.getFinestResolution(self.inputs[0])
+        if(blurFactor != -1):
+            blurAtResolution = blurFactor * highestResolution
+        
+        self.p.addStage(ma.blur(self.target, fwhm=blurAtResolution))
+        
+        for inputFH in self.inputs:
+            
+            self.p.addStage(ma.blur(inputFH, fwhm=blurAtResolution))
+        
+            self.p.addStage((ma.RotationalMinctracc(inputFH,
+                                                    self.target,
+                                                    blur               = blurAtResolution,
+                                                    resample_step      = float(parameterList[1]),
+                                                    registration_step  = float(parameterList[2]),
+                                                    w_translations     = float(parameterList[3]),
+                                                    rotational_range   = int(parameterList[4]),
+                                                    rotational_interval= int(parameterList[5]) )))
+
+
+class LSQ6Minctracc(LSQ6Base):
+    """
+        TODO: document
+        
+        * Assumptions/input
+            - inputFiles are provided in the form of file handlers
+            - targetFile is provided as a file handler
+        
+    """
+    def __init__(self,
+                 inputFiles,
+                 targetFile,
+                 initial_model    = None,
+                 lsq6OutputDir    = None,
+                 inital_transform = "estimate",
+                 lsq6_protocol    = None):
+        # initialize all the defaults in 
+        LSQ6Base.__init__(self, inputFiles, targetFile, initial_model, lsq6OutputDir)
+        self.initial_transform = inital_transform 
+        self.lsq6_protocol     = lsq6_protocol
+        
+        self.setInitialMinctraccTransform()
+        
+        self.setHierarchyOptions()
+        
+        #
+        ##
+        ### Quick hack to see if things work...
+        ##
+        #
+        
+        self.blur        = [1.2,0.6,0.3]
+        self.simplex     = [  6,  3,  2]
+        self.step        = [1.2,0.6,0.3]
+        self.generations = 3
+        
+    def setInitialMinctraccTransform(self):
+        # set option which will by used by the minctracc CmdStage:
+        self.linearparam = None
+        if(self.initial_transform == "estimate"):
+            self.linearparam = "lsq6"
+        elif(self.initial_transform == "identity"):
+            self.linearparam = "lsq6-identity"
+        else:
+            print "Error: unknown option used for inital_transform in LSQ6Minctracc: ", self.initial_transform, "\nGoodbye."
+            sys.exit()
+    
+    def setHierarchyOptions(self):
+        """
+            It is possible to specify an lsq6 protocol.  If none is specified,
+            defaults will be used as follows:
+            
+            ************************* DEFAULTS ************************************
+            * all parameters will be set as a factor of the input file's resolution
+            
+            When using the estimation of centres, 5 stages:
+            blur    = [ 90, 35, 17,  9,  4]     # in mm at 56micron files: [5.04,  1.96, 0.952, 0.504, 0.224]
+            gradient= [  0,  0,  0,  1,  0]
+            simplex = [128, 64, 40, 28, 16]     # in mm at 56mircon files: [7.168, 3.584, 2.24, 1.568, 0.896]
+            step    = [ 90, 35, 17,  9,  4] 
+        """
+    
+    def createLSQ6Transformation(self):
+        """
+            TODO: more info...
+            Perform the hierarchical iterations...
+        """
+        # TODO: check all parameters for consistency in #stages/iterations
+        # create all blurs first
+        for i in range(self.generations):
+            self.p.addStage(ma.blur(self.target, self.blur[i], gradient=True))
+            for inputfile in self.inputs:
+                # create blur for input
+                self.p.addStage(ma.blur(inputfile, self.blur[i], gradient=True))
+        
+        # now perform the registrations
+        for inputfile in self.inputs:
+            for i in range(self.generations):
+                mt = ma.minctracc(inputfile,
+                                  self.target,
+                                  blur        = self.blur[i],
+                                  simplex     = self.simplex[i],
+                                  step        = self.step[i],
+                                  linearparam = "lsq6") 
+                print mt.cmd
+                self.p.addStage(mt)
+
+
+        
 
 if __name__ == "__main__":
     application = LSQ6Registration()
