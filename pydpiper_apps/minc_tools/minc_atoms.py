@@ -262,7 +262,7 @@ class minctracc(CmdStage):
         if not self.transform:
             if self.linearparam == "lsq6":
                 self.cmd += ["-est_center", "-est_translations"]
-            elif self.linearparam == "lsq12" or self.linearparam=="nlin":
+            elif self.linearparam == "lsq12" or self.linearparam=="nlin" or self.linearparam == "lsq6-identity":
                 self.cmd += ["-identity"]
         else:
             self.inputFiles += [self.transform]
