@@ -168,32 +168,49 @@ class CalcStats(object):
              
     def calcDetAndLogDet(self, useFullDisp=False):  
         #Lots of repetition here--let's see if we can't make some functions.
-        """useFullDisp indicates whether or not """ 
+        """useFullDisp indicates whether or not to use full displacement field or non-linear component only""" 
         if useFullDisp:
             dispToUse = self.fullDisp
         else:
             dispToUse = self.nlinDisp
+        """Insert -1 at beginning of blurs array to include the calculation of unblurred jacobians."""
+        self.blurs.insert(0,-1)    
         for b in self.blurs:
-            """Calculate smoothed deformation field"""
-            fwhm = "--fwhm=" + str(b)
+            """Calculate default output filenames and set input for determinant calculation."""
             outputBase = fh.removeBaseAndExtension(dispToUse).split("_displacement")[0]
-            outSmooth = fh.createBaseName(self.inputFH.tmpDir, 
+            inputDet = dispToUse
+            outputDet = fh.createBaseName(self.inputFH.tmpDir, outputBase + "_determinant.mnc")
+            outDetShift = fh.createBaseName(self.inputFH.tmpDir, outputBase + "_det_plus1.mnc")
+            outLogDet = fh.createBaseName(self.inputFH.statsDir, outputBase + "_log_determinant.mnc")
+            outLogDetScaled = fh.createBaseName(self.inputFH.statsDir, outputBase + "_log_determinant_scaled.mnc")
+            """Calculate smoothed deformation field for all blurs other than -1"""
+            if b != -1:
+                fwhm = "--fwhm=" + str(b)
+                outSmooth = fh.createBaseName(self.inputFH.tmpDir, 
                                        outputBase + "_smooth_displacement_fwhm" + str(b) + ".mnc")
-            cmd = ["smooth_vector", "--clobber", "--filter", fwhm, 
-                   InputFile(dispToUse), OutputFile(outSmooth)]
-            smoothVec = CmdStage(cmd)
-            smoothVec.setLogFile(LogFile(fh.logFromFile(self.inputFH.logDir, outSmooth)))
-            self.p.addStage(smoothVec)
+                cmd = ["smooth_vector", "--clobber", "--filter", fwhm, 
+                       InputFile(dispToUse), OutputFile(outSmooth)]
+                smoothVec = CmdStage(cmd)
+                smoothVec.setLogFile(LogFile(fh.logFromFile(self.inputFH.logDir, outSmooth)))
+                self.p.addStage(smoothVec)
+                """Override file name defaults for each blur and set input for determinant calculation."""
+                inputDet = outSmooth
+                outputDet = fh.createBaseName(self.inputFH.tmpDir, 
+                                          outputBase + "_determinant_fwhm" + str(b) + ".mnc")
+                outDetShift = fh.createBaseName(self.inputFH.tmpDir, 
+                                          outputBase + "_det_plus1_fwhm" + str(b) + ".mnc")
+                outLogDet = fh.createBaseName(self.inputFH.statsDir, 
+                                          outputBase + "_log_determinant_fwhm" + str(b) + ".mnc")
+                outLogDetScaled = fh.createBaseName(self.inputFH.statsDir, 
+                                                    outputBase + "_log_determinant_scaled_fwhm" + str(b) + ".mnc")
             
             """Calculate the determinant, then add 1 (per mincblob weirdness)"""
-            outputDet = fh.createBaseName(self.inputFH.tmpDir, 
-                                          outputBase + "_determinant_fwhm" + str(b) + ".mnc")
-            cmd = ["mincblob", "-clobber", "-determinant", InputFile(outSmooth), OutputFile(outputDet)]
+            
+            cmd = ["mincblob", "-clobber", "-determinant", InputFile(inputDet), OutputFile(outputDet)]
             det = CmdStage(cmd)
             det.setLogFile(LogFile(fh.logFromFile(self.inputFH.logDir, outputDet)))
             self.p.addStage(det)
-            outDetShift = fh.createBaseName(self.inputFH.tmpDir, 
-                                          outputBase + "_det_plus1_fwhm" + str(b) + ".mnc")
+            
             cmd = ["mincmath", "-clobber", "-2", "-const", str(1), "-add", 
                    InputFile(outputDet), OutputFile(outDetShift)]
             det = CmdStage(cmd)
@@ -201,8 +218,6 @@ class CalcStats(object):
             self.p.addStage(det)
             
             """Calculate log determinant (jacobian) and add to statsGroup."""
-            outLogDet = fh.createBaseName(self.inputFH.statsDir, 
-                                          outputBase + "_log_determinant_fwhm" + str(b) + ".mnc")
             cmd = ["mincmath", "-clobber", "-2", "-log", InputFile(outDetShift), OutputFile(outLogDet)]
             det = CmdStage(cmd)
             det.setLogFile(LogFile(fh.logFromFile(self.inputFH.logDir, outLogDet)))
@@ -212,8 +227,6 @@ class CalcStats(object):
             """If self.linearXfm present, calculate scaled log determinant (scaled jacobian) and add to statsGroup"""
             if not useFullDisp:
                 #MF TODO: Depending on which space inputs are in, may need to handle additional lsq12 transform, as in build-model
-                outLogDetScaled = fh.createBaseName(self.inputFH.statsDir, 
-                                                    outputBase + "_log_determinant_scaled_fwhm" + str(b) + ".mnc")
                 cmd = ["scale_voxels", "-clobber", "-invert", "-log", 
                        InputFile(self.linearXfm), InputFile(outLogDet), OutputFile(outLogDetScaled)]
                 det = CmdStage(cmd)
