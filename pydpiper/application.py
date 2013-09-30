@@ -10,6 +10,14 @@ import sys
 
 logger = logging.getLogger(__name__)
 
+# Some sneakiness... Using the following lines, it's possible
+# to add an epilog to the parser that is written to screen
+# verbatim. That way in the help file you can show an example
+# of what an lsq6/nlin protocol should look like.
+class MyParser(OptionParser):
+    def format_epilog(self, formatter):
+        return self.epilog
+
 class AbstractApplication(object):
     """Framework class for writing applications for PydPiper. 
     
@@ -32,7 +40,7 @@ class AbstractApplication(object):
     """
     def __init__(self):
         Pyro.config.PYRO_MOBILE_CODE=1 
-        self.parser = OptionParser()
+        self.parser = MyParser()
     
     def _setup_options(self):
             # PydPiper options
