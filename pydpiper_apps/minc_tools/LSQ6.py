@@ -9,13 +9,14 @@ import pydpiper_apps.minc_tools.registration_file_handling as rfh
 import pydpiper_apps.minc_tools.minc_atoms as ma
 import pydpiper_apps.minc_tools.minc_modules as mm
 from os.path import splitext, abspath
+from optparse import OptionGroup
+from datetime import date
 import logging
 import Pyro
-from optparse import OptionGroup
 import sys
 import re
+import csv
 import os
-from datetime import date
 
 logger = logging.getLogger(__name__)
 
@@ -68,24 +69,53 @@ class LSQ6Registration(AbstractApplication):
                          help="File to be used as the target for the 6 parameter alignment.")
         group.add_option("--init-model", dest="init_model",
                          type="string", default=None,
-                         help="File in standard space in the initial model. The initial model can also have a file in native space and potentially a transformation file. See our wiki for detailed information on initial models.")
+                         help="File in standard space in the initial model. The initial model "
+                         "can also have a file in native space and potentially a transformation "
+                         "file. See our wiki for detailed information on initial models.")
         self.parser.set_defaults(lsq6_method="lsq6_large_rotations")
         group.add_option("--lsq6-simple", dest="lsq6_method",
                          action="store_const", const="lsq6_simple",
-                         help="Run a 6 parameter alignment assuming that the input files are roughly aligned: same space, similar orientation. [default: --lsq6-large-rotations]")
+                         help="Run a 6 parameter alignment assuming that the input files are roughly "
+                         "aligned: same space, similar orientation. [default: --lsq6-large-rotations]")
         group.add_option("--lsq6-centre-estimation", dest="lsq6_method",
                          action="store_const", const="lsq6_centre_estimation",
-                         help="Run a 6 parameter alignment assuming that the input files have a similar orientation, but are scanned in different coils/spaces. [default: --lsq6-large-rotations]")
+                         help="Run a 6 parameter alignment assuming that the input files have a "
+                         "similar orientation, but are scanned in different coils/spaces. [default: --lsq6-large-rotations]")
+        group.add_option("--lsq6-protocol", dest="lsq6_protocol",
+                         type="string", default=None,
+                         help="Specify an lsq6 protocol that overrides the default setting for stages in "
+                         "the 6 parameter minctracc call. Specify the levels of blurring, simplex and "
+                         "registration step sizes in mm. Use 0 and 1 to indicate whether you want to use the gradient. "
+                         "For an example input csv file that can be used, see below")
         group.add_option("--lsq6-large-rotations", dest="lsq6_method",
                          action="store_const", const="lsq6_large_rotations",
-                         help="Run a 6 parameter alignment assuming that the input files have a random orientation and are scanned in different coils/spaces. A brute force search over the x,y,z rotation space is performed to find the best 6 parameter alignment. [default: --lsq6-large-rotations]")
+                         help="Run a 6 parameter alignment assuming that the input files have a random "
+                         "orientation and are scanned in different coils/spaces. A brute force search over "
+                         "the x,y,z rotation space is performed to find the best 6 parameter alignment. "
+                         "[default: --lsq6-large-rotations]")
         group.add_option("--lsq6-large-rotations-parameters", dest="large_rotation_parameters",
                          type="string", default="10,4,10,8,50,10",
-                         help="Settings for the large rotation alignment. factor=factor based on smallest file resolution: 1) blur factor, 2) resample step size factor, 3) registration step size factor, 4) w_translations factor, 5) rotational range in degrees, 6) rotational interval in degrees. [default: %default]")
+                         help="Settings for the large rotation alignment. factor=factor based on smallest file "
+                         "resolution: 1) blur factor, 2) resample step size factor, 3) registration step size "
+                         "factor, 4) w_translations factor, 5) rotational range in degrees, 6) rotational "
+                         "interval in degrees. [default: %default]")
         self.parser.add_option_group(group)
         """Add option groups from specific modules"""
         rf.addGenRegOptionGroup(self.parser)
-        self.parser.set_usage("%prog [options] [--target target.mnc or --init-model /init/model/file.mnc] input file(s)") 
+        self.parser.set_usage("%prog [options] [--target target.mnc or --init-model /init/model/file.mnc] input file(s)")
+### sneaky trick to create a readable version of the content of an lsq6 protocol:
+        epi = \
+"""
+Epilogue:
+Example content of an lsq6 csv protocol (first three are specified in mm):
+
+"blur";1;0.5;0.3
+"simplex";4;2;1
+"step";1;0.5;0.3
+"gradient";False;True;False
+
+"""
+        self.parser.epilog = epi
 
     def setup_appName(self):
         appName = "LSQ6-registration"
@@ -145,46 +175,45 @@ class LSQ6Registration(AbstractApplication):
                 # we will use the target in "standard" space
                 targetPipeFH = initModel[0]
         
+        lsq6module = None
         """
             Option 1) run a simple lsq6: the input files are assumed to be in the
             same space and roughly in the same orientation.
         """
         if(options.lsq6_method == "lsq6_simple"):
-            lsq6minctracc =  LSQ6Minctracc(inputFiles,
-                                           targetPipeFH,
-                                           initial_model    = initModel,
-                                           lsq6OutputDir    = lsq6Directory,
-                                           inital_transform = "identity")
-            lsq6minctracc.createLSQ6Transformation()
-            lsq6minctracc.finalize()
-            self.pipeline.addPipeline(lsq6minctracc.p)
-        
+            lsq6module =  LSQ6Minctracc(inputFiles,
+                                        targetPipeFH,
+                                        initial_model     = initModel,
+                                        lsq6OutputDir     = lsq6Directory,
+                                        initial_transform = "identity",
+                                        lsq6_protocol     = options.lsq6_protocol)
         """
             Option 2) run an lsq6 registration where the centre of the input files
             is estimated.  Orientation is assumed to be similar, space is not.
         """
         if(options.lsq6_method == "lsq6_centre_estimation"):
-            lsq6minctracc =  LSQ6Minctracc(inputFiles,
-                                           targetPipeFH,
-                                           initial_model     = initModel,
-                                           lsq6OutputDir     = lsq6Directory,
-                                           initial_transform = "estimate")
-            lsq6minctracc.createLSQ6Transformation()
-            lsq6minctracc.finalize()
-            self.pipeline.addPipeline(lsq6minctracc.p)
+            lsq6module =  LSQ6Minctracc(inputFiles,
+                                        targetPipeFH,
+                                        initial_model     = initModel,
+                                        lsq6OutputDir     = lsq6Directory,
+                                        initial_transform = "estimate",
+                                        lsq6_protocol     = options.lsq6_protocol)
         """
             Option 3) run a brute force rotational minctracc.  Input files can be
             in any random orientation and space.
         """
         if(options.lsq6_method == "lsq6_large_rotations"):
-            lsq6rot = LSQ6RotationalMinctracc(inputFiles,
-                                             targetPipeFH,
-                                             initial_model = initModel,
-                                             lsq6OutputDir = lsq6Directory,
-                                             large_rotation_parameters = options.large_rotation_parameters)
-            lsq6rot.createLSQ6Transformation()
-            lsq6rot.finalize()
-            self.pipeline.addPipeline(lsq6rot.p)
+            lsq6module = LSQ6RotationalMinctracc(inputFiles,
+                                                 targetPipeFH,
+                                                 initial_model = initModel,
+                                                 lsq6OutputDir = lsq6Directory,
+                                                 large_rotation_parameters = options.large_rotation_parameters)
+        
+        # after the correct module has been set, get the transformation and
+        # deal with resampling and potential model building
+        lsq6module.createLSQ6Transformation()
+        lsq6module.finalize()
+        self.pipeline.addPipeline(lsq6module.p)
 
 
 class LSQ6Base(object):
@@ -399,29 +428,18 @@ class LSQ6Minctracc(LSQ6Base):
     def __init__(self,
                  inputFiles,
                  targetFile,
-                 initial_model    = None,
-                 lsq6OutputDir    = None,
-                 inital_transform = "estimate",
-                 lsq6_protocol    = None):
+                 initial_model     = None,
+                 lsq6OutputDir     = None,
+                 initial_transform = "estimate",
+                 lsq6_protocol     = None):
         # initialize all the defaults in 
         LSQ6Base.__init__(self, inputFiles, targetFile, initial_model, lsq6OutputDir)
-        self.initial_transform = inital_transform 
+        self.initial_transform = initial_transform 
         self.lsq6_protocol     = lsq6_protocol
         
         self.setInitialMinctraccTransform()
         
         self.setHierarchyOptions()
-        
-        #
-        ##
-        ### Quick hack to see if things work...
-        ##
-        #
-        
-        self.blur        = [1.2,0.6,0.3]
-        self.simplex     = [  6,  3,  2]
-        self.step        = [1.2,0.6,0.3]
-        self.generations = 3
         
     def setInitialMinctraccTransform(self):
         # set option which will by used by the minctracc CmdStage:
@@ -448,6 +466,90 @@ class LSQ6Minctracc(LSQ6Base):
             simplex = [128, 64, 40, 28, 16]     # in mm at 56mircon files: [7.168, 3.584, 2.24, 1.568, 0.896]
             step    = [ 90, 35, 17,  9,  4] 
         """
+        if(self.lsq6_protocol):
+            # read the protocol and set the parameters accordingly
+            """Set parameters from specified protocol"""
+        
+            """Read parameters into array from csv."""
+            inputCsv  = open(abspath(self.lsq6_protocol), 'rb')
+            csvReader = csv.reader(inputCsv, delimiter=';', skipinitialspace=True)
+            params    = []
+            for r in csvReader:
+                params.append(r)
+            """initialize arrays """
+            self.blur     = []
+            self.gradient = []
+            self.step     = []
+            self.simplex  = []
+
+            """Parse through rows and assign appropriate values to each parameter array.
+               Everything is read in as strings, but in some cases, must be converted to 
+               floats, booleans or gradients. 
+            """            
+            for p in params:
+                # first make sure that we skip empty lines in the input csv...
+                if(len(p) == 0):
+                    pass
+                elif p[0]=="blur":
+                    """Blurs must be converted to floats."""
+                    for i in range(1,len(p)):
+                        self.blur.append(float(p[i]))
+                elif p[0]=="gradient":
+                    """Gradients must be converted to bools."""
+                    for i in range(1,len(p)):
+                        if p[i]=="True" or p[i]=="TRUE":
+                            self.gradient.append(True)
+                        elif p[i]=="False" or p[i]=="FALSE":
+                            self.gradient.append(False)
+                        else:
+                            print "Improper parameter specified for the gradient in the lsq6 protocol: ", str(p[i]), " Please speciy True, TRUE, False or FALSE.\nGoodbye"
+                            sys.exit()
+                elif p[0]=="simplex":
+                    """Simplex must be converted to floats."""
+                    for i in range(1,len(p)):
+                        self.simplex.append(float(p[i]))
+                elif p[0]=="step":
+                    """Steps must be converted to floats."""
+                    for i in range(1,len(p)):
+                        self.step.append(float(p[i]))
+                else:
+                    print "Improper parameter specified for lsq6 protocol: ", str(p[0]), "\nGoodbye"
+                    sys.exit()
+            
+            # now that all the parameters have been set, make sure we have an
+            # equal number of inputs for all the settings:
+            self.generations = max(len(self.blur),
+                                   len(self.gradient),
+                                   len(self.simplex),
+                                   len(self.step))
+            
+            if(len(self.blur) < self.generations):
+                print "Not all parameters in the lsq6 protocol are the same, \"blur\" has to few.\nGoodbye"
+                sys.exit()
+            if(len(self.gradient) < self.generations):
+                print "Not all parameters in the lsq6 protocol are the same, \"gradient\" has to few.\nGoodbye"
+                sys.exit()
+            if(len(self.simplex) < self.generations):
+                print "Not all parameters in the lsq6 protocol are the same, \"simplex\" has to few.\nGoodbye"
+                sys.exit()
+            if(len(self.step) < self.generations):
+                print "Not all parameters in the lsq6 protocol are the same, \"step\" has to few.\nGoodbye"
+                sys.exit()
+            
+        else:
+            # use defaults:
+            blurfactors      = [   90,   35,   17,   9,    4]
+            simplexfactors   = [  128,   64,   40,  28,   16]
+            stepfactors      = [   90,   35,   17,   9,    4]
+            gradientdefaults = [False,False,False,True,False]
+            
+            resolution       = rf.getFinestResolution(self.inputs[0])
+            
+            self.blur        = [i * resolution for i in blurfactors]
+            self.simplex     = [i * resolution for i in simplexfactors]
+            self.step        = [i * resolution for i in stepfactors]
+            self.gradient    = gradientdefaults
+            self.generations = 5
     
     def createLSQ6Transformation(self):
         """
@@ -470,6 +572,7 @@ class LSQ6Minctracc(LSQ6Base):
                                   blur        = self.blur[i],
                                   simplex     = self.simplex[i],
                                   step        = self.step[i],
+                                  gradient    = self.gradient[i],
                                   linearparam = "lsq6") 
                 print mt.cmd
                 self.p.addStage(mt)
