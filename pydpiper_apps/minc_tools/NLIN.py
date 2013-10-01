@@ -4,7 +4,7 @@ from os.path import abspath
 from optparse import OptionGroup
 from datetime import date
 from pydpiper.pipeline import Pipeline
-from pydpiper.file_handling import createLogFile, createSubDir, makedirsIgnoreExisting, removeBaseAndExtension
+from pydpiper.file_handling import createBaseName, createLogFile, createSubDir, makedirsIgnoreExisting, removeBaseAndExtension
 from pydpiper.application import AbstractApplication
 from pydpiper_apps.minc_tools.registration_file_handling import RegistrationPipeFH
 from pydpiper_apps.minc_tools.registration_functions import addGenRegOptionGroup, initializeInputFiles
@@ -31,8 +31,40 @@ def addNlinRegOptionGroup(parser):
                      type="string", default=None,
                      help="Can optionally specify a nonlinear protocol that is different from defaults. Default is None.")
     parser.add_option_group(group)
+    
+def finalGenerationFileNames(inputFH):
+    """Set up and return filenames for final nlin generation, since we don't want to use defaults here.
+       The naming of the final resampled files/transforms will be the same regardless of registration
+       protocol (minctracc vs mincANTS) or number of generations. 
+    """
+    registerDir = inputFH.setOutputDirectory("transforms")
+    registerFileName = removeBaseAndExtension(inputFH.basename) + "-final-nlin.xfm"
+    registerOutput = createBaseName(registerDir, registerFileName)
+    resampleDir = inputFH.setOutputDirectory("resampled")
+    resampleFileName = removeBaseAndExtension(inputFH.basename) + "-resampled-final-nlin.mnc"
+    resampleOutput = createBaseName(resampleDir, resampleFileName)
+    return (registerOutput, resampleOutput)
 
 class NonlinearRegistration(AbstractApplication):
+    """
+        This class performs an iterative non-linear registration between one or more files
+        and a single target. It currently supports two non-linear registration programs:
+        minctracc (mni_autoreg, McGill) and mincANTS (Advanced Normalization Tools, U Penn). 
+        Optionally, statistics may be calculated at the end of the registration.  
+        
+        Source:
+            One or more files with or without a mask. 
+        
+        Target:
+            Single input file with or without a mask. 
+            
+        This application was designed to be called on inputs and targets that have already 
+        undergone an affine registration. (e.g. translations, rotations, scales and shears)
+        This is sometimes referred to as LSQ12. However, this class is generic enough that 
+        this iterative alignment could be called on sources and a target that are not in
+        LSQ12 space, although it is likely that the alignment will be less successful. 
+          
+    """
     def setup_options(self):
         """Add option groups from specific modules"""
         addNlinRegOptionGroup(self.parser)
@@ -89,16 +121,24 @@ class NonlinearRegistration(AbstractApplication):
             """Choose final average from array of nlin averages"""
             numGens = len(self.nlinAvg)
             finalNlin = self.nlinAvg[numGens-1]
-            """Hack to set lastXfms until I setup proper stats group"""
-            for inputFH in inputFiles:
-                inputFH.setLastXfm(finalNlin, inputFH.getLastXfm(self.nlinAvg[numGens-2]))
-            """For each input file, calculate statistics"""
+            """For each input file, calculate statistics from finalNlin to input"""
             for inputFH in inputFiles:
                 stats = CalcStats(inputFH, finalNlin, blurs, inputFiles)
                 stats.fullStatsCalc()
                 self.pipeline.addPipeline(stats.p)
-            
-class NLINANTS(object):
+
+class NLINBase(object):
+    """
+        This is the parent class for any iterative non-linear registration. 
+        
+        Subclasses should extend the following methods:
+            setDefaultParams()
+            getGenerations()
+            setParams()
+            iterate()
+            iterationLoop()
+        
+    """
     def __init__(self, inputArray, targetFH, nlinOutputDir, nlin_protocol=None):
         self.p = Pipeline()
         """Initial inputs should be an array of fileHandlers with lastBasevol in lsq12 space"""
@@ -111,23 +151,119 @@ class NLINANTS(object):
         self.nlinAvg = [] 
         """Create the blurring resolution from the file resolution"""
         try: # the attempt to access the minc volume will fail if it doesn't yet exist at pipeline creation
-            self.ANTSBlur = volumeFromFile(self.target.getLastBasevol()).separations[0]
+            self.fileRes = volumeFromFile(self.target.getLastBasevol()).separations[0]
         except: 
             # if it indeed failed, just put in a hardcoded number. Can be overwritten by the user
             # through specifying a nonlinear protocol.
-            self.ANTSBlur = 0.2
+            self.fileRes = 0.2
         
-        """Below are ANTS parameters for each generation that are
-           defaults for this alignment. If a non linear protocol is specified,
-           some or all of these defaults may be overridden. 
-           
-           Note that for each generation, the blurs, gradient, similarity_metric,
-           weight and radius/histogram are arrays. This is to allow for the one
-           or more similarity metrics (and their associated parameters) to be specified
-           for each mincANTS call. We typically use two, but the mincANTS atom allows
-           for more or less if desired. 
         """
-        self.blurs = [[-1, self.ANTSBlur], [-1, self.ANTSBlur],[-1, self.ANTSBlur]] 
+            Set default parameters before checking to see if a non-linear protocol has been
+            specified. This is done first, since a non-linear protocol may specify only 
+            a subset of the parameters, but all parameters must be set for the registration
+            to run properly. 
+            
+            After default parameters are set, check for a specified non-linear protocol and
+            override these parameters accordingly. Currently, this protocol must
+            be a csv file that uses a SEMI-COLON to separate the fields. Examples are:
+            pydpiper_apps_testing/test_data/minctracc_example_protocol.csv
+            pydpiper_apps_testing/test_data/mincANTS_example_protocol.csv
+           
+            Each row in the csv is a different input to the either a minctracc or mincANTS call
+            Although the number of entries in each row (e.g. generations) is variable, the
+            specific parameters are fixed. For example, one could specify a subset of the
+            allowed parameters (e.g. blurs only) but could not rename any parameters
+            or use additional ones that haven't already been defined without subclassing. See
+            documentation for additional details. 
+            
+            Note that if no protocol is specified, then defaults will be used. 
+            Based on the length of these parameter arrays, the number of generations is set. 
+        """
+        
+        self.defaultParams()
+        if nlin_protocol:
+            self.setParams(nlin_protocol)
+        self.generations = self.getGenerations()   
+        
+    def defaultParams(self):
+        """Set default parameters for each registration type in subclasses."""
+        pass
+    
+    def setParams(self):
+        """Override parameters based on specified non-linear protocol."""
+        pass
+    
+    def getGenerations(self):
+        """Get number of generations based on length of parameter arrays. """
+        pass
+    
+    def addBlurStage(self):
+        """
+            Add blurs to pipeline. Because blurs are handled differently by
+            parameter arrays in minctracc and mincANTS subclasses, they are added
+            to the pipeline via function call. 
+        """
+        pass
+    
+    def regAndResample(self):
+        """Registration and resampling calls"""
+        pass
+    
+    def iterate(self):
+        for i in range(self.generations):
+            nlinOutput = abspath(self.nlinDir) + "/" + "nlin-%g.mnc" % (i+1)
+            nlinFH = RegistrationPipeFH(nlinOutput, mask=self.target.getMask(), basedir=self.nlinDir)
+            self.addBlurStage(self.target, i)
+            filesToAvg = []
+            for inputFH in self.inputs:
+                self.addBlurStage(inputFH, i) 
+                self.regAndResample(inputFH, i, filesToAvg, nlinFH)
+            
+            """Because we don't reset lastBasevol on each inputFH, call mincAverage with files only.
+               We create fileHandler first though, so we have log directory.
+               This solution seems a bit hackish--may want to modify?  
+               Additionally, we are currently using the full RegistrationPipeFH class, but ultimately
+               we'll want to create a third class that is somewhere between a full and base class. 
+            """
+            logBase = removeBaseAndExtension(nlinOutput)
+            avgLog = createLogFile(nlinFH.logDir, logBase)
+            avg = mincAverage(filesToAvg, nlinOutput, logFile=avgLog)
+            self.p.addStage(avg)
+            """Reset target for next iteration and add to array"""
+            self.target = nlinFH
+            self.nlinAvg.append(nlinFH)
+            """Create a final nlin group to add to the inputFH.
+               lastBasevol = by default, will grab the lastBasevol used in these calculations (e.g. lsq12)
+               setLastXfm between final nlin average and inputFH will be set for stats calculations.
+            """
+            if i == (self.generations -1):
+                for inputFH in self.inputs:
+                    """NOTE: The last xfm being set below is NOT the result of a registration between
+                       inputFH and nlinFH, but rather is the output transform from the previous generation's
+                       average."""
+                    finalXfm = inputFH.getLastXfm(self.nlinAvg[self.generations-2])
+                    inputFH.newGroup(groupName="final")
+                    inputFH.setLastXfm(nlinFH, finalXfm)
+    
+class NLINANTS(NLINBase):
+    """
+        This class does an iterative non-linear registration using the mincANTS
+        registration protocol. The default number of generations is three. 
+    """
+    def __init__(self, inputArray, targetFH, nlinOutputDir, nlin_protocol=None):
+        NLINBase.__init__(self, inputArray, targetFH, nlinOutputDir, nlin_protocol)
+        
+    def defaultParams(self):
+        """
+            Default mincANTS parameters. 
+           
+            Note that for each generation, the blurs, gradient, similarity_metric,
+            weight and radius/histogram are arrays. This is to allow for the one
+            or more similarity metrics (and their associated parameters) to be specified
+            for each mincANTS call. We typically use two, but the mincANTS atom allows
+            for more or less if desired. 
+        """
+        self.blurs = [[-1, self.fileRes], [-1, self.fileRes],[-1, self.fileRes]] 
         self.gradient = [[False,True], [False,True], [False,True]]
         self.similarityMetric = [["CC", "CC"],["CC", "CC"],["CC", "CC"]]
         self.weight = [[1,1],[1,1],[1,1]]
@@ -136,44 +272,6 @@ class NLINANTS(object):
         self.regularization = ["Gauss[5,1]", "Gauss[5,1]", "Gauss[5,1]"]
         self.iterations = ["100x100x100x0", "100x100x100x20", "100x100x100x50"]
         self.useMask = [False, True, True]
-        
-        """If a non-linear protocol was specified, use this to override the
-           default non-linear registration parameters. Currently, this protocol must
-           be a csv file that uses a SEMI-COLON to separate the fields. An example is:
-           pydpiper_apps_testing/test_data/mincANTS_example_nlin_protocol.csv 
-           
-           Each row in the csv is a different input to the mincANTS call (e.g. iterations, regularization, etc)
-           Although the number of entries in each row (e.g. generations) is variable, the
-           specific parameters are fixed. For example, one could specify a subset of the
-           allowed parameters (e.g. similarity_metric only) but could not rename any parameters
-           or use additional ones that haven't already been defined without subclassing. See
-           documentation for additional details. 
-           
-           If a non-linear protocol is not specified, default parameters will be used."""
-        if nlin_protocol:
-            self.setParams(nlin_protocol)
-            
-        """Get number of generations based on length of parameter arrays. This is based on
-           either defaults or whatever was specified from an external non-linear protocol.
-           If the number of generations in each array does not match, an error is thrown and
-           the program exits. """
-        self.generations = self.getGenerations()
-    
-    def getGenerations(self):
-        arrayLength = len(self.blurs)
-        errorMsg = "Array lengths in non-linear mincANTS protocol do not match."
-        if (len(self.gradient) != arrayLength 
-            or len(self.similarityMetric) != arrayLength
-            or len(self.weight) != arrayLength
-            or len(self.radiusHisto) != arrayLength
-            or len(self.transformationModel) != arrayLength
-            or len(self.regularization) != arrayLength
-            or len(self.iterations) != arrayLength
-            or len(self.useMask) != arrayLength):
-            print errorMsg
-            raise
-        else:
-            return arrayLength
             
     def setParams(self, nlin_protocol):
         """Set parameters from specified protocol"""
@@ -257,72 +355,72 @@ class NLINANTS(object):
                 print "Improper parameter specified for mincANTS protocol: " + str(p[0])
                 print "Exiting..."
                 sys.exit()
-         
-    def iterate(self):
-        for i in range(self.generations):
-            for j in self.blurs[i]:
-                if j != -1:
-                    tblur = blur(self.target, j, gradient=True)              
-                    self.p.addStage(tblur)
-            filesToAvg = []
-            for inputFH in self.inputs:
-                for j in self.blurs[i]:
-                    if j != -1:
-                        iblur = blur(inputFH, j, gradient=True)
-                        self.p.addStage(iblur) 
-                ma = mincANTS(inputFH, 
-                              self.target, 
-                              defaultDir="tmp",
-                              blur=self.blurs[i],
-                              gradient=self.gradient[i], 
-                              similarity_metric=self.similarityMetric[i],
-                              weight=self.weight[i], 
-                              iterations=self.iterations[i],
-                              radius_or_histo=self.radiusHisto[i],
-                              transformation_model = self.transformationModel[i],
-                              regularization=self.regularization[i],
-                              useMask=self.useMask[i])
-                self.p.addStage(ma)
-                rs = mincresample(inputFH, self.target, likeFile=self.target, defaultDir="tmp", argArray=["-sinc"])
-                #Do we need to resample any masks?
-                filesToAvg.append(rs.outputFiles[0])
-                self.p.addStage(rs)
-            
-            """Because we don't reset lastBasevol on each inputFH, call mincAverage with files only.
-               We create fileHandler first though, so we have log directory.
-               This solution seems a bit hackish--may want to modify?  
-               Additionally, we are currently using the full RegistrationPipeFH class, but ultimately
-               we'll want to create a third class that is somewhere between a full and base class. 
-            """
-            nlinOutput = abspath(self.nlinDir) + "/" + "nlin-%g.mnc" % (i+1)
-            nlinFH = RegistrationPipeFH(nlinOutput, mask=self.target.getMask(), basedir=self.nlinDir)
-            logBase = removeBaseAndExtension(nlinOutput)
-            avgLog = createLogFile(nlinFH.logDir, logBase)
-            avg = mincAverage(filesToAvg, nlinOutput, logFile=avgLog)
-            self.p.addStage(avg)
-            """Reset target for next iteration and add to array"""
-            self.target = nlinFH
-            self.nlinAvg.append(nlinFH)
+    
+    def getGenerations(self):
+        arrayLength = len(self.blurs)
+        errorMsg = "Array lengths in non-linear mincANTS protocol do not match."
+        if (len(self.gradient) != arrayLength 
+            or len(self.similarityMetric) != arrayLength
+            or len(self.weight) != arrayLength
+            or len(self.radiusHisto) != arrayLength
+            or len(self.transformationModel) != arrayLength
+            or len(self.regularization) != arrayLength
+            or len(self.iterations) != arrayLength
+            or len(self.useMask) != arrayLength):
+            print errorMsg
+            raise
+        else:
+            return arrayLength
+    
+    def addBlurStage(self, FH, i):
+        for j in self.blurs[i]:
+            if j != -1:
+                tblur = blur(FH, j, gradient=True)              
+                self.p.addStage(tblur)
+    
+    def regAndResample(self, inputFH, i, filesToAvg, nlinFH):
+        """For last generation, override default output names. 
+           Note that the defaultDir specified in the mincANTS call
+           is ignored in this instance. """
+        if i == (self.generations -1):
+            registerOutput, resampleOutput = finalGenerationFileNames(inputFH)
+        else:
+            registerOutput = None
+            resampleOutput = None
+        ma = mincANTS(inputFH, 
+                      self.target, 
+                      output=registerOutput,
+                      defaultDir="tmp",
+                      blur=self.blurs[i],
+                      gradient=self.gradient[i], 
+                      similarity_metric=self.similarityMetric[i],
+                      weight=self.weight[i], 
+                      iterations=self.iterations[i],
+                      radius_or_histo=self.radiusHisto[i],
+                      transformation_model = self.transformationModel[i],
+                      regularization=self.regularization[i],
+                      useMask=self.useMask[i])
+        self.p.addStage(ma)
+        rs = mincresample(inputFH, 
+                          self.target, 
+                          likeFile=self.target, 
+                          output=resampleOutput, 
+                          defaultDir="tmp", 
+                          argArray=["-sinc"])
+        #Do we need to resample any masks?
+        filesToAvg.append(rs.outputFiles[0])
+        self.p.addStage(rs)
 
-class NLINminctracc(object):
+class NLINminctracc(NLINBase):
+    """
+        This class does an iterative non-linear registration using the mincANTS
+    """
     def __init__(self, inputArray, targetFH, nlinOutputDir, nlin_protocol=None):
-        self.p = Pipeline()
-        """Initial inputs should be an array of fileHandlers with lastBasevol in lsq12 space"""
-        self.inputs = inputArray
-        """Initial target should be the file handler for the lsq12 average"""
-        self.target = targetFH 
-        """Output directory should be _nlin """
-        self.nlinDir = nlinOutputDir
-        """Empty array that we will fill with averages as we create them"""
-        self.nlinAvg = [] 
-        """Blur and step size parameters will be created from the file resolution."""
-        self.fileRes = volumeFromFile(self.target.getLastBasevol()).separations[0]    
+        NLINBase.__init__(self, inputArray, targetFH, nlinOutputDir, nlin_protocol)
         
-        """ 
-            Default minctracc parameters for 6 generations. 
-            If a non linear protocol is specified, some or all of these defaults 
-            may be overridden. 
-        """
+    def defaultParams(self):
+        """ Default minctracc parameters """
+        
         self.blurs = [self.fileRes*5.0, self.fileRes*(10.0/3.0), self.fileRes*(10.0/3.0),
                       self.fileRes*(10.0/3.0), self.fileRes*(5.0/3.0), self.fileRes]
         self.stepSize = [self.fileRes*(35.0/3.0), self.fileRes*10.0, self.fileRes*(25.0/3.0),
@@ -332,42 +430,6 @@ class NLINminctracc(object):
         self.useGradient = [True, True, True, True, True, True]
         self.optimization = ["-use_simplex", "-use_simplex", "-use_simplex", "-use_simplex", 
                              "-use_simplex", "-use_simplex"]
-        
-        """If a non-linear protocol was specified, use this to override the
-           default non-linear registration parameters. Currently, this protocol must
-           be a csv file that uses a SEMI-COLON to separate the fields. An example is:
-           pydpiper_apps_testing/test_data/minctracc_example_protocol.csv
-           
-           Each row in the csv is a different input to the minctracc call (e.g. blurs, iterations, etc)
-           Although the number of entries in each row (e.g. generations) is variable, the
-           specific parameters are fixed. For example, one could specify a subset of the
-           allowed parameters (e.g. blurs only) but could not rename any parameters
-           or use additional ones that haven't already been defined without subclassing. See
-           documentation for additional details. 
-           
-           If a non-linear protocol is not specified, default parameters will be used."""
-        
-        if nlin_protocol:
-            self.setParams(nlin_protocol)
-            
-        """Get number of generations based on length of parameter arrays. This is based on
-           either defaults or whatever was specified from an external non-linear protocol.
-           If the number of generations in each array does not match, an error is thrown and
-           the program exits. """
-        self.generations = self.getGenerations()
-    
-    def getGenerations(self):
-        arrayLength = len(self.blurs)
-        errorMsg = "Array lengths in non-linear minctracc protocol do not match."
-        if (len(self.stepSize) != arrayLength 
-            or len(self.iterations) != arrayLength
-            or len(self.simplex) != arrayLength
-            or len(self.useGradient) != arrayLength
-            or len(self.optimization) != arrayLength):
-            print errorMsg
-            raise
-        else:
-            return arrayLength
             
     def setParams(self, nlin_protocol):
         """Set parameters from specified protocol"""
@@ -422,64 +484,78 @@ class NLINminctracc(object):
                 print "Exiting..."
                 sys.exit()
         
-    def iterate(self):
-        for i in range(self.generations):
-            """Create file handler for nlin average for each generation"""
-            nlinOutput = abspath(self.nlinDir) + "/" + "nlin-%g.mnc" % (i+1)
-            nlinFH = RegistrationPipeFH(nlinOutput, mask=self.target.getMask(), basedir=self.nlinDir)
-            tblur = blur(self.target, self.blurs[i], gradient=True)              
-            self.p.addStage(tblur)
-            filesToAvg = []
-            for inputFH in self.inputs:
-                iblur = blur(inputFH, self.blurs[i], gradient=True)
-                self.p.addStage(iblur)
-                """If self.useGradient is True, then we call minctracc twice: once
-                   with a gradient and once without. Otherwise, we call only once
-                   without a gradient. """
-                mta = minctracc(inputFH, 
+    def getGenerations(self):
+        arrayLength = len(self.blurs)
+        errorMsg = "Array lengths in non-linear minctracc protocol do not match."
+        if (len(self.stepSize) != arrayLength 
+            or len(self.iterations) != arrayLength
+            or len(self.simplex) != arrayLength
+            or len(self.useGradient) != arrayLength
+            or len(self.optimization) != arrayLength):
+            print errorMsg
+            raise
+        else:
+            return arrayLength
+    
+    def addBlurStage(self, FH, i):
+        tblur = blur(FH, self.blurs[i], gradient=True)              
+        self.p.addStage(tblur)
+    
+    def regAndResample(self, inputFH, i, filesToAvg, nlinFH):
+        """For last generation, override default output names. 
+           Note that the defaultDir specified in the minctracc call
+           is ignored in this instance. """
+        if i == (self.generations -1):
+            if not self.useGradient[i]:
+                firstRegOutput, resampleOutput = finalGenerationFileNames(inputFH)
+            else:
+                firstRegOutput = None
+                registerOutput, resampleOutput = finalGenerationFileNames(inputFH)
+        else:
+            firstRegOutput = None
+            registerOutput = None
+            resampleOutput = None
+        """If self.useGradient is True, then we call minctracc twice: once
+            with a gradient and once without. Otherwise, we call only once
+            without a gradient. """
+        mta = minctracc(inputFH, 
+                        self.target, 
+                        defaultDir="tmp",
+                        output=firstRegOutput, 
+                        blur=self.blurs[i],
+                        gradient=False,
+                        iterations=self.iterations[i],
+                        step=self.stepSize[i],
+                        weight=0.8, 
+                        stiffness=0.98,
+                        similarity=0.8,
+                        simplex=self.simplex[i])
+        self.p.addStage(mta)
+        if self.useGradient[i]:
+            mtb = minctracc(inputFH, 
+                            self.target, 
+                            output=registerOutput,
+                            defaultDir="tmp", 
+                            blur=self.blurs[i],
+                            gradient=True,
+                            iterations=self.iterations[i],
+                            step=self.stepSize[i],
+                            weight=0.8, 
+                            stiffness=0.98,
+                            similarity=0.8,
+                            simplex=self.simplex[i])
+            self.p.addStage(mtb)
+            """Need to set last xfm so that next generation will use it as the input transform"""
+            inputFH.setLastXfm(nlinFH, mtb.outputFiles[0])
+            rs = mincresample(inputFH, 
                                 self.target, 
+                                likeFile=self.target, 
+                                output=resampleOutput,
                                 defaultDir="tmp", 
-                                blur=self.blurs[i],
-                                gradient=False,
-                                iterations=self.iterations[i],
-                                step=self.stepSize[i],
-                                weight=0.8, 
-                                stiffness=0.98,
-                                similarity=0.8,
-                                simplex=self.simplex[i])
-                self.p.addStage(mta)
-                if self.useGradient[i]:
-                    mtb = minctracc(inputFH, 
-                                    self.target, 
-                                    defaultDir="tmp", 
-                                    blur=self.blurs[i],
-                                    gradient=True,
-                                    iterations=self.iterations[i],
-                                    step=self.stepSize[i],
-                                    weight=0.8, 
-                                    stiffness=0.98,
-                                    similarity=0.8,
-                                    simplex=self.simplex[i])
-                self.p.addStage(mtb)
-                """Need to set last xfm so that next generation will use it as the input transform"""
-                inputFH.setLastXfm(nlinFH, mtb.outputFiles[0])
-                rs = mincresample(inputFH, self.target, likeFile=self.target, defaultDir="tmp", argArray=["-sinc"])
-                #Do we need to resample any masks?
-                filesToAvg.append(rs.outputFiles[0])
-                self.p.addStage(rs)
-                
-            """Because we don't reset lastBasevol on each inputFH, call mincAverage with files only.
-               File handler has been created above. 
-               This solution seems a bit hackish--may want to modify?  
-            """
-            logBase = removeBaseAndExtension(nlinOutput)
-            avgLog = createLogFile(nlinFH.logDir, logBase)
-            avg = mincAverage(filesToAvg, nlinOutput, logFile=avgLog)
-            self.p.addStage(avg)
-            """Reset target for next iteration and add to array"""
-            self.target = nlinFH
-            self.nlinAvg.append(nlinFH)
-        
+                                argArray=["-sinc"])
+            #Do we need to resample any masks?
+            filesToAvg.append(rs.outputFiles[0])
+            self.p.addStage(rs)
             
 if __name__ == "__main__":
     

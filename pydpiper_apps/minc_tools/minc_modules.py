@@ -296,7 +296,7 @@ def resampleToCommon(xfm, FH, statsGroup, blurs, nlinFH):
                               nlinFH.getLastBasevol(),
                               likeFile=nlinFH.getLastBasevol(),
                               transform=xfm,
-                              outFile=outputFile,
+                              output=outputFile,
                               logFile=logFile,
                               argArray=["-sinc"]) 
         pipeline.addStage(res)

@@ -49,8 +49,15 @@ class mincANTS(CmdStage):
                 for i in range(len(blur)):
                     self.source.append(inSource.getBlur(blur[i], gradient[i]))
                     self.target.append(inTarget.getBlur(blur[i], gradient[i]))
-                outputXfm = inSource.registerVolume(inTarget, defaultDir)
-                self.output = outputXfm
+                """If no output transform is specified, use registerVolume to create a default.
+                   If an output transform name is specified, use this as the output, and add it as the last xfm between source and target. 
+                   Note: The output file passed in must be a full path."""
+                if not output:
+                    outputXfm = inSource.registerVolume(inTarget, defaultDir)
+                    self.output = outputXfm
+                else:
+                    self.output = output
+                    inSource.addAndSetXfmToUse(inTarget, self.output)
                 self.logFile = fh.logFromFile(inSource.logDir, self.output)
                 self.useMask=useMask
                 if self.useMask:
@@ -178,8 +185,16 @@ class minctracc(CmdStage):
                 self.source = inSource.getBlur(blur, gradient)
                 self.target = inTarget.getBlur(blur, gradient)
                 self.transform = inSource.getLastXfm(inTarget)
-                outputXfm = inSource.registerVolume(inTarget, defaultDir)
-                self.output = outputXfm
+                """If no output transform is specified, use registerVolume to create a default.
+                   If an output transform name is specified, use this as the output, and add it as the last xfm between source and target. 
+                   Note: The output file passed in must be a full path."""
+                if not output:
+                    outputXfm = inSource.registerVolume(inTarget, defaultDir)
+                    self.output = outputXfm
+                else:
+                    self.output = output
+                    inSource.addAndSetXfmToUse(inTarget, self.output)
+                    outputXfm = output
                 self.logFile = fh.logFromFile(inSource.logDir, outputXfm)
                 self.useMask = useMask
                 if self.useMask:
@@ -345,7 +360,7 @@ class autocrop(CmdStage):
     def __init__(self, 
                  resolution, 
                  inFile,
-                 outFile=None,
+                 output=None,
                  logFile=None,
                  defaultDir="resampled"):
         
@@ -366,9 +381,9 @@ class autocrop(CmdStage):
                 self.logFile = fh.logFromFile(inFile.logDir, self.outfile)
             else:
                 self.inFile = inFile
-                self.outfile = outFile
+                self.outfile = output
                 if not logFile:
-                    self.logFile = fh.logFromFile(abspath(curdir), outFile)
+                    self.logFile = fh.logFromFile(abspath(curdir), output)
                 else:
                     self.logFile = logFile
     
@@ -465,14 +480,20 @@ class mincresample(CmdStage):
                     defaultDir = "resampled"
                 else:
                     defaultDir = default
-                self.outfile = self.setOutputFile(self.outputLocation, defaultDir)
+                """If an output file is specified, then use it, else create a default file name.
+                   Note: The output file passed in must be a full path."""
+                output = kwargs.pop("output", None)
+                if not output:
+                    self.outfile = self.setOutputFile(self.outputLocation, defaultDir)
+                else:
+                    self.outfile = output
                 self.logFile = fh.logFromFile(self.outputLocation.logDir, self.outfile)
             else:
                 self.inFile = inFile
                 self.targetFile = targetFile
                 self.likeFile = kwargs.pop("likeFile", None)
                 self.cxfm = kwargs.pop("transform", None)
-                self.outfile=kwargs.pop("outFile", None)
+                self.outfile=kwargs.pop("output", None)
                 logFile=kwargs.pop("logFile", None)
                 if not logFile:
                     self.logFile = fh.logFromFile(abspath(curdir), self.outfile)
@@ -597,24 +618,24 @@ class mincresampleMask(mincresampleLabels):
 class mincAverage(CmdStage):
     def __init__(self, 
                  inputArray, 
-                 outFile, 
+                 output, 
                  logFile=None, 
                  defaultDir="tmp"):
         CmdStage.__init__(self, None)
         
         try:  
-            """If outFile is fileHandler, we assume input array is as well"""
-            if isFileHandler(outFile):
+            """If output is fileHandler, we assume input array is as well"""
+            if isFileHandler(output):
                 self.filesToAvg = []
                 for i in range(len(inputArray)):
                     self.filesToAvg.append(inputArray[i].getLastBasevol())               
-                self.outfile = self.setOutputFile(outFile, defaultDir)
-                self.logFile = fh.logFromFile(outFile.logDir, self.outfile)
+                self.outfile = self.setOutputFile(output, defaultDir)
+                self.logFile = fh.logFromFile(output.logDir, self.outfile)
             else:
                 self.filesToAvg = inputArray
-                self.outfile = outFile
+                self.outfile = output
                 if not logFile:
-                    self.logFile = fh.logFromFile(abspath(curdir), outFile)
+                    self.logFile = fh.logFromFile(abspath(curdir), output)
                 else:
                     self.logFile = logFile
     
@@ -649,10 +670,10 @@ class mincAverage(CmdStage):
 class mincAverageDisp(mincAverage):
     def __init__(self, 
                  inputArray, 
-                 outFile, 
+                 output, 
                  logFile=None, 
                  defaultDir=None):
-        mincAverage.__init__(self, inputArray,outFile,logFile,defaultDir)
+        mincAverage.__init__(self, inputArray,output,logFile,defaultDir)
         
     def addDefaults(self):
         for i in range(len(self.filesToAvg)):
