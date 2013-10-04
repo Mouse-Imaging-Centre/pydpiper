@@ -1,6 +1,6 @@
 from pydpiper.pipeline import Pipeline, CmdStage, InputFile, OutputFile, LogFile
 from pydpiper_apps.minc_tools.registration_functions import isFileHandler
-from pydpiper_apps.minc_tools.minc_atoms import mincAverageDisp
+from pydpiper_apps.minc_tools.minc_atoms import mincAverageDisp, xfmConcat
 import pydpiper.file_handling as fh
 from optparse import OptionGroup
 from os.path import abspath
@@ -47,24 +47,36 @@ class CalcStats(object):
        General functionality as follows:
        1. Class instantiated with input, target and blurs. May optionally specify
           array of input file handlers so that re-centering can be appropriately
-          calculated. 
+          calculated. A scalingFactor may also be specified, for calculating the
+          scaled jacobian determinants, as is described in the __init__
+          function and elsewhere in the code.  
        2. If needed, invert transform between input and target in setupXfms()
        3. Call fullStatsCalc in calling class, which calculates linear and 
           pure nonlinear displacement, as well as re-centering average, before
           calculating determinants and log determinants. 
-       4. Alternate is to call calcFullDisplacement followed by calcDetAndLogDet, 
+       4. Alternate usage is to call calcFullDisplacement followed by calcDetAndLogDet, 
           which will use full displacement (rather than just non-linear component)
           for calculating determinants.   
     """
-    def __init__(self, inputFH, targetFH, blurs, inputArray=None):
+    def __init__(self, inputFH, targetFH, blurs, inputArray=None, scalingFactor=None):
         self.p = Pipeline()
         self.inputFH = inputFH
         self.targetFH = targetFH
         self.blurs = blurs
         self.statsGroup = StatsGroup()
         self.setupXfms()
+        """Optional inputArray used to calculate an average displacement and use for recentering."""
         if inputArray:
             self.setupDispArray(inputArray)
+        """   
+            Specify an optional xfm to be used when calculating the 
+            scaled jacobians. This jacobian will then be concatenated with the
+            self.linearXfm, the linear portion of the final non-linear transform from input to target.
+            
+            A  
+            
+        """
+        self.scalingFactor = scalingFactor
         
     def setupXfms(self):
         self.xfm = self.inputFH.getLastXfm(self.targetFH)
@@ -226,9 +238,20 @@ class CalcStats(object):
             
             """If self.linearXfm present, calculate scaled log determinant (scaled jacobian) and add to statsGroup"""
             if not useFullDisp:
-                #MF TODO: Depending on which space inputs are in, may need to handle additional lsq12 transform, as in build-model
+                """
+                    If self.scaleFactor is specified, then concatenate this additional transform
+                    with self.linearXfm. Typically, this will come from an LSQ12 registration, but
+                    may come from another alignment. 
+                """
+                if self.scaleFactor:
+                    toConcat = [self.scaleFactor, self.linearXfm]
+                    self.fullLinearXfm = fh.createBaseName(self.inputFH.transformsDir, self.inputFH.basename + "_full_linear.xfm")
+                    concat = xfmConcat(toConcat, self.fullLinearXfm)
+                    self.p.addStage(concat)
+                else:
+                    self.fullLinearXfm = self.linearXfm
                 cmd = ["scale_voxels", "-clobber", "-invert", "-log", 
-                       InputFile(self.linearXfm), InputFile(outLogDet), OutputFile(outLogDetScaled)]
+                       InputFile(self.fullLinearXfm), InputFile(outLogDet), OutputFile(outLogDetScaled)]
                 det = CmdStage(cmd)
                 det.setLogFile(LogFile(fh.logFromFile(self.inputFH.logDir, outLogDetScaled)))
                 self.p.addStage(det)

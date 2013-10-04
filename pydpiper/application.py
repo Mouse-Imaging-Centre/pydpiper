@@ -16,6 +16,8 @@ logger = logging.getLogger(__name__)
 # of what an lsq6/nlin protocol should look like.
 class MyParser(OptionParser):
     def format_epilog(self, formatter):
+        if not self.epilog:
+            self.epilog = ""
         return self.epilog
 
 class AbstractApplication(object):

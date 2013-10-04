@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 from pydpiper.pipeline import Pipeline, CmdStage, InputFile, OutputFile, LogFile
+import pydpiper_apps.minc_tools.LSQ12 as lsq12
 import pydpiper_apps.minc_tools.minc_atoms as ma
 import pydpiper_apps.minc_tools.registration_file_handling as rfh
 import pydpiper_apps.minc_tools.stats_tools as st
@@ -45,6 +46,9 @@ class LSQ12ANTSNlin:
                  inputFH,
                  targetFH,
                  lsq12Blurs=[0.3, 0.2, 0.15],
+                 lsq12StepSize=[1,0.5,0.333333333333333],
+                 lsq12UseGradient=[False,True,False],
+                 lsq12Simplex=[3,1.5,1],
                  ANTSBlur=0.056,
                  defaultDir="tmp"):
         
@@ -52,6 +56,9 @@ class LSQ12ANTSNlin:
         self.inputFH = inputFH
         self.targetFH = targetFH
         self.lsq12Blurs = lsq12Blurs
+        self.lsq12StepSize = lsq12StepSize
+        self.lsq12UseGradient = lsq12UseGradient
+        self.lsq12Simplex = lsq12Simplex
         self.defaultDir = defaultDir
         self.ANTSBlur = ANTSBlur
         
@@ -59,10 +66,13 @@ class LSQ12ANTSNlin:
     
     def buildPipeline(self):
         """Run lsq12 registration prior to non-linear"""
-        lsq12 = LSQ12(self.inputFH, 
-                      self.targetFH, 
-                      blurs=self.lsq12Blurs,
-                      defaultDir=self.defaultDir)
+        lsq12 = lsq12.LSQ12(self.inputFH, 
+                            self.targetFH, 
+                            blurs=self.lsq12Blurs,
+                            step=self.lsq12StepSize,
+                            gradient=self.lsq12UseGradient,
+                            simplex=self.lsq12Simplex,
+                            defaultDir=self.defaultDir)
         self.p.addPipeline(lsq12.p)
         """Resample input using final lsq12 transform"""
         res = ma.mincresample(self.inputFH, self.targetFH, likeFile=self.targetFH, argArray=["-sinc"])   
@@ -92,71 +102,6 @@ class LSQ12ANTSNlin:
         xfmConcat = CmdStage(cmd)
         xfmConcat.setLogFile(LogFile(fh.logFromFile(self.inputFH.logDir, output)))
         self.p.addStage(xfmConcat)
-
-class LSQ12:
-    """Basic LSQ12 class. 
-    
-    This class takes an input FileHandler and a targetFileHandler as required inputs. A series of
-    minctracc calls will then produce the 12-parameter alignment. The number of minctracc calls 
-    and their parameters are controlled by three further arguments to the constructor:
-    
-    blurs: an array of floats containing the FWHM of the blurring kernel to be used for each call
-    step: an array of floats containing the step used by minctracc in each call
-    simplex: an array of floats containing the simplex used by minctracc in each call.
-    
-    The number of entries in those three (blurs, step, simplex) input arguments determines the number
-    of minctracc calls executed in this module. For example, the following call:
-    LSQ12(inputFH, targetFH, blurs=[10,5,2], step=[4,4,4], simplex=[20,20,20])
-    will result in three successive minctracc calls, each initialized with the output transform of the 
-    previous call.
-    """
-    def __init__(self,
-                 inputFH,
-                 targetFH, 
-                 blurs=[0.3, 0.2, 0.15], 
-                 step=[1,0.5,0.333333333333333],
-                 simplex=[3,1.5,1],
-                 defaultDir="tmp"):                                      
-
-        if len(blurs) == len(step) == len(simplex):
-            # do nothing - all lengths are the same and we're therefore happy
-            pass
-        else:
-            logger.error("The same number of entries are required for blurs, step, and simplex in LSQ12")
-            sys.exit()
-                
-        self.p = Pipeline()
-        self.inputFH = inputFH
-        self.targetFH = targetFH
-        self.blurs = blurs
-        self.step = step
-        self.blurs = blurs
-        self.simplex = simplex
-        self.defaultDir = defaultDir
-            
-        self.blurFiles()
-        self.buildPipeline()
-    
-    def blurFiles(self):
-        for b in self.blurs:
-            if b != -1:
-                tblur = ma.blur(self.targetFH, b, gradient=True)
-                iblur = ma.blur(self.inputFH, b, gradient=True)               
-                self.p.addStage(tblur)
-                self.p.addStage(iblur)
-        
-    def buildPipeline(self):
-        gradient=[False,True,False]
-        for i in range(len(self.blurs)):    
-            linearStage = ma.minctracc(self.inputFH, 
-                                       self.targetFH, 
-                                       blur=self.blurs[i], 
-                                       defaultDir=self.defaultDir,
-                                       gradient=gradient[i],                                     
-                                       linearparam="lsq12",
-                                       step=self.step[i],
-                                       simplex=self.simplex[i])
-            self.p.addStage(linearStage)
 
 class LongitudinalStatsConcatAndResample:
     """ For each subject:

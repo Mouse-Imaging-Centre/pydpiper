@@ -1,6 +1,7 @@
 from pydpiper.pipeline import Pipeline, CmdStage, InputFile, OutputFile, LogFile
 import pydpiper_apps.minc_tools.minc_atoms as ma
 import pydpiper_apps.minc_tools.minc_modules as mm
+import pydpiper_apps.minc_tools.LSQ12 as lsq12
 import pydpiper.file_handling as fh
 import sys
 
@@ -57,7 +58,7 @@ class HierarchicalMinctracc:
                 self.p.addStage(iblur)
             
         # Do standard LSQ12 alignment prior to non-linear stages 
-        lsq12 = mm.LSQ12(inputPipeFH, 
+        lsq12 = lsq12.LSQ12(inputPipeFH, 
                          templatePipeFH, 
                          defaultDir=defaultDir)
         self.p.addPipeline(lsq12.p)
