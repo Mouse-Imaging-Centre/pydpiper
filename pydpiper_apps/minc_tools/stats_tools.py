@@ -243,10 +243,11 @@ class CalcStats(object):
                     with self.linearXfm. Typically, this will come from an LSQ12 registration, but
                     may come from another alignment. 
                 """
-                if self.scaleFactor:
-                    toConcat = [self.scaleFactor, self.linearXfm]
+                if self.scalingFactor:
+                    toConcat = [self.scalingFactor, self.linearXfm]
                     self.fullLinearXfm = fh.createBaseName(self.inputFH.transformsDir, self.inputFH.basename + "_full_linear.xfm")
-                    concat = xfmConcat(toConcat, self.fullLinearXfm)
+                    logFile=LogFile(fh.logFromFile(self.inputFH.logDir, fh.removeBaseAndExtension(self.fullLinearXfm)))
+                    concat = xfmConcat(toConcat, self.fullLinearXfm, logFile)
                     self.p.addStage(concat)
                 else:
                     self.fullLinearXfm = self.linearXfm

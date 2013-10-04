@@ -102,12 +102,12 @@ class NonlinearRegistration(AbstractApplication):
             ants = NLINANTS(inputFiles, initialTarget, nlinDirectory, options.nlin_protocol)
             ants.iterate()
             self.pipeline.addPipeline(ants.p)
-            self.nlinAvg = ants.nlinAvg
+            self.nlinAverages = ants.nlinAverages
         elif options.reg_method == "minctracc":
             tracc = NLINminctracc(inputFiles, initialTarget, nlinDirectory, options.nlin_protocol)
             tracc.iterate()
             self.pipeline.addPipeline(tracc.p)
-            self.nlinAvg = tracc.nlinAvg
+            self.nlinAverages = tracc.nlinAverages
         else:
             logger.error("Incorrect registration method specified: " + options.reg_method)
             sys.exit()
@@ -119,8 +119,8 @@ class NonlinearRegistration(AbstractApplication):
             for i in options.stats_kernels.split(","):
                 blurs.append(float(i))
             """Choose final average from array of nlin averages"""
-            numGens = len(self.nlinAvg)
-            finalNlin = self.nlinAvg[numGens-1]
+            numGens = len(self.nlinAverages)
+            finalNlin = self.nlinAverages[numGens-1]
             """For each input file, calculate statistics from finalNlin to input"""
             for inputFH in inputFiles:
                 stats = CalcStats(inputFH, finalNlin, blurs, inputFiles)
@@ -148,7 +148,7 @@ class NLINBase(object):
         """Output directory should be _nlin """
         self.nlinDir = nlinOutputDir
         """Empty array that we will fill with averages as we create them"""
-        self.nlinAvg = [] 
+        self.nlinAverages = [] 
         """Create the blurring resolution from the file resolution"""
         try: # the attempt to access the minc volume will fail if it doesn't yet exist at pipeline creation
             self.fileRes = volumeFromFile(self.target.getLastBasevol()).separations[0]
@@ -231,7 +231,7 @@ class NLINBase(object):
             self.p.addStage(avg)
             """Reset target for next iteration and add to array"""
             self.target = nlinFH
-            self.nlinAvg.append(nlinFH)
+            self.nlinAverages.append(nlinFH)
             """Create a final nlin group to add to the inputFH.
                lastBasevol = by default, will grab the lastBasevol used in these calculations (e.g. lsq12)
                setLastXfm between final nlin average and inputFH will be set for stats calculations.
@@ -241,7 +241,7 @@ class NLINBase(object):
                     """NOTE: The last xfm being set below is NOT the result of a registration between
                        inputFH and nlinFH, but rather is the output transform from the previous generation's
                        average."""
-                    finalXfm = inputFH.getLastXfm(self.nlinAvg[self.generations-2])
+                    finalXfm = inputFH.getLastXfm(self.nlinAverages[self.generations-2])
                     inputFH.newGroup(groupName="final")
                     inputFH.setLastXfm(nlinFH, finalXfm)
     

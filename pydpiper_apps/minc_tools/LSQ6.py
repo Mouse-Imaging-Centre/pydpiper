@@ -348,6 +348,7 @@ class LSQ6Base(object):
             rs = ma.mincresample(inputfile,targetFHforResample,likeFile=likeFileForResample)
             self.filesToAvg.append(rs.outputFiles[0])
             self.p.addStage(rs)
+                
 
     def createAverage(self):
         """

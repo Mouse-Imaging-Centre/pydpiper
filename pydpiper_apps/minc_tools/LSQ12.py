@@ -124,7 +124,12 @@ class FullLSQ12(object):
         self.defaultParams()
         if lsq12_protocol:
             self.setParams(lsq12_protocol)
-        self.generations = self.getGenerations()  
+        self.generations = self.getGenerations() 
+        
+        # Create new lsq12 group for each input prior to registration
+        for i in range(len(self.inputs)):
+            self.inputs[i].newGroup(groupName="lsq12")
+         
     
     def defaultParams(self):
         """ Default minctracc parameters """
