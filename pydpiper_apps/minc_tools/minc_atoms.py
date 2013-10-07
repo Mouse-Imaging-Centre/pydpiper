@@ -618,24 +618,32 @@ class mincresampleMask(mincresampleLabels):
 class mincAverage(CmdStage):
     def __init__(self, 
                  inputArray, 
-                 output, 
+                 outputAvg,
+                 output=None, 
                  logFile=None, 
                  defaultDir="tmp"):
         CmdStage.__init__(self, None)
         
         try:  
             """If output is fileHandler, we assume input array is as well"""
-            if isFileHandler(output):
+            if isFileHandler(outputAvg):
                 self.filesToAvg = []
                 for i in range(len(inputArray)):
-                    self.filesToAvg.append(inputArray[i].getLastBasevol())               
-                self.outfile = self.setOutputFile(output, defaultDir)
-                self.logFile = fh.logFromFile(output.logDir, self.outfile)
+                    self.filesToAvg.append(inputArray[i].getLastBasevol()) 
+                """If no output file is specified, create default, using file handler
+                   otherwise use what is specified."""              
+                if not output:
+                    self.output = self.setOutputFile(outputAvg, defaultDir)
+                else:
+                    self.output = output
+                self.logFile = fh.logFromFile(outputAvg.logDir, self.output)
             else:
+                print "here. Not FH."
                 self.filesToAvg = inputArray
-                self.outfile = output
+                self.output = outputAvg
+                print self.output
                 if not logFile:
-                    self.logFile = fh.logFromFile(abspath(curdir), output)
+                    self.logFile = fh.logFromFile(abspath(curdir), outputAvg)
                 else:
                     self.logFile = logFile
     
@@ -650,15 +658,15 @@ class mincAverage(CmdStage):
     def addDefaults(self):
         for i in range(len(self.filesToAvg)):
             self.inputFiles.append(self.filesToAvg[i]) 
-        self.sd = splitext(self.outfile)[0] + "-sd.mnc"  
-        self.outputFiles += [self.outfile, self.sd]       
+        self.sd = splitext(self.output)[0] + "-sd.mnc"  
+        self.outputFiles += [self.output, self.sd]       
         self.cmd += ["mincaverage",
                      "-clobber", "-normalize", "-sdfile", self.sd, "-max_buffer_size_in_kb", str(409620)] 
                  
     def finalizeCommand(self):
         for i in range(len(self.filesToAvg)):
             self.cmd.append(self.filesToAvg[i])
-        self.cmd.append(self.outfile)    
+        self.cmd.append(self.output)    
     def setName(self):
         self.name = "mincaverage " 
     def setOutputFile(self, inFile, defaultDir):
@@ -678,7 +686,7 @@ class mincAverageDisp(mincAverage):
     def addDefaults(self):
         for i in range(len(self.filesToAvg)):
             self.inputFiles.append(self.filesToAvg[i]) 
-        self.outputFiles += [self.outfile]       
+        self.outputFiles += [self.output]       
         self.cmd += ["mincaverage", "-clobber"] 
 
 class RotationalMinctracc(CmdStage):

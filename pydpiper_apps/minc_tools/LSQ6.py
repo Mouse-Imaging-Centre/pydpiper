@@ -336,7 +336,8 @@ class LSQ6Base(object):
     
     def resampleInputFiles(self):
         """
-            resample input files using the last transformation
+            resample input files using the last transformation and set last base volumes 
+            to be resampled lsq6 volumes. 
         """
         for inputfile in self.inputs:
             likeFileForResample =  self.target
@@ -348,6 +349,8 @@ class LSQ6Base(object):
             rs = ma.mincresample(inputfile,targetFHforResample,likeFile=likeFileForResample)
             self.filesToAvg.append(rs.outputFiles[0])
             self.p.addStage(rs)
+            #TODO: The following line might be removed when NUC is sorted out. 
+            inputfile.setLastBasevol(rs.outputFiles[0])
                 
 
     def createAverage(self):
@@ -360,6 +363,7 @@ class LSQ6Base(object):
             lsq6FH = rfh.RegistrationPipeFH(lsq6AvgOutput, mask=None, basedir=self.lsq6OutputDir)
             logBase = fh.removeBaseAndExtension(lsq6AvgOutput)
             avgLog = fh.createLogFile(lsq6FH.logDir, logBase)
+            # Note: We are calling mincAverage here with filenames rather than file handlers
             avg = ma.mincAverage(self.filesToAvg, lsq6AvgOutput, logFile=avgLog)
             self.p.addStage(avg)
             self.lsq6Avg = lsq6FH

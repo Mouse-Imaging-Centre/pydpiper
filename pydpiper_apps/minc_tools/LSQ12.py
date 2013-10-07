@@ -244,9 +244,11 @@ class FullLSQ12(object):
             """ mincAverage all resampled brains and put in lsq12Directory""" 
             self.lsq12Avg = abspath(self.lsq12Dir) + "/" + basename(self.lsq12Dir) + "-pairs.mnc" 
             self.lsq12AvgFH = RegistrationPipeFH(self.lsq12Avg, basedir=self.lsq12Dir)
-            avg = ma.mincAverage(self.inputs, self.lsq12AvgFH, defaultDir=self.lsq12Dir)
+            avg = ma.mincAverage(self.inputs, 
+                                 self.lsq12AvgFH, 
+                                 output=self.lsq12Avg,
+                                 defaultDir=self.lsq12Dir)
             self.p.addStage(avg)
-            """loop through again and set all brains in array as lastBaseVol for each subject."""
         else:
             print "Registration using a specified number of max pairs not yet working. Check back soon!"
             sys.exit()
