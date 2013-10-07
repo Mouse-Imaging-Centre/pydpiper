@@ -2,10 +2,10 @@
 
 from pydpiper.application import AbstractApplication
 from pydpiper.pipeline import Pipeline, InputFile, OutputFile, LogFile, CmdStage
-from pydpiper.file_handling import createSubDir, makedirsIgnoreExisting, logFromFile
+from pydpiper.file_handling import createSubDir, createBaseName, makedirsIgnoreExisting, logFromFile
 import pydpiper_apps.minc_tools.minc_atoms as ma
 from pydpiper_apps.minc_tools.registration_file_handling import RegistrationPipeFH
-from pydpiper_apps.minc_tools.registration_functions import addGenRegOptionGroup, initializeInputFiles
+from pydpiper_apps.minc_tools.registration_functions import addGenRegOptionGroup, initializeInputFiles, getFinestResolution
 from optparse import OptionGroup
 from datetime import date
 from os.path import basename, abspath
@@ -112,6 +112,13 @@ class FullLSQ12(object):
             transform for that particular subject. 
             These xfms may be used subsequently for statistics calculations. """
         self.lsq12AvgXfms = {}
+        """Create the blurring resolution from the file resolution"""
+        try:
+            self.fileRes = getFinestResolution(self.inputs[0])
+        except: 
+            # if this fails (because file doesn't exist when pipeline is created) grab from
+            # initial input volume, which should exist. 
+            self.fileRes = getFinestResolution(self.inputs[0].inputFileName)
         
         """ 
             Similarly to LSQ6 and NLIN modules, an optional SEMI-COLON delimited csv may 
@@ -132,12 +139,16 @@ class FullLSQ12(object):
          
     
     def defaultParams(self):
-        """ Default minctracc parameters """
+        """ Default minctracc parameters based on resolution of file"""
         
-        self.blurs=[0.3, 0.2, 0.15] 
-        self.stepSize=[1,0.5,0.333333333333333]
+        blurfactors      = [       5,   10.0/3.0,         2.5]
+        stepfactors      = [50.0/3.0,   25.0/3.0,         5.5]
+        simplexfactors   = [      50,         25,    50.0/3.0]
+        
+        self.blurs = [i * self.fileRes for i in blurfactors]
+        self.stepSize=[i * self.fileRes for i in stepfactors]
         self.useGradient=[False,True,False]
-        self.simplex=[3,1.5,1]
+        self.simplex=[i * self.fileRes for i in simplexfactors]
         
     def setParams(self, lsq12_protocol):
         """Set parameters from specified protocol"""
@@ -216,7 +227,7 @@ class FullLSQ12(object):
                 cmd = ["xfmavg"]
                 for i in range(len(xfmsToAvg[inputFH])):
                     cmd.append(InputFile(xfmsToAvg[inputFH][i]))
-                avgXfmOutput = createSubDir(inputFH.transformsDir, inputFH.basename + "-avg-lsq12.xfm")
+                avgXfmOutput = createBaseName(inputFH.transformsDir, inputFH.basename + "-avg-lsq12.xfm")
                 cmd.append(OutputFile(avgXfmOutput))
                 xfmavg = CmdStage(cmd)
                 xfmavg.setLogFile(LogFile(logFromFile(inputFH.logDir, avgXfmOutput)))
@@ -227,7 +238,7 @@ class FullLSQ12(object):
                     likeFile=inputFH
                 else:
                     likeFile=self.likeFile
-                rslOutput = createSubDir(inputFH.resampledDir, inputFH.basename + "-resampled-lsq12.mnc")
+                rslOutput = createBaseName(inputFH.resampledDir, inputFH.basename + "-resampled-lsq12.mnc")
                 res = ma.mincresample(inputFH, 
                                       inputFH,
                                       transform=avgXfmOutput, 

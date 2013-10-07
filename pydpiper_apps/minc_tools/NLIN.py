@@ -421,6 +421,7 @@ class NLINminctracc(NLINBase):
     def defaultParams(self):
         """ Default minctracc parameters """
         
+        #TODO: Rewrite this so it looks more like LSQ6 with matrices of factors
         self.blurs = [self.fileRes*5.0, self.fileRes*(10.0/3.0), self.fileRes*(10.0/3.0),
                       self.fileRes*(10.0/3.0), self.fileRes*(5.0/3.0), self.fileRes]
         self.stepSize = [self.fileRes*(35.0/3.0), self.fileRes*10.0, self.fileRes*(25.0/3.0),
