@@ -640,7 +640,6 @@ class mincAverage(CmdStage):
             else:
                 self.filesToAvg = inputArray
                 self.output = outputAvg
-                print self.output
                 if not logFile:
                     self.logFile = fh.logFromFile(abspath(curdir), outputAvg)
                 else:
