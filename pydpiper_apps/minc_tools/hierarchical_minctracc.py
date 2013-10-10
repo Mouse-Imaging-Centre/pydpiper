@@ -58,10 +58,10 @@ class HierarchicalMinctracc:
                 self.p.addStage(iblur)
             
         # Do standard LSQ12 alignment prior to non-linear stages 
-        lsq12 = lsq12.LSQ12(inputPipeFH, 
-                         templatePipeFH, 
-                         defaultDir=defaultDir)
-        self.p.addPipeline(lsq12.p)
+        lsq12reg = lsq12.LSQ12(inputPipeFH, 
+                               templatePipeFH, 
+                               defaultDir=defaultDir)
+        self.p.addPipeline(lsq12reg.p)
         
         # create the nonlinear registrations
         for i in range(len(steps)):
