@@ -7,6 +7,7 @@ import Pyro
 import logging
 import networkx as nx
 import sys
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +83,7 @@ class AbstractApplication(object):
                                action="store_true",
                                help="Restart pipeline using backup files.")
         basic_group.add_option("--output-dir", dest="output_directory",
-                               type="string", default=".",
+                               type="string", default=None,
                                help="Directory where output data and backups will be saved.")
         self.parser.set_defaults(execute=True)
         basic_group.add_option("--execute", dest="execute",
@@ -95,11 +96,13 @@ class AbstractApplication(object):
     
     def _setup_pipeline(self):
         self.pipeline = Pipeline()
-        self.setup_directories()
         
-    def setup_directories(self):
+    def _setup_directories(self):
         """Output and backup directories setup here."""
-        self.outputDir = makedirsIgnoreExisting(self.options.output_directory)
+        if not self.options.output_directory:
+            self.outputDir = os.getcwd()
+        else:
+            self.outputDir = makedirsIgnoreExisting(self.options.output_directory)
         self.pipeline.setBackupFileLocation(self.outputDir)
     
     def reconstructCommand(self):    
@@ -114,6 +117,7 @@ class AbstractApplication(object):
         
         self.options, self.args = self.parser.parse_args()        
         self._setup_pipeline()
+        self._setup_directories()
         
         self.appName = self.setup_appName()
         self.setup_logger()

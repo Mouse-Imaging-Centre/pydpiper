@@ -37,12 +37,6 @@ class MBMApplication(AbstractApplication):
         
         self.parser.set_usage("%prog [options] input files") 
 
-    def setup_backupDir(self):
-        """Output directory set here as well. backups subdirectory automatically
-        placed here so we don't need to set via the command line"""
-        backup_dir = fh.makedirsIgnoreExisting(self.options.pipeline_dir)    
-        self.pipeline.setBackupFileLocation(backup_dir)
-
     def setup_appName(self):
         appName = "MICe-build-model"
         return appName
@@ -51,24 +45,18 @@ class MBMApplication(AbstractApplication):
         options = self.options
         args = self.args
         
-        #Make main pipeline directories
-        mainDirectory = None
-        if(options.output_directory == None):
-            mainDirectory = os.getcwd()
-        else:
-            mainDirectory = fh.makedirsIgnoreExisting(options.output_directory)
-        
         #Setup pipeline name
         if not options.pipeline_name:
             pipeName = str(date.today()) + "_pipeline"
         else:
             pipeName = options.pipeline_name
         # TODO: The lsq6, 12 and nlin directory creation will be created in
-        # appropriate modules. 
-        lsq6Directory = fh.createSubDir(mainDirectory, pipeName + "_lsq6")
-        lsq12Directory = fh.createSubDir(mainDirectory, pipeName + "_lsq12")
-        nlinDirectory = fh.createSubDir(mainDirectory, pipeName + "_nlin")
-        processedDirectory = fh.createSubDir(mainDirectory, pipeName + "_processed")
+        # appropriate modules. self.outputDir is set in AbstractApplication before
+        # run() is called.  
+        lsq6Directory = fh.createSubDir(self.outputDir, pipeName + "_lsq6")
+        lsq12Directory = fh.createSubDir(self.outputDir, pipeName + "_lsq12")
+        nlinDirectory = fh.createSubDir(self.outputDir, pipeName + "_nlin")
+        processedDirectory = fh.createSubDir(self.outputDir, pipeName + "_processed")
         inputFiles = rf.initializeInputFiles(args, processedDirectory, maskDir=options.mask_dir)
         
         # TODO: Write this as a function in LSQ6 and call from there. 
@@ -76,7 +64,7 @@ class MBMApplication(AbstractApplication):
         if(options.target != None):
             targetPipeFH = rfh.RegistrationPipeFH(os.path.abspath(options.target), basedir=lsq6Directory)
         else: # options.init_model != None  
-            initModel = rf.setupInitModel(options.init_model, mainDirectory)
+            initModel = rf.setupInitModel(options.init_model, self.outputDir)
             if (initModel[1] != None):
                 # we have a target in "native" space 
                 targetPipeFH = initModel[1]

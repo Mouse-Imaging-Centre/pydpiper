@@ -53,17 +53,14 @@ class LSQ12Registration(AbstractApplication):
         options = self.options
         args = self.args
         
-        """NOTE: Some of this code below is duplicated from MBM.py. 
-           We'll want to condense into a function!"""
-           
-        """Make main pipeline directories"""
-        pipeDir = makedirsIgnoreExisting(options.pipeline_dir)
+        # Setup pipeline name and create directories.
+        # TODO: Note duplication from MBM--move to function? 
         if not options.pipeline_name:
             pipeName = str(date.today()) + "_pipeline"
         else:
             pipeName = options.pipeline_name
-        lsq12Directory = createSubDir(pipeDir, pipeName + "_lsq12")
-        processedDirectory = createSubDir(pipeDir, pipeName + "_processed")
+        lsq12Directory = createSubDir(self.outputDir, pipeName + "_lsq12")
+        processedDirectory = createSubDir(self.outputDir, pipeName + "_processed")
         
         """Initialize input files from args"""
         inputFiles = initializeInputFiles(args, processedDirectory, maskDir=options.mask_dir)

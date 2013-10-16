@@ -76,9 +76,8 @@ with each scan per subject listed on the same line and separated by a comma.
             pipeName = options.pipeline_name
             
         # creation of directory tree                
-        pipeDir = fh.makedirsIgnoreExisting(options.pipeline_dir)
-        nlinDirectory = fh.createSubDir(pipeDir, pipeName + "_nlin")
-        processedDirectory = fh.createSubDir(pipeDir, pipeName + "_processed")
+        nlinDirectory = fh.createSubDir(self.outputDir, pipeName + "_nlin")
+        processedDirectory = fh.createSubDir(self.outputDir, pipeName + "_processed")
         
         # read in files from CSV
         fileList = open(self.args[0], 'rb')
