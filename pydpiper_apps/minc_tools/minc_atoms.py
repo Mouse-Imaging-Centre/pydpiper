@@ -828,12 +828,13 @@ class xfmConcat(CmdStage):
         outputFile: string representing the output filename 
         
         logFile: string representing the output filename for the log
-        file for this command 
+        file for this command. If unspecified, self.logFile will be set in
+        CmdStage.__init__ (or subsequently, using the setLogFile function) 
     """
     def __init__(self, 
                  inputFiles,
                  outputFile,
-                 logFile):
+                 logFile=None):
         CmdStage.__init__(self, None)
         
         # in case there is a single input file... (it's actually possible)

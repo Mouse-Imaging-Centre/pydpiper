@@ -148,10 +148,8 @@ class CalcStats(object):
            2. Compute mincDisplacement on this transform. 
         """
         nlinXfm = createPureNlinXfmName(self.inputFH, self.invXfm)
-        cmd = ["xfmconcat", InputFile(self.linearXfm), InputFile(self.invXfm), OutputFile(nlinXfm)]
-        xfmConcat = CmdStage(cmd)
-        xfmConcat.setLogFile(LogFile(fh.logFromFile(self.inputFH.logDir, nlinXfm)))
-        self.p.addStage(xfmConcat)
+        xc = xfmConcat([self.linearXfm, self.invXfm], nlinXfm, fh.logFromFile(self.inputFH.logDir, nlinXfm))
+        self.p.addStage(xc)
         nlinDisp = mincDisplacement(self.targetFH, self.inputFH, transform=nlinXfm)
         self.p.addStage(nlinDisp)
         self.nlinDisp = nlinDisp.outputFiles[0]
@@ -313,10 +311,8 @@ class CalcChainStats(CalcStats):
         """
         nlinBase = fh.removeBaseAndExtension(self.xfm) + "_pure_nlin.xfm"
         nlinXfm = fh.createBaseName(self.inputFH.tmpDir, nlinBase)
-        cmd = ["xfmconcat", InputFile(invXfm), InputFile(self.xfm), OutputFile(nlinXfm)]
-        xfmConcat = CmdStage(cmd)
-        xfmConcat.setLogFile(LogFile(fh.logFromFile(self.inputFH.logDir, nlinXfm)))
-        self.p.addStage(xfmConcat)
+        xc = xfmConcat([invXfm, self.xfm], nlinXfm, fh.logFromFile(self.inputFH.logDir, nlinXfm))
+        self.p.addStage(xc)
         nlinDisp = mincDisplacement(self.inputFH, self.inputFH, nlinXfm)
         self.p.addStage(nlinDisp)
         self.nlinDisp = nlinDisp.outputFiles[0]
