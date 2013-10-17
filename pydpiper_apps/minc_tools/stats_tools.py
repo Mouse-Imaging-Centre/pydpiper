@@ -1,6 +1,6 @@
 from pydpiper.pipeline import Pipeline, CmdStage, InputFile, OutputFile, LogFile
 from pydpiper_apps.minc_tools.registration_functions import isFileHandler
-from pydpiper_apps.minc_tools.minc_atoms import mincAverageDisp
+from pydpiper_apps.minc_tools.minc_atoms import mincAverageDisp, xfmConcat
 import pydpiper.file_handling as fh
 from optparse import OptionGroup
 from os.path import abspath
@@ -47,24 +47,36 @@ class CalcStats(object):
        General functionality as follows:
        1. Class instantiated with input, target and blurs. May optionally specify
           array of input file handlers so that re-centering can be appropriately
-          calculated. 
+          calculated. A scalingFactor may also be specified, for calculating the
+          scaled jacobian determinants, as is described in the __init__
+          function and elsewhere in the code.  
        2. If needed, invert transform between input and target in setupXfms()
        3. Call fullStatsCalc in calling class, which calculates linear and 
           pure nonlinear displacement, as well as re-centering average, before
           calculating determinants and log determinants. 
-       4. Alternate is to call calcFullDisplacement followed by calcDetAndLogDet, 
+       4. Alternate usage is to call calcFullDisplacement followed by calcDetAndLogDet, 
           which will use full displacement (rather than just non-linear component)
           for calculating determinants.   
     """
-    def __init__(self, inputFH, targetFH, blurs, inputArray=None):
+    def __init__(self, inputFH, targetFH, blurs, inputArray=None, scalingFactor=None):
         self.p = Pipeline()
         self.inputFH = inputFH
         self.targetFH = targetFH
         self.blurs = blurs
         self.statsGroup = StatsGroup()
         self.setupXfms()
+        """Optional inputArray used to calculate an average displacement and use for recentering."""
         if inputArray:
             self.setupDispArray(inputArray)
+        """   
+            Specify an optional xfm to be used when calculating the 
+            scaled jacobians. This jacobian will then be concatenated with the
+            self.linearXfm, the linear portion of the final non-linear transform from input to target.
+            
+            A  
+            
+        """
+        self.scalingFactor = scalingFactor
         
     def setupXfms(self):
         self.xfm = self.inputFH.getLastXfm(self.targetFH)
@@ -136,10 +148,8 @@ class CalcStats(object):
            2. Compute mincDisplacement on this transform. 
         """
         nlinXfm = createPureNlinXfmName(self.inputFH, self.invXfm)
-        cmd = ["xfmconcat", InputFile(self.linearXfm), InputFile(self.invXfm), OutputFile(nlinXfm)]
-        xfmConcat = CmdStage(cmd)
-        xfmConcat.setLogFile(LogFile(fh.logFromFile(self.inputFH.logDir, nlinXfm)))
-        self.p.addStage(xfmConcat)
+        xc = xfmConcat([self.linearXfm, self.invXfm], nlinXfm, fh.logFromFile(self.inputFH.logDir, nlinXfm))
+        self.p.addStage(xc)
         nlinDisp = mincDisplacement(self.targetFH, self.inputFH, transform=nlinXfm)
         self.p.addStage(nlinDisp)
         self.nlinDisp = nlinDisp.outputFiles[0]
@@ -168,32 +178,49 @@ class CalcStats(object):
              
     def calcDetAndLogDet(self, useFullDisp=False):  
         #Lots of repetition here--let's see if we can't make some functions.
-        """useFullDisp indicates whether or not """ 
+        """useFullDisp indicates whether or not to use full displacement field or non-linear component only""" 
         if useFullDisp:
             dispToUse = self.fullDisp
         else:
             dispToUse = self.nlinDisp
+        """Insert -1 at beginning of blurs array to include the calculation of unblurred jacobians."""
+        self.blurs.insert(0,-1)    
         for b in self.blurs:
-            """Calculate smoothed deformation field"""
-            fwhm = "--fwhm=" + str(b)
+            """Calculate default output filenames and set input for determinant calculation."""
             outputBase = fh.removeBaseAndExtension(dispToUse).split("_displacement")[0]
-            outSmooth = fh.createBaseName(self.inputFH.tmpDir, 
+            inputDet = dispToUse
+            outputDet = fh.createBaseName(self.inputFH.tmpDir, outputBase + "_determinant.mnc")
+            outDetShift = fh.createBaseName(self.inputFH.tmpDir, outputBase + "_det_plus1.mnc")
+            outLogDet = fh.createBaseName(self.inputFH.statsDir, outputBase + "_log_determinant.mnc")
+            outLogDetScaled = fh.createBaseName(self.inputFH.statsDir, outputBase + "_log_determinant_scaled.mnc")
+            """Calculate smoothed deformation field for all blurs other than -1"""
+            if b != -1:
+                fwhm = "--fwhm=" + str(b)
+                outSmooth = fh.createBaseName(self.inputFH.tmpDir, 
                                        outputBase + "_smooth_displacement_fwhm" + str(b) + ".mnc")
-            cmd = ["smooth_vector", "--clobber", "--filter", fwhm, 
-                   InputFile(dispToUse), OutputFile(outSmooth)]
-            smoothVec = CmdStage(cmd)
-            smoothVec.setLogFile(LogFile(fh.logFromFile(self.inputFH.logDir, outSmooth)))
-            self.p.addStage(smoothVec)
+                cmd = ["smooth_vector", "--clobber", "--filter", fwhm, 
+                       InputFile(dispToUse), OutputFile(outSmooth)]
+                smoothVec = CmdStage(cmd)
+                smoothVec.setLogFile(LogFile(fh.logFromFile(self.inputFH.logDir, outSmooth)))
+                self.p.addStage(smoothVec)
+                """Override file name defaults for each blur and set input for determinant calculation."""
+                inputDet = outSmooth
+                outputDet = fh.createBaseName(self.inputFH.tmpDir, 
+                                          outputBase + "_determinant_fwhm" + str(b) + ".mnc")
+                outDetShift = fh.createBaseName(self.inputFH.tmpDir, 
+                                          outputBase + "_det_plus1_fwhm" + str(b) + ".mnc")
+                outLogDet = fh.createBaseName(self.inputFH.statsDir, 
+                                          outputBase + "_log_determinant_fwhm" + str(b) + ".mnc")
+                outLogDetScaled = fh.createBaseName(self.inputFH.statsDir, 
+                                                    outputBase + "_log_determinant_scaled_fwhm" + str(b) + ".mnc")
             
             """Calculate the determinant, then add 1 (per mincblob weirdness)"""
-            outputDet = fh.createBaseName(self.inputFH.tmpDir, 
-                                          outputBase + "_determinant_fwhm" + str(b) + ".mnc")
-            cmd = ["mincblob", "-clobber", "-determinant", InputFile(outSmooth), OutputFile(outputDet)]
+            
+            cmd = ["mincblob", "-clobber", "-determinant", InputFile(inputDet), OutputFile(outputDet)]
             det = CmdStage(cmd)
             det.setLogFile(LogFile(fh.logFromFile(self.inputFH.logDir, outputDet)))
             self.p.addStage(det)
-            outDetShift = fh.createBaseName(self.inputFH.tmpDir, 
-                                          outputBase + "_det_plus1_fwhm" + str(b) + ".mnc")
+            
             cmd = ["mincmath", "-clobber", "-2", "-const", str(1), "-add", 
                    InputFile(outputDet), OutputFile(outDetShift)]
             det = CmdStage(cmd)
@@ -201,8 +228,6 @@ class CalcStats(object):
             self.p.addStage(det)
             
             """Calculate log determinant (jacobian) and add to statsGroup."""
-            outLogDet = fh.createBaseName(self.inputFH.statsDir, 
-                                          outputBase + "_log_determinant_fwhm" + str(b) + ".mnc")
             cmd = ["mincmath", "-clobber", "-2", "-log", InputFile(outDetShift), OutputFile(outLogDet)]
             det = CmdStage(cmd)
             det.setLogFile(LogFile(fh.logFromFile(self.inputFH.logDir, outLogDet)))
@@ -211,11 +236,21 @@ class CalcStats(object):
             
             """If self.linearXfm present, calculate scaled log determinant (scaled jacobian) and add to statsGroup"""
             if not useFullDisp:
-                #MF TODO: Depending on which space inputs are in, may need to handle additional lsq12 transform, as in build-model
-                outLogDetScaled = fh.createBaseName(self.inputFH.statsDir, 
-                                                    outputBase + "_log_determinant_scaled_fwhm" + str(b) + ".mnc")
+                """
+                    If self.scaleFactor is specified, then concatenate this additional transform
+                    with self.linearXfm. Typically, this will come from an LSQ12 registration, but
+                    may come from another alignment. 
+                """
+                if self.scalingFactor:
+                    toConcat = [self.scalingFactor, self.linearXfm]
+                    self.fullLinearXfm = fh.createBaseName(self.inputFH.transformsDir, self.inputFH.basename + "_full_linear.xfm")
+                    logFile=LogFile(fh.logFromFile(self.inputFH.logDir, fh.removeBaseAndExtension(self.fullLinearXfm)))
+                    concat = xfmConcat(toConcat, self.fullLinearXfm, logFile)
+                    self.p.addStage(concat)
+                else:
+                    self.fullLinearXfm = self.linearXfm
                 cmd = ["scale_voxels", "-clobber", "-invert", "-log", 
-                       InputFile(self.linearXfm), InputFile(outLogDet), OutputFile(outLogDetScaled)]
+                       InputFile(self.fullLinearXfm), InputFile(outLogDet), OutputFile(outLogDetScaled)]
                 det = CmdStage(cmd)
                 det.setLogFile(LogFile(fh.logFromFile(self.inputFH.logDir, outLogDetScaled)))
                 self.p.addStage(det)
@@ -276,10 +311,8 @@ class CalcChainStats(CalcStats):
         """
         nlinBase = fh.removeBaseAndExtension(self.xfm) + "_pure_nlin.xfm"
         nlinXfm = fh.createBaseName(self.inputFH.tmpDir, nlinBase)
-        cmd = ["xfmconcat", InputFile(invXfm), InputFile(self.xfm), OutputFile(nlinXfm)]
-        xfmConcat = CmdStage(cmd)
-        xfmConcat.setLogFile(LogFile(fh.logFromFile(self.inputFH.logDir, nlinXfm)))
-        self.p.addStage(xfmConcat)
+        xc = xfmConcat([invXfm, self.xfm], nlinXfm, fh.logFromFile(self.inputFH.logDir, nlinXfm))
+        self.p.addStage(xc)
         nlinDisp = mincDisplacement(self.inputFH, self.inputFH, nlinXfm)
         self.p.addStage(nlinDisp)
         self.nlinDisp = nlinDisp.outputFiles[0]
