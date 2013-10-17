@@ -7,10 +7,9 @@ from pydpiper.pipeline import Pipeline
 from pydpiper.file_handling import createBaseName, createLogFile, createSubDir, makedirsIgnoreExisting, removeBaseAndExtension
 from pydpiper.application import AbstractApplication
 from pydpiper_apps.minc_tools.registration_file_handling import RegistrationPipeFH
-from pydpiper_apps.minc_tools.registration_functions import addGenRegOptionGroup, initializeInputFiles
+from pydpiper_apps.minc_tools.registration_functions import addGenRegOptionGroup, initializeInputFiles, getFinestResolution
 from pydpiper_apps.minc_tools.minc_atoms import blur, mincresample, mincANTS, mincAverage, minctracc
 from pydpiper_apps.minc_tools.stats_tools import addStatsOptions, CalcStats
-from pyminc.volumes.factory import volumeFromFile
 import sys
 import csv
 import logging
@@ -148,11 +147,12 @@ class NLINBase(object):
         self.nlinAverages = [] 
         """Create the blurring resolution from the file resolution"""
         try: # the attempt to access the minc volume will fail if it doesn't yet exist at pipeline creation
-            self.fileRes = volumeFromFile(self.target.getLastBasevol()).separations[0]
+            self.fileRes = getFinestResolution(self.target)
         except: 
-            # if it indeed failed, just put in a hardcoded number. Can be overwritten by the user
-            # through specifying a nonlinear protocol.
-            self.fileRes = 0.2
+            # if it indeed failed, get resolution from the original file specified for 
+            # one of the input files, which should exist. 
+            # Can be overwritten by the user through specifying a nonlinear protocol.
+            self.fileRes = getFinestResolution(self.inputs[0].inputFileName)
         
         """
             Set default parameters before checking to see if a non-linear protocol has been
