@@ -20,10 +20,10 @@ def addNlinRegOptionGroup(parser):
     """option group for the command line argument parser"""
     group = OptionGroup(parser, "Nonlinear registration options",
                         "Options for performing a non-linear registration")
-    group.add_option("--lsq12-avg", dest="lsq12_avg",
+    group.add_option("--target-avg", dest="target_avg",
                      type="string", default=None,
-                     help="Starting target for non-linear alignment.")
-    group.add_option("--lsq12-mask", dest="lsq12_mask",
+                     help="Starting target for non-linear alignment. (Often in lsq12 space)")
+    group.add_option("--target-mask", dest="target_mask",
                      type="string", default=None,
                      help="Optional mask for target.")
     group.add_option("--nlin-protocol", dest="nlin_protocol",
@@ -91,7 +91,7 @@ class NonlinearRegistration(AbstractApplication):
         
         """Initialize input files (from args) and initial target"""
         inputFiles = initializeInputFiles(args, processedDirectory, maskDir=options.mask_dir)
-        initialTarget = RegistrationPipeFH(options.lsq12_avg, mask=options.lsq12_mask, basedir=nlinDirectory)
+        initialTarget = RegistrationPipeFH(options.target_avg, mask=options.target_mask, basedir=nlinDirectory)
         
         """Based on cmdline option, register with minctracc or mincANTS"""
         if options.reg_method=="mincANTS":
