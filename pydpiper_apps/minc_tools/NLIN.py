@@ -4,7 +4,7 @@ from os.path import abspath
 from optparse import OptionGroup
 from datetime import date
 from pydpiper.pipeline import Pipeline
-from pydpiper.file_handling import createBaseName, createLogFile, createSubDir, makedirsIgnoreExisting, removeBaseAndExtension
+from pydpiper.file_handling import createBaseName, createLogFile, createSubDir, removeBaseAndExtension
 from pydpiper.application import AbstractApplication
 from pydpiper_apps.minc_tools.registration_file_handling import RegistrationPipeFH
 from pydpiper_apps.minc_tools.registration_functions import addGenRegOptionGroup, initializeInputFiles, getFinestResolution
