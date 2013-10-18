@@ -183,45 +183,68 @@ class LSQ6Registration(AbstractApplication):
                 # we will use the target in "standard" space
                 targetPipeFH = initModel[0]
         
-        lsq6module = None
-        """
-            Option 1) run a simple lsq6: the input files are assumed to be in the
-            same space and roughly in the same orientation.
-        """
-        if(options.lsq6_method == "lsq6_simple"):
-            lsq6module =  LSQ6HierarchicalMinctracc(inputFiles,
-                                                    targetPipeFH,
-                                                    initial_model     = initModel,
-                                                    lsq6OutputDir     = lsq6Directory,
-                                                    initial_transform = "identity",
-                                                    lsq6_protocol     = options.lsq6_protocol)
-        """
-            Option 2) run an lsq6 registration where the centre of the input files
-            is estimated.  Orientation is assumed to be similar, space is not.
-        """
-        if(options.lsq6_method == "lsq6_centre_estimation"):
-            lsq6module =  LSQ6HierarchicalMinctracc(inputFiles,
-                                                    targetPipeFH,
-                                                    initial_model     = initModel,
-                                                    lsq6OutputDir     = lsq6Directory,
-                                                    initial_transform = "estimate",
-                                                    lsq6_protocol     = options.lsq6_protocol)
-        """
-            Option 3) run a brute force rotational minctracc.  Input files can be
-            in any random orientation and space.
-        """
-        if(options.lsq6_method == "lsq6_large_rotations"):
-            lsq6module = LSQ6RotationalMinctracc(inputFiles,
-                                                 targetPipeFH,
-                                                 initial_model = initModel,
-                                                 lsq6OutputDir = lsq6Directory,
-                                                 large_rotation_parameters = options.large_rotation_parameters)
-        
+        lsq6module = getLSQ6Module(options,
+                                   inputFiles,
+                                   targetPipeFH,
+                                   initModel,
+                                   lsq6Directory)       
         # after the correct module has been set, get the transformation and
         # deal with resampling and potential model building
         lsq6module.createLSQ6Transformation()
         lsq6module.finalize()
         self.pipeline.addPipeline(lsq6module.p)
+
+
+def getLSQ6Module(options,
+                  inputFiles,
+                  targetPipeFH,
+                  initModel,
+                  lsq6Directory):
+    """
+        This function checks the input parameters, and returns the appropriate lsq6 module.  Currently the
+        available options are:
+        
+        -lsq6_simple
+        -lsq6_centre_estimation
+        -lsq6_large_rotations
+        
+        Input: the options hash from the main program
+    """
+    lsq6module = None
+    """
+        Option 1) run a simple lsq6: the input files are assumed to be in the
+        same space and roughly in the same orientation.
+    """
+    if(options.lsq6_method == "lsq6_simple"):
+        lsq6module =  LSQ6HierarchicalMinctracc(inputFiles,
+                                                targetPipeFH,
+                                                initial_model     = initModel,
+                                                lsq6OutputDir     = lsq6Directory,
+                                                initial_transform = "identity",
+                                                lsq6_protocol     = options.lsq6_protocol)
+    """
+        Option 2) run an lsq6 registration where the centre of the input files
+        is estimated.  Orientation is assumed to be similar, space is not.
+    """
+    if(options.lsq6_method == "lsq6_centre_estimation"):
+        lsq6module =  LSQ6HierarchicalMinctracc(inputFiles,
+                                                targetPipeFH,
+                                                initial_model     = initModel,
+                                                lsq6OutputDir     = lsq6Directory,
+                                                initial_transform = "estimate",
+                                                lsq6_protocol     = options.lsq6_protocol)
+    """
+        Option 3) run a brute force rotational minctracc.  Input files can be
+        in any random orientation and space.
+    """
+    if(options.lsq6_method == "lsq6_large_rotations"):
+        lsq6module = LSQ6RotationalMinctracc(inputFiles,
+                                             targetPipeFH,
+                                             initial_model = initModel,
+                                             lsq6OutputDir = lsq6Directory,
+                                             large_rotation_parameters = options.large_rotation_parameters)
+    return lsq6module
+
 
 
 class LSQ6Base(object):
@@ -334,9 +357,11 @@ class LSQ6Base(object):
                                              newxfm,
                                              logFile))
     
-    def resampleInputFiles(self):
+    def resampleInputFilesAndSetLastBasevol(self):
         """
-            resample input files using the last transformation
+            resample input files using the last transformation, and then
+            set the last basevolume for the inputfile to be the output
+            of the mincresample call
         """
         for inputfile in self.inputs:
             likeFileForResample =  self.target
@@ -348,6 +373,7 @@ class LSQ6Base(object):
             rs = ma.mincresample(inputfile,targetFHforResample,likeFile=likeFileForResample)
             self.filesToAvg.append(rs.outputFiles[0])
             self.p.addStage(rs)
+            inputfile.setLastBasevol(rs.outputFiles[0])
 
     def createAverage(self):
         """
@@ -369,7 +395,7 @@ class LSQ6Base(object):
             the resampling of input files and create an average 
         """
         self.addNativeToStandardFromInitModel()
-        self.resampleInputFiles()
+        self.resampleInputFilesAndSetLastBasevol()
         self.createAverage()
 
 class LSQ6RotationalMinctracc(LSQ6Base):
@@ -639,7 +665,6 @@ class LSQ6HierarchicalMinctracc(LSQ6Base):
                                   step        = self.step[i],
                                   gradient    = self.gradient[i],
                                   linearparam = "lsq6") 
-                print mt.cmd
                 self.p.addStage(mt)
 
 
