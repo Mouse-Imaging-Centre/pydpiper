@@ -3,9 +3,14 @@
 from pydpiper.application import AbstractApplication
 import pydpiper.file_handling as fh
 import pydpiper_apps.minc_tools.registration_functions as rf
+import pydpiper_apps.minc_tools.registration_file_handling as rfh
 import pydpiper_apps.minc_tools.minc_modules as mm
-from pydpiper_apps.minc_tools.NLIN import NLINANTS
+import pydpiper_apps.minc_tools.LSQ6 as lsq6
+import pydpiper_apps.minc_tools.LSQ12 as lsq12
+import pydpiper_apps.minc_tools.NLIN as nlin
+import pydpiper_apps.minc_tools.stats_tools as st
 import Pyro
+import os
 from optparse import OptionGroup
 from datetime import date
 import logging
@@ -18,24 +23,19 @@ Pyro.config.PYRO_MOBILE_CODE=1
 def addMBMGroup(parser):
     group = OptionGroup(parser, "MBM options", 
                         "Options for MICe-build-model.")
-    group.add_option("--init-model", dest="init_model",
-                      type="string", default=None,
-                      help="Name of file to register towards. If unspecified, bootstrap.")
     parser.add_option_group(group)
 
 class MBMApplication(AbstractApplication):
     def setup_options(self):
         """Add option groups from specific modules"""
-        addMBMGroup(self.parser)
         rf.addGenRegOptionGroup(self.parser)
+        addMBMGroup(self.parser)
+        lsq6.addLSQ6OptionGroup(self.parser)
+        lsq12.addLSQ12OptionGroup(self.parser)
+        nlin.addNlinRegOptionGroup(self.parser)
+        st.addStatsOptions(self.parser)
         
         self.parser.set_usage("%prog [options] input files") 
-
-    def setup_backupDir(self):
-        """Output directory set here as well. backups subdirectory automatically
-        placed here so we don't need to set via the command line"""
-        backup_dir = fh.makedirsIgnoreExisting(self.options.pipeline_dir)    
-        self.pipeline.setBackupFileLocation(backup_dir)
 
     def setup_appName(self):
         appName = "MICe-build-model"
@@ -45,53 +45,133 @@ class MBMApplication(AbstractApplication):
         options = self.options
         args = self.args
         
-        """Make main pipeline directories"""
-        pipeDir = fh.makedirsIgnoreExisting(options.pipeline_dir)
+        #Setup pipeline name
         if not options.pipeline_name:
             pipeName = str(date.today()) + "_pipeline"
         else:
             pipeName = options.pipeline_name
-        
-        lsq6Directory = fh.createSubDir(pipeDir, pipeName + "_lsq6")
-        lsq12Directory = fh.createSubDir(pipeDir, pipeName + "_lsq12")
-        nlinDirectory = fh.createSubDir(pipeDir, pipeName + "_nlin")
-        processedDirectory = fh.createSubDir(pipeDir, pipeName + "_processed")
+        # TODO: The lsq6, 12 and nlin directory creation will be created in
+        # appropriate modules. self.outputDir is set in AbstractApplication before
+        # run() is called.  
+        lsq6Directory = fh.createSubDir(self.outputDir, pipeName + "_lsq6")
+        lsq12Directory = fh.createSubDir(self.outputDir, pipeName + "_lsq12")
+        nlinDirectory = fh.createSubDir(self.outputDir, pipeName + "_nlin")
+        processedDirectory = fh.createSubDir(self.outputDir, pipeName + "_processed")
         inputFiles = rf.initializeInputFiles(args, processedDirectory, maskDir=options.mask_dir)
         
-        if options.init_model:
-            """setupInitModel returns a tuple containing:
-               (standardFH, nativeFH, native_to_standard.xfm)
-               First value must exist, others may be None 
-            """
-            initModel = rf.setupInitModel(options.init_model, pipeDir)
-        else:
-            """"Bootstrap using the first image in inputFiles
-                Note: This will be a full FH class, not the base, 
-                as above
-            """
-            initModel = (inputFiles[0], None, None)
+        # TODO: Write this as a function in LSQ6 and call from there. 
+        initModel = None
+        if(options.target != None):
+            targetPipeFH = rfh.RegistrationPipeFH(os.path.abspath(options.target), basedir=lsq6Directory)
+        else: # options.init_model != None  
+            initModel = rf.setupInitModel(options.init_model, self.outputDir)
+            if (initModel[1] != None):
+                # we have a target in "native" space 
+                targetPipeFH = initModel[1]
+            else:
+                # we will use the target in "standard" space
+                targetPipeFH = initModel[0]
         
-        #Pre-masking here if flagged? 
+        #TODO: May want to pre-mask since minc_compression is turned on and we can save disk space. 
         
-        filesToResample = [initModel[0]]
-        if initModel[1]:
-            filesToResample.append(initModel[1])
-        for i in inputFiles:
-            filesToResample.append(i)
-        
-        #NOTE: Test function, this will eventually be called from LSQ6
-        # and resolution will NOT be hardcoded. Because obviously. 
-        resolution = 0.056
-        resPipe = mm.SetResolution(filesToResample, resolution)
-        if len(resPipe.p.stages) > 0:
-            # Only add to pipeline if resampling is needed
-            self.pipeline.addPipeline(resPipe.p)
+        #TODO: Add a commmand line option to specify a resolution for running registration. 
+        # After resampling all files, create new or re-set init model for LSQ6 at this new resolution.
+        # Code below is example, will need modification.
+#        filesToResample = [initModel[0]]
+#        if initModel[1]:
+#            filesToResample.append(initModel[1])
+#        for i in inputFiles:
+#            filesToResample.append(i)
+#        
+#        #NOTE: Test function, this will eventually be called from LSQ6
+#        # and resolution will NOT be hardcoded. Because obviously. 
+#        resolution = 0.056
+#        resPipe = mm.SetResolution(filesToResample, resolution)
+#        if len(resPipe.p.stages) > 0:
+#            # Only add to pipeline if resampling is needed
+#            self.pipeline.addPipeline(resPipe.p)
             
         #LSQ6 MODULE
+        lsq6module = None
+        """
+            Option 1) run a simple lsq6: the input files are assumed to be in the
+            same space and roughly in the same orientation.
+        """
+        if(options.lsq6_method == "lsq6_simple"):
+            lsq6module =  lsq6.LSQ6HierarchicalMinctracc(inputFiles,
+                                                    targetPipeFH,
+                                                    initial_model     = initModel,
+                                                    lsq6OutputDir     = lsq6Directory,
+                                                    initial_transform = "identity",
+                                                    lsq6_protocol     = options.lsq6_protocol)
+        """
+            Option 2) run an lsq6 registration where the centre of the input files
+            is estimated.  Orientation is assumed to be similar, space is not.
+        """
+        if(options.lsq6_method == "lsq6_centre_estimation"):
+            lsq6module =  lsq6.LSQ6HierarchicalMinctracc(inputFiles,
+                                                    targetPipeFH,
+                                                    initial_model     = initModel,
+                                                    lsq6OutputDir     = lsq6Directory,
+                                                    initial_transform = "estimate",
+                                                    lsq6_protocol     = options.lsq6_protocol)
+        """
+            Option 3) run a brute force rotational minctracc.  Input files can be
+            in any random orientation and space.
+        """
+        if(options.lsq6_method == "lsq6_large_rotations"):
+            lsq6module = lsq6.LSQ6RotationalMinctracc(inputFiles,
+                                                 targetPipeFH,
+                                                 initial_model = initModel,
+                                                 lsq6OutputDir = lsq6Directory,
+                                                 large_rotation_parameters = options.large_rotation_parameters)
+        
+        # after the correct module has been set, get the transformation and
+        # deal with resampling and potential model building
+        lsq6module.createLSQ6Transformation()
+        lsq6module.finalize()
+        self.pipeline.addPipeline(lsq6module.p)
+        
+        #TODO: NUC and INORMALIZE HERE. 
         
         #LSQ12 MODULE
+        lsq12module = lsq12.FullLSQ12(inputFiles, 
+                                      lsq12Directory, 
+                                      likeFile=targetPipeFH, 
+                                      maxPairs=None, 
+                                      lsq12_protocol=options.lsq12_protocol)
+        lsq12module.iterate()
+        self.pipeline.addPipeline(lsq12module.p)
         
-        #NLIN MODULE
+        #TODO: Additional NUC step here. This will impact both the lsq6 and lsq12 modules. 
+        # May want to not do resampling and averaging by default. TBD. 
+        
+        #NLIN MODULE - Need to handle minctracc case also
+        nlinModule = nlin.NLINANTS(inputFiles, 
+                                   lsq12module.lsq12AvgFH, 
+                                   nlinDirectory, 
+                                   options.nlin_protocol)
+        nlinModule.iterate()
+        self.pipeline.addPipeline(nlinModule.p)
+        
+        #STATS MODULE
+        if options.calc_stats:
+            """Get blurs from command line option and put into array"""
+            blurs = []
+            for i in options.stats_kernels.split(","):
+                blurs.append(float(i))
+            """Choose final average from array of nlin averages"""
+            numGens = len(nlinModule.nlinAverages)
+            finalNlin = nlinModule.nlinAverages[numGens-1]
+            """For each input file, calculate statistics from finalNlin to input"""
+            for inputFH in inputFiles:
+                stats = st.CalcStats(inputFH, 
+                                     finalNlin, 
+                                     blurs, 
+                                     inputArray=inputFiles,
+                                     scalingFactor=lsq12module.lsq12AvgXfms[inputFH])
+                stats.fullStatsCalc()
+                self.pipeline.addPipeline(stats.p)
         
 if __name__ == "__main__":
     

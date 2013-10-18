@@ -153,20 +153,14 @@ class LSQ6Registration(AbstractApplication):
             print "Error: please specify only one of the options: --target  --init-model\n"
             sys.exit()
         
-        mainDirectory = None
-        if(options.output_directory == None):
-            mainDirectory = os.getcwd()
-        else:
-            mainDirectory = fh.makedirsIgnoreExisting(options.output_directory)
-        
-        """Make main pipeline directories"""
+        # Setup pipeline name and create directories.
+        # TODO: Note duplication from MBM--move to function? 
         if not options.pipeline_name:
             pipeName = str(date.today()) + "_pipeline"
         else:
             pipeName = options.pipeline_name
-        #nlinDirectory = createSubDir(pipeDir, pipeName + "_nlin")
-        lsq6Directory = fh.createSubDir(mainDirectory, pipeName + "_lsq6")
-        processedDirectory = fh.createSubDir(mainDirectory, pipeName + "_processed")
+        lsq6Directory = fh.createSubDir(self.outputDir, pipeName + "_lsq6")
+        processedDirectory = fh.createSubDir(self.outputDir, pipeName + "_processed")
         
         # create file handles for the input file(s) 
         inputFiles = rf.initializeInputFiles(args, mainDirectory=processedDirectory)
@@ -175,7 +169,7 @@ class LSQ6Registration(AbstractApplication):
         if(options.target != None):
             targetPipeFH = rfh.RegistrationPipeFH(abspath(options.target), basedir=lsq6Directory)
         else: # options.init_model != None  
-            initModel = rf.setupInitModel(options.init_model, mainDirectory)
+            initModel = rf.setupInitModel(options.init_model, self.outputDir)
             if (initModel[1] != None):
                 # we have a target in "native" space 
                 targetPipeFH = initModel[1]
@@ -373,7 +367,9 @@ class LSQ6Base(object):
             rs = ma.mincresample(inputfile,targetFHforResample,likeFile=likeFileForResample)
             self.filesToAvg.append(rs.outputFiles[0])
             self.p.addStage(rs)
+            #TODO: The following line might be removed when NUC is sorted out. 
             inputfile.setLastBasevol(rs.outputFiles[0])
+                
 
     def createAverage(self):
         """
@@ -385,6 +381,7 @@ class LSQ6Base(object):
             lsq6FH = rfh.RegistrationPipeFH(lsq6AvgOutput, mask=None, basedir=self.lsq6OutputDir)
             logBase = fh.removeBaseAndExtension(lsq6AvgOutput)
             avgLog = fh.createLogFile(lsq6FH.logDir, logBase)
+            # Note: We are calling mincAverage here with filenames rather than file handlers
             avg = ma.mincAverage(self.filesToAvg, lsq6AvgOutput, logFile=avgLog)
             self.p.addStage(avg)
             self.lsq6Avg = lsq6FH
