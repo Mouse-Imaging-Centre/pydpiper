@@ -137,14 +137,20 @@ class RegistrationPipeFH(RegistrationFHBase):
         self.groupNames = {0 : 'base'}  
     
     def newGroup(self, inputVolume = None, mask = None, groupName = None):
-        """create a new set of grouped files"""
+        """
+            create a new set of grouped files
+            
+            Assumption: if you specify an inputVolume, and you want
+            to add a mask to it, you will have to explicitly set it using the mask
+            parameter
+        """
         groupIndex = self.currentGroupIndex + 1
         if not inputVolume:
             inputVolume = self.getLastBasevol()
         
         if not mask:
             mask = self.getMask()
-        
+                
         if not groupName:
             groupName = groupIndex
 
