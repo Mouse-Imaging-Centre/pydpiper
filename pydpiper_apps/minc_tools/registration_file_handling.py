@@ -3,6 +3,7 @@
 import pydpiper.file_handling as fh
 from os.path import abspath, join
 from os import curdir
+import sys
 
 class RegistrationGroupedFiles():
     """A class to keep together all bits for a RegistrationPipeFH stage"""
@@ -33,9 +34,20 @@ class RegistrationGroupedFiles():
                 if gradient:
                     fwhm = self.lastgradient
             if gradient:
-                blurToReturn = self.gradients[fwhm]
+                # these might not exist, so we need to try this
+                try:
+                    blurToReturn = self.gradients[fwhm]
+                except:
+                    print "Error: the gradient file with fwhm ", fwhm, " does not exist for file ", self.basevol
+                    print "Unexpected error: ", sys.exc_info()
+                    raise
             else:
-                blurToReturn = self.blurs[fwhm]
+                try:
+                    blurToReturn = self.blurs[fwhm]
+                except:
+                    print "Error: the blur file with fwhm ", fwhm, " does not exist for file ", self.basevol
+                    print "Unexpected error: ", sys.exc_info()
+                    raise
         return(blurToReturn)
 
     def addBlur(self, filename, fwhm, gradient=None):
@@ -64,14 +76,12 @@ class RegistrationFHBase():
            If unspecified, set as current directory (but assume no writing)"""
         if basedir:
             self.basedir = fh.makedirsIgnoreExisting(basedir)
-            """ only create a logDir if we plan on writing
-            Overwritten classes should always do this """
-            self.setupNames()
         else:
-            """Set self.basedir and self.logDir, 
-            but we shouldn't actually do any writing."""
             self.basedir = abspath(curdir)
-            self.logDir = self.basedir
+            
+        """Set up logDir in base directory.
+           Subclasses will create additional directories as well."""
+        self.setupNames()
     
     def setupNames(self):
         self.logDir = fh.createLogDir(self.basedir)    
@@ -127,14 +137,20 @@ class RegistrationPipeFH(RegistrationFHBase):
         self.groupNames = {0 : 'base'}  
     
     def newGroup(self, inputVolume = None, mask = None, groupName = None):
-        """create a new set of grouped files"""
+        """
+            create a new set of grouped files
+            
+            Assumption: if you specify an inputVolume, and you want
+            to add a mask to it, you will have to explicitly set it using the mask
+            parameter
+        """
         groupIndex = self.currentGroupIndex + 1
         if not inputVolume:
             inputVolume = self.getLastBasevol()
         
         if not mask:
             mask = self.getMask()
-        
+                
         if not groupName:
             groupName = groupIndex
 

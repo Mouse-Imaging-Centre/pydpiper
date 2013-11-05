@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
-from pydpiper.pipeline import Pipeline, CmdStage, InputFile, OutputFile, LogFile
+from pydpiper.pipeline import Pipeline
+import pydpiper_apps.minc_tools.LSQ12 as lsq12
 import pydpiper_apps.minc_tools.minc_atoms as ma
 import pydpiper_apps.minc_tools.registration_file_handling as rfh
 import pydpiper_apps.minc_tools.stats_tools as st
@@ -45,6 +46,9 @@ class LSQ12ANTSNlin:
                  inputFH,
                  targetFH,
                  lsq12Blurs=[0.3, 0.2, 0.15],
+                 lsq12StepSize=[1,0.5,0.333333333333333],
+                 lsq12UseGradient=[False,True,False],
+                 lsq12Simplex=[3,1.5,1],
                  ANTSBlur=0.056,
                  defaultDir="tmp"):
         
@@ -52,6 +56,9 @@ class LSQ12ANTSNlin:
         self.inputFH = inputFH
         self.targetFH = targetFH
         self.lsq12Blurs = lsq12Blurs
+        self.lsq12StepSize = lsq12StepSize
+        self.lsq12UseGradient = lsq12UseGradient
+        self.lsq12Simplex = lsq12Simplex
         self.defaultDir = defaultDir
         self.ANTSBlur = ANTSBlur
         
@@ -59,13 +66,16 @@ class LSQ12ANTSNlin:
     
     def buildPipeline(self):
         """Run lsq12 registration prior to non-linear"""
-        lsq12 = LSQ12(self.inputFH, 
-                      self.targetFH, 
-                      blurs=self.lsq12Blurs,
-                      defaultDir=self.defaultDir)
-        self.p.addPipeline(lsq12.p)
+        lsq12reg = lsq12.LSQ12(self.inputFH, 
+                            self.targetFH, 
+                            blurs=self.lsq12Blurs,
+                            step=self.lsq12StepSize,
+                            gradient=self.lsq12UseGradient,
+                            simplex=self.lsq12Simplex,
+                            defaultDir=self.defaultDir)
+        self.p.addPipeline(lsq12reg.p)
         """Resample input using final lsq12 transform"""
-        res = ma.mincresample(self.inputFH, self.targetFH, likeFile=self.targetFH)   
+        res = ma.mincresample(self.inputFH, self.targetFH, likeFile=self.targetFH, argArray=["-sinc"])   
         self.p.addStage(res)
         self.inputFH.setLastBasevol(res.outputFiles[0])
         # MF TODO: For future implementations, perhaps keep track of the xfm
@@ -88,51 +98,8 @@ class LSQ12ANTSNlin:
         """Concatenate transforms to get final lsq12 + nlin. Register volume handles naming and setting of lastXfm"""
         #MF TODO: May want to change the output name to include a "concat" to indicate lsq12 and nlin concatenation?
         output = self.inputFH.registerVolume(self.targetFH, "transforms")
-        cmd = ["xfmconcat", "-clobber"] + [InputFile(lsq12xfm)] + [InputFile(nlinXfm)] + [OutputFile(output)]
-        xfmConcat = CmdStage(cmd)
-        xfmConcat.setLogFile(LogFile(fh.logFromFile(self.inputFH.logDir, output)))
-        self.p.addStage(xfmConcat)
-
-class LSQ12:
-    """Basic LSQ12 class. Eventually this and any related classes will be moved to its own .py file.
-    """
-    def __init__(self,
-                 inputFH,
-                 targetFH, 
-                 blurs=[0.3, 0.2, 0.15], 
-                 defaultDir="tmp"):                                      
-    
-        self.p = Pipeline()
-        self.inputFH = inputFH
-        self.targetFH = targetFH
-        self.blurs = blurs
-        self.defaultDir = defaultDir
-        
-        self.blurFiles()
-        self.buildPipeline()
-    
-    def blurFiles(self):
-        for b in self.blurs:
-            if b != -1:
-                tblur = ma.blur(self.targetFH, b, gradient=True)
-                iblur = ma.blur(self.inputFH, b, gradient=True)               
-                self.p.addStage(tblur)
-                self.p.addStage(iblur)
-        
-    def buildPipeline(self):
-        gradient=[False,True,False]
-        step=[1,0.5,0.333333333333333]
-        simplex=[3,1.5,1]
-        for i in range(len(self.blurs)):    
-            linearStage = ma.minctracc(self.inputFH, 
-                                       self.targetFH, 
-                                       blur=self.blurs[i], 
-                                       defaultDir=self.defaultDir,
-                                       gradient=gradient[i],                                     
-                                       linearparam="lsq12",
-                                       step=step[i],
-                                       simplex=simplex[i])
-            self.p.addStage(linearStage)
+        xc = ma.xfmConcat([lsq12xfm, nlinXfm], output, fh.logFromFile(self.inputFH.logDir, output))
+        self.p.addStage(xc)
 
 class LongitudinalStatsConcatAndResample:
     """ For each subject:
@@ -156,8 +123,7 @@ class LongitudinalStatsConcatAndResample:
     def statsAndResample(self, inputFH, targetFH, xfm):
         """Calculate stats between input and target, resample to common space using xfm"""
         stats = st.CalcChainStats(inputFH, targetFH, self.blurs)
-        stats.calcFullDisplacement()
-        stats.calcDetAndLogDet(useFullDisp=True)
+        stats.fullStatsCalc()
         self.p.addPipeline(stats.p)
         """Only resampleToCommon space if we have the appropriate transform"""
         if xfm:
@@ -177,13 +143,14 @@ class LongitudinalStatsConcatAndResample:
         if len(self.xfmToAvg) > 1: 
             if not inputFH.getLastXfm(targetFH):
                 outputName = inputFH.registerVolume(targetFH, "transforms")
-                self.p.addStage(concatXfm(inputFH, self.xfmToAvg, outputName))
+                xc = ma.xfmConcat(self.xfmToAvg, outputName, fh.logFromFile(inputFH.logDir, outputName))
+                self.p.addStage(xc)
         """Resample input to average"""
         if not self.nlinFH:
             likeFH = targetFH
         else:
             likeFH = self.nlinFH
-        resample = ma.mincresample(inputFH, targetFH, likeFile=likeFH)
+        resample = ma.mincresample(inputFH, targetFH, likeFile=likeFH, argArray=["-sinc"])
         self.p.addStage(resample)
         """Calculate stats from input to target and resample to common space"""
         self.statsAndResample(inputFH, targetFH, self.xtcDict[inputFH])
@@ -210,7 +177,10 @@ class LongitudinalStatsConcatAndResample:
                     """Create transform arrays, concat xfmToCommon, calculate stats and resample """
                     self.buildXfmArrays(s[i], s[i+1]) 
                     self.xtcDict[s[i]] = fh.createBaseName(s[i].transformsDir, "xfm_to_common_space.xfm")
-                    self.p.addStage(concatXfm(s[i], self.xfmToCommon, self.xtcDict[s[i]]))
+                    xc = ma.xfmConcat(self.xfmToCommon, 
+                                      self.xtcDict[s[i]], 
+                                      fh.createLogFile(s[i].logDir, self.xtcDict[s[i]]))
+                    self.p.addStage(xc)
                     self.statsAndResample(s[i], s[i+1], self.xtcDict[s[i]])
                     if self.timePoint - i > 1:
                         """For timePoints not directly adjacent to average, calc stats to average."""
@@ -228,7 +198,10 @@ class LongitudinalStatsConcatAndResample:
                 """Create transform arrays, concat xfmToCommon, calculate stats and resample """
                 self.buildXfmArrays(s[i], s[i-1])
                 self.xtcDict[s[i]] = fh.createBaseName(s[i].transformsDir, "xfm_to_common_space.xfm")
-                self.p.addStage(concatXfm(s[i], self.xfmToCommon, self.xtcDict[s[i]]))
+                xc = ma.xfmConcat(self.xfmToCommon, 
+                                  self.xtcDict[s[i]], 
+                                  fh.createLogFile(s[i].logDir, self.xtcDict[s[i]]))
+                self.p.addStage(xc)
                 self.statsAndResample(s[i], s[i+1], self.xtcDict[s[i]])
                 if i - self.timePoint > 1:
                     """For timePoints not directly adjacent to average, calc stats to average."""
@@ -239,7 +212,10 @@ class LongitudinalStatsConcatAndResample:
             if count - self.timePoint > 1:
                 self.buildXfmArrays(s[count-1], s[count-2])
                 self.xtcDict[s[count-1]] = fh.createBaseName(s[count-1].transformsDir, "xfm_to_common_space.xfm")
-                self.p.addStage(concatXfm(s[count-1], self.xfmToCommon, self.xtcDict[s[count-1]]))
+                xc = ma.xfmConcat(self.xfmToCommon, 
+                                  self.xtcDict[s[count-1]], 
+                                  fh.createLogFile(s[count-1].logDir, self.xtcDict[s[count-1]]))
+                self.p.addStage(xc)
                 self.nonAdjacentTimePtToAvg(s[count-1], s[self.timePoint])  
                 
             """Calculate stats for first time point to all others. 
@@ -248,14 +224,7 @@ class LongitudinalStatsConcatAndResample:
             for i in range(1, count-1):
                 self.xfmToAvg.append(s[i].getLastXfm(s[i+1]))
                 self.nonAdjacentTimePtToAvg(s[0], s[i+1])
-
-def concatXfm(FH, xfmArray, output): 
-    cmd = ["xfmconcat", "-clobber"] + [InputFile(a) for a in xfmArray] + [OutputFile(output)]
-    xfmConcat = CmdStage(cmd)
-    xfmConcat.setLogFile(LogFile(fh.logFromFile(FH.logDir, output)))
-    return xfmConcat
-    
-    
+ 
 def resampleToCommon(xfm, FH, statsGroup, blurs, nlinFH):
     pipeline = Pipeline()
     outputDirectory = FH.statsDir
@@ -268,13 +237,14 @@ def resampleToCommon(xfm, FH, statsGroup, blurs, nlinFH):
         outputBase = fh.removeBaseAndExtension(f).split(".mnc")[0]
         outputFile = fh.createBaseName(outputDirectory, outputBase + "_common" + ".mnc")
         logFile = fh.logFromFile(FH.logDir, outputFile)
-        likeFile=nlinFH.getLastBasevol()
+        targetAndLike=nlinFH.getLastBasevol()
         res = ma.mincresample(f, 
-                              nlinFH.getLastBasevol(),
-                              likeFile=nlinFH.getLastBasevol(),
+                              targetAndLike,
+                              likeFile=targetAndLike,
                               transform=xfm,
-                              outFile=outputFile,
-                              logFile=logFile) 
+                              output=outputFile,
+                              logFile=logFile,
+                              argArray=["-sinc"]) 
         pipeline.addStage(res)
     
     return pipeline

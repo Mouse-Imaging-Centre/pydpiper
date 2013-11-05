@@ -50,7 +50,7 @@ class PipelineStage():
         self.logFile = None # each stage should have only one log file
         self.status = None
         self.name = ""
-        self.colour = "black"
+        self.colour = "black" # used when a graph is created of all stages to colour the nodes
 
     def isFinished(self):
         if self.status == "finished":

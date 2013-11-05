@@ -2,12 +2,14 @@
 
 from pydpiper.pipeline import CmdStage 
 from pydpiper_apps.minc_tools.registration_functions import isFileHandler
+import pydpiper_apps.minc_tools.registration_functions as rf
 from os.path import abspath, basename, join
 from os import curdir
 import pydpiper.file_handling as fh
 import sys
 import fnmatch
 import Pyro
+from os.path import splitext
 
 Pyro.config.PYRO_MOBILE_CODE=1
 
@@ -20,7 +22,7 @@ class mincANTS(CmdStage):
                  defaultDir="transforms", 
                  blur=[-1, 0.056],
                  gradient=[False, True],
-                 source_mask=None, #ANTS only uses one mask
+                 target_mask=None, #ANTS only uses one mask
                  similarity_metric=["CC", "CC"],
                  weight=[1,1],
                  iterations="100x100x100x150",
@@ -47,12 +49,19 @@ class mincANTS(CmdStage):
                 for i in range(len(blur)):
                     self.source.append(inSource.getBlur(blur[i], gradient[i]))
                     self.target.append(inTarget.getBlur(blur[i], gradient[i]))
-                outputXfm = inSource.registerVolume(inTarget, defaultDir)
-                self.output = outputXfm
+                """If no output transform is specified, use registerVolume to create a default.
+                   If an output transform name is specified, use this as the output, and add it as the last xfm between source and target. 
+                   Note: The output file passed in must be a full path."""
+                if not output:
+                    outputXfm = inSource.registerVolume(inTarget, defaultDir)
+                    self.output = outputXfm
+                else:
+                    self.output = output
+                    inSource.addAndSetXfmToUse(inTarget, self.output)
                 self.logFile = fh.logFromFile(inSource.logDir, self.output)
                 self.useMask=useMask
                 if self.useMask:
-                    self.source_mask = inSource.getMask()
+                    self.target_mask = inTarget.getMask()
             else:
                 self.source = inSource
                 self.target = inTarget
@@ -63,6 +72,9 @@ class mincANTS(CmdStage):
                     self.logFile = fh.logFromFile(abspath(curdir), output)
                 else:
                     self.logFile = logFile
+                self.useMask=useMask
+                if self.useMask:
+                    self.target_mask = target_mask
         except:
             print "Failed in putting together mincANTS command."
             print "Unexpected error: ", sys.exc_info()
@@ -101,9 +113,9 @@ class mincANTS(CmdStage):
         for i in range(len(self.source)):
             self.inputFiles += [self.source[i], self.target[i]]
         self.outputFiles = [self.output]
-        if self.useMask and self.source_mask:
-            self.cmd += ["-x", str(self.source_mask)]
-            self.inputFiles += [self.source_mask]
+        if self.useMask and self.target_mask:
+            self.cmd += ["-x", str(self.target_mask)]
+            self.inputFiles += [self.target_mask]
     def finalizeCommand(self):
         pass
     
@@ -136,12 +148,13 @@ class minctracc(CmdStage):
                  transform=None,
                  weight=0.8,
                  stiffness=0.98,
-                 similarity=0.3,
+                 similarity=0.8,
                  w_translations=0.4,
                  w_rotations=0.0174533,
                  w_scales=0.02,
                  w_shear=0.02,
                  simplex=1,
+                 optimization="-use_simplex",
                  useMask=True):
         #MF TODO: Specify different w_translations, rotations, scales shear in each direction?
         # Now assumes same in all directions
@@ -172,8 +185,16 @@ class minctracc(CmdStage):
                 self.source = inSource.getBlur(blur, gradient)
                 self.target = inTarget.getBlur(blur, gradient)
                 self.transform = inSource.getLastXfm(inTarget)
-                outputXfm = inSource.registerVolume(inTarget, defaultDir)
-                self.output = outputXfm
+                """If no output transform is specified, use registerVolume to create a default.
+                   If an output transform name is specified, use this as the output, and add it as the last xfm between source and target. 
+                   Note: The output file passed in must be a full path."""
+                if not output:
+                    outputXfm = inSource.registerVolume(inTarget, defaultDir)
+                    self.output = outputXfm
+                else:
+                    self.output = output
+                    inSource.addAndSetXfmToUse(inTarget, self.output)
+                    outputXfm = output
                 self.logFile = fh.logFromFile(inSource.logDir, outputXfm)
                 self.useMask = useMask
                 if self.useMask:
@@ -198,7 +219,7 @@ class minctracc(CmdStage):
         
         self.linearparam = linearparam       
         self.iterations = str(iterations)
-        self.lattice_diameter = str(step*3)
+        self.lattice_diameter = str(step*3.0)
         self.step = str(step)       
         self.weight = str(weight)
         self.stiffness = str(stiffness)
@@ -208,6 +229,7 @@ class minctracc(CmdStage):
         self.w_scales = str(w_scales)
         self.w_shear = str(w_shear)
         self.simplex = str(simplex)
+        self.optimization = str(optimization)
 
         self.addDefaults()
         self.finalizeCommand()
@@ -228,7 +250,8 @@ class minctracc(CmdStage):
                     "-w_scales", self.w_scales, self.w_scales, self.w_scales,
                     "-w_shear", self.w_shear, self.w_shear, self.w_shear,
                     "-step", self.step, self.step, self.step,
-                    "-simplex", self.simplex,
+                    "-simplex", self.simplex, self.optimization,
+                    "-tol", str(0.0001), 
                     self.source,
                     self.target,
                     self.output]
@@ -254,7 +277,7 @@ class minctracc(CmdStage):
         if not self.transform:
             if self.linearparam == "lsq6":
                 self.cmd += ["-est_center", "-est_translations"]
-            elif self.linearparam == "lsq12":
+            elif self.linearparam == "lsq12" or self.linearparam=="nlin" or self.linearparam == "lsq6-identity":
                 self.cmd += ["-identity"]
         else:
             self.inputFiles += [self.transform]
@@ -270,13 +293,14 @@ class minctracc(CmdStage):
                          "-stiffness", self.stiffness,
                          "-nonlinear", "corrcoeff", "-sub_lattice", "6",
                          "-lattice_diameter", self.lattice_diameter,
-                         self.lattice_diameter, self.lattice_diameter]
+                         self.lattice_diameter, self.lattice_diameter, 
+                         "-max_def_magnitude", str(1),
+                         "-debug", "-xcorr"]
         else:
             #MF TODO: Enforce that options must be lsq6/7/9/12?
             """add the options for a linear fit"""
             _numCmd = "-" + self.linearparam
             self.cmd += ["-xcorr", _numCmd]
-            self.cmd += ["-tol", str(0.0001)]
 
 class blur(CmdStage):
     def __init__(self, 
@@ -336,7 +360,7 @@ class autocrop(CmdStage):
     def __init__(self, 
                  resolution, 
                  inFile,
-                 outFile=None,
+                 output=None,
                  logFile=None,
                  defaultDir="resampled"):
         
@@ -357,9 +381,9 @@ class autocrop(CmdStage):
                 self.logFile = fh.logFromFile(inFile.logDir, self.outfile)
             else:
                 self.inFile = inFile
-                self.outfile = outFile
+                self.outfile = output
                 if not logFile:
-                    self.logFile = fh.logFromFile(abspath(curdir), outFile)
+                    self.logFile = fh.logFromFile(abspath(curdir), output)
                 else:
                     self.logFile = logFile
     
@@ -456,14 +480,20 @@ class mincresample(CmdStage):
                     defaultDir = "resampled"
                 else:
                     defaultDir = default
-                self.outfile = self.setOutputFile(self.outputLocation, defaultDir)
+                """If an output file is specified, then use it, else create a default file name.
+                   Note: The output file passed in must be a full path."""
+                output = kwargs.pop("output", None)
+                if not output:
+                    self.outfile = self.setOutputFile(self.outputLocation, defaultDir)
+                else:
+                    self.outfile = output
                 self.logFile = fh.logFromFile(self.outputLocation.logDir, self.outfile)
             else:
                 self.inFile = inFile
                 self.targetFile = targetFile
                 self.likeFile = kwargs.pop("likeFile", None)
                 self.cxfm = kwargs.pop("transform", None)
-                self.outfile=kwargs.pop("outFile", None)
+                self.outfile=kwargs.pop("output", None)
                 logFile=kwargs.pop("logFile", None)
                 if not logFile:
                     self.logFile = fh.logFromFile(abspath(curdir), self.outfile)
@@ -588,24 +618,30 @@ class mincresampleMask(mincresampleLabels):
 class mincAverage(CmdStage):
     def __init__(self, 
                  inputArray, 
-                 outFile, 
+                 outputAvg,
+                 output=None, 
                  logFile=None, 
-                 defaultDir=None):
+                 defaultDir="tmp"):
         CmdStage.__init__(self, None)
         
         try:  
-            """If outFile is fileHandler, we assume input array is as well"""
-            if isFileHandler(outFile):
+            """If output is fileHandler, we assume input array is as well"""
+            if isFileHandler(outputAvg):
                 self.filesToAvg = []
                 for i in range(len(inputArray)):
-                    self.filesToAvg.append(inputArray[i].getLastBasevol())               
-                self.outfile = self.setOutputFile(outFile, defaultDir)
-                self.logFile = fh.logFromFile(outFile.logDir, self.outfile)
+                    self.filesToAvg.append(inputArray[i].getLastBasevol()) 
+                """If no output file is specified, create default, using file handler
+                   otherwise use what is specified."""              
+                if not output:
+                    self.output = self.setOutputFile(outputAvg, defaultDir)
+                else:
+                    self.output = output
+                self.logFile = fh.logFromFile(outputAvg.logDir, self.output)
             else:
                 self.filesToAvg = inputArray
-                self.outfile = outFile
+                self.output = outputAvg
                 if not logFile:
-                    self.logFile = fh.logFromFile(abspath(curdir), outFile)
+                    self.logFile = fh.logFromFile(abspath(curdir), outputAvg)
                 else:
                     self.logFile = logFile
     
@@ -619,20 +655,202 @@ class mincAverage(CmdStage):
         
     def addDefaults(self):
         for i in range(len(self.filesToAvg)):
-            self.inputFiles.append(self.filesToAvg[i])   
-        self.outputFiles += [self.outfile]       
+            self.inputFiles.append(self.filesToAvg[i]) 
+        self.sd = splitext(self.output)[0] + "-sd.mnc"  
+        self.outputFiles += [self.output, self.sd]       
         self.cmd += ["mincaverage",
-                     "-clobber", "-normalize", "-sdfile", "-max_buffer_size_in_kb", str(409620)] 
+                     "-clobber", "-normalize", "-sdfile", self.sd, "-max_buffer_size_in_kb", str(409620)] 
                  
     def finalizeCommand(self):
         for i in range(len(self.filesToAvg)):
             self.cmd.append(self.filesToAvg[i])
-        self.cmd.append(self.outfile)    
+        self.cmd.append(self.output)    
     def setName(self):
         self.name = "mincaverage " 
     def setOutputFile(self, inFile, defaultDir):
         outDir = inFile.setOutputDirectory(defaultDir)
         outBase = (fh.removeBaseAndExtension(inFile.getLastBasevol()) + "_" + "avg.mnc")
         outputFile = fh.createBaseName(outDir, outBase)
-        inFile.setLastBasevol(outputFile)
         return(outputFile)  
+
+class mincAverageDisp(mincAverage):
+    def __init__(self, 
+                 inputArray, 
+                 output, 
+                 logFile=None, 
+                 defaultDir=None):
+        mincAverage.__init__(self, inputArray,output,logFile,defaultDir)
+        
+    def addDefaults(self):
+        for i in range(len(self.filesToAvg)):
+            self.inputFiles.append(self.filesToAvg[i]) 
+        self.outputFiles += [self.output]       
+        self.cmd += ["mincaverage", "-clobber"] 
+
+class RotationalMinctracc(CmdStage):
+    """
+        This class runs a rotational_minctracc.py call on its two input 
+        files.  That program performs a 6 parameter (rigid) registration
+        by doing a brute force search in the x,y,z rotation space.  Normally
+        the input files have unknown orientation.  Input and output files
+        can be specified either as file handlers, or as string representing
+        the filenames.
+        
+        * The input files are assumed to have already been blurred appropriately
+        
+        There are a number of parameters that have to be set and this 
+        will be done using factors that depend on the resolution of the
+        input files.  The blur parameter is given in mm, not as a factor 
+        of the input resolution.  The blur parameter is necessary in order
+        to retrieve the correct blur file from the file handler.  Here is the list:
+        
+        argument to be set   --  default (factor)  -- (for 56 micron, translates to)
+                blur                  0.56 (mm)                 (560 micron) (note, this is in mm, not a factor)
+          resample stepsize            4                        (224 micron)
+        registration stepsize         10                        (560 micron)
+          w_translations               8                        (448 micron)
+         
+        Specifying -1 for the blur argument will result in retrieving an unblurred file.
+        The two other parameters that can be set are (in degrees) have defaults:
+        
+            rotational range          50
+            rotational interval       10
+        
+        Whether or not a mask will be used is based on the presence of a mask 
+        in the target file.  Alternatively, a mask can be specified using the
+        maskFile argument.
+    """
+    def __init__(self, 
+                 inSource, 
+                 inTarget,
+                 output = None, # ability to specify output transform when using strings for input
+                 logFile = None,
+                 maskFile = None,
+                 defaultDir="transforms",
+                 blur=0.56,
+                 resample_step=4,
+                 registration_step=10,
+                 w_translations=8,
+                 rotational_range=50,
+                 rotational_interval=10):
+        
+        CmdStage.__init__(self, None) #don't do any arg processing in superclass
+        # handling of the input files
+        try: 
+            if rf.isFileHandler(inSource, inTarget):
+                # TODO: create a check to see whether the blur exists...
+                self.source = inSource.getBlur(fwhm=blur)
+                self.target = inTarget.getBlur(fwhm=blur)  
+                if(output == None):
+                    self.output = inSource.registerVolume(inTarget, defaultDir)
+                else:
+                    self.output = output
+                if(logFile == None):
+                    self.logFile = fh.logFromFile(inSource.logDir, self.output)
+                else:
+                    self.logFile = logFile
+            else:
+                # TODO: fix this to work with string input files
+                self.source = inSource
+                self.target = inTarget
+        except:
+            print "Failed in putting together RotationalMinctracc command."
+            print "Unexpected error: ", sys.exc_info()
+            raise
+        
+        highestResolution = rf.getFinestResolution(inSource)
+        
+        self.addDefaults(resample_step     * highestResolution,
+                      registration_step * highestResolution,
+                      w_translations    * highestResolution,
+                      int(rotational_range),
+                      int(rotational_interval))
+        # potentially add a mask to the command
+        self.finalizeCommand(inTarget, maskFile)
+        self.setName()
+        self.colour = "green"
+
+    def setName(self):
+        self.name = "rotational-minctracc" 
+
+    def addDefaults(self,
+                 resamp_step,
+                 reg_step,
+                 w_trans,
+                 rot_range,
+                 rot_interval):
+        
+        w_trans_string = str(w_trans) + ',' + str(w_trans) + ',' + str(w_trans)
+        cmd = ["rotational_minctracc.py", 
+               "-t", "/dev/shm/", 
+               "-w", w_trans_string,
+               "-s", str(resamp_step),
+               "-g", str(reg_step),
+               "-r", str(rot_range),
+               "-i", str(rot_interval),
+               self.source,
+               self.target,
+               self.output,
+               "/dev/null"]
+        self.inputFiles = [self.source, self.target] 
+        self.outputFiles = [self.output] 
+        self.cmd = cmd
+        
+    def finalizeCommand(self,
+                        inTarget,
+                        maskFile):
+        if(maskFile):
+            # a mask file have been given directly, choose
+            # this one over the potential mask present
+            # in the target
+            self.cmd += ["-m", maskFile]
+            self.inputFiles.append(maskFile)
+        else:
+            try:
+                mask = inTarget.getMask()
+                if mask:
+                    self.cmd += ["-m", mask]
+                    self.inputFiles.append(mask)
+            except:
+                print "Failed retrieving information about a mask for the target in RotationalMinctracc."
+                print "Unexpected error: ", sys.exc_info()
+                raise
+
+
+class xfmConcat(CmdStage):
+    """
+        Calls xfmconcat on one or more input transformations
+        
+        inputFiles: these are assumed to be passed in as input filename  
+        strings.  If more than one input file is passed, they should be 
+        passed as a list
+        
+        outputFile: string representing the output filename 
+        
+        logFile: string representing the output filename for the log
+        file for this command. If unspecified, self.logFile will be set in
+        CmdStage.__init__ (or subsequently, using the setLogFile function) 
+    """
+    def __init__(self, 
+                 inputFiles,
+                 outputFile,
+                 logFile=None):
+        CmdStage.__init__(self, None)
+        
+        # in case there is a single input file... (it's actually possible)
+        if(not(type(inputFiles) is list)):
+            inputFiles = [inputFiles]
+        
+        self.inputFiles = inputFiles
+        self.outputFiles = [outputFile]
+        self.output = outputFile
+        self.logFile = logFile
+        self.cmd = ["xfmconcat", "-clobber"]
+        self.cmd += inputFiles
+        self.cmd += [outputFile]
+        self.name   = "xfm-concat"
+        self.colour = "yellow"
+                        
+                        
+                        
+                        
