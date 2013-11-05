@@ -67,7 +67,10 @@ class CalcStats(object):
         self.setupXfms()
         """Optional inputArray used to calculate an average displacement and use for recentering."""
         if inputArray:
+            self.dispToAvg = []
             self.setupDispArray(inputArray)
+        else:
+            self.dispToAvg = None
         """   
             Specify an optional xfm to be used when calculating the 
             scaled jacobians. This jacobian will then be concatenated with the
@@ -98,7 +101,6 @@ class CalcStats(object):
     
     def setupDispArray(self, inputArray):
         """NOTE: inputArray must be an array of file handlers. """
-        self.dispToAvg = []
         for iFH in inputArray:
             """Check to see if invXfm exists. If not, create name (but we don't actually need
                to construct the command here, as this will happen in its own CalcStats class)"""
