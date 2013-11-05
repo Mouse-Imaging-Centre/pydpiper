@@ -657,6 +657,8 @@ class IntensityNormalization(object):
         if(self.resampleINORMtoLSQ6):
             self.resampleINORMtoLSQ6Space()
         
+        if(rf.isFileHandler(self.inputs[0])):
+            self.setINORMasLastBaseVolume()
     
     def setINORMGroupToInputs(self):
         """
@@ -751,8 +753,13 @@ class IntensityNormalization(object):
         self.INORMLSQ6 = INORMLSQ6
 
     def setINORMasLastBaseVolume(self):
-        for i in range(len(self.inputs)):
-            self.inputs[i].setLastBasevol(self.INORM[i])
+        if(self.resampleINORMtoLSQ6):
+            for i in range(len(self.inputs)):
+                self.inputs[i].setLastBasevol(self.INORMLSQ6[i])
+        else:
+            for i in range(len(self.inputs)):
+                self.inputs[i].setLastBasevol(self.INORM[i])
+        
         
 
 class LSQ6Base(object):
