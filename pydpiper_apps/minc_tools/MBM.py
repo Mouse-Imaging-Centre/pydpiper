@@ -92,47 +92,31 @@ class MBMApplication(AbstractApplication):
 #            self.pipeline.addPipeline(resPipe.p)
             
         #LSQ6 MODULE
-        lsq6module = None
-        """
-            Option 1) run a simple lsq6: the input files are assumed to be in the
-            same space and roughly in the same orientation.
-        """
-        if(options.lsq6_method == "lsq6_simple"):
-            lsq6module =  lsq6.LSQ6HierarchicalMinctracc(inputFiles,
-                                                    targetPipeFH,
-                                                    initial_model     = initModel,
-                                                    lsq6OutputDir     = lsq6Directory,
-                                                    initial_transform = "identity",
-                                                    lsq6_protocol     = options.lsq6_protocol)
-        """
-            Option 2) run an lsq6 registration where the centre of the input files
-            is estimated.  Orientation is assumed to be similar, space is not.
-        """
-        if(options.lsq6_method == "lsq6_centre_estimation"):
-            lsq6module =  lsq6.LSQ6HierarchicalMinctracc(inputFiles,
-                                                    targetPipeFH,
-                                                    initial_model     = initModel,
-                                                    lsq6OutputDir     = lsq6Directory,
-                                                    initial_transform = "estimate",
-                                                    lsq6_protocol     = options.lsq6_protocol)
-        """
-            Option 3) run a brute force rotational minctracc.  Input files can be
-            in any random orientation and space.
-        """
-        if(options.lsq6_method == "lsq6_large_rotations"):
-            lsq6module = lsq6.LSQ6RotationalMinctracc(inputFiles,
-                                                 targetPipeFH,
-                                                 initial_model = initModel,
-                                                 lsq6OutputDir = lsq6Directory,
-                                                 large_rotation_parameters = options.large_rotation_parameters)
-        
+        lsq6module = lsq6.getLSQ6Module(inputFiles, 
+                                        targetPipeFH, 
+                                        lsq6Directory = lsq6Directory, 
+                                        initialTransform = options.lsq6_method, 
+                                        initModel = initModel, 
+                                        lsq6Protocol = options.lsq6_protocol, 
+                                        largeRotationParameters = options.large_rotation_parameters)
         # after the correct module has been set, get the transformation and
         # deal with resampling and potential model building
         lsq6module.createLSQ6Transformation()
         lsq6module.finalize()
         self.pipeline.addPipeline(lsq6module.p)
         
-        #TODO: NUC and INORMALIZE HERE. 
+        # NUC 
+        nucorrection = lsq6.NonUniformityCorrection(inputFiles,
+                                                    initial_model = initModel,
+                                                    resampleNUCtoLSQ6 = False)
+        nucorrection.finalize()
+        self.pipeline.addPipeline(nucorrection.p)
+        
+        # INORMALIZE
+        intensity_normalization = lsq6.IntensityNormalization(inputFiles,
+                                                              initial_model = initModel,
+                                                              resampleINORMtoLSQ6 = True)
+        self.pipeline.addPipeline(intensity_normalization.p)
         
         #LSQ12 MODULE
         lsq12module = lsq12.FullLSQ12(inputFiles, 
