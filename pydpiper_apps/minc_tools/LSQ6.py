@@ -703,8 +703,6 @@ class IntensityNormalization(object):
             print inormalize.cmd
             self.p.addStage(inormalize)
         self.INORM = normalized
-        if(rf.isFileHandler(self.inputs[0])):
-            self.setINORMasLastBaseVolume()
 
     def resampleINORMtoLSQ6Space(self):
         """
