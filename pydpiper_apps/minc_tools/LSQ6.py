@@ -329,6 +329,7 @@ class NonUniformityCorrection(object):
         self.impFields         = []
         self.NUCorrected       = []
         self.NUCorrectedLSQ6   = []
+        self.NUCorrectedLSQ6Masks = []
         
         # check consistency in input files
         if(self.singlemask != None):
@@ -439,7 +440,7 @@ class NonUniformityCorrection(object):
                                                  argArray=["-invert"], 
                                                  transform=transformToStandardModel, 
                                                  outputLocation=inputFH)
-                        rs.name = "mincresample mask for NUC" 
+                        rs.name = "mincresample mask for NUC"
                         self.p.addStage(rs)
                         masks.append(rs.outfile)
                         # add this mask to the file handler of the input file (to the original)
@@ -526,6 +527,7 @@ class NonUniformityCorrection(object):
         self.addLSQ6NUCGroupToInputs()
             
         nuCorrectedLSQ6 = []
+        nuCorrectedLSQ6Masks = []
         standardModelFile = self.initial_model[0]
         for inputFH in self.inputs:
                 # find the lsq6 group again
@@ -541,16 +543,26 @@ class NonUniformityCorrection(object):
                         outFileDir  = inputFH.resampledDir
                         outFile     = fh.createBaseName(outFileDir, outFileBase)
                         nuCorrectedLSQ6.append(outFile)
-                        rs = ma.mincresample(inputFH, 
-                                             standardModelFile, 
-                                             likeFile=standardModelFile,  
-                                             transform=transformToStandardModel,
-                                             output=outFile,
-                                             argArray=["-sinc"])
-                        rs.name = "mincresample NUC to LSQ6"
-                        print rs.cmd 
-                        self.p.addStage(rs)
+#                         rs = ma.mincresample(inputFH, 
+#                                              standardModelFile, 
+#                                              likeFile=standardModelFile,  
+#                                              transform=transformToStandardModel,
+#                                              output=outFile,
+#                                              argArray=["-sinc"])
+#                         rs.name = "mincresample NUC to LSQ6"
+#                         print rs.cmd 
+#                         self.p.addStage(rs)
+                        resamplings = ma.mincresampleFileAndMask(inputFH,
+                                                                 standardModelFile,
+                                                                 nameForStage="mincresample NUC to LSQ6",
+                                                                 likeFile=standardModelFile,  
+                                                                 transform=transformToStandardModel,
+                                                                 output=outFile,
+                                                                 argArray=["-sinc"])
+                        nuCorrectedLSQ6Masks.append(resamplings.outputFilesMask[0])
+                        self.p.addPipeline(resamplings.p)
         self.NUCorrectedLSQ6 = nuCorrectedLSQ6
+        self.NUCorrectedLSQ6Masks = nuCorrectedLSQ6Masks
 
     def finalize(self):
         """
@@ -561,6 +573,8 @@ class NonUniformityCorrection(object):
         if(self.resampleNUCtoLSQ6):
             for i in range(len(self.inputs)):
                 self.inputs[i].setLastBasevol(self.NUCorrectedLSQ6[i])
+                if(self.NUCorrectedLSQ6Masks[i]):
+                    self.inputs[i].setMask(self.NUCorrectedLSQ6Masks[i])
         else:
             for i in range(len(self.inputs)):
                 self.inputs[i].setLastBasevol(self.NUCorrected[i])
@@ -625,6 +639,7 @@ class IntensityNormalization(object):
         self.initial_model       = initial_model
         self.INORM               = []
         self.INORMLSQ6           = []
+        self.INORMLSQ6Masks      = []
         self.inputFilenames      = []
         
         # deal with input files
@@ -700,7 +715,6 @@ class IntensityNormalization(object):
             cmd += [OutputFile(outFile)]
             inormalize = CmdStage(cmd)
             inormalize.colour = "yellow"
-            print inormalize.cmd
             self.p.addStage(inormalize)
         self.INORM = normalized
 
@@ -724,6 +738,7 @@ class IntensityNormalization(object):
         self.addLSQ6INORMGroupToInputs()
             
         INORMLSQ6 = []
+        INORMLSQ6Masks = []
         standardModelFile = self.initial_model[0]
         for inputFH in self.inputs:
                 # find the lsq6 group again
@@ -739,21 +754,33 @@ class IntensityNormalization(object):
                         outFileDir  = inputFH.resampledDir
                         outFile     = fh.createBaseName(outFileDir, outFileBase)
                         INORMLSQ6.append(outFile)
-                        rs = ma.mincresample(inputFH, 
-                                             standardModelFile, 
-                                             likeFile=standardModelFile,  
-                                             transform=transformToStandardModel,
-                                             output=outFile,
-                                             argArray=["-sinc"])
-                        rs.name = "mincresample INORM to LSQ6"
-                        print rs.cmd 
-                        self.p.addStage(rs)
+#                         rs = ma.mincresample(inputFH, 
+#                                              standardModelFile, 
+#                                              likeFile=standardModelFile,  
+#                                              transform=transformToStandardModel,
+#                                              output=outFile,
+#                                              argArray=["-sinc"])
+#                         rs.name = "mincresample INORM to LSQ6"
+#                         print rs.cmd 
+#                         self.p.addStage(rs)
+                        resamplings = ma.mincresampleFileAndMask(inputFH, 
+                                                                 standardModelFile, 
+                                                                 nameForStage = "mincresample INORM to LSQ6",
+                                                                 likeFile=standardModelFile,  
+                                                                 transform=transformToStandardModel,
+                                                                 output=outFile,
+                                                                 argArray=["-sinc"])
+                        INORMLSQ6Masks.append(resamplings.outputFilesMask[0])
+                        self.p.addPipeline(resamplings.p)
         self.INORMLSQ6 = INORMLSQ6
+        self.INORMLSQ6Masks = INORMLSQ6Masks
 
     def setINORMasLastBaseVolume(self):
         if(self.resampleINORMtoLSQ6):
             for i in range(len(self.inputs)):
                 self.inputs[i].setLastBasevol(self.INORMLSQ6[i])
+                if(self.INORMLSQ6Masks[i]):
+                    self.inputs[i].setMask(self.INORMLSQ6Masks[i])
         else:
             for i in range(len(self.inputs)):
                 self.inputs[i].setLastBasevol(self.INORM[i])
@@ -883,14 +910,21 @@ class LSQ6Base(object):
                 if(self.initial_model[1] != None):
                     likeFileForResample = self.initial_model[0]
                     targetFHforResample = self.initial_model[0]
-            rs = ma.mincresample(inputfile,
-                                 targetFHforResample,
-                                 likeFile=likeFileForResample,
-                                 argArray=["-sinc"])
-            self.filesToAvg.append(rs.outputFiles[0])
-            self.p.addStage(rs)
-            #TODO: The following line might be removed when NUC is sorted out. 
-            inputfile.setLastBasevol(rs.outputFiles[0])
+#             rs = ma.mincresample(inputfile,
+#                                  targetFHforResample,
+#                                  likeFile=likeFileForResample,
+#                                  argArray=["-sinc"])
+#             
+#             self.filesToAvg.append(rs.outputFiles[0])
+#             self.p.addStage(rs) 
+#             inputfile.setLastBasevol(rs.outputFiles[0])
+            resamplings = ma.mincresampleFileAndMask(inputfile,
+                                                     targetFHforResample,
+                                                     likeFile=likeFileForResample,
+                                                     argArray=["-sinc"])
+            self.filesToAvg.append(resamplings.outputFiles[0])
+            self.p.addPipeline(resamplings.p)
+            inputfile.setLastBasevol(resamplings.outputFiles[0])
                 
 
     def createAverage(self):

@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-from pydpiper.pipeline import CmdStage 
+from pydpiper.pipeline import CmdStage, Pipeline
 from pydpiper_apps.minc_tools.registration_functions import isFileHandler
 import pydpiper_apps.minc_tools.registration_functions as rf
 from os.path import abspath, basename, join
@@ -9,6 +9,8 @@ import pydpiper.file_handling as fh
 import sys
 import fnmatch
 import Pyro
+import re
+import copy
 from os.path import splitext
 
 Pyro.config.PYRO_MOBILE_CODE=1
@@ -414,6 +416,80 @@ class autocrop(CmdStage):
         inFile.setLastBasevol(outputFile)
         return(outputFile)  
     
+class mincresampleFileAndMask(object):
+    """
+        If the input file to mincresample(CmdStage) is a file handler, and there is
+        a mask associated with the file, the most intuitive thing to do is 
+        to resample both the file and the mask.   However, a true atom/command stage
+        can only create a single stage, and a such mincresample(CmdStage) can not 
+        resample both.  When using a file handler, the mask file associated with it
+        is used behind the scenes without the user explicitly specifying this behaviour.
+        That's why it is important that the mask always remains current/up-to-date.  The
+        best way to do that is to automatically resample the associated mask when the 
+        main file is being resampled.  And that is where this class comes in.  It serves
+        as a wrapper around mincresample(CmdStage) and  mincresampleMask(CmdStage).  It 
+        will check whether the input file is a file handler, and if so, will resample 
+        the mask that is associated with it (if it exists).
+        
+        This class is not truly an atom/command stage, so technically should not live in 
+        the minc_atoms module.  It is still kept here because in essence it serves as a 
+        single indivisible stage.  (and because the user is more likely to call/find it
+        when looking for the mincresample stage) 
+    """
+    def __init__(self,
+                 inFile,
+                 targetFile,
+                 nameForStage=None,
+                 **kwargs):
+        self.p = Pipeline()
+        self.outputFiles = [] # this will contain the outputFiles from the mincresample of the main MINC file
+        self.outputFilesMask = [] # this will contain the outputFiles from the mincresample of the mask belonging to the main MINC file
+        
+
+        # the first step is to simply run the mincresample command:
+        fileRS = mincresample(inFile,
+                              targetFile,
+                              **kwargs)
+        if(nameForStage):
+            fileRS.name = nameForStage
+        self.p.addStage(fileRS)       
+        self.outputFiles = fileRS.outputFiles
+        
+        # initialize the array of outputs for the mask in case there is none to be resampled
+        self.outputFilesMask = [None] * len(self.outputFiles)
+        
+        # next up, is this a file handler, and if so is there a mask that needs to be resampled?
+        if(isFileHandler(inFile)):
+            if(inFile.getMask()):
+                # there is a mask associated with this file, should be updated
+                # we have to watch out in terms of interpolation arguments, if 
+                # the original resample command asked for "-sinc" or "-tricubic"
+                # for instance, we should remove that argument for the mask resampling
+                # these options would reside in the argArray...
+                maskArgs = copy.deepcopy(kwargs)
+                if(maskArgs["argArray"]):
+                    argList = maskArgs["argArray"]
+                    for i in range(len(argList)):
+                        if(re.match("-sinc", argList[i]) or
+                           re.match("-trilinear", argList[i]) or
+                           re.match("-tricubic", argList[i]) ):
+                            del argList[i]
+                    maskArgs["argArray"] = argList                   
+                
+                # if the output file for the mincresample command was already
+                # specified, add "_mask.mnc" to it
+                if(maskArgs["output"]):
+                    maskArgs["output"] = re.sub(".mnc", "_mask.mnc", maskArgs["output"])
+                    
+                maskRS = mincresampleMask(inFile,
+                                          targetFile,
+                                          **maskArgs)
+                if(nameForStage):
+                    maskRS.name = nameForStage + "--mask--"
+                self.p.addStage(maskRS)       
+                self.outputFilesMask = maskRS.outputFiles
+        
+    
 class mincresample(CmdStage):  
     def __init__(self,              
                  inFile,
@@ -438,10 +514,9 @@ class mincresample(CmdStage):
         
         argArray = kwargs.pop("argArray", None)
         if not argArray:
-            argArray = ["mincresample"] 
-        else:      
-            argArray.insert(0, "mincresample")
-        CmdStage.__init__(self, argArray)
+            CmdStage.__init__(self, ["mincresample"])
+        else:
+            CmdStage.__init__(self, ["mincresample"] + argArray)
           
         try:
             #MF TODO: What if we don't want to use lastBasevol?  
