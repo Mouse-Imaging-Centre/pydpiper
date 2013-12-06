@@ -1,22 +1,17 @@
 #!/usr/bin/env python
 
 from pydpiper.application import AbstractApplication
-from pydpiper.pipeline import Pipeline, CmdStage, InputFile, OutputFile, LogFile
+from pydpiper.pipeline import Pipeline, CmdStage, InputFile, OutputFile
 import pydpiper.file_handling as fh
 import pydpiper_apps.minc_tools.registration_functions as rf
-import pydpiper_apps.minc_tools.hierarchical_minctracc as hm
 import pydpiper_apps.minc_tools.registration_file_handling as rfh
 import pydpiper_apps.minc_tools.minc_atoms as ma
-import pydpiper_apps.minc_tools.minc_modules as mm
-from os.path import splitext, abspath
+from os.path import abspath
 from optparse import OptionGroup
-from datetime import date
 import logging
 import Pyro
 import sys
-import re
 import csv
-import os
 
 logger = logging.getLogger(__name__)
 
@@ -134,16 +129,6 @@ class LSQ6Registration(AbstractApplication):
     def run(self):
         options = self.options
         args = self.args
-        
-        # initial error handling:  verify that at least one input file is specified and that it is a MINC file
-        if(len(args) < 1):
-            print "Error: no source image provided\n"
-            sys.exit()
-        for i in range(len(args)):
-            ext = splitext(args[i])[1]
-            if(re.match(".mnc", ext) == None):
-                print "Error: input file is not a MINC file:, ", args[i], "\n"
-                sys.exit()
 
         # verify that we have some sort of target specified
         if(options.init_model == None and options.target == None):

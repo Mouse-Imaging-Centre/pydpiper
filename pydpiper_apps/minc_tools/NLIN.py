@@ -84,9 +84,13 @@ class NonlinearRegistration(AbstractApplication):
         
         """Initialize input files (from args) and initial target"""
         inputFiles = rf.initializeInputFiles(args, dirs.processedDir, maskDir=options.mask_dir)
-        initialTarget = RegistrationPipeFH(options.target_avg, 
-                                           mask=options.target_mask, 
-                                           basedir=dirs.nlinDir)
+        if options.target_avg: 
+            initialTarget = RegistrationPipeFH(options.target_avg, 
+                                               mask=options.target_mask, 
+                                               basedir=dirs.nlinDir)
+        else:
+            print "Must specify an initial target for registration. Exiting..."
+            sys.exit()
         
         """Based on cmdline option, register with minctracc or mincANTS"""
         if options.reg_method=="mincANTS":
