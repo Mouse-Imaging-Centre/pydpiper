@@ -89,8 +89,14 @@ class NonlinearRegistration(AbstractApplication):
                                                mask=options.target_mask, 
                                                basedir=dirs.nlinDir)
         else:
-            print "Must specify an initial target for registration. Exiting..."
-            sys.exit()
+            # if no target is specified, create an average from the inputs
+            targetName = abspath(self.outputDir) + "/" + "initial-target.mnc" 
+            initialTarget = RegistrationPipeFH(targetName, basedir=self.outputDir)
+            avg = mincAverage(inputFiles, 
+                              initialTarget, 
+                              output=targetName,
+                              defaultDir=self.outputDir)
+            self.pipeline.addStage(avg)
         
         """Based on cmdline option, register with minctracc or mincANTS"""
         if options.reg_method=="mincANTS":
