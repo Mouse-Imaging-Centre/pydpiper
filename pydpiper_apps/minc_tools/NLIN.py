@@ -2,12 +2,11 @@
 
 from os.path import abspath
 from optparse import OptionGroup
-from datetime import date
 from pydpiper.pipeline import Pipeline
-from pydpiper.file_handling import createBaseName, createLogFile, createSubDir, removeBaseAndExtension
+from pydpiper.file_handling import createBaseName, createLogFile, removeBaseAndExtension
 from pydpiper.application import AbstractApplication
 from pydpiper_apps.minc_tools.registration_file_handling import RegistrationPipeFH
-from pydpiper_apps.minc_tools.registration_functions import addGenRegOptionGroup, initializeInputFiles, getFinestResolution
+import pydpiper_apps.minc_tools.registration_functions as rf
 from pydpiper_apps.minc_tools.minc_atoms import blur, mincresample, mincANTS, mincAverage, minctracc
 from pydpiper_apps.minc_tools.stats_tools import addStatsOptions, CalcStats
 import sys
@@ -66,8 +65,8 @@ class NonlinearRegistration(AbstractApplication):
     """
     def setup_options(self):
         """Add option groups from specific modules"""
+        rf.addGenRegOptionGroup(self.parser)
         addNlinRegOptionGroup(self.parser)
-        addGenRegOptionGroup(self.parser)
         addStatsOptions(self.parser)
         
         self.parser.set_usage("%prog [options] input files") 
@@ -80,27 +79,23 @@ class NonlinearRegistration(AbstractApplication):
         options = self.options
         args = self.args
         
-        # Setup pipeline name and create directories.
-        # TODO: Note duplication from MBM--move to function?
-        if not options.pipeline_name:
-            pipeName = str(date.today()) + "_pipeline"
-        else:
-            pipeName = options.pipeline_name
-        nlinDirectory = createSubDir(self.outputDir, pipeName + "_nlin")
-        processedDirectory = createSubDir(self.outputDir, pipeName + "_processed")
+        # Setup output directories for non-linear registration.        
+        dirs = rf.setupDirectories(self.outputDir, options.pipeline_name, module="NLIN")
         
         """Initialize input files (from args) and initial target"""
-        inputFiles = initializeInputFiles(args, processedDirectory, maskDir=options.mask_dir)
-        initialTarget = RegistrationPipeFH(options.target_avg, mask=options.target_mask, basedir=nlinDirectory)
+        inputFiles = rf.initializeInputFiles(args, dirs.processedDir, maskDir=options.mask_dir)
+        initialTarget = RegistrationPipeFH(options.target_avg, 
+                                           mask=options.target_mask, 
+                                           basedir=dirs.nlinDir)
         
         """Based on cmdline option, register with minctracc or mincANTS"""
         if options.reg_method=="mincANTS":
-            ants = NLINANTS(inputFiles, initialTarget, nlinDirectory, options.nlin_protocol)
+            ants = NLINANTS(inputFiles, initialTarget, dirs.nlinDir, options.nlin_protocol)
             ants.iterate()
             self.pipeline.addPipeline(ants.p)
             self.nlinAverages = ants.nlinAverages
         elif options.reg_method == "minctracc":
-            tracc = NLINminctracc(inputFiles, initialTarget, nlinDirectory, options.nlin_protocol)
+            tracc = NLINminctracc(inputFiles, initialTarget, dirs.nlinDir, options.nlin_protocol)
             tracc.iterate()
             self.pipeline.addPipeline(tracc.p)
             self.nlinAverages = tracc.nlinAverages
@@ -147,12 +142,12 @@ class NLINBase(object):
         self.nlinAverages = [] 
         """Create the blurring resolution from the file resolution"""
         try: # the attempt to access the minc volume will fail if it doesn't yet exist at pipeline creation
-            self.fileRes = getFinestResolution(self.target)
+            self.fileRes = rf.getFinestResolution(self.target)
         except: 
             # if it indeed failed, get resolution from the original file specified for 
             # one of the input files, which should exist. 
             # Can be overwritten by the user through specifying a nonlinear protocol.
-            self.fileRes = getFinestResolution(self.inputs[0].inputFileName)
+            self.fileRes = rf.getFinestResolution(self.inputs[0].inputFileName)
         
         """
             Set default parameters before checking to see if a non-linear protocol has been

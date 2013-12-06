@@ -2,10 +2,10 @@
 
 from pydpiper.application import AbstractApplication
 from pydpiper.pipeline import Pipeline, InputFile, OutputFile, LogFile, CmdStage
-from pydpiper.file_handling import createSubDir, createBaseName, makedirsIgnoreExisting, logFromFile
+from pydpiper.file_handling import createSubDir, createBaseName, logFromFile
 import pydpiper_apps.minc_tools.minc_atoms as ma
+import pydpiper_apps.minc_tools.registration_functions as rf
 from pydpiper_apps.minc_tools.registration_file_handling import RegistrationPipeFH
-from pydpiper_apps.minc_tools.registration_functions import addGenRegOptionGroup, initializeInputFiles, getFinestResolution
 from optparse import OptionGroup
 from datetime import date
 from os.path import basename, abspath
@@ -40,9 +40,9 @@ class LSQ12Registration(AbstractApplication):
     """
     def setup_options(self):
         """Add option groups from specific modules"""
+        rf.addGenRegOptionGroup(self.parser)
         addLSQ12OptionGroup(self.parser)
-        addGenRegOptionGroup(self.parser)
-        
+         
         self.parser.set_usage("%prog [options] input files") 
 
     def setup_appName(self):
@@ -53,20 +53,14 @@ class LSQ12Registration(AbstractApplication):
         options = self.options
         args = self.args
         
-        # Setup pipeline name and create directories.
-        # TODO: Note duplication from MBM--move to function? 
-        if not options.pipeline_name:
-            pipeName = str(date.today()) + "_pipeline"
-        else:
-            pipeName = options.pipeline_name
-        lsq12Directory = createSubDir(self.outputDir, pipeName + "_lsq12")
-        processedDirectory = createSubDir(self.outputDir, pipeName + "_processed")
+        # Setup output directories for LSQ12 registration.        
+        dirs = rf.setupDirectories(self.outputDir, options.pipeline_name, module="LSQ12")
         
         """Initialize input files from args"""
-        inputFiles = initializeInputFiles(args, processedDirectory, maskDir=options.mask_dir)
+        inputFiles = rf.initializeInputFiles(args, dirs.processedDir, maskDir=options.mask_dir)
         
         """Iterative LSQ12 model building"""
-        lsq12 = FullLSQ12(inputFiles, lsq12Directory, options.lsq12_max_pairs, options.lsq12_protocol)
+        lsq12 = FullLSQ12(inputFiles, dirs.lsq12Dir, options.lsq12_max_pairs, options.lsq12_protocol)
         lsq12.iterate()
         self.pipeline.addPipeline(lsq12.p)
         
@@ -111,11 +105,11 @@ class FullLSQ12(object):
         self.lsq12AvgXfms = {}
         """Create the blurring resolution from the file resolution"""
         try:
-            self.fileRes = getFinestResolution(self.inputs[0])
+            self.fileRes = rf.getFinestResolution(self.inputs[0])
         except: 
             # if this fails (because file doesn't exist when pipeline is created) grab from
             # initial input volume, which should exist. 
-            self.fileRes = getFinestResolution(self.inputs[0].inputFileName)
+            self.fileRes = rf.getFinestResolution(self.inputs[0].inputFileName)
         
         """ 
             Similarly to LSQ6 and NLIN modules, an optional SEMI-COLON delimited csv may 

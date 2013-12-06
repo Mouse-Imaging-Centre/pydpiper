@@ -1,10 +1,8 @@
 #!/usr/bin/env python
 
 from pydpiper.application import AbstractApplication
-import pydpiper.file_handling as fh
 import pydpiper_apps.minc_tools.registration_functions as rf
 import pydpiper_apps.minc_tools.registration_file_handling as rfh
-import pydpiper_apps.minc_tools.minc_modules as mm
 import pydpiper_apps.minc_tools.LSQ6 as lsq6
 import pydpiper_apps.minc_tools.LSQ12 as lsq12
 import pydpiper_apps.minc_tools.NLIN as nlin
@@ -12,7 +10,6 @@ import pydpiper_apps.minc_tools.stats_tools as st
 import Pyro
 import os
 from optparse import OptionGroup
-from datetime import date
 import logging
 
 
@@ -45,24 +42,14 @@ class MBMApplication(AbstractApplication):
         options = self.options
         args = self.args
         
-        #Setup pipeline name
-        if not options.pipeline_name:
-            pipeName = str(date.today()) + "_pipeline"
-        else:
-            pipeName = options.pipeline_name
-        # TODO: The lsq6, 12 and nlin directory creation will be created in
-        # appropriate modules. self.outputDir is set in AbstractApplication before
-        # run() is called.  
-        lsq6Directory = fh.createSubDir(self.outputDir, pipeName + "_lsq6")
-        lsq12Directory = fh.createSubDir(self.outputDir, pipeName + "_lsq12")
-        nlinDirectory = fh.createSubDir(self.outputDir, pipeName + "_nlin")
-        processedDirectory = fh.createSubDir(self.outputDir, pipeName + "_processed")
-        inputFiles = rf.initializeInputFiles(args, processedDirectory, maskDir=options.mask_dir)
+        # Setup output directories for different registration modules.        
+        dirs = rf.setupDirectories(self.outputDir, options.pipeline_name, module="ALL")
+        inputFiles = rf.initializeInputFiles(args, dirs.processedDir, maskDir=options.mask_dir)
         
         # TODO: Write this as a function in LSQ6 and call from there. 
         initModel = None
         if(options.target != None):
-            targetPipeFH = rfh.RegistrationPipeFH(os.path.abspath(options.target), basedir=lsq6Directory)
+            targetPipeFH = rfh.RegistrationPipeFH(os.path.abspath(options.target), basedir=dirs.lsq6Dir)
         else: # options.init_model != None  
             initModel = rf.setupInitModel(options.init_model, self.outputDir)
             if (initModel[1] != None):
@@ -94,7 +81,7 @@ class MBMApplication(AbstractApplication):
         #LSQ6 MODULE
         lsq6module = lsq6.getLSQ6Module(inputFiles, 
                                         targetPipeFH, 
-                                        lsq6Directory = lsq6Directory, 
+                                        lsq6Directory = dirs.lsq6Dir, 
                                         initialTransform = options.lsq6_method, 
                                         initModel = initModel, 
                                         lsq6Protocol = options.lsq6_protocol, 
@@ -120,7 +107,7 @@ class MBMApplication(AbstractApplication):
         
         #LSQ12 MODULE
         lsq12module = lsq12.FullLSQ12(inputFiles, 
-                                      lsq12Directory, 
+                                      dirs.lsq12Dir, 
                                       likeFile=targetPipeFH, 
                                       maxPairs=None, 
                                       lsq12_protocol=options.lsq12_protocol)
@@ -133,7 +120,7 @@ class MBMApplication(AbstractApplication):
         #NLIN MODULE - Need to handle minctracc case also
         nlinModule = nlin.NLINANTS(inputFiles, 
                                    lsq12module.lsq12AvgFH, 
-                                   nlinDirectory, 
+                                   dirs.nlinDir, 
                                    options.nlin_protocol)
         nlinModule.iterate()
         self.pipeline.addPipeline(nlinModule.p)

@@ -85,7 +85,7 @@ class MAGeTApplication(AbstractApplication):
         
         """ Create fileHandling classes for images. If a directory of masks is specified, 
             they will be assigned to the appropriate input file handlers."""
-        inputs = initializeInputFiles(self.args, self.outputDir, self.options.mask_dir)
+        inputs = initializeInputFiles(self.args, self.outputDir, maskDir=self.options.mask_dir)
         
         templates = []
         numTemplates = len(self.args)

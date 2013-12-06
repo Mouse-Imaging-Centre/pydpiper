@@ -5,6 +5,7 @@ import pydpiper.file_handling as fh
 from optparse import OptionGroup
 from os.path import abspath, exists, dirname
 from os import curdir, walk
+from datetime import date
 import sys
 import logging
 import fnmatch
@@ -28,6 +29,33 @@ def addGenRegOptionGroup(parser):
                       action="store_true", default=True, 
                       help="Calculate statistics at the end of the registration. Default is True.")
     parser.add_option_group(group)
+
+class StandardMBMDirectories(object):
+    def __init__(self):
+        self.lsq6Dir = None
+        self.lsq12Dir = None
+        self.nlinDir = None
+        self.processedDir = None
+
+def setupDirectories(outputDir, pipeName, module):
+    #Setup pipeline name
+    if not pipeName:
+        pipeName = str(date.today()) + "_pipeline"
+    
+    #initilize directories class:
+    dirs = StandardMBMDirectories() 
+    
+    #create subdirectories based on which module is being run. _processed always created 
+    dirs.processedDir = fh.createSubDir(outputDir, pipeName + "_processed")
+    
+    if (module == "ALL") or (module=="LSQ6"):
+        dirs.lsq6Dir = fh.createSubDir(outputDir, pipeName + "_lsq6")
+    if (module == "ALL") or (module=="LSQ12"):
+        dirs.lsq12Dir = fh.createSubDir(outputDir, pipeName + "_lsq12")
+    if (module == "ALL") or (module=="NLIN"):
+        dirs.nlinDir = fh.createSubDir(outputDir, pipeName + "_nlin")
+    
+    return dirs
     
 
 """

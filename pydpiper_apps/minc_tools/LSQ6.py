@@ -153,21 +153,15 @@ class LSQ6Registration(AbstractApplication):
             print "Error: please specify only one of the options: --target  --init-model\n"
             sys.exit()
         
-        # Setup pipeline name and create directories.
-        # TODO: Note duplication from MBM--move to function? 
-        if not options.pipeline_name:
-            pipeName = str(date.today()) + "_pipeline"
-        else:
-            pipeName = options.pipeline_name
-        lsq6Directory = fh.createSubDir(self.outputDir, pipeName + "_lsq6")
-        processedDirectory = fh.createSubDir(self.outputDir, pipeName + "_processed")
+        # Setup output directories for LSQ6 registration.        
+        dirs = rf.setupDirectories(self.outputDir, options.pipeline_name, module="LSQ6")
         
         # create file handles for the input file(s) 
-        inputFiles = rf.initializeInputFiles(args, mainDirectory=processedDirectory)
+        inputFiles = rf.initializeInputFiles(args, dirs.processedDir, maskDir=options.mask_dir)
 
         initModel = None
         if(options.target != None):
-            targetPipeFH = rfh.RegistrationPipeFH(abspath(options.target), basedir=lsq6Directory)
+            targetPipeFH = rfh.RegistrationPipeFH(abspath(options.target), basedir=dirs.lsq6Dir)
         else: # options.init_model != None  
             initModel = rf.setupInitModel(options.init_model, self.outputDir)
             if (initModel[1] != None):
@@ -179,7 +173,7 @@ class LSQ6Registration(AbstractApplication):
         
         lsq6module = getLSQ6Module(inputFiles,
                                    targetPipeFH,
-                                   lsq6Directory,
+                                   dirs.lsq6Dir,
                                    initialTransform = options.lsq6_method,
                                    initModel        = initModel,
                                    lsq6Protocol     =  options.lsq6_protocol,
