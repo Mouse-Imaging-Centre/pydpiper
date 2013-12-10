@@ -43,6 +43,16 @@ def finalGenerationFileNames(inputFH):
     resampleOutput = createBaseName(resampleDir, resampleFileName)
     return (registerOutput, resampleOutput)
 
+def initNLINModule(inputFiles, initialTarget, nlinDir, nlin_protocol, reg_method):
+    if reg_method=="mincANTS":
+        nlinModule = NLINANTS(inputFiles, initialTarget, nlinDir, nlin_protocol)
+    elif reg_method=="minctracc":
+        nlinModule = NLINminctracc(inputFiles, initialTarget, nlinDir, nlin_protocol)
+    else:
+        logger.error("Incorrect registration method specified: " + reg_method)
+        sys.exit()
+    return nlinModule
+
 class NonlinearRegistration(AbstractApplication):
     """
         This class performs an iterative non-linear registration between one or more files
@@ -98,20 +108,15 @@ class NonlinearRegistration(AbstractApplication):
                               defaultDir=self.outputDir)
             self.pipeline.addStage(avg)
         
-        """Based on cmdline option, register with minctracc or mincANTS"""
-        if options.reg_method=="mincANTS":
-            ants = NLINANTS(inputFiles, initialTarget, dirs.nlinDir, options.nlin_protocol)
-            ants.iterate()
-            self.pipeline.addPipeline(ants.p)
-            self.nlinAverages = ants.nlinAverages
-        elif options.reg_method == "minctracc":
-            tracc = NLINminctracc(inputFiles, initialTarget, dirs.nlinDir, options.nlin_protocol)
-            tracc.iterate()
-            self.pipeline.addPipeline(tracc.p)
-            self.nlinAverages = tracc.nlinAverages
-        else:
-            logger.error("Incorrect registration method specified: " + options.reg_method)
-            sys.exit()
+        """Based on options.reg_method, register with minctracc or mincANTS"""
+        nlinModule = initNLINModule(inputFiles, 
+                                    initialTarget, 
+                                    dirs.nlinDir, 
+                                    options.nlin_protocol, 
+                                    options.reg_method)
+        nlinModule.iterate()
+        self.pipeline.addPipeline(nlinModule.p)
+        self.nlinAverages = nlinModule.nlinAverages
             
         """Calculate statistics between final nlin average and individual mice"""
         if options.calc_stats:

@@ -117,11 +117,12 @@ class MBMApplication(AbstractApplication):
         #TODO: Additional NUC step here. This will impact both the lsq6 and lsq12 modules. 
         # May want to not do resampling and averaging by default. TBD. 
         
-        #NLIN MODULE - Need to handle minctracc case also
-        nlinModule = nlin.NLINANTS(inputFiles, 
-                                   lsq12module.lsq12AvgFH, 
-                                   dirs.nlinDir, 
-                                   options.nlin_protocol)
+        #NLIN MODULE - Register with minctracc or mincANTS based on options.reg_method
+        nlinModule = nlin.initNLINModule(inputFiles, 
+                                         lsq12module.lsq12AvgFH, 
+                                         dirs.nlinDir, 
+                                         options.nlin_protocol, 
+                                         options.reg_method)
         nlinModule.iterate()
         self.pipeline.addPipeline(nlinModule.p)
         
