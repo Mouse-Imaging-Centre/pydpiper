@@ -582,6 +582,8 @@ class mincresample(CmdStage):
         self.addDefaults()
         self.finalizeCommand()
         self.setName()
+        if isFileHandler(inFile, targetFile):
+            self.setLastResampledFile()
         
     def addDefaults(self):
         self.inputFiles += [self.inFile, self.targetFile]   
@@ -603,7 +605,16 @@ class mincresample(CmdStage):
         outDir = FH.setOutputDirectory(defaultDir)
         return(fh.createBaseName(outDir, outBase))  
     def getFileToResample(self, inputFile, **kwargs):
-        return(inputFile.getLastBasevol())  
+        return(inputFile.getLastBasevol())
+    def setLastResampledFile(self):
+        # We want to keep track of the last file that was resampled.  This can be 
+        # useful when we want to set the lastBaseVol or mask related to this file
+        # handler.  This function needs to be overridden by the children of this
+        # class, because depending on what we resample (main file, mask, labels)
+        # a different "setLast...Vol" needs to be called.
+        #
+        # For the main mincresample class, it should be the setLastResampledVol
+        self.outputLocation.setLastResampledVol(self.outputFiles[0])
 
 class mincresampleLabels(mincresample):
     def __init__(self, 
@@ -660,6 +671,10 @@ class mincresampleLabels(mincresample):
         else:
             labelArray[index] = None
         return(labelArray[index]) 
+    def setLastResampledFile(self):
+        # Currently we do not keep track of the last label file that is 
+        # resampled
+        pass
 
 class mincresampleMask(mincresampleLabels):
     def __init__(self, 
@@ -689,6 +704,10 @@ class mincresampleMask(mincresampleLabels):
         outBase = self.setOutputFileName(FH, append="mask")
         outDir = FH.setOutputDirectory(defaultDir)
         return(fh.createBaseName(outDir, outBase))
+    def setLastResampledFile(self):
+        # Instead of setting the LastResampledVol, here we need to set the
+        # LastResampledMaskVol
+        self.outputLocation.setLastResampledMaskVol(self.outputFiles[0])
 
 class mincAverage(CmdStage):
     def __init__(self, 

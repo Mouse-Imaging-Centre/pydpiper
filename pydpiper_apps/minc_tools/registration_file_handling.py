@@ -19,6 +19,11 @@ class RegistrationGroupedFiles():
         self.transforms = {}
         self.lastTransform = {}
         self.mask = mask
+        # when mincresample is called, the output will be stored in the following
+        # holder. It will be overwritten by each subsequent mincresample call
+        self.lastresampled = None
+        # similarly for resampling the mask
+        self.lastresampledmask = None 
         
     def getBlur(self, fwhm=None, gradient=False):
         """returns file with specified blurring kernel
@@ -98,6 +103,14 @@ class RegistrationFHBase():
             self.groupedFiles[self.currentGroupIndex].basevol = self.groupedFiles[self.currentGroupIndex].origGroupVol
         else:
             self.groupedFiles[self.currentGroupIndex].basevol = newBaseVol
+    def setLastResampledVol(self, filename):
+        self.groupedFiles[self.currentGroupIndex].lastresampled = filename
+    def getLastResampledVol(self):
+        return(self.groupedFiles[self.currentGroupIndex].lastresampled)
+    def setLastResampledMaskVol(self, maskfilename):
+        self.groupedFiles[self.currentGroupIndex].lastresampledmask = maskfilename
+    def getLastResampledMaskVol(self):
+        return(self.groupedFiles[self.currentGroupIndex].lastresampledmask)
     def setOutputDirectory(self, defaultDir):
         if not defaultDir:
             outputDir = abspath(curdir)
