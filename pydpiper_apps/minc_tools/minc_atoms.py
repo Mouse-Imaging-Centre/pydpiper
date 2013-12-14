@@ -452,7 +452,7 @@ class mincresampleFileAndMask(object):
                               **kwargs)
         if(nameForStage):
             fileRS.name = nameForStage
-        self.p.addStage(fileRS)       
+        self.p.addStage(fileRS)
         self.outputFiles = fileRS.outputFiles
         
         # initialize the array of outputs for the mask in case there is none to be resampled
@@ -486,7 +486,7 @@ class mincresampleFileAndMask(object):
                                           **maskArgs)
                 if(nameForStage):
                     maskRS.name = nameForStage + "--mask--"
-                self.p.addStage(maskRS)       
+                self.p.addStage(maskRS)   
                 self.outputFilesMask = maskRS.outputFiles
         
     
@@ -826,7 +826,8 @@ class RotationalMinctracc(CmdStage):
                  registration_step=10,
                  w_translations=8,
                  rotational_range=50,
-                 rotational_interval=10):
+                 rotational_interval=10,
+                 mousedata=False):
         
         CmdStage.__init__(self, None) #don't do any arg processing in superclass
         # handling of the input files
@@ -853,6 +854,10 @@ class RotationalMinctracc(CmdStage):
             raise
         
         highestResolution = rf.getFinestResolution(inSource)
+        
+        # TODO: finish the following if clause... hahaha
+        #if(mousedata):
+            
         
         self.addDefaults(resample_step     * highestResolution,
                       registration_step * highestResolution,

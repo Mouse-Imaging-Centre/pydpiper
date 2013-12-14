@@ -115,7 +115,7 @@ class PairwiseNonlinear(AbstractApplication):
                         res = mm.resampleToCommon(xfmToNlin, inputFH, subjectStats[inputFH][targetFH], blurs, nlinFH)
                         self.pipeline.addPipeline(res)
                     """Reset last base volume to original input before continuing to next pair in loop."""
-                    inputFH.setLastBasevol()
+                    inputFH.setLastBasevol(setToOriginalInput=True)
 
 if __name__ == "__main__":
     

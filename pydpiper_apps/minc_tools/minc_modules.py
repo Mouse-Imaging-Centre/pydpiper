@@ -94,7 +94,7 @@ class LSQ12ANTSNlin:
         self.p.addStage(sp)
         nlinXfm = sp.outputFiles[0]
         """Reset last base volume to original input for future registrations."""
-        self.inputFH.setLastBasevol()
+        self.inputFH.setLastBasevol(setToOriginalInput=True)
         """Concatenate transforms to get final lsq12 + nlin. Register volume handles naming and setting of lastXfm"""
         #MF TODO: May want to change the output name to include a "concat" to indicate lsq12 and nlin concatenation?
         output = self.inputFH.registerVolume(self.targetFH, "transforms")

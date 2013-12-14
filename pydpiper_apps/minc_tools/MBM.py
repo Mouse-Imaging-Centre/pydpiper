@@ -85,7 +85,9 @@ class MBMApplication(AbstractApplication):
                                         initialTransform = options.lsq6_method, 
                                         initModel = initModel, 
                                         lsq6Protocol = options.lsq6_protocol, 
-                                        largeRotationParameters = options.large_rotation_parameters)
+                                        largeRotationParameters = options.large_rotation_parameters,
+                                        largeRotationRange      = options.large_rotation_range,
+                                        largeRotationInterval   = options.large_rotation_interval)
         # after the correct module has been set, get the transformation and
         # deal with resampling and potential model building
         lsq6module.createLSQ6Transformation()
@@ -105,12 +107,17 @@ class MBMApplication(AbstractApplication):
                                                               resampleINORMtoLSQ6 = True)
         self.pipeline.addPipeline(intensity_normalization.p)
         
-        #LSQ12 MODULE
+        # LSQ12 MODULE
+        # our target has now changed. Whereas in the LSQ6 stage we might have used
+        # the "native" file, now we need standard space no matter what
+        if(options.target == None):
+            targetPipeFH = initModel[0]
         lsq12module = lsq12.FullLSQ12(inputFiles, 
                                       dirs.lsq12Dir, 
                                       likeFile=targetPipeFH, 
                                       maxPairs=None, 
-                                      lsq12_protocol=options.lsq12_protocol)
+                                      lsq12_protocol=options.lsq12_protocol,
+                                      subject_matter=options.lsq12_subject_matter)
         lsq12module.iterate()
         self.pipeline.addPipeline(lsq12module.p)
         

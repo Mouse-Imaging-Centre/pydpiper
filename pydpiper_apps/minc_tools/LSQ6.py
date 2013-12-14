@@ -53,11 +53,21 @@ def addLSQ6OptionGroup(parser):
                      "the x,y,z rotation space is performed to find the best 6 parameter alignment. "
                      "[default: --lsq6-large-rotations]")
     group.add_option("--lsq6-large-rotations-parameters", dest="large_rotation_parameters",
-                     type="string", default="10,4,10,8,50,10",
+                     type="string", default="10,4,10,8",
                      help="Settings for the large rotation alignment. factor=factor based on smallest file "
                      "resolution: 1) blur factor, 2) resample step size factor, 3) registration step size "
-                     "factor, 4) w_translations factor, 5) rotational range in degrees, 6) rotational "
-                     "interval in degrees. [default: %default]")
+                     "factor, 4) w_translations factor  ***** if you are working with mouse brain data "
+                     " the defaults do not have to be based on the file resolution; a default set of "
+                     " settings works for all mouse brain. In order to use those setting, specify: \"mousebrain\""
+                     " as the argument for this option. ***** [default: %default]")
+    group.add_option("--lsq6-rotational-range", dest="large_rotation_range",
+                     type="int", default=50,
+                     help="Settings for the rotational range in degrees when running the large rotation alignment."
+                     " [default: %default]")
+    group.add_option("--lsq6-rotational-interval", dest="large_rotation_interval",
+                     type="int", default=10,
+                     help="Settings for the rotational interval in degrees when running the large rotation alignment."
+                     " [default: %default]")
     parser.add_option_group(group)
     ### sneaky trick to create a readable version of the content of an lsq6 protocol:
     epi = \
@@ -162,7 +172,9 @@ class LSQ6Registration(AbstractApplication):
                                    initialTransform = options.lsq6_method,
                                    initModel        = initModel,
                                    lsq6Protocol     =  options.lsq6_protocol,
-                                   largeRotationParameters = options.large_rotation_parameters)       
+                                   largeRotationParameters = options.large_rotation_parameters,
+                                   largeRotationRange      = options.large_rotation_range,
+                                   largeRotationInterval   = options.large_rotation_interval)       
         # after the correct module has been set, get the transformation and
         # deal with resampling and potential model building
         lsq6module.createLSQ6Transformation()
@@ -192,7 +204,9 @@ def getLSQ6Module(inputFiles,
                   initialTransform        = None,
                   initModel               = None,
                   lsq6Protocol            = None,
-                  largeRotationParameters = None):
+                  largeRotationParameters = None,
+                  largeRotationRange      = None,
+                  largeRotationInterval   = None):
     """
         This function serves as a switch that will return the appropriate lsq6 module depending
         on the parameters provided.  The switch is based on the parameter initialTransform.  If
@@ -246,7 +260,9 @@ def getLSQ6Module(inputFiles,
                                              targetPipeFH,
                                              initial_model = initModel,
                                              lsq6OutputDir = lsq6Directory,
-                                             large_rotation_parameters = largeRotationParameters)
+                                             large_rotation_parameters = largeRotationParameters,
+                                             large_rotation_range      = largeRotationRange,
+                                             large_rotation_interval   = largeRotationInterval)
     return lsq6module
 
 class NonUniformityCorrection(object):
@@ -551,11 +567,15 @@ class NonUniformityCorrection(object):
         """
         if(self.resampleNUCtoLSQ6):
             for i in range(len(self.inputs)):
-                self.inputs[i].setLastBasevol(self.NUCorrectedLSQ6[i])
-                if(self.NUCorrectedLSQ6Masks[i]):
-                    self.inputs[i].setMask(self.NUCorrectedLSQ6Masks[i])
+                # the NUC (and potentially the mask) files have been
+                # resampled to LSQ6 space.  That means that we can set
+                # the last basevol using the last resampled files (i.e.,
+                # no arguments to setLastBasevol)
+                self.inputs[i].setLastBasevol()
         else:
             for i in range(len(self.inputs)):
+                # specify the last basevol explicitly, because applying
+                # the non uniformity correction does not resampled the file 
                 self.inputs[i].setLastBasevol(self.NUCorrected[i])
                 if(self.masks != None):
                     self.inputs[i].setMask(self.masks[i])    
@@ -757,9 +777,11 @@ class IntensityNormalization(object):
     def setINORMasLastBaseVolume(self):
         if(self.resampleINORMtoLSQ6):
             for i in range(len(self.inputs)):
-                self.inputs[i].setLastBasevol(self.INORMLSQ6[i])
-                if(self.INORMLSQ6Masks[i]):
-                    self.inputs[i].setMask(self.INORMLSQ6Masks[i])
+                # the INORM (and potentially the mask) files have been
+                # resampled to LSQ6 space.  That means that we can set
+                # the last basevol using the last resampled files (i.e.,
+                # no arguments to setLastBasevol)
+                self.inputs[i].setLastBasevol()                
         else:
             for i in range(len(self.inputs)):
                 self.inputs[i].setLastBasevol(self.INORM[i])
@@ -889,21 +911,16 @@ class LSQ6Base(object):
                 if(self.initial_model[1] != None):
                     likeFileForResample = self.initial_model[0]
                     targetFHforResample = self.initial_model[0]
-#             rs = ma.mincresample(inputfile,
-#                                  targetFHforResample,
-#                                  likeFile=likeFileForResample,
-#                                  argArray=["-sinc"])
-#             
-#             self.filesToAvg.append(rs.outputFiles[0])
-#             self.p.addStage(rs) 
-#             inputfile.setLastBasevol(rs.outputFiles[0])
             resamplings = ma.mincresampleFileAndMask(inputfile,
                                                      targetFHforResample,
                                                      likeFile=likeFileForResample,
                                                      argArray=["-sinc"])
             self.filesToAvg.append(resamplings.outputFiles[0])
             self.p.addPipeline(resamplings.p)
-            inputfile.setLastBasevol(resamplings.outputFiles[0])
+            # no arguments need to be provided to setLastBasevol: the last
+            # resampled file will be used. If a mask was also resampled
+            # during the last stage, this will be updated as well.
+            inputfile.setLastBasevol()
                 
 
     def createAverage(self):
@@ -957,38 +974,61 @@ class LSQ6RotationalMinctracc(LSQ6Base):
                  targetFile,
                  initial_model = None,
                  lsq6OutputDir = None,
-                 large_rotation_parameters="10,4,10,8,50,10"):
+                 large_rotation_parameters="10,4,10,8",
+                 large_rotation_range     = 50,
+                 large_rotation_interval  = 10):
         # initialize all the defaults in parent class
         LSQ6Base.__init__(self, inputFiles, targetFile, initial_model, lsq6OutputDir)
         
-        self.parameters     = large_rotation_parameters
+        self.parameters        = large_rotation_parameters
+        self.rotation_range    = large_rotation_range
+        self.rotation_interval = large_rotation_interval
         
     def createLSQ6Transformation(self):    
         # We should take care of the appropriate amount of blurring
-        # for the input files here 
-        parameterList = self.parameters.split(',')
-        blurFactor= float(parameterList[0])
+        # for the input files here
         
-        blurAtResolution = -1
         # assumption: all files have the same resolution, so we take input file 1
         highestResolution = rf.getFinestResolution(self.inputs[0])
-        if(blurFactor != -1):
-            blurAtResolution = blurFactor * highestResolution
+        blurAtResolution = -1
+        resampleStepFactor = -1
+        registrationStepFactor = -1
+        wTranslationsFactor = -1
+        
+        # first... if we are dealing with mouse brains, we should set the defaults
+        # not on the actual resolution of the files, but on the best parameter set
+        # for mouse brains. Still we have to feed those in as factors, so we have
+        # to do a bit of a silly conversion from resolution to factors now 
+        if(self.parameters == "mousebrain"):
+            # the amount of blurring should simply be 0.56 mm
+            blurAtResolution = 0.56
+            # the resample stepsize should be 0.224
+            resampleStepFactor = 0.224 /  highestResolution
+            # the registration stepsize should be 0.56
+            registrationStepFactor = 0.56 / highestResolution
+            # w_translations should be 0.448
+            wTranslationsFactor = 0.448 / highestResolution
+        else:
+            parameterList = self.parameters.split(',')
+            blurFactor= float(parameterList[0])
+            if(blurFactor != -1):
+                blurAtResolution = blurFactor * highestResolution
+            resampleStepFactor     = float(parameterList[1])
+            registrationStepFactor = float(parameterList[2])
+            wTranslationsFactor    = float(parameterList[3])
         
         self.p.addStage(ma.blur(self.target, fwhm=blurAtResolution))
         
-        for inputFH in self.inputs:
-            
+        for inputFH in self.inputs:    
             self.p.addStage(ma.blur(inputFH, fwhm=blurAtResolution))
-        
             self.p.addStage((ma.RotationalMinctracc(inputFH,
                                                     self.target,
                                                     blur               = blurAtResolution,
-                                                    resample_step      = float(parameterList[1]),
-                                                    registration_step  = float(parameterList[2]),
-                                                    w_translations     = float(parameterList[3]),
-                                                    rotational_range   = int(parameterList[4]),
-                                                    rotational_interval= int(parameterList[5]) )))
+                                                    resample_step      = resampleStepFactor,
+                                                    registration_step  = registrationStepFactor,
+                                                    w_translations     = wTranslationsFactor,
+                                                    rotational_range   = self.rotation_range,
+                                                    rotational_interval= self.rotation_interval )))
 
 
 class LSQ6HierarchicalMinctracc(LSQ6Base):

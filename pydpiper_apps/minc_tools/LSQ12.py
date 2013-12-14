@@ -25,6 +25,11 @@ def addLSQ12OptionGroup(parser):
     group.add_option("--lsq12-protocol", dest="lsq12_protocol",
                      type="string", default=None,
                      help="Can optionally specify a registration protocol that is different from defaults. Default is None.")
+    group.add_option("--lsq12-subject-matter", dest="lsq12_subject_matter",
+                     type="string", default=None,
+                     help="Can specify the subject matter for the pipeline. This will set the parameters "
+                     "for the 12 parameter alignment based on the subject matter rather than the file "
+                     "resolution. Currently supported option is: \"mousebrain\". Default is None.")
     parser.add_option_group(group)
 
 class LSQ12Registration(AbstractApplication):
@@ -60,7 +65,8 @@ class LSQ12Registration(AbstractApplication):
         inputFiles = rf.initializeInputFiles(args, dirs.processedDir, maskDir=options.mask_dir)
         
         """Iterative LSQ12 model building"""
-        lsq12 = FullLSQ12(inputFiles, dirs.lsq12Dir, options.lsq12_max_pairs, options.lsq12_protocol)
+        lsq12 = FullLSQ12(inputFiles, dirs.lsq12Dir, options.lsq12_max_pairs, options.lsq12_protocol, 
+                          subject_matter=options.lsq12_subject_matter)
         lsq12.iterate()
         self.pipeline.addPipeline(lsq12.p)
         
@@ -75,16 +81,19 @@ class FullLSQ12(object):
         outputDir = an output directory to place the final average from this registration
        
         Optional arguments include: 
-        ---likeFile = a file handler that can be used as a likeFile for resampling
+        --likeFile = a file handler that can be used as a likeFile for resampling
             each input into the final lsq12 space. If none is specified, the input
             will be used
         --maxPairs = maximum number of pairs to register. If this pair is specified, 
             then each subject will only be registered to a subset of the other subjects.
         --lsq2_protocol = an optional csv file to specify a protocol that overrides the defaults.
-        
+        --subject_matter = currently supports "mousebrain". If this is specified, the parameter for
+        the minctracc registrations are set based on defaults for mouse brains instead of the file
+        resolution. 
     """
     
-    def __init__(self, inputArray, outputDir, likeFile=None, maxPairs=None, lsq12_protocol=None):
+    def __init__(self, inputArray, outputDir, likeFile=None, maxPairs=None, lsq12_protocol=None,
+                 subject_matter=None):
         self.p = Pipeline()
         """Initial inputs should be an array of fileHandlers with lastBasevol in lsq12 space"""
         self.inputs = inputArray
@@ -103,6 +112,9 @@ class FullLSQ12(object):
             transform for that particular subject. 
             These xfms may be used subsequently for statistics calculations. """
         self.lsq12AvgXfms = {}
+        # what sort of subject matter do we deal with?
+        self.subject_matter = subject_matter
+        
         """Create the blurring resolution from the file resolution"""
         try:
             self.fileRes = rf.getFinestResolution(self.inputs[0])
@@ -130,16 +142,29 @@ class FullLSQ12(object):
          
     
     def defaultParams(self):
-        """ Default minctracc parameters based on resolution of file"""
+        """ 
+            Default minctracc parameters based on resolution of file, unless
+            a particular subject matter was provided
+        """
         
         blurfactors      = [       5,   10.0/3.0,         2.5]
         stepfactors      = [50.0/3.0,   25.0/3.0,         5.5]
         simplexfactors   = [      50,         25,    50.0/3.0]
         
-        self.blurs = [i * self.fileRes for i in blurfactors]
-        self.stepSize=[i * self.fileRes for i in stepfactors]
+        if(self.subject_matter == "mousebrain"):
+            # the default for mouse brains should be:
+            # blurs:   0.3   0.2   0.15
+            # steps:   1     0.5   0.333
+            # simplex: 3     1.5   1
+            self.blurs =    [0.3, 0.2, 0.15]
+            self.stepSize=  [1,   0.5, 1.0/3.0]
+            self.simplex=   [3,   1.5, 1]
+        else:
+            self.blurs = [i * self.fileRes for i in blurfactors]
+            self.stepSize=[i * self.fileRes for i in stepfactors]
+            self.simplex=[i * self.fileRes for i in simplexfactors]
+        
         self.useGradient=[False,True,False]
-        self.simplex=[i * self.fileRes for i in simplexfactors]
         
     def setParams(self, lsq12_protocol):
         """Set parameters from specified protocol"""
