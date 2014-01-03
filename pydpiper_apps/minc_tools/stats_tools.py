@@ -246,8 +246,8 @@ class CalcStats(object):
                 if self.scalingFactor:
                     toConcat = [self.scalingFactor, self.linearXfm]
                     self.fullLinearXfm = fh.createBaseName(self.inputFH.transformsDir, self.inputFH.basename + "_full_linear.xfm")
-                    logFile=LogFile(fh.logFromFile(self.inputFH.logDir, fh.removeBaseAndExtension(self.fullLinearXfm)))
-                    concat = xfmConcat(toConcat, self.fullLinearXfm, logFile)
+                    logFile=fh.logFromFile(self.inputFH.logDir, fh.removeBaseAndExtension(self.fullLinearXfm))
+                    concat = xfmConcat(toConcat, self.fullLinearXfm, logFile=logFile)
                     self.p.addStage(concat)
                 else:
                     self.fullLinearXfm = self.linearXfm

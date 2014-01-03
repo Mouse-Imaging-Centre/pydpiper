@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 from pydpiper.application import AbstractApplication
-from pydpiper.pipeline import Pipeline, CmdStage, InputFile, OutputFile
+from pydpiper.pipeline import Pipeline, CmdStage, InputFile, OutputFile, LogFile
 import pydpiper.file_handling as fh
 import pydpiper_apps.minc_tools.registration_functions as rf
 import pydpiper_apps.minc_tools.registration_file_handling as rfh
@@ -475,6 +475,7 @@ class NonUniformityCorrection(object):
             cmd += [OutputFile(outFile)]
             nu_estimate = CmdStage(cmd)
             nu_estimate.colour = "red"
+            nu_estimate.setLogFile(LogFile(fh.logFromFile(self.inputs[i].logDir, outFile)))
             self.p.addStage(nu_estimate)
         self.impFields = impFields
 
@@ -497,6 +498,7 @@ class NonUniformityCorrection(object):
             cmd += [OutputFile(outFile)]
             nu_evaluate = CmdStage(cmd)
             nu_evaluate.colour = "blue"
+            nu_evaluate.setLogFile(LogFile(fh.logFromFile(self.inputs[i].logDir, outFile)))
             self.p.addStage(nu_evaluate)
         self.NUCorrected = nuCorrected
 
@@ -714,6 +716,7 @@ class IntensityNormalization(object):
             cmd += [OutputFile(outFile)]
             inormalize = CmdStage(cmd)
             inormalize.colour = "yellow"
+            inormalize.setLogFile(LogFile(fh.logFromFile(self.inputs[i].logDir, outFile)))
             self.p.addStage(inormalize)
         self.INORM = normalized
 

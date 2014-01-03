@@ -833,7 +833,6 @@ class RotationalMinctracc(CmdStage):
         # handling of the input files
         try: 
             if rf.isFileHandler(inSource, inTarget):
-                # TODO: create a check to see whether the blur exists...
                 self.source = inSource.getBlur(fwhm=blur)
                 self.target = inTarget.getBlur(fwhm=blur)  
                 if(output == None):
@@ -942,7 +941,6 @@ class xfmConcat(CmdStage):
         
         self.inputFiles = inputFiles
         self.outputFiles = [outputFile]
-        self.output = outputFile
         self.logFile = logFile
         self.cmd = ["xfmconcat", "-clobber"]
         self.cmd += inputFiles
