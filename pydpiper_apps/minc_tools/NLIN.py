@@ -192,6 +192,10 @@ class NLINBase(object):
             self.setParams(nlin_protocol)
         self.generations = self.getGenerations()   
         
+        # Create new nlin group for each input prior to registration
+        for i in range(len(self.inputs)):
+            self.inputs[i].newGroup(groupName="nlin")
+        
     def defaultParams(self):
         """Set default parameters for each registration type in subclasses."""
         pass

@@ -23,7 +23,7 @@ def addLSQ6OptionGroup(parser):
     """
     group = OptionGroup(parser, "LSQ6-registration options", 
                         "Options for performing a 6 parameter (rigid) registration.")
-    group.add_option("--target", dest="target",
+    group.add_option("--lsq6-target", dest="lsq6_target",
                      type="string", default=None,
                      help="File to be used as the target for the 6 parameter alignment.")
     group.add_option("--init-model", dest="init_model",
@@ -141,11 +141,11 @@ class LSQ6Registration(AbstractApplication):
         args = self.args
 
         # verify that we have some sort of target specified
-        if(options.init_model == None and options.target == None):
-            print "Error: please specify either a target file for the registration (--target), or an initial model (--init-model)\n"
+        if(options.init_model == None and options.lsq6_target == None):
+            print "Error: please specify either a target file for the registration (--lsq6-target), or an initial model (--init-model)\n"
             sys.exit()   
-        if(options.init_model != None and options.target != None):
-            print "Error: please specify only one of the options: --target  --init-model\n"
+        if(options.init_model != None and options.lsq6_target != None):
+            print "Error: please specify only one of the options: --lsq6-target  --init-model\n"
             sys.exit()
         
         # Setup output directories for LSQ6 registration.        
@@ -155,8 +155,8 @@ class LSQ6Registration(AbstractApplication):
         inputFiles = rf.initializeInputFiles(args, dirs.processedDir, maskDir=options.mask_dir)
 
         initModel = None
-        if(options.target != None):
-            targetPipeFH = rfh.RegistrationPipeFH(abspath(options.target), basedir=dirs.lsq6Dir)
+        if(options.lsq6_target != None):
+            targetPipeFH = rfh.RegistrationPipeFH(abspath(options.lsq6_target), basedir=dirs.lsq6Dir)
         else: # options.init_model != None  
             initModel = rf.setupInitModel(options.init_model, self.outputDir)
             if (initModel[1] != None):

@@ -5,7 +5,7 @@ from pydpiper.pipeline import Pipeline, InputFile, OutputFile, LogFile, CmdStage
 from pydpiper.file_handling import createSubDir, createBaseName, logFromFile
 import pydpiper_apps.minc_tools.minc_atoms as ma
 import pydpiper_apps.minc_tools.registration_functions as rf
-from pydpiper_apps.minc_tools.registration_file_handling import RegistrationPipeFH
+from pydpiper_apps.minc_tools.registration_file_handling import RegistrationPipeFH, RegistrationFHBase
 from optparse import OptionGroup
 from datetime import date
 from os.path import basename, abspath
@@ -25,6 +25,10 @@ def addLSQ12OptionGroup(parser):
     group.add_option("--lsq12-protocol", dest="lsq12_protocol",
                      type="string", default=None,
                      help="Can optionally specify a registration protocol that is different from defaults. Default is None.")
+    group.add_option("--lsq12-likefile", dest="lsq12_likeFile",
+                     type="string", default=None,
+                     help="Can optionally specify a like file for resampling at the end of pairwise "
+                     "alignment. Default is None, which means that the input file will be used.")
     group.add_option("--lsq12-subject-matter", dest="lsq12_subject_matter",
                      type="string", default=None,
                      help="Can specify the subject matter for the pipeline. This will set the parameters "
@@ -61,11 +65,22 @@ class LSQ12Registration(AbstractApplication):
         # Setup output directories for LSQ12 registration.        
         dirs = rf.setupDirectories(self.outputDir, options.pipeline_name, module="LSQ12")
         
-        """Initialize input files from args"""
+        #Initialize input files from args
         inputFiles = rf.initializeInputFiles(args, dirs.processedDir, maskDir=options.mask_dir)
         
-        """Iterative LSQ12 model building"""
-        lsq12 = FullLSQ12(inputFiles, dirs.lsq12Dir, options.lsq12_max_pairs, options.lsq12_protocol, 
+        #Set up like file for resampling, if one is specified
+        if options.lsq12_likeFile:
+            likeFH = RegistrationFHBase(abspath(options.lsq12_likeFile), 
+                                        basedir=dirs.lsq12Dir)
+        else:
+            likeFH = None
+        
+        #Iterative LSQ12 model building
+        lsq12 = FullLSQ12(inputFiles, 
+                          dirs.lsq12Dir, 
+                          likeFile=likeFH,
+                          maxPairs=options.lsq12_max_pairs, 
+                          lsq12_protocol=options.lsq12_protocol, 
                           subject_matter=options.lsq12_subject_matter)
         lsq12.iterate()
         self.pipeline.addPipeline(lsq12.p)
@@ -92,7 +107,11 @@ class FullLSQ12(object):
         resolution. 
     """
     
-    def __init__(self, inputArray, outputDir, likeFile=None, maxPairs=None, lsq12_protocol=None,
+    def __init__(self, inputArray, 
+                 outputDir, 
+                 likeFile=None, 
+                 maxPairs=None, 
+                 lsq12_protocol=None,
                  subject_matter=None):
         self.p = Pipeline()
         """Initial inputs should be an array of fileHandlers with lastBasevol in lsq12 space"""

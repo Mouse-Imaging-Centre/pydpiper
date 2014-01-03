@@ -48,8 +48,8 @@ class MBMApplication(AbstractApplication):
         
         # TODO: Write this as a function in LSQ6 and call from there. 
         initModel = None
-        if(options.target != None):
-            targetPipeFH = rfh.RegistrationPipeFH(os.path.abspath(options.target), basedir=dirs.lsq6Dir)
+        if(options.lsq6_target != None):
+            targetPipeFH = rfh.RegistrationPipeFH(os.path.abspath(options.lsq6_target), basedir=dirs.lsq6Dir)
         else: # options.init_model != None  
             initModel = rf.setupInitModel(options.init_model, self.outputDir)
             if (initModel[1] != None):
@@ -108,10 +108,13 @@ class MBMApplication(AbstractApplication):
         self.pipeline.addPipeline(intensity_normalization.p)
         
         # LSQ12 MODULE
-        # our target has now changed. Whereas in the LSQ6 stage we might have used
-        # the "native" file, now we need standard space no matter what
-        if(options.target == None):
+        # We need to specify a likeFile/space when all files are resampled
+        # at the end of LSQ12. If one is not specified, use standard space. 
+        if options.lsq12_likeFile == None:
             targetPipeFH = initModel[0]
+        else:
+            targetPipeFH = rfh.RegistrationFHBase(os.path.abspath(options.lsq12_likeFile), 
+                                                  basedir=dirs.lsq12Dir)
         lsq12module = lsq12.FullLSQ12(inputFiles, 
                                       dirs.lsq12Dir, 
                                       likeFile=targetPipeFH, 
