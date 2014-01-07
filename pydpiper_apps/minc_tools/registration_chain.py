@@ -119,7 +119,7 @@ class RegistrationChain(AbstractApplication):
                 if not inverseXfm:
                     "invert xfm and calculate"
                     invXfmBase = fh.removeBaseAndExtension(lastXfm).split(".xfm")[0]
-                    invXfm = fh.createBaseName(s[i].transformsDir, invXfmBase + "_inverse.xfm")
+                    invXfm = fh.createBaseName(s[i].transformsDir, invXfmBase + "_inverted.xfm")
                     cmd = ["xfminvert", "-clobber", InputFile(lastXfm), OutputFile(invXfm)]
                     invertXfm = CmdStage(cmd)
                     invertXfm.setLogFile(LogFile(fh.logFromFile(s[i].logDir, invXfm)))

@@ -773,7 +773,7 @@ class mincAverageDisp(mincAverage):
                  output, 
                  logFile=None, 
                  defaultDir=None):
-        mincAverage.__init__(self, inputArray,output,logFile,defaultDir)
+        mincAverage.__init__(self, inputArray,output,logFile=logFile,defaultDir=defaultDir)
         
     def addDefaults(self):
         for i in range(len(self.filesToAvg)):

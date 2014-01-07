@@ -19,7 +19,7 @@ def addStatsOptions(parser):
     
 def createInvXfmName(iFH, xfm):
     invXfmBase = fh.removeBaseAndExtension(xfm).split(".xfm")[0]
-    invXfm = fh.createBaseName(iFH.transformsDir, invXfmBase + "_inverse.xfm")
+    invXfm = fh.createBaseName(iFH.transformsDir, invXfmBase + "_inverted.xfm")
     return invXfm
 
 def createPureNlinXfmName(iFH, xfm):
@@ -163,7 +163,7 @@ class CalcStats(object):
             """Calculate average inverse displacement"""
             avgOutput = abspath(self.targetFH.basedir) + "/" + "average_inv_pure_displacement.mnc"
             logBase = fh.removeBaseAndExtension(avgOutput)
-            avgLog = fh.createLogFile(self.targetFH.logDir, logBase)
+            avgLog = fh.createLogFile(self.targetFH.basedir, logBase)
             avg = mincAverageDisp(self.dispToAvg, avgOutput, logFile=avgLog)
             self.p.addStage(avg)
             """Centre pure nlin displacement by subtracting average from existing"""
@@ -297,7 +297,7 @@ class CalcChainStats(CalcStats):
         
         """Invert the transform, so we get the linear xfm from target to input."""
         invXfmBase = fh.removeBaseAndExtension(self.linearXfm).split(".xfm")[0]
-        invXfm = fh.createBaseName(self.inputFH.transformsDir, invXfmBase + "_inverse.xfm")
+        invXfm = fh.createBaseName(self.inputFH.transformsDir, invXfmBase + "_inverted.xfm")
         cmd = ["xfminvert", "-clobber", InputFile(self.linearXfm), OutputFile(invXfm)]
         invertXfm = CmdStage(cmd)
         invertXfm.setLogFile(LogFile(fh.logFromFile(self.inputFH.logDir, invXfm)))
