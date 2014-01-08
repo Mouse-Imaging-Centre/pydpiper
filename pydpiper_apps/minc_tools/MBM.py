@@ -58,25 +58,6 @@ class MBMApplication(AbstractApplication):
             else:
                 # we will use the target in "standard" space
                 targetPipeFH = initModel[0]
-        
-        #TODO: May want to pre-mask since minc_compression is turned on and we can save disk space. 
-        
-        #TODO: Add a commmand line option to specify a resolution for running registration. 
-        # After resampling all files, create new or re-set init model for LSQ6 at this new resolution.
-        # Code below is example, will need modification.
-#        filesToResample = [initModel[0]]
-#        if initModel[1]:
-#            filesToResample.append(initModel[1])
-#        for i in inputFiles:
-#            filesToResample.append(i)
-#        
-#        #NOTE: Test function, this will eventually be called from LSQ6
-#        # and resolution will NOT be hardcoded. Because obviously. 
-#        resolution = 0.056
-#        resPipe = mm.SetResolution(filesToResample, resolution)
-#        if len(resPipe.p.stages) > 0:
-#            # Only add to pipeline if resampling is needed
-#            self.pipeline.addPipeline(resPipe.p)
             
         #LSQ6 MODULE
         lsq6module = lsq6.getLSQ6Module(inputFiles, 
