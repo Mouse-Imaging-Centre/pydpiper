@@ -47,13 +47,8 @@ class RegistrationChain(AbstractApplication):
 
     def run(self):
         
-        """Directory handling etc as in MBM"""
-        if not self.options.pipeline_name:
-            pipeName = str(date.today()) + "_pipeline"
-        else:
-            pipeName = self.options.pipeline_name
-        
-        processedDirectory = fh.createSubDir(self.outputDir, pipeName + "_processed")
+        # Setup output directories for registration chain (_processed only).        
+        dirs = rf.setupDirectories(self.outputDir, self.options.pipeline_name, module=None)
         
         """Check that correct registration method was specified"""
         if self.options.reg_method != "minctracc" and self.options.reg_method != "mincANTS":
@@ -66,7 +61,7 @@ class RegistrationChain(AbstractApplication):
         subjects = {} # One array of images for each subject
         index = 0 
         for subj in subjectList:
-            subjects[index] = rf.initializeInputFiles(subj, processedDirectory, self.options.mask_dir)
+            subjects[index] = rf.initializeInputFiles(subj, dirs.processedDir, self.options.mask_dir)
             index += 1
         
         """Put blurs into array"""
@@ -76,7 +71,7 @@ class RegistrationChain(AbstractApplication):
         
         """Create file handler for nlin average from MBM"""
         if self.options.nlin_avg:
-            nlinFH = rfh.RegistrationFHBase(abspath(self.options.nlin_avg), processedDirectory)
+            nlinFH = rfh.RegistrationFHBase(abspath(self.options.nlin_avg), dirs.processedDir)
         else:
             nlinFH = None
         if self.options.mbm_dir and not isdir(abspath(self.options.mbm_dir)):
@@ -124,7 +119,7 @@ class RegistrationChain(AbstractApplication):
                 if not inverseXfm:
                     "invert xfm and calculate"
                     invXfmBase = fh.removeBaseAndExtension(lastXfm).split(".xfm")[0]
-                    invXfm = fh.createBaseName(s[i].transformsDir, invXfmBase + "_inverse.xfm")
+                    invXfm = fh.createBaseName(s[i].transformsDir, invXfmBase + "_inverted.xfm")
                     cmd = ["xfminvert", "-clobber", InputFile(lastXfm), OutputFile(invXfm)]
                     invertXfm = CmdStage(cmd)
                     invertXfm.setLogFile(LogFile(fh.logFromFile(s[i].logDir, invXfm)))

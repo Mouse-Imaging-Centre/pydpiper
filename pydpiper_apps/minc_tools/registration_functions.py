@@ -3,9 +3,11 @@
 import pydpiper_apps.minc_tools.registration_file_handling as rfh
 import pydpiper.file_handling as fh
 from optparse import OptionGroup
-from os.path import abspath, exists, dirname
+from os.path import abspath, exists, dirname, splitext
 from os import curdir, walk
+from datetime import date
 import sys
+import re
 import logging
 import fnmatch
 from pyminc.volumes.factory import volumeFromFile
@@ -25,9 +27,36 @@ def addGenRegOptionGroup(parser):
                       type="string", default=None, 
                       help="Directory of masks. If not specified, no masks are used. If only one mask in directory, same mask used for all inputs.")
     group.add_option("--calc-stats", dest="calc_stats",
-                      action="store_true", default=True, 
-                      help="Calculate statistics at the end of the registration. Default is True.")
+                      action="store_true", default=False, 
+                      help="Calculate statistics at the end of the registration. Default is False.")
     parser.add_option_group(group)
+
+class StandardMBMDirectories(object):
+    def __init__(self):
+        self.lsq6Dir = None
+        self.lsq12Dir = None
+        self.nlinDir = None
+        self.processedDir = None
+
+def setupDirectories(outputDir, pipeName, module):
+    #Setup pipeline name
+    if not pipeName:
+        pipeName = str(date.today()) + "_pipeline"
+    
+    #initilize directories class:
+    dirs = StandardMBMDirectories() 
+    
+    #create subdirectories based on which module is being run. _processed always created 
+    dirs.processedDir = fh.createSubDir(outputDir, pipeName + "_processed")
+    
+    if (module == "ALL") or (module=="LSQ6"):
+        dirs.lsq6Dir = fh.createSubDir(outputDir, pipeName + "_lsq6")
+    if (module == "ALL") or (module=="LSQ12"):
+        dirs.lsq12Dir = fh.createSubDir(outputDir, pipeName + "_lsq12")
+    if (module == "ALL") or (module=="NLIN"):
+        dirs.nlinDir = fh.createSubDir(outputDir, pipeName + "_nlin")
+    
+    return dirs
     
 
 """
@@ -35,6 +64,18 @@ def addGenRegOptionGroup(parser):
     one argument is supplied, make sure you don't pass it as a string 
 """
 def initializeInputFiles(args, mainDirectory, maskDir=None):
+    
+    # initial error handling:  verify that at least one input file is specified 
+    # and that it is a MINC file
+    if(len(args) < 1):
+        print "Error: no source image provided\n"
+        sys.exit()
+    for i in range(len(args)):
+        ext = splitext(args[i])[1]
+        if(re.match(".mnc", ext) == None):
+            print "Error: input file is not a MINC file:, ", args[i], "\n"
+            sys.exit()
+    
     inputs = []
     # the assumption in the following line is that args is a list
     # if that is not the case, convert it to one

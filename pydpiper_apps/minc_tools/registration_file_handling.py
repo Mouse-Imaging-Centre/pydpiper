@@ -19,6 +19,11 @@ class RegistrationGroupedFiles():
         self.transforms = {}
         self.lastTransform = {}
         self.mask = mask
+        # when mincresample is called, the output will be stored in the following
+        # holder. It will be overwritten by each subsequent mincresample call
+        self.lastresampled = None
+        # similarly for resampling the mask
+        self.lastresampledmask = None 
         
     def getBlur(self, fwhm=None, gradient=False):
         """returns file with specified blurring kernel
@@ -93,11 +98,44 @@ class RegistrationFHBase():
         self.groupedFiles[self.currentGroupIndex].lastTransform[targetFilename] = xfm
     def getLastBasevol(self):
         return(self.groupedFiles[self.currentGroupIndex].basevol)
-    def setLastBasevol(self, newBaseVol=None):
-        if not newBaseVol:
+    """
+        Behaviour for setLastBasevol:
+        
+        1) revert back to the original file (and mask)
+            this is executed when setToOriginalInput=True
+            
+        2) use the last resampled file(s) 
+            this happens when no arguments are explicitly given, i.e., when
+            newBaseVol=None and setToOriginalInput=False.  If there is a 
+            lastResampledMaskVol, the mask file is updated as well 
+             
+        3) set a custom file as the last base volume
+            using newBaseVol=somefile
+    """
+    def setLastBasevol(self, newBaseVol=None, setToOriginalInput=False):
+        # revert to original file if explicitly specified
+        if setToOriginalInput == True:
             self.groupedFiles[self.currentGroupIndex].basevol = self.groupedFiles[self.currentGroupIndex].origGroupVol
         else:
-            self.groupedFiles[self.currentGroupIndex].basevol = newBaseVol
+            # if no newBaseVol is given, lastresampled is used
+            if not newBaseVol:
+                if not self.groupedFiles[self.currentGroupIndex].lastresampled:
+                    print "Error: setLastBasevol called without a newBaseVol and no lastresampled file exists. Unable to determine which file to set as the LastBasevol."
+                else:
+                    self.groupedFiles[self.currentGroupIndex].basevol = self.groupedFiles[self.currentGroupIndex].lastresampled
+                    # update the mask if there is a resampled version around
+                    if self.groupedFiles[self.currentGroupIndex].lastresampledmask:
+                        self.setMask(self.groupedFiles[self.currentGroupIndex].lastresampledmask)
+            else:
+                self.groupedFiles[self.currentGroupIndex].basevol = newBaseVol
+    def setLastResampledVol(self, filename):
+        self.groupedFiles[self.currentGroupIndex].lastresampled = filename
+    def getLastResampledVol(self):
+        return(self.groupedFiles[self.currentGroupIndex].lastresampled)
+    def setLastResampledMaskVol(self, maskfilename):
+        self.groupedFiles[self.currentGroupIndex].lastresampledmask = maskfilename
+    def getLastResampledMaskVol(self):
+        return(self.groupedFiles[self.currentGroupIndex].lastresampledmask)
     def setOutputDirectory(self, defaultDir):
         if not defaultDir:
             outputDir = abspath(curdir)
@@ -137,14 +175,20 @@ class RegistrationPipeFH(RegistrationFHBase):
         self.groupNames = {0 : 'base'}  
     
     def newGroup(self, inputVolume = None, mask = None, groupName = None):
-        """create a new set of grouped files"""
+        """
+            create a new set of grouped files
+            
+            Assumption: if you specify an inputVolume, and you want
+            to add a mask to it, you will have to explicitly set it using the mask
+            parameter
+        """
         groupIndex = self.currentGroupIndex + 1
         if not inputVolume:
             inputVolume = self.getLastBasevol()
         
         if not mask:
             mask = self.getMask()
-        
+                
         if not groupName:
             groupName = groupIndex
 

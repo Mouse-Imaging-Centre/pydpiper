@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-from pydpiper.pipeline import CmdStage 
+from pydpiper.pipeline import CmdStage, Pipeline
 from pydpiper_apps.minc_tools.registration_functions import isFileHandler
 import pydpiper_apps.minc_tools.registration_functions as rf
 from os.path import abspath, basename, join
@@ -9,6 +9,8 @@ import pydpiper.file_handling as fh
 import sys
 import fnmatch
 import Pyro
+import re
+import copy
 from os.path import splitext
 
 Pyro.config.PYRO_MOBILE_CODE=1
@@ -414,6 +416,80 @@ class autocrop(CmdStage):
         inFile.setLastBasevol(outputFile)
         return(outputFile)  
     
+class mincresampleFileAndMask(object):
+    """
+        If the input file to mincresample(CmdStage) is a file handler, and there is
+        a mask associated with the file, the most intuitive thing to do is 
+        to resample both the file and the mask.   However, a true atom/command stage
+        can only create a single stage, and a such mincresample(CmdStage) can not 
+        resample both.  When using a file handler, the mask file associated with it
+        is used behind the scenes without the user explicitly specifying this behaviour.
+        That's why it is important that the mask always remains current/up-to-date.  The
+        best way to do that is to automatically resample the associated mask when the 
+        main file is being resampled.  And that is where this class comes in.  It serves
+        as a wrapper around mincresample(CmdStage) and  mincresampleMask(CmdStage).  It 
+        will check whether the input file is a file handler, and if so, will resample 
+        the mask that is associated with it (if it exists).
+        
+        This class is not truly an atom/command stage, so technically should not live in 
+        the minc_atoms module.  It is still kept here because in essence it serves as a 
+        single indivisible stage.  (and because the user is more likely to call/find it
+        when looking for the mincresample stage) 
+    """
+    def __init__(self,
+                 inFile,
+                 targetFile,
+                 nameForStage=None,
+                 **kwargs):
+        self.p = Pipeline()
+        self.outputFiles = [] # this will contain the outputFiles from the mincresample of the main MINC file
+        self.outputFilesMask = [] # this will contain the outputFiles from the mincresample of the mask belonging to the main MINC file
+        
+
+        # the first step is to simply run the mincresample command:
+        fileRS = mincresample(inFile,
+                              targetFile,
+                              **kwargs)
+        if(nameForStage):
+            fileRS.name = nameForStage
+        self.p.addStage(fileRS)
+        self.outputFiles = fileRS.outputFiles
+        
+        # initialize the array of outputs for the mask in case there is none to be resampled
+        self.outputFilesMask = [None] * len(self.outputFiles)
+        
+        # next up, is this a file handler, and if so is there a mask that needs to be resampled?
+        if(isFileHandler(inFile)):
+            if(inFile.getMask()):
+                # there is a mask associated with this file, should be updated
+                # we have to watch out in terms of interpolation arguments, if 
+                # the original resample command asked for "-sinc" or "-tricubic"
+                # for instance, we should remove that argument for the mask resampling
+                # these options would reside in the argArray...
+                maskArgs = copy.deepcopy(kwargs)
+                if(maskArgs["argArray"]):
+                    argList = maskArgs["argArray"]
+                    for i in range(len(argList)):
+                        if(re.match("-sinc", argList[i]) or
+                           re.match("-trilinear", argList[i]) or
+                           re.match("-tricubic", argList[i]) ):
+                            del argList[i]
+                    maskArgs["argArray"] = argList                   
+                
+                # if the output file for the mincresample command was already
+                # specified, add "_mask.mnc" to it
+                if(maskArgs["output"]):
+                    maskArgs["output"] = re.sub(".mnc", "_mask.mnc", maskArgs["output"])
+                    
+                maskRS = mincresampleMask(inFile,
+                                          targetFile,
+                                          **maskArgs)
+                if(nameForStage):
+                    maskRS.name = nameForStage + "--mask--"
+                self.p.addStage(maskRS)   
+                self.outputFilesMask = maskRS.outputFiles
+        
+    
 class mincresample(CmdStage):  
     def __init__(self,              
                  inFile,
@@ -438,10 +514,9 @@ class mincresample(CmdStage):
         
         argArray = kwargs.pop("argArray", None)
         if not argArray:
-            argArray = ["mincresample"] 
-        else:      
-            argArray.insert(0, "mincresample")
-        CmdStage.__init__(self, argArray)
+            CmdStage.__init__(self, ["mincresample"])
+        else:
+            CmdStage.__init__(self, ["mincresample"] + argArray)
           
         try:
             #MF TODO: What if we don't want to use lastBasevol?  
@@ -507,6 +582,8 @@ class mincresample(CmdStage):
         self.addDefaults()
         self.finalizeCommand()
         self.setName()
+        if isFileHandler(inFile, targetFile):
+            self.setLastResampledFile()
         
     def addDefaults(self):
         self.inputFiles += [self.inFile, self.targetFile]   
@@ -528,7 +605,16 @@ class mincresample(CmdStage):
         outDir = FH.setOutputDirectory(defaultDir)
         return(fh.createBaseName(outDir, outBase))  
     def getFileToResample(self, inputFile, **kwargs):
-        return(inputFile.getLastBasevol())  
+        return(inputFile.getLastBasevol())
+    def setLastResampledFile(self):
+        # We want to keep track of the last file that was resampled.  This can be 
+        # useful when we want to set the lastBaseVol or mask related to this file
+        # handler.  This function needs to be overridden by the children of this
+        # class, because depending on what we resample (main file, mask, labels)
+        # a different "setLast...Vol" needs to be called.
+        #
+        # For the main mincresample class, it should be the setLastResampledVol
+        self.outputLocation.setLastResampledVol(self.outputFiles[0])
 
 class mincresampleLabels(mincresample):
     def __init__(self, 
@@ -585,6 +671,10 @@ class mincresampleLabels(mincresample):
         else:
             labelArray[index] = None
         return(labelArray[index]) 
+    def setLastResampledFile(self):
+        # Currently we do not keep track of the last label file that is 
+        # resampled
+        pass
 
 class mincresampleMask(mincresampleLabels):
     def __init__(self, 
@@ -614,6 +704,10 @@ class mincresampleMask(mincresampleLabels):
         outBase = self.setOutputFileName(FH, append="mask")
         outDir = FH.setOutputDirectory(defaultDir)
         return(fh.createBaseName(outDir, outBase))
+    def setLastResampledFile(self):
+        # Instead of setting the LastResampledVol, here we need to set the
+        # LastResampledMaskVol
+        self.outputLocation.setLastResampledMaskVol(self.outputFiles[0])
 
 class mincAverage(CmdStage):
     def __init__(self, 
@@ -679,7 +773,7 @@ class mincAverageDisp(mincAverage):
                  output, 
                  logFile=None, 
                  defaultDir=None):
-        mincAverage.__init__(self, inputArray,output,logFile,defaultDir)
+        mincAverage.__init__(self, inputArray,output,logFile=logFile,defaultDir=defaultDir)
         
     def addDefaults(self):
         for i in range(len(self.filesToAvg)):
@@ -732,13 +826,13 @@ class RotationalMinctracc(CmdStage):
                  registration_step=10,
                  w_translations=8,
                  rotational_range=50,
-                 rotational_interval=10):
+                 rotational_interval=10,
+                 mousedata=False):
         
         CmdStage.__init__(self, None) #don't do any arg processing in superclass
         # handling of the input files
         try: 
             if rf.isFileHandler(inSource, inTarget):
-                # TODO: create a check to see whether the blur exists...
                 self.source = inSource.getBlur(fwhm=blur)
                 self.target = inTarget.getBlur(fwhm=blur)  
                 if(output == None):
@@ -759,6 +853,10 @@ class RotationalMinctracc(CmdStage):
             raise
         
         highestResolution = rf.getFinestResolution(inSource)
+        
+        # TODO: finish the following if clause... hahaha
+        #if(mousedata):
+            
         
         self.addDefaults(resample_step     * highestResolution,
                       registration_step * highestResolution,
@@ -843,7 +941,6 @@ class xfmConcat(CmdStage):
         
         self.inputFiles = inputFiles
         self.outputFiles = [outputFile]
-        self.output = outputFile
         self.logFile = logFile
         self.cmd = ["xfmconcat", "-clobber"]
         self.cmd += inputFiles

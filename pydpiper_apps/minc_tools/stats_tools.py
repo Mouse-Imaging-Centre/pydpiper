@@ -19,7 +19,7 @@ def addStatsOptions(parser):
     
 def createInvXfmName(iFH, xfm):
     invXfmBase = fh.removeBaseAndExtension(xfm).split(".xfm")[0]
-    invXfm = fh.createBaseName(iFH.transformsDir, invXfmBase + "_inverse.xfm")
+    invXfm = fh.createBaseName(iFH.transformsDir, invXfmBase + "_inverted.xfm")
     return invXfm
 
 def createPureNlinXfmName(iFH, xfm):
@@ -67,7 +67,10 @@ class CalcStats(object):
         self.setupXfms()
         """Optional inputArray used to calculate an average displacement and use for recentering."""
         if inputArray:
+            self.dispToAvg = []
             self.setupDispArray(inputArray)
+        else:
+            self.dispToAvg = None
         """   
             Specify an optional xfm to be used when calculating the 
             scaled jacobians. This jacobian will then be concatenated with the
@@ -98,7 +101,6 @@ class CalcStats(object):
     
     def setupDispArray(self, inputArray):
         """NOTE: inputArray must be an array of file handlers. """
-        self.dispToAvg = []
         for iFH in inputArray:
             """Check to see if invXfm exists. If not, create name (but we don't actually need
                to construct the command here, as this will happen in its own CalcStats class)"""
@@ -161,7 +163,7 @@ class CalcStats(object):
             """Calculate average inverse displacement"""
             avgOutput = abspath(self.targetFH.basedir) + "/" + "average_inv_pure_displacement.mnc"
             logBase = fh.removeBaseAndExtension(avgOutput)
-            avgLog = fh.createLogFile(self.targetFH.logDir, logBase)
+            avgLog = fh.createLogFile(self.targetFH.basedir, logBase)
             avg = mincAverageDisp(self.dispToAvg, avgOutput, logFile=avgLog)
             self.p.addStage(avg)
             """Centre pure nlin displacement by subtracting average from existing"""
@@ -244,8 +246,8 @@ class CalcStats(object):
                 if self.scalingFactor:
                     toConcat = [self.scalingFactor, self.linearXfm]
                     self.fullLinearXfm = fh.createBaseName(self.inputFH.transformsDir, self.inputFH.basename + "_full_linear.xfm")
-                    logFile=LogFile(fh.logFromFile(self.inputFH.logDir, fh.removeBaseAndExtension(self.fullLinearXfm)))
-                    concat = xfmConcat(toConcat, self.fullLinearXfm, logFile)
+                    logFile=fh.logFromFile(self.inputFH.logDir, fh.removeBaseAndExtension(self.fullLinearXfm))
+                    concat = xfmConcat(toConcat, self.fullLinearXfm, logFile=logFile)
                     self.p.addStage(concat)
                 else:
                     self.fullLinearXfm = self.linearXfm
@@ -295,7 +297,7 @@ class CalcChainStats(CalcStats):
         
         """Invert the transform, so we get the linear xfm from target to input."""
         invXfmBase = fh.removeBaseAndExtension(self.linearXfm).split(".xfm")[0]
-        invXfm = fh.createBaseName(self.inputFH.transformsDir, invXfmBase + "_inverse.xfm")
+        invXfm = fh.createBaseName(self.inputFH.transformsDir, invXfmBase + "_inverted.xfm")
         cmd = ["xfminvert", "-clobber", InputFile(self.linearXfm), OutputFile(invXfm)]
         invertXfm = CmdStage(cmd)
         invertXfm.setLogFile(LogFile(fh.logFromFile(self.inputFH.logDir, invXfm)))

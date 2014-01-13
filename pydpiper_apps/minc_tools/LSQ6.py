@@ -4,19 +4,14 @@ from pydpiper.application import AbstractApplication
 from pydpiper.pipeline import Pipeline, CmdStage, InputFile, OutputFile, LogFile
 import pydpiper.file_handling as fh
 import pydpiper_apps.minc_tools.registration_functions as rf
-import pydpiper_apps.minc_tools.hierarchical_minctracc as hm
 import pydpiper_apps.minc_tools.registration_file_handling as rfh
 import pydpiper_apps.minc_tools.minc_atoms as ma
-import pydpiper_apps.minc_tools.minc_modules as mm
-from os.path import splitext, abspath
+from os.path import abspath
 from optparse import OptionGroup
-from datetime import date
 import logging
 import Pyro
 import sys
-import re
 import csv
-import os
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +23,7 @@ def addLSQ6OptionGroup(parser):
     """
     group = OptionGroup(parser, "LSQ6-registration options", 
                         "Options for performing a 6 parameter (rigid) registration.")
-    group.add_option("--target", dest="target",
+    group.add_option("--lsq6-target", dest="lsq6_target",
                      type="string", default=None,
                      help="File to be used as the target for the 6 parameter alignment.")
     group.add_option("--init-model", dest="init_model",
@@ -58,11 +53,21 @@ def addLSQ6OptionGroup(parser):
                      "the x,y,z rotation space is performed to find the best 6 parameter alignment. "
                      "[default: --lsq6-large-rotations]")
     group.add_option("--lsq6-large-rotations-parameters", dest="large_rotation_parameters",
-                     type="string", default="10,4,10,8,50,10",
+                     type="string", default="10,4,10,8",
                      help="Settings for the large rotation alignment. factor=factor based on smallest file "
                      "resolution: 1) blur factor, 2) resample step size factor, 3) registration step size "
-                     "factor, 4) w_translations factor, 5) rotational range in degrees, 6) rotational "
-                     "interval in degrees. [default: %default]")
+                     "factor, 4) w_translations factor  ***** if you are working with mouse brain data "
+                     " the defaults do not have to be based on the file resolution; a default set of "
+                     " settings works for all mouse brain. In order to use those setting, specify: \"mousebrain\""
+                     " as the argument for this option. ***** [default: %default]")
+    group.add_option("--lsq6-rotational-range", dest="large_rotation_range",
+                     type="int", default=50,
+                     help="Settings for the rotational range in degrees when running the large rotation alignment."
+                     " [default: %default]")
+    group.add_option("--lsq6-rotational-interval", dest="large_rotation_interval",
+                     type="int", default=10,
+                     help="Settings for the rotational interval in degrees when running the large rotation alignment."
+                     " [default: %default]")
     parser.add_option_group(group)
     ### sneaky trick to create a readable version of the content of an lsq6 protocol:
     epi = \
@@ -134,40 +139,24 @@ class LSQ6Registration(AbstractApplication):
     def run(self):
         options = self.options
         args = self.args
-        
-        # initial error handling:  verify that at least one input file is specified and that it is a MINC file
-        if(len(args) < 1):
-            print "Error: no source image provided\n"
-            sys.exit()
-        for i in range(len(args)):
-            ext = splitext(args[i])[1]
-            if(re.match(".mnc", ext) == None):
-                print "Error: input file is not a MINC file:, ", args[i], "\n"
-                sys.exit()
 
         # verify that we have some sort of target specified
-        if(options.init_model == None and options.target == None):
-            print "Error: please specify either a target file for the registration (--target), or an initial model (--init-model)\n"
+        if(options.init_model == None and options.lsq6_target == None):
+            print "Error: please specify either a target file for the registration (--lsq6-target), or an initial model (--init-model)\n"
             sys.exit()   
-        if(options.init_model != None and options.target != None):
-            print "Error: please specify only one of the options: --target  --init-model\n"
+        if(options.init_model != None and options.lsq6_target != None):
+            print "Error: please specify only one of the options: --lsq6-target  --init-model\n"
             sys.exit()
         
-        # Setup pipeline name and create directories.
-        # TODO: Note duplication from MBM--move to function? 
-        if not options.pipeline_name:
-            pipeName = str(date.today()) + "_pipeline"
-        else:
-            pipeName = options.pipeline_name
-        lsq6Directory = fh.createSubDir(self.outputDir, pipeName + "_lsq6")
-        processedDirectory = fh.createSubDir(self.outputDir, pipeName + "_processed")
+        # Setup output directories for LSQ6 registration.        
+        dirs = rf.setupDirectories(self.outputDir, options.pipeline_name, module="LSQ6")
         
         # create file handles for the input file(s) 
-        inputFiles = rf.initializeInputFiles(args, mainDirectory=processedDirectory)
+        inputFiles = rf.initializeInputFiles(args, dirs.processedDir, maskDir=options.mask_dir)
 
         initModel = None
-        if(options.target != None):
-            targetPipeFH = rfh.RegistrationPipeFH(abspath(options.target), basedir=lsq6Directory)
+        if(options.lsq6_target != None):
+            targetPipeFH = rfh.RegistrationPipeFH(abspath(options.lsq6_target), basedir=dirs.lsq6Dir)
         else: # options.init_model != None  
             initModel = rf.setupInitModel(options.init_model, self.outputDir)
             if (initModel[1] != None):
@@ -177,46 +166,630 @@ class LSQ6Registration(AbstractApplication):
                 # we will use the target in "standard" space
                 targetPipeFH = initModel[0]
         
-        lsq6module = None
-        """
-            Option 1) run a simple lsq6: the input files are assumed to be in the
-            same space and roughly in the same orientation.
-        """
-        if(options.lsq6_method == "lsq6_simple"):
-            lsq6module =  LSQ6HierarchicalMinctracc(inputFiles,
-                                                    targetPipeFH,
-                                                    initial_model     = initModel,
-                                                    lsq6OutputDir     = lsq6Directory,
-                                                    initial_transform = "identity",
-                                                    lsq6_protocol     = options.lsq6_protocol)
-        """
-            Option 2) run an lsq6 registration where the centre of the input files
-            is estimated.  Orientation is assumed to be similar, space is not.
-        """
-        if(options.lsq6_method == "lsq6_centre_estimation"):
-            lsq6module =  LSQ6HierarchicalMinctracc(inputFiles,
-                                                    targetPipeFH,
-                                                    initial_model     = initModel,
-                                                    lsq6OutputDir     = lsq6Directory,
-                                                    initial_transform = "estimate",
-                                                    lsq6_protocol     = options.lsq6_protocol)
-        """
-            Option 3) run a brute force rotational minctracc.  Input files can be
-            in any random orientation and space.
-        """
-        if(options.lsq6_method == "lsq6_large_rotations"):
-            lsq6module = LSQ6RotationalMinctracc(inputFiles,
-                                                 targetPipeFH,
-                                                 initial_model = initModel,
-                                                 lsq6OutputDir = lsq6Directory,
-                                                 large_rotation_parameters = options.large_rotation_parameters)
-        
+        lsq6module = getLSQ6Module(inputFiles,
+                                   targetPipeFH,
+                                   dirs.lsq6Dir,
+                                   initialTransform = options.lsq6_method,
+                                   initModel        = initModel,
+                                   lsq6Protocol     =  options.lsq6_protocol,
+                                   largeRotationParameters = options.large_rotation_parameters,
+                                   largeRotationRange      = options.large_rotation_range,
+                                   largeRotationInterval   = options.large_rotation_interval)       
         # after the correct module has been set, get the transformation and
         # deal with resampling and potential model building
         lsq6module.createLSQ6Transformation()
         lsq6module.finalize()
         self.pipeline.addPipeline(lsq6module.p)
+        
+        ###########################################################################
+        # TESTING
+        nucorrection = NonUniformityCorrection(inputFiles, 
+                                               initial_model=initModel,
+                                               resampleNUCtoLSQ6=False)
+        nucorrection.finalize()
+        self.pipeline.addPipeline(nucorrection.p)
+        
+        intensity_normalization = IntensityNormalization(inputFiles,
+                                                         initial_model=initModel,
+                                                         resampleINORMtoLSQ6=True)
+        self.pipeline.addPipeline(intensity_normalization.p)
+        
+#         intensity_normalization.setINORMasLastBaseVolume()
+        # TESTING
+        ###########################################################################
 
+def getLSQ6Module(inputFiles,
+                  targetPipeFH,
+                  lsq6Directory           = None,
+                  initialTransform        = None,
+                  initModel               = None,
+                  lsq6Protocol            = None,
+                  largeRotationParameters = None,
+                  largeRotationRange      = None,
+                  largeRotationInterval   = None):
+    """
+        This function serves as a switch that will return the appropriate lsq6 module depending
+        on the parameters provided.  The switch is based on the parameter initialTransform.  If
+        that parameter is not given, by default a large rotations lsq6 is performed. 
+        
+        Assumptions:
+        * inputFiles are expected to be file handlers
+        * targetFile is expected to be a file handler
+        * the lsq6Directory is required when at least 2 inputFiles are given
+        * initialTransform can have the following string values:
+            - "lsq6_simple"
+            - "lsq6_centre_estimation"
+            - "lsq6_large_rotations"
+          if none is provided, lsq6_large_rotations is taken as the default
+        * lsq6Protocol: see the LSQ6HierarchicalMinctracc class for more information
+          about what this can be
+        * largeRotationParameters: see the RotationalMinctracc CmdStage for more information
+    """
+    lsq6module = None
+    if(initialTransform == None):
+        initialTransform = "lsq6_large_rotations"
+    
+    """
+        Option 1) run a simple lsq6: the input files are assumed to be in the
+        same space and roughly in the same orientation.
+    """
+    if(initialTransform == "lsq6_simple"):
+        lsq6module =  LSQ6HierarchicalMinctracc(inputFiles,
+                                                targetPipeFH,
+                                                initial_model     = initModel,
+                                                lsq6OutputDir     = lsq6Directory,
+                                                initial_transform = "identity",
+                                                lsq6_protocol     = lsq6Protocol)
+    """
+        Option 2) run an lsq6 registration where the centre of the input files
+        is estimated.  Orientation is assumed to be similar, space is not.
+    """
+    if(initialTransform == "lsq6_centre_estimation"):
+        lsq6module =  LSQ6HierarchicalMinctracc(inputFiles,
+                                                targetPipeFH,
+                                                initial_model     = initModel,
+                                                lsq6OutputDir     = lsq6Directory,
+                                                initial_transform = "estimate",
+                                                lsq6_protocol     = lsq6Protocol)
+    """
+        Option 3) run a brute force rotational minctracc.  Input files can be
+        in any random orientation and space.
+    """
+    if(initialTransform == "lsq6_large_rotations"):
+        lsq6module = LSQ6RotationalMinctracc(inputFiles,
+                                             targetPipeFH,
+                                             initial_model = initModel,
+                                             lsq6OutputDir = lsq6Directory,
+                                             large_rotation_parameters = largeRotationParameters,
+                                             large_rotation_range      = largeRotationRange,
+                                             large_rotation_interval   = largeRotationInterval)
+    return lsq6module
+
+class NonUniformityCorrection(object):
+    """
+        
+        * inputFiles: a list of either strings or file handlers.  
+        
+        * multiple input files possible
+        
+        * group name: if useOriginalInput                      -> nuc-native
+                      if also resampleNUCtoLSQ6Space           -> nuc-lsq6
+                      if not(useOriginalInput)                 -> nuc
+        
+        if the input files are file handlers, a "nuc" group will be added
+        
+        * initial model can be given in order to use its mask 
+            - assumption: if an initial model is provided, the input files are assumed
+            to be registered towards the standard space file
+        
+        #TODO: you should use the following boolean only if the file is not in its original
+        space anymore 
+        
+        * useOriginalInput: this is a boolean argument which determines whether we should
+                          use the original input file (file_handle.inputFileName).  If this
+                          option is set to False, the last base volume will be used.  I.e.
+                          there are two spaces allowed to be used:
+                          
+                          - native/inputfile
+                          - last base volume 
+        
+        * mask... a single mask used for all? not yet determined...
+        * if the input files have masks associated with them, the assumption is that all
+          input files have an input mask (we only test the first file for the presence
+          of an original input mask)
+        
+        masking options...
+            - if an initial model is given, the assumption is that the input files
+            have been registered towards the "standard" space.  This space is required
+            to have a mask.  This is the mask we will for the non uniformity correction
+            if no individual mask is given.  It will need to be resampled to the native
+            space of the input file if *useOriginalInput* is set to True
+        
+    """
+    def __init__(self,
+                 inputFiles,
+                 singlemask = None,
+                 useOriginalInput = True,
+                 resampleNUCtoLSQ6 = False,
+                 initial_model = None):
+        # TODO: allow for a single single target instead of using an initial model??
+        self.p                 = Pipeline()
+        self.inputs            = inputFiles
+        self.initial_model     = initial_model
+        self.useOriginalInput  = useOriginalInput
+        self.resampleNUCtoLSQ6 = resampleNUCtoLSQ6
+        self.singlemask        = singlemask
+        self.masks             = None
+        self.inputFilenames    = []
+        self.impFields         = []
+        self.NUCorrected       = []
+        self.NUCorrectedLSQ6   = []
+        self.NUCorrectedLSQ6Masks = []
+        
+        # check consistency in input files
+        if(self.singlemask != None):
+            if(rf.isFileHandler(self.inputs[0]) and not(rf.isFileHandler(self.singlemask))):
+                print "Error: the input files and single mask file for NonUniformityCorrection should be the same type. Here, inputs are file handlers, but the single mask is not (perhaps you wanted to associate this mask with the input files using the file handler?).\n"
+                sys.exit()
+            if(not(rf.isFileHandler(self.inputs[0])) and rf.isFileHandler(self.singlemask)):
+                print "Error: the input files and single mask file for NonUniformityCorrection should be the same type. Here, inputs are not file handlers, but the single mask is.\n"
+                sys.exit()
+        
+        if(not(self.useOriginalInput) and self.resampleNUCtoLSQ6):
+            print "Warning: in NonUniformityCorrection the native files are not used, however resampleNUCtoLSQ6Space is specified. This is not necessary. Disabling this latter option. Only the \"nuc\" group will be added if file handlers are used.\n"
+            self.resampleNUCtoLSQ6 = False
+        
+        # add the first group name (this will either be "nuc" or "nuc-native"
+        if(rf.isFileHandler(self.inputs[0])):
+            self.addInitialNUCGroupToInputs()
+        
+        # now that a new group has been added, we can use the LastBasevol in case of file handlers
+        filenames = []
+        if(rf.isFileHandler(self.inputs[0])):
+            for inputFH in self.inputs:
+                filenames.append(inputFH.getLastBasevol())
+        else:
+            # input files are string
+            for inputFile in self.inputs:
+                filenames.append(inputFile)
+        self.inputFilenames = filenames
+        
+        # deal with masking
+        if(self.singlemask != None):
+            # a mask is provided that should be used for all input files
+            self.masks = [self.singlemask] * len(self.inputs)
+        elif(rf.isFileHandler(self.inputs[0])):
+            if(self.inputs[0].getMask() != None):
+                # the input files have a mask associated with them which we will use
+                for inputFH in self.inputs:
+                    self.masks.append(inputFH.getMask())
+            elif(self.initial_model != None):
+                self.setupMaskArrayWithInitialModel()
+            else:
+                pass
+        else:
+            pass
+        
+        self.estimateNonUniformity()
+        self.evaluateNonUniformity()
+        
+        if(self.resampleNUCtoLSQ6):
+            self.resampleNUCtoLSQ6Space()
+    
+    def addInitialNUCGroupToInputs(self):
+        """
+            adds the initial group to the file handlers.  If useOriginalInput is True, 
+            the group name will be "nuc-native", otherwise it will be "nuc".
+            
+            Be carefule here: if we use the original file as the target for the non uniformity correction,
+            the new group needs to be instantiated using that file as well as with its mask.
+        """
+        # create a new group to indicate in the output file names that this is the lsq6 stage
+        for i in range(len(self.inputs)):
+            if(self.useOriginalInput):
+                self.inputs[i].newGroup(groupName="nuc-native", inputVolume=self.inputs[i].inputFileName, mask=self.inputs[i].mask)
+            else:
+                self.inputs[i].newGroup(groupName="nuc")
+    
+    def addLSQ6NUCGroupToInputs(self):
+        """
+            The assumption is that the input files have been corrected for non uniformity in native space.  This function
+            is called just before these corrected files will be resampled to LSQ6 space.  
+            
+            The group name will be "nuc-lsq6"
+        """
+        # create a new group to indicate in the output file names that this is the lsq6 stage
+        for i in range(len(self.inputs)):
+            self.inputs[i].newGroup(groupName="nuc-lsq6", inputVolume=self.NUCorrected[i], mask=self.inputs[i].mask)
+    
+    
+    def setupMaskArrayWithInitialModel(self):
+        """
+            This function is called when no individual masks are present for the input
+            files.  However, there is an initial model available, and thus we are able
+            to use the mask that is part of that.
+            
+            The mask to be used is the "standard space mask".  Whether or not that 
+            mask needs to be resampled, depends on whether we are dealing with the
+            non uniformity correction in the native image space (useOriginalInput)
+        """
+        masks = []
+        if(self.useOriginalInput):
+            # for each input file, we need to resample the standard space mask
+            # to its native space
+            standardModelFile = self.initial_model[0]
+            for inputFH in self.inputs:
+                # current assumption is that an lsq6 registration is performed and an lsq6 group is present
+                # TODO: allow for differently named 6 paramter groups
+                indexLsq6 = None 
+                for index, value in inputFH.groupNames.iteritems():
+                    if(value == "lsq6"):
+                        indexLsq6 = index
+                if(indexLsq6 != None):
+                    # find the last transform that is associated with the standard space model
+                    if(inputFH.groupedFiles[indexLsq6].transforms.has_key(standardModelFile)):
+                        transformToStandardModel = inputFH.getLastXfm(standardModelFile, groupIndex=indexLsq6)
+                        rs = ma.mincresampleMask(standardModelFile, 
+                                                 inputFH, 
+                                                 likeFile=inputFH, 
+                                                 argArray=["-invert"], 
+                                                 transform=transformToStandardModel, 
+                                                 outputLocation=inputFH)
+                        rs.name = "mincresample mask for NUC"
+                        self.p.addStage(rs)
+                        masks.append(rs.outfile)
+                        # add this mask to the file handler of the input file (to the original)
+                        inputFH.mask = rs.outfile
+                else:
+                    print "Error: could not determine the transformation towards the standard-space initial model using the lsq6 group. Exiting for now.\n"
+                    sys.exit()
+        else:
+            # if we are not using the original files, we must be using the last input files.  Given that the assumption is 
+            # that the input files are aligned to the standard space, we can simply use that mask for all files
+            masks = [self.initial_model[0].mask] * len(self.inputs)
+        self.masks = masks
+            
+    def estimateNonUniformity(self):
+        """
+            more info... create the imp non uniformity estimation
+        """
+        # TODO: base things on the input file size (and allow for overwritten defaults)
+        impFields = []
+        for i in range(len(self.inputs)):
+            inputName   = self.inputFilenames[i]
+            outFileBase = fh.removeBaseAndExtension(inputName) + "_nu_estimate.imp"
+            outFileDir  = self.inputs[i].tmpDir
+            outFile     = fh.createBaseName(outFileDir, outFileBase)
+            impFields.append(outFile)
+            cmd  = ["nu_estimate", "-clobber"]
+            cmd += ["-distance", "8"]
+            cmd += ["-iterations", "100"]
+            cmd += ["-stop", "0.0001"]
+            cmd += ["-fwhm", "0.15"]
+            cmd += ["-shrink", "4"]
+            cmd += ["-lambda", "5.0e-02"]
+            if(self.masks):
+                mask = self.masks[i]
+                cmd += ["-mask", InputFile(mask)]
+            cmd += [InputFile(inputName)]
+            cmd += [OutputFile(outFile)]
+            nu_estimate = CmdStage(cmd)
+            nu_estimate.colour = "red"
+            nu_estimate.setLogFile(LogFile(fh.logFromFile(self.inputs[i].logDir, outFile)))
+            self.p.addStage(nu_estimate)
+        self.impFields = impFields
+
+    def evaluateNonUniformity(self):
+        """
+            more info... evaluate / apply the imp field from the 
+            non uniformity estimation to the input files 
+        """
+        nuCorrected = []
+        for i in range(len(self.inputs)):
+            impField = self.impFields[i]
+            inputName   = self.inputFilenames[i]
+            outFileBase = fh.removeBaseAndExtension(inputName) + "_nu_corrected.mnc"
+            outFileDir  = self.inputs[i].resampledDir
+            outFile     = fh.createBaseName(outFileDir, outFileBase)
+            nuCorrected.append(outFile)
+            cmd  = ["nu_evaluate", "-clobber"]
+            cmd += ["-mapping", InputFile(impField)]
+            cmd += [InputFile(inputName)]
+            cmd += [OutputFile(outFile)]
+            nu_evaluate = CmdStage(cmd)
+            nu_evaluate.colour = "blue"
+            nu_evaluate.setLogFile(LogFile(fh.logFromFile(self.inputs[i].logDir, outFile)))
+            self.p.addStage(nu_evaluate)
+        self.NUCorrected = nuCorrected
+
+
+    def resampleNUCtoLSQ6Space(self):
+        """
+            This function is called when useOriginalInput is True.  That means that the 
+            non uniformity correction was applied to the native files.  In order to get
+            to the native space, we used the "lsq6" group.  We will use that group again 
+            now to resample the NUC file back to lsq6 space.
+            
+            Can only be called on file handlers 
+        """
+        if(not(rf.isFileHandler(self.inputs[0]))):
+            print "Error: resampleNUCtoLSQ6Space can only be called on file handlers. Goodbye.\n"
+            sys.exit()
+        
+        if(self.initial_model == None):
+            print "Error: resampleNUCtoLSQ6Space does not know what to do without an initial model at this moment. Sorry. Goodbye.\n"
+            sys.exit()
+            
+        # create a new group for these files
+        self.addLSQ6NUCGroupToInputs()
+            
+        nuCorrectedLSQ6 = []
+        nuCorrectedLSQ6Masks = []
+        standardModelFile = self.initial_model[0]
+        for inputFH in self.inputs:
+                # find the lsq6 group again
+                indexLsq6 = None 
+                for index, value in inputFH.groupNames.iteritems():
+                    if(value == "lsq6"):
+                        indexLsq6 = index
+                if(indexLsq6 != None):
+                    # find the last transform that is associated with the standard space model
+                    if(inputFH.groupedFiles[indexLsq6].transforms.has_key(standardModelFile)):
+                        transformToStandardModel = inputFH.getLastXfm(standardModelFile, groupIndex=indexLsq6)
+                        outFileBase = fh.removeBaseAndExtension(inputFH.getLastBasevol()) + "_lsq6.mnc"
+                        outFileDir  = inputFH.resampledDir
+                        outFile     = fh.createBaseName(outFileDir, outFileBase)
+                        nuCorrectedLSQ6.append(outFile)
+#                         rs = ma.mincresample(inputFH, 
+#                                              standardModelFile, 
+#                                              likeFile=standardModelFile,  
+#                                              transform=transformToStandardModel,
+#                                              output=outFile,
+#                                              argArray=["-sinc"])
+#                         rs.name = "mincresample NUC to LSQ6"
+#                         print rs.cmd 
+#                         self.p.addStage(rs)
+                        resamplings = ma.mincresampleFileAndMask(inputFH,
+                                                                 standardModelFile,
+                                                                 nameForStage="mincresample NUC to LSQ6",
+                                                                 likeFile=standardModelFile,  
+                                                                 transform=transformToStandardModel,
+                                                                 output=outFile,
+                                                                 argArray=["-sinc"])
+                        nuCorrectedLSQ6Masks.append(resamplings.outputFilesMask[0])
+                        self.p.addPipeline(resamplings.p)
+        self.NUCorrectedLSQ6 = nuCorrectedLSQ6
+        self.NUCorrectedLSQ6Masks = nuCorrectedLSQ6Masks
+
+    def finalize(self):
+        """
+            Sets the last base volume based on how this object was called/created.  If the files have
+            been resampled to LSQ6 space, the last base volume should be NUCorrectedLSQ6, otherwise
+            it should be NUCorrected
+        """
+        if(self.resampleNUCtoLSQ6):
+            for i in range(len(self.inputs)):
+                # the NUC (and potentially the mask) files have been
+                # resampled to LSQ6 space.  That means that we can set
+                # the last basevol using the last resampled files (i.e.,
+                # no arguments to setLastBasevol)
+                self.inputs[i].setLastBasevol()
+        else:
+            for i in range(len(self.inputs)):
+                # specify the last basevol explicitly, because applying
+                # the non uniformity correction does not resampled the file 
+                self.inputs[i].setLastBasevol(self.NUCorrected[i])
+                if(self.masks != None):
+                    self.inputs[i].setMask(self.masks[i])    
+
+class IntensityNormalization(object):
+    """
+        * mask potential single mask to be used for all input files 
+        
+        * inputFiles can be provided as a list of strings, or a list
+        of file handlers
+        
+        * if the input files are file handlers, a group inorm will be added
+        
+        * possible options for the method (for ease of use they are simply the flag 
+        used for inormalize):
+            - "-ratioOfMeans"
+            - "-ratioOfMedians"
+            - "-meanOfRatios"
+            - "-meanOfLogRatios"
+            - "-medianOfRatios"
+
+        * resampleINORMtoLSQ6 - 
+        
+         === can only be called on file handlers ===
+         === needs an initial model in order to work ===
+          
+        In a way this is a special option for the class.  The intensity normalization
+        class can be used on any kind of input at any stage in a pipeline.  But when running an
+        image registration pipeline we use the intensity normalization right after the input
+        files have been registered using 6 parameters (lsq6).  When the registration is run using
+        an initial model, there will be a mask present, and after aligning the input files to that
+        model, we can use that mask for the intensity normalization.  To reduce the amount of 
+        resampling error in the entire pipeline, the intensity normalization (as well as the non-
+        uniformity correction) should be applied in native space.  If that is the situation that
+        this class is called in, resampleINORMtoLSQ6 can be set to True, and the normalized file
+        will be resampled in lsq6 space, in order to continue there with the lsq12 stage.  Keep in
+        mind that after lsq12, the native inormalized (and non-uniformity correction) file should 
+        be resampled to lsq12.  That way we avoid one resampling step, i.e., wrong way:
+        
+        native-normalized -> native-normalized-in-lsq6 -> native-normalized-in-lsq6-in-lsq12 (when starting non linear stages)
+        
+        right way:
+        
+        native-normalized -> native-normalized-in-lsq6  (when starting lsq12)
+        native-normalized -> native-normlaized-in-lsq12 (when starting non linear stages)
+    """
+    def __init__(self,
+                 inputFiles,
+                 mask = None,
+                 inorm_const = 1000,
+                 method = "-ratioOfMedians",
+                 resampleINORMtoLSQ6 = False,
+                 initial_model = None):
+        self.p                   = Pipeline()
+        self.inputs              = inputFiles
+        self.masks               = None
+        self.inormconst          = inorm_const
+        self.method              = method
+        self.resampleINORMtoLSQ6 = resampleINORMtoLSQ6
+        self.initial_model       = initial_model
+        self.INORM               = []
+        self.INORMLSQ6           = []
+        self.INORMLSQ6Masks      = []
+        self.inputFilenames      = []
+        
+        # deal with input files
+        if(rf.isFileHandler(self.inputs[0])):
+            for inputFH in self.inputs:
+                self.inputFilenames.append(inputFH.getLastBasevol())
+            self.setINORMGroupToInputs()
+        else:
+            for inputName in self.inputs:
+                self.inputFilenames.append(inputName)
+        
+        # once again, sort out the masking business 
+        if(mask != None):
+            self.masks = [mask] * len(self.inputs)
+        else:
+            # check whether the input files have masks associated with
+            # them already
+            if(self.inputs[0].getMask() != None):
+                masks = []
+                for i in range(len(self.inputs)):
+                    masks.append(self.inputs[i].getMask())
+                self.masks = masks
+                
+        # add the "inorm" group name
+        if(rf.isFileHandler(self.inputs[0])):
+            self.setINORMGroupToInputs()
+    
+        self.runNormalization()
+        
+        if(self.resampleINORMtoLSQ6):
+            self.resampleINORMtoLSQ6Space()
+        
+        if(rf.isFileHandler(self.inputs[0])):
+            self.setINORMasLastBaseVolume()
+    
+    def setINORMGroupToInputs(self):
+        """
+            make sure that by default any input file handler is 
+            given the group "inorm"
+        """
+        # create a new group to indicate in the output file names that this is the lsq6 stage
+        for i in range(len(self.inputs)):
+            self.inputs[i].newGroup(groupName="inorm")    
+        
+    def addLSQ6INORMGroupToInputs(self):
+        """
+            The assumption is that the input files have been intensity normalized in native space.  This function
+            is called just before these normalized files will be resampled to LSQ6 space.  
+            
+            The group name will be "inorm-lsq6"
+        """
+        # create a new group to indicate in the output file names that this is the lsq6 stage
+        for i in range(len(self.inputs)):
+            self.inputs[i].newGroup(groupName="inorm-lsq6", inputVolume=self.INORM[i], mask=self.inputs[i].getMask())
+        
+        
+    def runNormalization(self):
+        """
+        """
+        normalized = []
+        for i in range(len(self.inputFilenames)):    
+            inputName   = self.inputFilenames[i]
+            outFileBase = fh.removeBaseAndExtension(inputName) + "_inormalized.mnc"
+            outFileDir  = self.inputs[i].resampledDir
+            outFile     = fh.createBaseName(outFileDir, outFileBase)
+            normalized.append(outFile)
+            cmd  = ["inormalize", "-clobber"]
+            cmd += ["-const", self.inormconst]
+            cmd += [self.method]
+            if(self.masks != None):
+                cmd += ["-mask", self.masks[i]]
+            cmd += [InputFile(inputName)]
+            cmd += [OutputFile(outFile)]
+            inormalize = CmdStage(cmd)
+            inormalize.colour = "yellow"
+            inormalize.setLogFile(LogFile(fh.logFromFile(self.inputs[i].logDir, outFile)))
+            self.p.addStage(inormalize)
+        self.INORM = normalized
+
+    def resampleINORMtoLSQ6Space(self):
+        """
+            Can only be called on file handlers
+            
+            The assumption is that an lsq6 registration has been performed, and that there
+            is a transformation from the native input file to the standard space in the 
+            initial model.  
+        """
+        if(not(rf.isFileHandler(self.inputs[0]))):
+            print "Error: resampleINORMtoLSQ6Space can only be called on file handlers. Goodbye.\n"
+            sys.exit()
+        
+        if(self.initial_model == None):
+            print "Error: resampleINORMtoLSQ6Space does not know what to do without an initial model at this moment. Sorry. Goodbye.\n"
+            sys.exit()
+            
+        # create a new group for these files
+        self.addLSQ6INORMGroupToInputs()
+            
+        INORMLSQ6 = []
+        INORMLSQ6Masks = []
+        standardModelFile = self.initial_model[0]
+        for inputFH in self.inputs:
+                # find the lsq6 group again
+                indexLsq6 = None 
+                for index, value in inputFH.groupNames.iteritems():
+                    if(value == "lsq6"):
+                        indexLsq6 = index
+                if(indexLsq6 != None):
+                    # find the last transform that is associated with the standard space model
+                    if(inputFH.groupedFiles[indexLsq6].transforms.has_key(standardModelFile)):
+                        transformToStandardModel = inputFH.getLastXfm(standardModelFile, groupIndex=indexLsq6)
+                        outFileBase = fh.removeBaseAndExtension(inputFH.getLastBasevol()) + "_lsq6.mnc"
+                        outFileDir  = inputFH.resampledDir
+                        outFile     = fh.createBaseName(outFileDir, outFileBase)
+                        INORMLSQ6.append(outFile)
+#                         rs = ma.mincresample(inputFH, 
+#                                              standardModelFile, 
+#                                              likeFile=standardModelFile,  
+#                                              transform=transformToStandardModel,
+#                                              output=outFile,
+#                                              argArray=["-sinc"])
+#                         rs.name = "mincresample INORM to LSQ6"
+#                         print rs.cmd 
+#                         self.p.addStage(rs)
+                        resamplings = ma.mincresampleFileAndMask(inputFH, 
+                                                                 standardModelFile, 
+                                                                 nameForStage = "mincresample INORM to LSQ6",
+                                                                 likeFile=standardModelFile,  
+                                                                 transform=transformToStandardModel,
+                                                                 output=outFile,
+                                                                 argArray=["-sinc"])
+                        INORMLSQ6Masks.append(resamplings.outputFilesMask[0])
+                        self.p.addPipeline(resamplings.p)
+        self.INORMLSQ6 = INORMLSQ6
+        self.INORMLSQ6Masks = INORMLSQ6Masks
+
+    def setINORMasLastBaseVolume(self):
+        if(self.resampleINORMtoLSQ6):
+            for i in range(len(self.inputs)):
+                # the INORM (and potentially the mask) files have been
+                # resampled to LSQ6 space.  That means that we can set
+                # the last basevol using the last resampled files (i.e.,
+                # no arguments to setLastBasevol)
+                self.inputs[i].setLastBasevol()                
+        else:
+            for i in range(len(self.inputs)):
+                self.inputs[i].setLastBasevol(self.INORM[i])
+        
+        
 
 class LSQ6Base(object):
     """
@@ -328,10 +901,11 @@ class LSQ6Base(object):
                                              newxfm,
                                              logFile))
     
-    def resampleInputFiles(self):
+    def resampleInputFilesAndSetLastBasevol(self):
         """
-            resample input files using the last transformation and set last base volumes 
-            to be resampled lsq6 volumes. 
+            resample input files using the last transformation, and then
+            set the last basevolume for the inputfile to be the output
+            of the mincresample call
         """
         for inputfile in self.inputs:
             likeFileForResample =  self.target
@@ -340,11 +914,16 @@ class LSQ6Base(object):
                 if(self.initial_model[1] != None):
                     likeFileForResample = self.initial_model[0]
                     targetFHforResample = self.initial_model[0]
-            rs = ma.mincresample(inputfile,targetFHforResample,likeFile=likeFileForResample)
-            self.filesToAvg.append(rs.outputFiles[0])
-            self.p.addStage(rs)
-            #TODO: The following line might be removed when NUC is sorted out. 
-            inputfile.setLastBasevol(rs.outputFiles[0])
+            resamplings = ma.mincresampleFileAndMask(inputfile,
+                                                     targetFHforResample,
+                                                     likeFile=likeFileForResample,
+                                                     argArray=["-sinc"])
+            self.filesToAvg.append(resamplings.outputFiles[0])
+            self.p.addPipeline(resamplings.p)
+            # no arguments need to be provided to setLastBasevol: the last
+            # resampled file will be used. If a mask was also resampled
+            # during the last stage, this will be updated as well.
+            inputfile.setLastBasevol()
                 
 
     def createAverage(self):
@@ -368,7 +947,7 @@ class LSQ6Base(object):
             the resampling of input files and create an average 
         """
         self.addNativeToStandardFromInitModel()
-        self.resampleInputFiles()
+        self.resampleInputFilesAndSetLastBasevol()
         self.createAverage()
 
 class LSQ6RotationalMinctracc(LSQ6Base):
@@ -398,38 +977,61 @@ class LSQ6RotationalMinctracc(LSQ6Base):
                  targetFile,
                  initial_model = None,
                  lsq6OutputDir = None,
-                 large_rotation_parameters="10,4,10,8,50,10"):
+                 large_rotation_parameters="10,4,10,8",
+                 large_rotation_range     = 50,
+                 large_rotation_interval  = 10):
         # initialize all the defaults in parent class
         LSQ6Base.__init__(self, inputFiles, targetFile, initial_model, lsq6OutputDir)
         
-        self.parameters     = large_rotation_parameters
+        self.parameters        = large_rotation_parameters
+        self.rotation_range    = large_rotation_range
+        self.rotation_interval = large_rotation_interval
         
     def createLSQ6Transformation(self):    
         # We should take care of the appropriate amount of blurring
-        # for the input files here 
-        parameterList = self.parameters.split(',')
-        blurFactor= float(parameterList[0])
+        # for the input files here
         
-        blurAtResolution = -1
         # assumption: all files have the same resolution, so we take input file 1
         highestResolution = rf.getFinestResolution(self.inputs[0])
-        if(blurFactor != -1):
-            blurAtResolution = blurFactor * highestResolution
+        blurAtResolution = -1
+        resampleStepFactor = -1
+        registrationStepFactor = -1
+        wTranslationsFactor = -1
+        
+        # first... if we are dealing with mouse brains, we should set the defaults
+        # not on the actual resolution of the files, but on the best parameter set
+        # for mouse brains. Still we have to feed those in as factors, so we have
+        # to do a bit of a silly conversion from resolution to factors now 
+        if(self.parameters == "mousebrain"):
+            # the amount of blurring should simply be 0.56 mm
+            blurAtResolution = 0.56
+            # the resample stepsize should be 0.224
+            resampleStepFactor = 0.224 /  highestResolution
+            # the registration stepsize should be 0.56
+            registrationStepFactor = 0.56 / highestResolution
+            # w_translations should be 0.448
+            wTranslationsFactor = 0.448 / highestResolution
+        else:
+            parameterList = self.parameters.split(',')
+            blurFactor= float(parameterList[0])
+            if(blurFactor != -1):
+                blurAtResolution = blurFactor * highestResolution
+            resampleStepFactor     = float(parameterList[1])
+            registrationStepFactor = float(parameterList[2])
+            wTranslationsFactor    = float(parameterList[3])
         
         self.p.addStage(ma.blur(self.target, fwhm=blurAtResolution))
         
-        for inputFH in self.inputs:
-            
+        for inputFH in self.inputs:    
             self.p.addStage(ma.blur(inputFH, fwhm=blurAtResolution))
-        
             self.p.addStage((ma.RotationalMinctracc(inputFH,
                                                     self.target,
                                                     blur               = blurAtResolution,
-                                                    resample_step      = float(parameterList[1]),
-                                                    registration_step  = float(parameterList[2]),
-                                                    w_translations     = float(parameterList[3]),
-                                                    rotational_range   = int(parameterList[4]),
-                                                    rotational_interval= int(parameterList[5]) )))
+                                                    resample_step      = resampleStepFactor,
+                                                    registration_step  = registrationStepFactor,
+                                                    w_translations     = wTranslationsFactor,
+                                                    rotational_range   = self.rotation_range,
+                                                    rotational_interval= self.rotation_interval )))
 
 
 class LSQ6HierarchicalMinctracc(LSQ6Base):
@@ -638,7 +1240,6 @@ class LSQ6HierarchicalMinctracc(LSQ6Base):
                                   step        = self.step[i],
                                   gradient    = self.gradient[i],
                                   linearparam = "lsq6") 
-                print mt.cmd
                 self.p.addStage(mt)
 
 
