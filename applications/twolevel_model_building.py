@@ -1,19 +1,17 @@
 #!/usr/bin/env python
 
-
-
 from pydpiper.application import AbstractApplication
 from pydpiper.pipeline import CmdStage, InputFile, OutputFile, LogFile
 import pydpiper.file_handling as fh
-import pydpiper_apps.minc_tools.registration_functions as rf
-import pydpiper_apps.minc_tools.registration_file_handling as rfh
-import pydpiper_apps.minc_tools.minc_modules as mm
-import pydpiper_apps.minc_tools.NLIN as nl
-import pydpiper_apps.minc_tools.minc_atoms as ma
-import pydpiper_apps.minc_tools.stats_tools as st
-import pydpiper_apps.minc_tools.option_groups as og
-import pydpiper_apps.minc_tools.hierarchical_minctracc as hmt
-import pydpiper_apps.minc_tools.old_MBM_interface_functions as ombm
+import atoms_and_modules.registration_functions as rf
+import atoms_and_modules.registration_file_handling as rfh
+import atoms_and_modules.minc_modules as mm
+import atoms_and_modules.NLIN as nl
+import atoms_and_modules.minc_atoms as ma
+import atoms_and_modules.stats_tools as st
+import atoms_and_modules.option_groups as og
+import atoms_and_modules.hierarchical_minctracc as hmt
+import atoms_and_modules.old_MBM_interface_functions as ombm
 import Pyro
 from optparse import OptionGroup
 from datetime import date

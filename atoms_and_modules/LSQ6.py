@@ -3,9 +3,9 @@
 from pydpiper.application import AbstractApplication
 from pydpiper.pipeline import Pipeline, CmdStage, InputFile, OutputFile, LogFile
 import pydpiper.file_handling as fh
-import pydpiper_apps.minc_tools.registration_functions as rf
-import pydpiper_apps.minc_tools.registration_file_handling as rfh
-import pydpiper_apps.minc_tools.minc_atoms as ma
+import atoms_and_modules.registration_functions as rf
+import atoms_and_modules.registration_file_handling as rfh
+import atoms_and_modules.minc_atoms as ma
 from os.path import abspath
 from optparse import OptionGroup
 import logging

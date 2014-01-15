@@ -5,10 +5,10 @@ from optparse import OptionGroup
 from pydpiper.pipeline import Pipeline
 from pydpiper.file_handling import createBaseName, createLogFile, removeBaseAndExtension
 from pydpiper.application import AbstractApplication
-from pydpiper_apps.minc_tools.registration_file_handling import RegistrationPipeFH
-import pydpiper_apps.minc_tools.registration_functions as rf
-from pydpiper_apps.minc_tools.minc_atoms import blur, mincresample, mincANTS, mincAverage, minctracc
-from pydpiper_apps.minc_tools.stats_tools import addStatsOptions, CalcStats
+from atoms_and_modules.registration_file_handling import RegistrationPipeFH
+import atoms_and_modules.registration_functions as rf
+from atoms_and_modules.minc_atoms import blur, mincresample, mincANTS, mincAverage, minctracc
+from atoms_and_modules.stats_tools import addStatsOptions, CalcStats
 import sys
 import csv
 import logging

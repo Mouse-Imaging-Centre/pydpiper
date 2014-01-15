@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 
 from pydpiper.pipeline import CmdStage, Pipeline
-from pydpiper_apps.minc_tools.registration_functions import isFileHandler
-import pydpiper_apps.minc_tools.registration_functions as rf
+from atoms_and_modules.registration_functions import isFileHandler
+import atoms_and_modules.registration_functions as rf
 from os.path import abspath, basename, join
 from os import curdir
 import pydpiper.file_handling as fh

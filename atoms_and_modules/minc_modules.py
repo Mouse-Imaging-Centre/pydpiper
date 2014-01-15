@@ -1,10 +1,10 @@
 #!/usr/bin/env python
 
 from pydpiper.pipeline import Pipeline
-import pydpiper_apps.minc_tools.LSQ12 as lsq12
-import pydpiper_apps.minc_tools.minc_atoms as ma
-import pydpiper_apps.minc_tools.registration_file_handling as rfh
-import pydpiper_apps.minc_tools.stats_tools as st
+import atoms_and_modules.LSQ12 as lsq12
+import atoms_and_modules.minc_atoms as ma
+import atoms_and_modules.registration_file_handling as rfh
+import atoms_and_modules.stats_tools as st
 import pydpiper.file_handling as fh
 from pyminc.volumes.factory import volumeFromFile
 

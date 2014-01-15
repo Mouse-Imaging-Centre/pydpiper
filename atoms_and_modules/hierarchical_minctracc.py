@@ -1,9 +1,6 @@
-from pydpiper.pipeline import Pipeline, CmdStage, InputFile, OutputFile, LogFile
-import pydpiper_apps.minc_tools.minc_atoms as ma
-import pydpiper_apps.minc_tools.minc_modules as mm
-import pydpiper_apps.minc_tools.LSQ12 as lsq12
-import pydpiper.file_handling as fh
-import sys
+from pydpiper.pipeline import Pipeline
+import atoms_and_modules.minc_atoms as ma
+import atoms_and_modules.LSQ12 as lsq12
 
 """LinearHierarchicalMinctracc is currently broken/not fully tested."""
 

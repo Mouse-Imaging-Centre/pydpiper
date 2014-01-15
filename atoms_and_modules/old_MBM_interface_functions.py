@@ -2,7 +2,7 @@
 
 from pydpiper.pipeline import Pipeline, CmdStage, InputFile, OutputFile, LogFile
 import pydpiper.file_handling as fh
-import pydpiper_apps.minc_tools.registration_file_handling as rfh
+import atoms_and_modules.registration_file_handling as rfh
 import Pyro
 from os.path import abspath
 from os import walk
