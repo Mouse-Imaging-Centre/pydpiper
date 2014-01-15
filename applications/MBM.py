@@ -1,12 +1,12 @@
 #!/usr/bin/env python
 
 from pydpiper.application import AbstractApplication
-import pydpiper_apps.minc_tools.registration_functions as rf
-import pydpiper_apps.minc_tools.registration_file_handling as rfh
-import pydpiper_apps.minc_tools.LSQ6 as lsq6
-import pydpiper_apps.minc_tools.LSQ12 as lsq12
-import pydpiper_apps.minc_tools.NLIN as nlin
-import pydpiper_apps.minc_tools.stats_tools as st
+import atoms_and_modules.registration_functions as rf
+import atoms_and_modules.registration_file_handling as rfh
+import atoms_and_modules.LSQ6 as lsq6
+import atoms_and_modules.LSQ12 as lsq12
+import atoms_and_modules.NLIN as nlin
+import atoms_and_modules.stats_tools as st
 import Pyro
 import os
 from optparse import OptionGroup

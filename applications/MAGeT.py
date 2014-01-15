@@ -2,9 +2,9 @@
 
 from pydpiper.application import AbstractApplication
 import pydpiper.file_handling as fh
-from pydpiper_apps.minc_tools.registration_file_handling import RegistrationPipeFH
-from pydpiper_apps.minc_tools.registration_functions import initializeInputFiles, addGenRegOptionGroup
-from pydpiper_apps.MAGeT.MAGeT_modules import MAGeTMask, MAGeTRegister, voxelVote, addMAGeTOptionGroup
+from atoms_and_modules.registration_file_handling import RegistrationPipeFH
+from atoms_and_modules.registration_functions import initializeInputFiles, addGenRegOptionGroup
+from atoms_and_modules.MAGeT_modules import MAGeTMask, MAGeTRegister, voxelVote, addMAGeTOptionGroup
 import Pyro
 from os.path import abspath, join
 import logging

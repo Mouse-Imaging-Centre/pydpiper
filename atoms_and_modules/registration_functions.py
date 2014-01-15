@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import pydpiper_apps.minc_tools.registration_file_handling as rfh
+import atoms_and_modules.registration_file_handling as rfh
 import pydpiper.file_handling as fh
 from optparse import OptionGroup
 from os.path import abspath, exists, dirname, splitext

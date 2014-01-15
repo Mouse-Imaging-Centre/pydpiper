@@ -1,6 +1,6 @@
 from pydpiper.pipeline import Pipeline, CmdStage, InputFile, OutputFile, LogFile
-from pydpiper_apps.minc_tools.registration_functions import isFileHandler
-from pydpiper_apps.minc_tools.minc_atoms import mincAverageDisp, xfmConcat
+from atoms_and_modules.registration_functions import isFileHandler
+from atoms_and_modules.minc_atoms import mincAverageDisp, xfmConcat
 import pydpiper.file_handling as fh
 from optparse import OptionGroup
 from os.path import abspath

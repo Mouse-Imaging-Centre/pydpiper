@@ -2,12 +2,11 @@
 
 from pydpiper.application import AbstractApplication
 from pydpiper.pipeline import Pipeline, InputFile, OutputFile, LogFile, CmdStage
-from pydpiper.file_handling import createSubDir, createBaseName, logFromFile
-import pydpiper_apps.minc_tools.minc_atoms as ma
-import pydpiper_apps.minc_tools.registration_functions as rf
-from pydpiper_apps.minc_tools.registration_file_handling import RegistrationPipeFH, RegistrationFHBase
+from pydpiper.file_handling import createBaseName, logFromFile
+import atoms_and_modules.minc_atoms as ma
+import atoms_and_modules.registration_functions as rf
+from atoms_and_modules.registration_file_handling import RegistrationPipeFH, RegistrationFHBase
 from optparse import OptionGroup
-from datetime import date
 from os.path import basename, abspath
 import sys
 import logging
