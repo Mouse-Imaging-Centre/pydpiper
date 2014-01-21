@@ -32,6 +32,10 @@ class RegistrationChain(AbstractApplication):
         group.add_option("--input-space", dest="input_space",
                       type="string", default="lsq6", 
                       help="Option to specify space of input-files. Can be lsq6 (default), lsq12 or native.")
+        group.add_option("--common-space-name", dest="common_name",
+                      type="string", default="common", 
+                      help="Option to specify a name for the common space. This is useful for the \
+                            creation of more readable output file names. Default is common.")
         self.parser.add_option_group(group)
         """Add option groups from specific modules"""
         rf.addGenRegOptionGroup(self.parser)
@@ -70,7 +74,7 @@ class RegistrationChain(AbstractApplication):
         
         """Create file handler for nlin average from MBM"""
         if self.options.nlin_avg:
-            nlinFH = rfh.RegistrationFHBase(abspath(self.options.nlin_avg), dirs.processedDir)
+            nlinFH = rfh.RegistrationPipeFH(abspath(self.options.nlin_avg), basedir=dirs.processedDir)
         else:
             nlinFH = None
         if self.options.mbm_dir and not isdir(abspath(self.options.mbm_dir)):
@@ -126,7 +130,11 @@ class RegistrationChain(AbstractApplication):
                     s[i+1].addAndSetXfmToUse(s[i], invXfm)
         
         """Now that all registration is complete, calculate stats, concat transforms and resample"""
-        car = mm.LongitudinalStatsConcatAndResample(subjects, avgTime, nlinFH, blurs) 
+        car = mm.LongitudinalStatsConcatAndResample(subjects, 
+                                                    avgTime, 
+                                                    nlinFH, 
+                                                    blurs, 
+                                                    self.options.common_name) 
         self.pipeline.addPipeline(car.p)
 
 if __name__ == "__main__":

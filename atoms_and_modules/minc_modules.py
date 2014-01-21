@@ -104,34 +104,37 @@ class LSQ12ANTSNlin:
 class LongitudinalStatsConcatAndResample:
     """ For each subject:
         1. Calculate stats (displacement, jacobians, scaled jacobians) between i and i+1 time points 
-        2. Concatenate transforms between ith time point and average, and ith time point and common space.
-        3. Calculate stats between ith timePoint and average time point. 
-        4. Resample all stats into common space. (i to i+1 and i to average time point)
+        2. Calculate transform from subject to common space (nlinFH) and invert it. 
+           For most subjects this will require some amount of transform concatenation. 
+        3. Calculate the stats (displacement, jacobians, scaled jacobians) from common space
+           to each timepoint.
     """
-    def __init__(self, subjects, timePoint, nlinFH, blurs):
+    def __init__(self, subjects, timePoint, nlinFH, blurs, commonName):
         
         self.subjects = subjects
         self.timePoint = timePoint
         self.nlinFH = nlinFH
         self.blurs = blurs 
+        self.commonName = commonName
         
         self.p = Pipeline()
-        self.xtcDict = {}
         
         self.buildPipeline()
     
-    def statsAndResample(self, inputFH, targetFH, xfm, useChainStats=True):
-        """Calculate stats between input and target, resample to common space using xfm.
+    def statsCalculation(self, inputFH, targetFH, xfm=None, useChainStats=True):
+        """If useChainStats=True, calculate stats between input and target. 
+           This happens for all i to i+1 calcs.
+           
            If useChainStats=False, calculate stats in the standard way, from target to
            input, but without removal of average displacement. We do this, when we go
-           from the average time point to all others. """
+           from the common space to all others. """
         if useChainStats:
             stats = st.CalcChainStats(inputFH, targetFH, self.blurs)
         else:
             stats = st.CalcStats(inputFH, targetFH, self.blurs)
         stats.fullStatsCalc()
         self.p.addPipeline(stats.p)
-        """Only resampleToCommon space if we have the appropriate transform"""
+        """If an xfm is specified, resample all to this common space"""
         if xfm:
             if not self.nlinFH:
                 likeFH = targetFH
@@ -140,28 +143,26 @@ class LongitudinalStatsConcatAndResample:
             res = resampleToCommon(xfm, inputFH, stats.statsGroup, self.blurs, likeFH)
             self.p.addPipeline(res)
     
-    def buildXfmArrays(self, inputFH, targetFH):
-        xfm = inputFH.getLastXfm(targetFH)
-        self.xfmToCommon.insert(0, xfm)
-        self.xfmToAvg.insert(0, xfm)
-    
-    def avgToNonAdjacentTimePt(self, inputFH, targetFH, xfmToNlin):
-        if len(self.xfmToAvg) > 1: 
-            if not inputFH.getLastXfm(targetFH):
-                outputName = inputFH.registerVolume(targetFH, "transforms")
-                xc = ma.xfmConcat(self.xfmToAvg, outputName, fh.logFromFile(inputFH.logDir, outputName))
-                self.p.addStage(xc)
-            # Note that if the inverse of this transform does not exist, it will 
-            # be created in statsAndResample, when calcStats is called. 
-        """Resample input to average"""
-        if not self.nlinFH:
-            likeFH = targetFH
+    def statsAndConcat(self, s, i, count, beforeAvg=True):
+        """Construct array to common space for this timepoint.
+           This builds upon arrays from previous calls."""
+        if beforeAvg:
+            xfm = s[i].getLastXfm(s[i+1]) 
         else:
-            likeFH = self.nlinFH
-        resample = ma.mincresample(inputFH, targetFH, likeFile=likeFH, argArray=["-sinc"])
-        self.p.addStage(resample)
-        """Calculate stats from target to input and resample to common space"""
-        self.statsAndResample(inputFH, targetFH, xfmToNlin, useChainStats=False)
+            xfm = s[i].getLastXfm(s[i-1])
+        self.xfmToCommon.insert(0, xfm)
+        """ Concat transforms to get xfmToCommon and calculate statistics 
+            Note that inverted transform, which is what we want, is calculated in
+            the statistics module. """
+        xtc = fh.createBaseName(s[i].transformsDir, s[i].basename + "_to_" + self.commonName + ".xfm")
+        xc = ma.xfmConcat(self.xfmToCommon, xtc, fh.createLogFile(s[i].logDir, xtc))
+        self.p.addStage(xc)
+        """Set this transform as last xfm from input to nlin and calculate nlin to s[i] stats"""
+        s[i].addAndSetXfmToUse(self.nlinFH, xtc)
+        self.statsCalculation(s[i], self.nlinFH, xfm=None, useChainStats=False)
+        """Calculate i to i+1 stats for all but final timePoint"""
+        if count - i > 1:
+            self.statsCalculation(s[i], s[i+1], xfm=xtc, useChainStats=True)
         
     def buildPipeline(self):
         for subj in self.subjects:
@@ -174,57 +175,27 @@ class LongitudinalStatsConcatAndResample:
                 self.xfmToCommon = [xfmToNlin]
             else:
                 self.xfmToCommon = []
-            self.xfmToAvg = []
-            """Do timePoint with average first if average is not final subject"""
+            """Calculate stats first from average to timpoint included in average.
+               If timepoint included in average is NOT final timepoint, also calculate
+               i to i+1 stats."""
+            self.statsCalculation(s[self.timePoint], self.nlinFH, xfm=None, useChainStats=False)
             if count - self.timePoint > 1:
-                self.statsAndResample(s[self.timePoint], s[self.timePoint+1], xfmToNlin)
+                self.statsCalculation(s[self.timePoint], s[self.timePoint+1], xfm=xfmToNlin, useChainStats=True)
             if not self.timePoint - 1 < 0:
                 """ Average happened at time point other than first time point. 
                     Loop over points prior to average."""
                 for i in reversed(range(self.timePoint)): 
-                    """Create transform arrays, concat xfmToCommon, calculate stats and resample """
-                    self.buildXfmArrays(s[i], s[i+1]) 
-                    self.xtcDict[s[i]] = fh.createBaseName(s[i].transformsDir, "xfm_to_common_space.xfm")
-                    xc = ma.xfmConcat(self.xfmToCommon, 
-                                      self.xtcDict[s[i]], 
-                                      fh.createLogFile(s[i].logDir, self.xtcDict[s[i]]))
-                    self.p.addStage(xc)
-                    self.statsAndResample(s[i], s[i+1], self.xtcDict[s[i]])
-                    if self.timePoint - i > 1:
-                        """For timePoints not directly adjacent to average, calc stats to average."""
-                        self.avgToNonAdjacentTimePt(s[i], s[self.timePoint], xfmToNlin)
-                                     
+                    self.statsAndConcat(s, i, count, beforeAvg=True)
+                         
             """ Loop over points after average. If average is at first time point, this loop
                 will hit all time points (other than first). If average is at subsequent time 
-                point, it hits all time points not covered previously."""
+                point, it hits all time points not covered previously. xfmToCommon needs to be reset."""
             if xfmToNlin:
                 self.xfmToCommon = [xfmToNlin]
             else:
-                self.xfmToCommon = [] 
-            self.xfmToAvg = []  
-            for i in range(self.timePoint + 1, count-1):
-                """Create transform arrays, concat xfmToCommon, calculate stats and resample """
-                self.buildXfmArrays(s[i], s[i-1])
-                self.xtcDict[s[i]] = fh.createBaseName(s[i].transformsDir, "xfm_to_common_space.xfm")
-                xc = ma.xfmConcat(self.xfmToCommon, 
-                                  self.xtcDict[s[i]], 
-                                  fh.createLogFile(s[i].logDir, self.xtcDict[s[i]]))
-                self.p.addStage(xc)
-                self.statsAndResample(s[i], s[i+1], self.xtcDict[s[i]])
-                if i - self.timePoint > 1:
-                    """For timePoints not directly adjacent to average, calc stats to average."""
-                    self.avgToNonAdjacentTimePt(s[i], s[self.timePoint], xfmToNlin)
-            
-            """ Handle final time point as special case , since it will not have normal stats calc
-                Only do this step if final time point is not also average time point """
-            if count - self.timePoint > 1:
-                self.buildXfmArrays(s[count-1], s[count-2])
-                self.xtcDict[s[count-1]] = fh.createBaseName(s[count-1].transformsDir, "xfm_to_common_space.xfm")
-                xc = ma.xfmConcat(self.xfmToCommon, 
-                                  self.xtcDict[s[count-1]], 
-                                  fh.createLogFile(s[count-1].logDir, self.xtcDict[s[count-1]]))
-                self.p.addStage(xc)
-                self.avgToNonAdjacentTimePt(s[count-1], s[self.timePoint], xfmToNlin)  
+                self.xfmToCommon = []  
+            for i in range(self.timePoint + 1, count):
+                self.statsAndConcat(s, i, count, beforeAvg=False)
  
 def resampleToCommon(xfm, FH, statsGroup, blurs, nlinFH):
     pipeline = Pipeline()
