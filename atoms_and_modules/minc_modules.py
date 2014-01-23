@@ -155,7 +155,7 @@ class LongitudinalStatsConcatAndResample:
             Note that inverted transform, which is what we want, is calculated in
             the statistics module. """
         xtc = fh.createBaseName(s[i].transformsDir, s[i].basename + "_to_" + self.commonName + ".xfm")
-        xc = ma.xfmConcat(self.xfmToCommon, xtc, fh.createLogFile(s[i].logDir, xtc))
+        xc = ma.xfmConcat(self.xfmToCommon, xtc, fh.logFromFile(s[i].logDir, xtc))
         self.p.addStage(xc)
         """Set this transform as last xfm from input to nlin and calculate nlin to s[i] stats"""
         s[i].addAndSetXfmToUse(self.nlinFH, xtc)
