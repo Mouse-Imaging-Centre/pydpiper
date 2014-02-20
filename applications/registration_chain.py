@@ -121,13 +121,9 @@ class RegistrationChain(AbstractApplication):
                 inverseXfm = s[i+1].getLastXfm(s[i])
                 if not inverseXfm:
                     "invert xfm and calculate"
-                    invXfmBase = fh.removeBaseAndExtension(lastXfm).split(".xfm")[0]
-                    invXfm = fh.createBaseName(s[i].transformsDir, invXfmBase + "_inverted.xfm")
-                    cmd = ["xfminvert", "-clobber", InputFile(lastXfm), OutputFile(invXfm)]
-                    invertXfm = CmdStage(cmd)
-                    invertXfm.setLogFile(LogFile(fh.logFromFile(s[i].logDir, invXfm)))
-                    self.pipeline.addStage(invertXfm)
-                    s[i+1].addAndSetXfmToUse(s[i], invXfm)
+                    xi = ma.xfmInvert(lastXfm, FH=s[i]) 
+                    self.pipeline.addStage(xi)
+                    s[i+1].addAndSetXfmToUse(s[i], xi.outputFiles[0])
         
         """Now that all registration is complete, calculate stats, concat transforms and resample"""
         car = mm.LongitudinalStatsConcatAndResample(subjects, 

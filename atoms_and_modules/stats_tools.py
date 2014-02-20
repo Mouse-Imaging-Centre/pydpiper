@@ -1,6 +1,6 @@
 from pydpiper.pipeline import Pipeline, CmdStage, InputFile, OutputFile, LogFile
 from atoms_and_modules.registration_functions import isFileHandler
-from atoms_and_modules.minc_atoms import mincAverageDisp, xfmConcat
+from atoms_and_modules.minc_atoms import mincAverageDisp, xfmConcat, xfmInvert
 import pydpiper.file_handling as fh
 from optparse import OptionGroup
 from os.path import abspath
@@ -89,15 +89,9 @@ class CalcStats(object):
         """Check for existence of inverse transform. If it doesn't exist, create it. """
         self.invXfm = self.targetFH.getLastXfm(self.inputFH)
         if not self.invXfm:
-            self.invertXfm()
-            
-    def invertXfm(self):
-        invXfm = createInvXfmName(self.inputFH, self.xfm)
-        cmd = ["xfminvert", "-clobber", InputFile(self.xfm), OutputFile(invXfm)]
-        invertXfm = CmdStage(cmd)
-        invertXfm.setLogFile(LogFile(fh.logFromFile(self.inputFH.logDir, invXfm)))
-        self.p.addStage(invertXfm)
-        self.invXfm = invXfm
+            xi = xfmInvert(self.xfm, FH=self.inputFH)
+            self.p.addStage(xi)
+            self.invXfm = xi.outputFiles[0]
     
     def setupDispArray(self, inputArray):
         """NOTE: inputArray must be an array of file handlers. """
@@ -296,12 +290,8 @@ class CalcChainStats(CalcStats):
         self.linearXfm = lpnl.outputFiles[0]
         
         """Invert the transform, so we get the linear xfm from target to input."""
-        invXfmBase = fh.removeBaseAndExtension(self.linearXfm).split(".xfm")[0]
-        invXfm = fh.createBaseName(self.inputFH.transformsDir, invXfmBase + "_inverted.xfm")
-        cmd = ["xfminvert", "-clobber", InputFile(self.linearXfm), OutputFile(invXfm)]
-        invertXfm = CmdStage(cmd)
-        invertXfm.setLogFile(LogFile(fh.logFromFile(self.inputFH.logDir, invXfm)))
-        self.p.addStage(invertXfm)
+        xi = xfmInvert(self.linearXfm, FH=self.inputFH)
+        self.p.addStage(xi)
         
         """Calculate full displacement from input to target"""
         self.calcFullDisplacement()
@@ -313,7 +303,7 @@ class CalcChainStats(CalcStats):
         """
         nlinBase = fh.removeBaseAndExtension(self.xfm) + "_pure_nlin.xfm"
         nlinXfm = fh.createBaseName(self.inputFH.tmpDir, nlinBase)
-        xc = xfmConcat([invXfm, self.xfm], nlinXfm, fh.logFromFile(self.inputFH.logDir, nlinXfm))
+        xc = xfmConcat([xi.outputFiles[0], self.xfm], nlinXfm, fh.logFromFile(self.inputFH.logDir, nlinXfm))
         self.p.addStage(xc)
         nlinDisp = mincDisplacement(self.inputFH, self.inputFH, nlinXfm)
         self.p.addStage(nlinDisp)
