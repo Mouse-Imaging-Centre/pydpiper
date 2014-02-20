@@ -3,6 +3,7 @@
 from pydpiper.pipeline import Pipeline, CmdStage, InputFile, OutputFile, LogFile
 import pydpiper.file_handling as fh
 import atoms_and_modules.registration_file_handling as rfh
+import atoms_and_modules.minc_atoms as ma
 import Pyro
 from os.path import abspath
 from os import walk
@@ -58,12 +59,9 @@ def getXfms(nlinFH, subjects, space, mbmDir, time=None):
         for inputFH in inputs:
             if fnmatch.fnmatch(inputFH.getLastBasevol(), "*" + b + "*"):
                 if space=="lsq6":
-                    invXfmBase = fh.removeBaseAndExtension(xfmToNative).split("-final-to_lsq6")[0]
-                    xfmFromNative = fh.createBaseName(inputFH.transformsDir, invXfmBase + "_lsq6-to-final.xfm")
-                    cmd = ["xfminvert", "-clobber", InputFile(xfmToNative), OutputFile(xfmFromNative)]
-                    invertXfm = CmdStage(cmd)
-                    invertXfm.setLogFile(LogFile(fh.logFromFile(inputFH.logDir, xfmFromNative)))
-                    pipeline.addStage(invertXfm)
+                    ix = ma.xfmInvert(xfmToNative, inputFH)
+                    pipeline.addStage(ix)
+                    xfmFromNative = ix.outputFiles[0]
                 nlinFH.setLastXfm(inputFH, xfmToNative)
                 inputFH.setLastXfm(nlinFH, xfmFromNative)
     return pipeline

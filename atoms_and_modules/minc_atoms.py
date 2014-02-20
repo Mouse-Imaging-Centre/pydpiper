@@ -3,7 +3,7 @@
 from pydpiper.pipeline import CmdStage, Pipeline
 from atoms_and_modules.registration_functions import isFileHandler
 import atoms_and_modules.registration_functions as rf
-from os.path import abspath, basename, join
+from os.path import abspath, basename, splitext, join
 from os import curdir
 import pydpiper.file_handling as fh
 import sys
@@ -11,7 +11,6 @@ import fnmatch
 import Pyro
 import re
 import copy
-from os.path import splitext
 
 Pyro.config.PYRO_MOBILE_CODE=1
 
@@ -948,6 +947,47 @@ class xfmConcat(CmdStage):
         self.name   = "xfm-concat"
         self.colour = "yellow"
                         
+class xfmInvert(CmdStage):
+    """
+        Calls xfminvert on a single input transformation
+        
+        __init__ arguments:  
+        Required: 1. xfm: string representing the full path of the transform to be inverted
+        Optional: 2. FH: fileHandler for assigning location for output and logFiles
+                  3. logFile (used only if a file handler is not specified. If both a logFile
+                     and file handler are specified, the logFile is ignored. If the logFile and FH
+                     are both unspecified, self.logFile will be set in CmdStage.__init__ 
+                     (or subsequently, using the setLogFile function)
+    """
+    def __init__(self, 
+                 xfm,
+                 FH=None,
+                 logFile=None):
+        CmdStage.__init__(self, None)
+        
+        try:  
+            self.xfm = xfm
+            if isFileHandler(FH):
+                invXfmBase = fh.removeBaseAndExtension(self.xfm).split(".xfm")[0]
+                self.output = fh.createBaseName(FH.transformsDir, invXfmBase + "_inverted.xfm")
+                self.logFile = fh.logFromFile(FH.logDir, self.output)
+            else:
+                invXfmBase = splitext(self.xfm)[0]
+                self.output = invXfmBase + "_inverted.xfm"
+                if logFile:
+                    self.logFile = logFile
+    
+        except:
+            print "Failed in putting together xfminvert command"
+            print "Unexpected error: ", sys.exc_info()
+                                               
+        self.finalizeCommand()
+        self.setName()
                         
-                        
-                        
+    def finalizeCommand(self):
+        self.inputFiles.append(self.xfm)
+        self.outputFiles.append(self.output)     
+        self.cmd += ["xfminvert", "-clobber", self.xfm, self.output] 
+                 
+    def setName(self):
+        self.name = "xfminvert "                 
