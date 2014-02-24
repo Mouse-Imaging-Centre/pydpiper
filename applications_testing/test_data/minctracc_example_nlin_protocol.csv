@@ -4,3 +4,4 @@
 "simplex";5;2;2;2;2;2
 "gradient";TRUE;TRUE;TRUE;TRUE;TRUE;TRUE
 "optimization";"-use_simplex";"-use_simplex";"-use_simplex";"-use_simplex";"-use_simplex";"-use_simplex"
+"w_translations";0.4;0.4;0.4;0.4;0.4;0.4

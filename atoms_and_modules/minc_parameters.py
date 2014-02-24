@@ -34,9 +34,10 @@ import sys
     
     Current classes:
         1. setMincANTSParams -- sets all parameters for a non-linear mincANTS registration
-        2. setNlinMinctraccParams -- base class for minctracc. All potential parameter options
+        2. setOneGenMincANTSParams -- class to override params for a single ANTS call. 
+        3. setNlinMinctraccParams -- base class for minctracc. All potential parameter options
            are set here. 
-        3. setLSQ12MinctraccParams -- interits from setNlinMinctraccParams. Uses only parameters
+        4. setLSQ12MinctraccParams -- interits from setNlinMinctraccParams. Uses only parameters
            and defaults that are needed for an LSQ12 registration. 
 """
 
@@ -204,7 +205,7 @@ class setNlinMinctraccParams(object):
         self.simplex = []
         self.useGradient = []
         self.optimization = []
-        #ADD TRANSLATIONS TO THIS LIST!!!!!!
+        self.w_translations = []
         
         self.defaultParams()
         if nlin_protocol:
@@ -224,6 +225,7 @@ class setNlinMinctraccParams(object):
         self.useGradient = [True, True, True, True, True, True]
         self.optimization = ["-use_simplex", "-use_simplex", "-use_simplex", "-use_simplex", 
                              "-use_simplex", "-use_simplex"]
+        self.w_translations = [0.4,0.4,0.4,0.4,0.4,0.4]
             
     def setParams(self, nlin_protocol):
         """Set parameters from specified protocol"""
@@ -271,6 +273,11 @@ class setNlinMinctraccParams(object):
                 self.optimization = []
                 for i in range(1,len(p)):
                     self.optimization.append(p[i])
+            elif p[0]=="w_translations":
+                self.w_translations = []
+                """w_translations are strings but must be converted to a float."""
+                for i in range(1,len(p)):
+                    self.w_translations.append(float(p[i]))
             else:
                 print "Improper parameter specified for minctracc protocol: " + str(p[0])
                 print "Exiting..."
@@ -316,6 +323,7 @@ class setLSQ12MinctraccParams(setNlinMinctraccParams):
             self.simplex=[i * self.fileRes for i in simplexfactors]
         
         self.useGradient=[False,True,False]
+        self.w_translations = [0.4,0.4,0.4,0.4,0.4,0.4]
         
     def getGenerations(self):
         arrayLength = len(self.blurs)

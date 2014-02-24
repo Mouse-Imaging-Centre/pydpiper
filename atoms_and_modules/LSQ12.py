@@ -149,6 +149,7 @@ class FullLSQ12(object):
         self.useGradient = params.useGradient
         self.simplex = params.simplex
         self.generations = params.generations
+        self.w_translations = params.w_translations
         
         # Create new lsq12 group for each input prior to registration
         for i in range(len(self.inputs)):
@@ -165,10 +166,11 @@ class FullLSQ12(object):
                     if inputFH != targetFH:
                         lsq12 = LSQ12(inputFH,
                                       targetFH,
-                                      self.blurs,
-                                      self.stepSize,
-                                      self.useGradient,
-                                      self.simplex)
+                                      blurs=self.blurs,
+                                      step=self.stepSize,
+                                      gradient=self.useGradient,
+                                      simplex=self.simplex,
+                                      w_translations=self.w_translations)
                         self.p.addPipeline(lsq12.p)
                         xfmsToAvg[inputFH].append(inputFH.getLastXfm(targetFH))
                 
@@ -238,6 +240,7 @@ class LSQ12(object):
                  step=[1,0.5,0.333333333333333],
                  gradient=[False,True,False],
                  simplex=[3,1.5,1],
+                 w_translations=[0.4,0.4,0.4],
                  defaultDir="tmp"):                                      
 
         # TO DO: Might want to take this out and pass in # of generations, since
@@ -257,6 +260,7 @@ class LSQ12(object):
         self.blurs = blurs
         self.gradient = gradient
         self.simplex = simplex
+        self.w_translations = w_translations
         self.defaultDir = defaultDir
             
         self.blurFiles()
@@ -279,6 +283,7 @@ class LSQ12(object):
                                        gradient=self.gradient[i],                                     
                                        linearparam="lsq12",
                                        step=self.step[i],
+                                       w_translations=self.w_translations[i],
                                        simplex=self.simplex[i])
             self.p.addStage(linearStage)
 

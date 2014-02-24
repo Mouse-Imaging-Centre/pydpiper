@@ -292,6 +292,7 @@ class NLINminctracc(NLINBase):
         self.useGradient = params.useGradient
         self.optimization = params.optimization
         self.generations = params.generations
+        self.w_translations = params.w_translations
     
     
     def addBlurStage(self, FH, i):
@@ -326,6 +327,7 @@ class NLINminctracc(NLINBase):
                         weight=0.8, 
                         stiffness=0.98,
                         similarity=0.8,
+                        w_translations = self.w_translations[i],
                         simplex=self.simplex[i])
         self.p.addStage(mta)
         if self.useGradient[i]:
