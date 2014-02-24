@@ -32,8 +32,12 @@ import sys
     Based on the length of these parameter arrays specified, the number of generations
     for a series of minctracc and mincANTS calls is set. 
     
-    In addition, the minctracc class can be used for both linear and non-linear alignment.
-    The minctracc atom handles this appropriately.  
+    Current classes:
+        1. setMincANTSParams -- sets all parameters for a non-linear mincANTS registration
+        2. setNlinMinctraccParams -- base class for minctracc. All potential parameter options
+           are set here. 
+        3. setLSQ12MinctraccParams -- interits from setNlinMinctraccParams. Uses only parameters
+           and defaults that are needed for an LSQ12 registration. 
 """
 
 class setMincANTSParams(object):
@@ -172,9 +176,28 @@ class setMincANTSParams(object):
         else:
             return arrayLength
 
-class setMinctraccParams(object):
-    def __init__(self, fileRes, reg_protocol=None):
+class setOneGenMincANTSParams(setMincANTSParams):
+    def __init__(self, fileRes, nlin_protocol=None):
+        setMincANTSParams.__init__(fileRes, nlin_protocol=nlin_protocol)
+    
+    def defaultParams(self):
+        """
+            Default mincANTS parameters for a single generation. 
+        """
+        self.blurs = [[-1, self.fileRes]] 
+        self.gradient = [[False,True]]
+        self.similarityMetric = [["CC", "CC"]]
+        self.weight = [[1,1]]
+        self.radiusHisto = [[3,3]]
+        self.transformationModel = ["SyN[0.1]"]
+        self.regularization = ["Gauss[2,1]"]
+        self.iterations = ["100x100x100x150"]
+        self.useMask = [False]
+
+class setNlinMinctraccParams(object):
+    def __init__(self, fileRes, subject_matter=None, nlin_protocol=None):
         self.fileRes = fileRes
+        self.subject_matter=subject_matter
         self.blurs = []
         self.stepSize = []
         self.iterations = []
@@ -184,8 +207,8 @@ class setMinctraccParams(object):
         #ADD TRANSLATIONS TO THIS LIST!!!!!!
         
         self.defaultParams()
-        if reg_protocol:
-            self.setParams(reg_protocol)    
+        if nlin_protocol:
+            self.setParams(nlin_protocol)    
         self.generations = self.getGenerations()
 
     def defaultParams(self):
@@ -255,7 +278,7 @@ class setMinctraccParams(object):
         
     def getGenerations(self):
         arrayLength = len(self.blurs)
-        errorMsg = "Array lengths in minctracc protocol do not match."
+        errorMsg = "Array lengths in non-linear minctracc protocol do not match."
         if (len(self.stepSize) != arrayLength 
             or len(self.iterations) != arrayLength
             or len(self.simplex) != arrayLength
@@ -265,3 +288,43 @@ class setMinctraccParams(object):
             raise
         else:
             return arrayLength
+        
+class setLSQ12MinctraccParams(setNlinMinctraccParams):
+    def __init__(self, fileRes, subject_matter, reg_protocol=None):
+        self.subject_matter = subject_matter
+        setNlinMinctraccParams.__init__(self, fileRes, 
+                                        subject_matter=subject_matter, 
+                                        nlin_protocol=reg_protocol)
+
+    def defaultParams(self):
+        """ 
+            Default minctracc parameters based on resolution of file, unless
+            a particular subject matter was provided
+        """
+        
+        blurfactors      = [       5,   10.0/3.0,         2.5]
+        stepfactors      = [50.0/3.0,   25.0/3.0,         5.5]
+        simplexfactors   = [      50,         25,    50.0/3.0]
+        
+        if(self.subject_matter == "mousebrain"):
+            self.blurs =    [0.3, 0.2, 0.15]
+            self.stepSize=  [1,   0.5, 1.0/3.0]
+            self.simplex=   [3,   1.5, 1]
+        else:
+            self.blurs = [i * self.fileRes for i in blurfactors]
+            self.stepSize=[i * self.fileRes for i in stepfactors]
+            self.simplex=[i * self.fileRes for i in simplexfactors]
+        
+        self.useGradient=[False,True,False]
+        
+    def getGenerations(self):
+        arrayLength = len(self.blurs)
+        errorMsg = "Array lengths in lsq12 minctracc protocol do not match."
+        if (len(self.stepSize) != arrayLength 
+            or len(self.useGradient) != arrayLength
+            or len(self.simplex) != arrayLength):
+            print errorMsg
+            raise
+        else:
+            return arrayLength 
+        

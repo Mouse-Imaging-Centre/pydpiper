@@ -284,7 +284,7 @@ class NLINminctracc(NLINBase):
         NLINBase.__init__(self, inputArray, targetFH, nlinOutputDir)
         
         """Setup parameters, either as defaults, or read from a .csv"""
-        params = mp.setMinctraccParams(self.fileRes, nlin_protocol)
+        params = mp.setNlinMinctraccParams(self.fileRes, nlin_protocol=nlin_protocol)
         self.blurs = params.blurs
         self.stepSize = params.stepSize
         self.iterations = params.iterations
