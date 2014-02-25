@@ -26,13 +26,6 @@ def addNlinRegOptionGroup(parser):
     group.add_option("--target-mask", dest="target_mask",
                      type="string", default=None,
                      help="Optional mask for target.")
-    group.add_option("--nlin-protocol", dest="nlin_protocol",
-                     type="string", default=None,
-                     help="Can optionally specify a registration protocol that is different from defaults. "
-                          "Parameters must be specified as in either or the following examples: "
-                          "applications_testing/test_data/minctracc_example_nlin_protocol.csv "
-                          "applications_testing/test_data/mincANTS_example_nlin_protocol.csv "
-                          "Default is None.")
     parser.add_option_group(group)
     
 def finalGenerationFileNames(inputFH):
@@ -82,6 +75,7 @@ class NonlinearRegistration(AbstractApplication):
         """Add option groups from specific modules"""
         rf.addGenRegOptionGroup(self.parser)
         addNlinRegOptionGroup(self.parser)
+        mp.addNLINOptionGroup(self.parser)
         addStatsOptions(self.parser)
         
         self.parser.set_usage("%prog [options] input files") 

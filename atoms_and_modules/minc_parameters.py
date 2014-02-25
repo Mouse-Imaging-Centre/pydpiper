@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 from os.path import abspath
+from optparse import OptionGroup, Option
 import csv
 import sys
 
@@ -46,8 +47,82 @@ import sys
         4. setLSQ12MinctraccParams -- inherits from setNlinMinctraccParams. Uses only parameters
            and defaults that are needed for an LSQ12 registration. 
         5. setLSQ6MinctraccParams -- inherits setLSQ12MinctraccParams. Uses parameters and defaults
-           for either an identity or centre estimation alignment. Not appropriate for large rotations.  
+           for either an identity or centre estimation alignment. Not appropriate for large rotations. 
+    
+    Several functions have been created for adding protocol options to the OptionParser of various
+    modules. The paramsOptions() class creates options for lsq6, lsq12 and nlin protocols. The 
+    following functions have been created:
+    1. addLSQ6OptionGroup: adds --lsq6-protocol option
+    2. addLSQ12OptionGroup: adds --lsq12-protocol option
+    3. addNLINOptionGroup: adds --nlin-protocol option
+    4. addRegParamsOptionGroup: adds options for all protocols
 """
+    
+class paramsOptions(object):
+    def __init__(self, parser):
+        self.parser = parser
+        self.lsq6Params = Option("--lsq6-protocol", dest="lsq6_protocol",
+                                 type="string", default=None,
+                                 help="Specify an lsq6 protocol that overrides the default setting for stages in "
+                                 "the 6 parameter minctracc call. Parameters must be specified as in the following \n"
+                                 "example: applications_testing/test_data/minctracc_example_linear_protocol.csv \n"
+                                 "Default is None.")
+        self.lsq12Params = Option("--lsq12-protocol", dest="lsq12_protocol",
+                                  type="string", default=None,
+                                  help="Can optionally specify a registration protocol that is different from defaults. "
+                                  "Parameters must be specified as in the following example: \n"
+                                  "applications_testing/test_data/minctracc_example_linear_protocol.csv \n"
+                                  "Default is None.")
+        self.nlinParams = Option("--nlin-protocol", dest="nlin_protocol",
+                                 type="string", default=None,
+                                 help="Can optionally specify a registration protocol that is different from defaults. "
+                                 "Parameters must be specified as in either or the following examples: \n"
+                                 "applications_testing/test_data/minctracc_example_nlin_protocol.csv \n"
+                                 "applications_testing/test_data/mincANTS_example_nlin_protocol.csv \n"
+                                 "Default is None.")
+        
+        self.whichProtocol = "LSQ6, LSQ12 and NLIN"
+        self.toAdd = [self.lsq6Params, self.lsq12Params, self.nlinParams]
+        
+    def addParams(self):
+        group = OptionGroup(self.parser, self.optionTitle(), self.optionDescription())
+        for i in range(len(self.toAdd)):
+            group.add_option(self.toAdd[i])
+        self.parser.add_option_group(group)
+    
+    def optionTitle(self):   
+        title = "%s registration protocol" % self.whichProtocol
+        return title
+    
+    def optionDescription(self):
+        descr = "Option to specify a protocol and override default %s parameters." % self.whichProtocol
+        return descr
+
+class addLSQ6OptionGroup(paramsOptions):
+    def __init__(self, parser):
+        paramsOptions.__init__(self, parser)
+        self.whichProtocol = "LSQ6"
+        self.toAdd = [self.lsq6Params]
+        self.addParams()
+    
+class addLSQ12OptionGroup(paramsOptions):
+    def __init__(self, parser):
+        paramsOptions.__init__(self, parser)
+        self.whichProtocol = "LSQ12"
+        self.toAdd = [self.lsq12Params]
+        self.addParams()
+    
+class addNLINOptionGroup(paramsOptions):
+    def __init__(self, parser):
+        paramsOptions.__init__(self, parser)
+        self.whichProtocol = "NLIN"
+        self.toAdd = [self.nlinParams]
+        self.addParams()
+    
+class addRegParamsOptionGroup(paramsOptions):
+    def __init__(self, parser):
+        paramsOptions.__init__(self, parser)
+        self.addParams()
 
 class setMincANTSParams(object):
     def __init__(self, fileRes, reg_protocol=None):
@@ -329,7 +404,7 @@ class setLSQ12MinctraccParams(setNlinMinctraccParams):
             self.simplex=[i * self.fileRes for i in simplexfactors]
         
         self.useGradient=[False,True,False]
-        self.w_translations = [0.4,0.4,0.4,0.4,0.4,0.4]
+        self.w_translations = [0.4,0.4,0.4]
         
     def getGenerations(self):
         arrayLength = len(self.blurs)

@@ -40,12 +40,6 @@ def addLSQ6OptionGroup(parser):
                      action="store_const", const="lsq6_centre_estimation",
                      help="Run a 6 parameter alignment assuming that the input files have a "
                      "similar orientation, but are scanned in different coils/spaces. [default: --lsq6-large-rotations]")
-    group.add_option("--lsq6-protocol", dest="lsq6_protocol",
-                     type="string", default=None,
-                     help="Specify an lsq6 protocol that overrides the default setting for stages in "
-                     "the 6 parameter minctracc call. Parameters must be specified as in the following "
-                     "example: applications_testing/test_data/minctracc_example_linear_protocol.csv "
-                     "Default is None.")
     group.add_option("--lsq6-large-rotations", dest="lsq6_method",
                      action="store_const", const="lsq6_large_rotations",
                      help="Run a 6 parameter alignment assuming that the input files have a random "
@@ -69,22 +63,6 @@ def addLSQ6OptionGroup(parser):
                      help="Settings for the rotational interval in degrees when running the large rotation alignment."
                      " [default: %default]")
     parser.add_option_group(group)
-    ### sneaky trick to create a readable version of the content of an lsq6 protocol:
-    epi = \
-"""
-Epilogue:
-Example content of an lsq6 csv protocol (first three are specified in mm):
-
-"blur";1;0.5;0.3
-"simplex";4;2;1
-"step";1;0.5;0.3
-"gradient";False;True;False
-
-"""
-    if(parser.epilog):
-        parser.epilog += epi
-    else:
-        parser.epilog = epi
 
 class LSQ6Registration(AbstractApplication):
     """ 
@@ -126,11 +104,11 @@ class LSQ6Registration(AbstractApplication):
             in the x,y,z rotation space in order to find the best alignment. 
     """
     def setup_options(self):
-        addLSQ6OptionGroup(self.parser)
         """Add option groups from specific modules"""
         rf.addGenRegOptionGroup(self.parser)
+        addLSQ6OptionGroup(self.parser)
+        mp.addLSQ6OptionGroup(self.parser)
         self.parser.set_usage("%prog [options] [--target target.mnc or --init-model /init/model/file.mnc] input file(s)")
-
 
     def setup_appName(self):
         appName = "LSQ6-registration"

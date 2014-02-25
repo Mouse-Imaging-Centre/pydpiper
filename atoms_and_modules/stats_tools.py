@@ -12,6 +12,9 @@ Pyro.config.PYRO_MOBILE_CODE=1
 def addStatsOptions(parser):
     group = OptionGroup(parser, "Statistics options", 
                         "Options for calculating statistics.")
+    group.add_option("--calc-stats", dest="calc_stats",
+                      action="store_true", default=False, 
+                      help="Calculate statistics at the end of the registration. Default is False.")
     group.add_option("--stats-kernels", dest="stats_kernels",
                       type="string", default="1.0,0.5,0.2,0.1", 
                       help="comma separated list of blurring kernels for analysis. Default is: 1.0,0.5,0.2,0.1")
