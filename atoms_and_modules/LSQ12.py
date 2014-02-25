@@ -24,7 +24,10 @@ def addLSQ12OptionGroup(parser):
                      help="Maximum number of pairs to register together.")
     group.add_option("--lsq12-protocol", dest="lsq12_protocol",
                      type="string", default=None,
-                     help="Can optionally specify a registration protocol that is different from defaults. Default is None.")
+                     help="Can optionally specify a registration protocol that is different from defaults. "
+                          "Parameters must be specified as in the following example: "
+                          "applications_testing/test_data/minctracc_example_linear_protocol.csv "
+                          "Default is None.")
     group.add_option("--lsq12-likefile", dest="lsq12_likeFile",
                      type="string", default=None,
                      help="Can optionally specify a like file for resampling at the end of pairwise "
@@ -148,8 +151,8 @@ class FullLSQ12(object):
         self.stepSize = params.stepSize
         self.useGradient = params.useGradient
         self.simplex = params.simplex
-        self.generations = params.generations
         self.w_translations = params.w_translations
+        self.generations = params.generations
         
         # Create new lsq12 group for each input prior to registration
         for i in range(len(self.inputs)):

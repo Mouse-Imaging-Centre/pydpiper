@@ -6,12 +6,12 @@ import pydpiper.file_handling as fh
 import atoms_and_modules.registration_functions as rf
 import atoms_and_modules.registration_file_handling as rfh
 import atoms_and_modules.minc_atoms as ma
+import atoms_and_modules.minc_parameters as mp
 from os.path import abspath
 from optparse import OptionGroup
 import logging
 import Pyro
 import sys
-import csv
 
 logger = logging.getLogger(__name__)
 
@@ -43,9 +43,9 @@ def addLSQ6OptionGroup(parser):
     group.add_option("--lsq6-protocol", dest="lsq6_protocol",
                      type="string", default=None,
                      help="Specify an lsq6 protocol that overrides the default setting for stages in "
-                     "the 6 parameter minctracc call. Specify the levels of blurring, simplex and "
-                     "registration step sizes in mm. Use 0 and 1 to indicate whether you want to use the gradient. "
-                     "For an example input csv file that can be used, see below")
+                     "the 6 parameter minctracc call. Parameters must be specified as in the following "
+                     "example: applications_testing/test_data/minctracc_example_linear_protocol.csv "
+                     "Default is None.")
     group.add_option("--lsq6-large-rotations", dest="lsq6_method",
                      action="store_const", const="lsq6_large_rotations",
                      help="Run a 6 parameter alignment assuming that the input files have a random "
@@ -831,6 +831,13 @@ class LSQ6Base(object):
         self.check_lsq6_folder()
         self.setLSQ6GroupToInputs()
         
+        #Get file resolution for each file: will need for subclasses. 
+        try:
+            self.fileRes = rf.getFinestResolution(self.inputs[0])
+        except: 
+            # if this fails (because file doesn't exist when pipeline is created) grab from
+            # initial input volume, which should exist. 
+            self.fileRes = rf.getFinestResolution(self.inputs[0].inputFileName)
         
     def check_inputs(self):
         """
@@ -992,7 +999,7 @@ class LSQ6RotationalMinctracc(LSQ6Base):
         # for the input files here
         
         # assumption: all files have the same resolution, so we take input file 1
-        highestResolution = rf.getFinestResolution(self.inputs[0])
+        highestResolution = self.fileRes
         blurAtResolution = -1
         resampleStepFactor = -1
         registrationStepFactor = -1
@@ -1080,165 +1087,38 @@ class LSQ6HierarchicalMinctracc(LSQ6Base):
         self.initial_transform = initial_transform 
         self.lsq6_protocol     = lsq6_protocol
         
-        self.setInitialMinctraccTransform()
-        
-        self.setHierarchyOptions()
-        
-    def setInitialMinctraccTransform(self):
-        # set option which will by used by the minctracc CmdStage:
-        self.linearparam = None
-        if(self.initial_transform == "estimate"):
-            self.linearparam = "lsq6"
-        elif(self.initial_transform == "identity"):
-            self.linearparam = "lsq6-identity"
-        else:
-            print "Error: unknown option used for inital_transform in LSQ6HierarchicalMinctracc: ", self.initial_transform, ". Can be \"estimate\" or \"identity\".\nGoodbye."
-            sys.exit()
-    
-    def setHierarchyOptions(self):
-        """
-            It is possible to specify an lsq6 protocol (csv file, see the help in the LSQ6Registration class
-            for an example.  If none is specified, defaults will be used as follows:
-            
-            ************************* DEFAULTS ************************************
-            * all parameters will be set as a factor of the input file's resolution
-            
-            *** estimate ***
-            When using the estimation of centres, 5 stages:
-            blur    = [ 90, 35, 17,  9,  4]     # in mm at 56micron files: [5.04,  1.96, 0.952, 0.504, 0.224]
-            gradient= [  0,  0,  0,  1,  0]
-            simplex = [128, 64, 40, 28, 16]     # in mm at 56mircon files: [7.168, 3.584, 2.24, 1.568, 0.896]
-            step    = [ 90, 35, 17,  9,  4]
-            
-            *** identity ***
-            When using the identity transformation to initialize minctracc, 3 stages:
-            blur    = [17,  9,  4]     # in mm at 56micron files: [0.952, 0.504, 0.224]
-            gradient= [ 0,  1,  0]
-            simplex = [40, 28, 16]     # in mm at 56mircon files: [2.24, 1.568, 0.896]
-            step    = [17,  9,  4]
-        """
-        if(self.lsq6_protocol):
-            # read the protocol and set the parameters accordingly
-            """Set parameters from specified protocol"""
-        
-            """Read parameters into array from csv."""
-            inputCsv  = open(abspath(self.lsq6_protocol), 'rb')
-            csvReader = csv.reader(inputCsv, delimiter=';', skipinitialspace=True)
-            params    = []
-            for r in csvReader:
-                params.append(r)
-            """initialize arrays """
-            self.blur     = []
-            self.gradient = []
-            self.step     = []
-            self.simplex  = []
-
-            """Parse through rows and assign appropriate values to each parameter array.
-               Everything is read in as strings, but in some cases, must be converted to 
-               floats, booleans or gradients. 
-            """            
-            for p in params:
-                # first make sure that we skip empty lines in the input csv...
-                if(len(p) == 0):
-                    pass
-                elif p[0]=="blur":
-                    """Blurs must be converted to floats."""
-                    for i in range(1,len(p)):
-                        self.blur.append(float(p[i]))
-                elif p[0]=="gradient":
-                    """Gradients must be converted to bools."""
-                    for i in range(1,len(p)):
-                        if p[i]=="True" or p[i]=="TRUE":
-                            self.gradient.append(True)
-                        elif p[i]=="False" or p[i]=="FALSE":
-                            self.gradient.append(False)
-                        else:
-                            print "Improper parameter specified for the gradient in the lsq6 protocol: ", str(p[i]), " Please speciy True, TRUE, False or FALSE.\nGoodbye"
-                            sys.exit()
-                elif p[0]=="simplex":
-                    """Simplex must be converted to floats."""
-                    for i in range(1,len(p)):
-                        self.simplex.append(float(p[i]))
-                elif p[0]=="step":
-                    """Steps must be converted to floats."""
-                    for i in range(1,len(p)):
-                        self.step.append(float(p[i]))
-                else:
-                    print "Improper parameter specified for lsq6 protocol: ", str(p[0]), "\nGoodbye"
-                    sys.exit()
-            
-            # now that all the parameters have been set, make sure we have an
-            # equal number of inputs for all the settings:
-            self.generations = max(len(self.blur),
-                                   len(self.gradient),
-                                   len(self.simplex),
-                                   len(self.step))
-            
-            if(len(self.blur) < self.generations):
-                print "Not all parameters in the lsq6 protocol are the same, \"blur\" has to few.\nGoodbye"
-                sys.exit()
-            if(len(self.gradient) < self.generations):
-                print "Not all parameters in the lsq6 protocol are the same, \"gradient\" has to few.\nGoodbye"
-                sys.exit()
-            if(len(self.simplex) < self.generations):
-                print "Not all parameters in the lsq6 protocol are the same, \"simplex\" has to few.\nGoodbye"
-                sys.exit()
-            if(len(self.step) < self.generations):
-                print "Not all parameters in the lsq6 protocol are the same, \"step\" has to few.\nGoodbye"
-                sys.exit()
-            
-        else:
-            # use defaults:
-            est_blurfactors      = [   90,   35,   17,   9,    4]
-            est_simplexfactors   = [  128,   64,   40,  28,   16]
-            est_stepfactors      = [   90,   35,   17,   9,    4]
-            est_gradientdefaults = [False,False,False,True,False]
-            
-            id_blurfactors      = [   17,   9,    4]
-            id_simplexfactors   = [   40,  28,   16]
-            id_stepfactors      = [   17,   9,    4]
-            id_gradientdefaults = [False,True,False]
-            
-            resolution       = rf.getFinestResolution(self.inputs[0])
-            
-            if(self.initial_transform == "identity"):
-                self.blur        = [i * resolution for i in id_blurfactors]
-                self.simplex     = [i * resolution for i in id_simplexfactors]
-                self.step        = [i * resolution for i in id_stepfactors]
-                self.gradient    = id_gradientdefaults
-            else: # assume "estimate"
-                self.blur        = [i * resolution for i in est_blurfactors]
-                self.simplex     = [i * resolution for i in est_simplexfactors]
-                self.step        = [i * resolution for i in est_stepfactors]
-                self.gradient    = est_gradientdefaults
-            
-            self.generations = len(self.blur)
+        #Read parameters from input file or setup defaults. 
+        params = mp.setLSQ6MinctraccParams(self.fileRes, 
+                                            initial_transform=initial_transform, 
+                                            reg_protocol=lsq6_protocol)
+        self.blurs = params.blurs
+        self.stepSize = params.stepSize
+        self.useGradient = params.useGradient
+        self.simplex = params.simplex
+        self.w_translations = params.w_translations
+        self.generations = params.generations
     
     def createLSQ6Transformation(self):
         """
-            Assumption: setHierarchyOptions() has been executed prior to calling
-            this function
-            
-            This function ties it all together.  The settings for each of the
-            stages for minctracc have been set by setHierarchyOptions().  Here
-            all the blurs are created and the minctracc calls are made.
+            Assumption: setLSQ6MinctraccParams has been called prior to running. 
         """
         # create all blurs first
         for i in range(self.generations):
-            self.p.addStage(ma.blur(self.target, self.blur[i], gradient=True))
+            self.p.addStage(ma.blur(self.target, self.blurs[i], gradient=True))
             for inputfile in self.inputs:
                 # create blur for input
-                self.p.addStage(ma.blur(inputfile, self.blur[i], gradient=True))
+                self.p.addStage(ma.blur(inputfile, self.blurs[i], gradient=True))
         
         # now perform the registrations
         for inputfile in self.inputs:
             for i in range(self.generations):
                 mt = ma.minctracc(inputfile,
                                   self.target,
-                                  blur        = self.blur[i],
-                                  simplex     = self.simplex[i],
-                                  step        = self.step[i],
-                                  gradient    = self.gradient[i],
+                                  blur = self.blurs[i],
+                                  simplex = self.simplex[i],
+                                  step = self.stepSize[i],
+                                  gradient = self.useGradient[i],
+                                  w_translations = self.w_translations[i],
                                   linearparam = "lsq6") 
                 self.p.addStage(mt)
 

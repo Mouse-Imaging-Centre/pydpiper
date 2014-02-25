@@ -19,12 +19,18 @@ import sys
             
     Currently, a specified protocol MUST be a csv file that uses a SEMI-COLON 
     to separate the fields. Examples are:
-    pydpiper_apps_testing/test_data/minctracc_example_protocol.csv
-    pydpiper_apps_testing/test_data/mincANTS_example_protocol.csv
+    applications_testing/test_data/minctracc_example_nlin_protocol.csv
+    applications_testing/test_data/minctracc_example_linear_protocol.csv
+    applications_testing/test_data/mincANTS_example_protocol.csv
+    
+    Note:
+    The minctracc_example_linear_protocol.csv may be used for LSQ6 or LSQ12 registrations
+    and the minctracc_example_nlin_protocol.csv contains extra parameters necessary
+    for non-linear registrations. 
            
     Each row in the csv is a different input to the either a minctracc or mincANTS call
     Although the number of entries in each row (e.g. generations) is variable, the
-    specific parameters are fixed. For example, one could specify a subset of the
+    specific allowed parameters are fixed. For example, one could specify a subset of the
     allowed parameters (e.g. blurs only) but could not rename any parameters
     or use additional ones that haven't already been defined without subclassing. See
     documentation for additional details. 
@@ -37,12 +43,14 @@ import sys
         2. setOneGenMincANTSParams -- class to override params for a single ANTS call. 
         3. setNlinMinctraccParams -- base class for minctracc. All potential parameter options
            are set here. 
-        4. setLSQ12MinctraccParams -- interits from setNlinMinctraccParams. Uses only parameters
+        4. setLSQ12MinctraccParams -- inherits from setNlinMinctraccParams. Uses only parameters
            and defaults that are needed for an LSQ12 registration. 
+        5. setLSQ6MinctraccParams -- inherits setLSQ12MinctraccParams. Uses parameters and defaults
+           for either an identity or centre estimation alignment. Not appropriate for large rotations.  
 """
 
 class setMincANTSParams(object):
-    def __init__(self, fileRes, nlin_protocol=None):
+    def __init__(self, fileRes, reg_protocol=None):
         self.fileRes = fileRes
         self.blurs = []
         self.gradient = []
@@ -55,8 +63,8 @@ class setMincANTSParams(object):
         self.useMask = []
         
         self.defaultParams()
-        if nlin_protocol:
-            self.setParams(nlin_protocol)    
+        if reg_protocol:
+            self.setParams(reg_protocol)    
         self.generations = self.getGenerations()
 
     def defaultParams(self):
@@ -79,11 +87,11 @@ class setMincANTSParams(object):
         self.iterations = ["100x100x100x0", "100x100x100x20", "100x100x100x50"]
         self.useMask = [False, True, True]
         
-    def setParams(self, nlin_protocol):
+    def setParams(self, reg_protocol):
         """Set parameters from specified protocol"""
         
         """Read parameters into array from csv."""
-        inputCsv = open(abspath(nlin_protocol), 'rb')
+        inputCsv = open(abspath(reg_protocol), 'rb')
         csvReader = csv.reader(inputCsv, delimiter=';', skipinitialspace=True)
         params = []
         for r in csvReader:
@@ -178,8 +186,8 @@ class setMincANTSParams(object):
             return arrayLength
 
 class setOneGenMincANTSParams(setMincANTSParams):
-    def __init__(self, fileRes, nlin_protocol=None):
-        setMincANTSParams.__init__(fileRes, nlin_protocol=nlin_protocol)
+    def __init__(self, fileRes, reg_protocol=None):
+        setMincANTSParams.__init__(fileRes, reg_protocol=reg_protocol)
     
     def defaultParams(self):
         """
@@ -196,9 +204,8 @@ class setOneGenMincANTSParams(setMincANTSParams):
         self.useMask = [False]
 
 class setNlinMinctraccParams(object):
-    def __init__(self, fileRes, subject_matter=None, nlin_protocol=None):
+    def __init__(self, fileRes, reg_protocol=None):
         self.fileRes = fileRes
-        self.subject_matter=subject_matter
         self.blurs = []
         self.stepSize = []
         self.iterations = []
@@ -208,8 +215,8 @@ class setNlinMinctraccParams(object):
         self.w_translations = []
         
         self.defaultParams()
-        if nlin_protocol:
-            self.setParams(nlin_protocol)    
+        if reg_protocol:
+            self.setParams(reg_protocol)    
         self.generations = self.getGenerations()
 
     def defaultParams(self):
@@ -227,11 +234,11 @@ class setNlinMinctraccParams(object):
                              "-use_simplex", "-use_simplex"]
         self.w_translations = [0.4,0.4,0.4,0.4,0.4,0.4]
             
-    def setParams(self, nlin_protocol):
+    def setParams(self, reg_protocol):
         """Set parameters from specified protocol"""
         
         """Read parameters into array from csv."""
-        inputCsv = open(abspath(nlin_protocol), 'rb')
+        inputCsv = open(abspath(reg_protocol), 'rb')
         csvReader = csv.reader(inputCsv, delimiter=';', skipinitialspace=True)
         params = []
         for r in csvReader:
@@ -258,9 +265,9 @@ class setNlinMinctraccParams(object):
                     self.iterations.append(int(p[i]))
             elif p[0]=="simplex":
                 self.simplex = []
-                """Simplex must be converted to an int."""
+                """Simplex must be converted to a float."""
                 for i in range(1,len(p)):
-                    self.simplex.append(int(p[i]))
+                    self.simplex.append(float(p[i]))
             elif p[0]=="gradient":
                 self.useGradient = []
                 """Gradients must be converted to bools."""
@@ -285,23 +292,22 @@ class setNlinMinctraccParams(object):
         
     def getGenerations(self):
         arrayLength = len(self.blurs)
-        errorMsg = "Array lengths in non-linear minctracc protocol do not match."
+        errorMsg = "Number of parameters in non-linear minctracc protocol is not consistent."
         if (len(self.stepSize) != arrayLength 
             or len(self.iterations) != arrayLength
             or len(self.simplex) != arrayLength
             or len(self.useGradient) != arrayLength
+            or len(self.w_translations) != arrayLength
             or len(self.optimization) != arrayLength):
             print errorMsg
-            raise
+            sys.exit()
         else:
             return arrayLength
         
 class setLSQ12MinctraccParams(setNlinMinctraccParams):
-    def __init__(self, fileRes, subject_matter, reg_protocol=None):
+    def __init__(self, fileRes, subject_matter=None, reg_protocol=None):
         self.subject_matter = subject_matter
-        setNlinMinctraccParams.__init__(self, fileRes, 
-                                        subject_matter=subject_matter, 
-                                        nlin_protocol=reg_protocol)
+        setNlinMinctraccParams.__init__(self, fileRes, reg_protocol=reg_protocol)
 
     def defaultParams(self):
         """ 
@@ -327,12 +333,55 @@ class setLSQ12MinctraccParams(setNlinMinctraccParams):
         
     def getGenerations(self):
         arrayLength = len(self.blurs)
-        errorMsg = "Array lengths in lsq12 minctracc protocol do not match."
+        errorMsg = "Number of parameters in linear minctracc protocol is not consistent."
         if (len(self.stepSize) != arrayLength 
             or len(self.useGradient) != arrayLength
-            or len(self.simplex) != arrayLength):
+            or len(self.simplex) != arrayLength
+            or len(self.w_translations) != arrayLength):
             print errorMsg
-            raise
+            sys.exit()
         else:
             return arrayLength 
+
+class setLSQ6MinctraccParams(setLSQ12MinctraccParams):
+    def __init__(self, fileRes, initial_transform="estimate", reg_protocol=None):
+        self.initial_transform = initial_transform
+        setLSQ12MinctraccParams.__init__(self, fileRes, reg_protocol=reg_protocol)
+    
+    def defaultParams(self):
+        """ 
+            Default minctracc parameters based on resolution of file, and whether or not
+            initial transform is identity or estimate. 
+            
+            Example values for 56 micron files.
+            If using the identity transform:
+                blurs in mm at 56micron files: [0.952, 0.504, 0.224]
+                simplex in mm at 56mircon files: [2.24, 1.568, 0.896]
+            
+            If using the centre estimation:
+                blurs in mm at 56micron files: [5.04,  1.96, 0.952, 0.504, 0.224]
+                simplex in mm at 56mircon files: [7.168, 3.584, 2.24, 1.568, 0.896]
+        """
         
+        if self.initial_transform == "identity":
+            blurfactors      = [   17,   9,    4]
+            simplexfactors   = [   40,  28,   16]
+            stepfactors      = [   17,   9,    4]
+            gradientdefaults = [False,True,False]
+            translations     = [0.4,0.4,0.4]
+        elif self.initial_transform == "estimate":
+            blurfactors      = [   90,   35,   17,   9,    4]
+            simplexfactors   = [  128,   64,   40,  28,   16]
+            stepfactors      = [   90,   35,   17,   9,    4]
+            gradientdefaults = [False,False,False,True,False]
+            translations     = [0.4,0.4,0.4,0.4,0.4]
+        else:
+            print "An improper initial transform was specified: " + str(self.initial_transform)
+            print "Exiting..."
+            sys.exit()
+            
+        self.blurs    = [i * self.fileRes for i in blurfactors]
+        self.simplex  = [i * self.fileRes for i in simplexfactors]
+        self.stepSize = [i * self.fileRes for i in stepfactors]
+        self.useGradient = gradientdefaults
+        self.w_translations = translations
