@@ -8,7 +8,6 @@ import atoms_and_modules.minc_atoms as ma
 import atoms_and_modules.stats_tools as st
 import atoms_and_modules.option_groups as og
 import atoms_and_modules.minc_parameters as mp
-import atoms_and_modules.hierarchical_minctracc as hmt
 import atoms_and_modules.old_MBM_interface_functions as ombm
 import Pyro
 from optparse import OptionGroup
@@ -110,10 +109,10 @@ class RegistrationChain(AbstractApplication):
                                                 nlin_protocol=self.options.nlin_protocol)
                     self.pipeline.addPipeline(register.p)
                 elif self.options.reg_method == "minctracc":
-                    hm = hmt.HierarchicalMinctracc(s[i], 
-                                                   s[i+1], 
-                                                   lsq12_protocol=self.options.lsq12_protocol,
-                                                   nlin_protocol=self.options.nlin_protocol)
+                    hm = mm.HierarchicalMinctracc(s[i], 
+                                                  s[i+1], 
+                                                  lsq12_protocol=self.options.lsq12_protocol,
+                                                  nlin_protocol=self.options.nlin_protocol)
                     self.pipeline.addPipeline(hm.p)
                 """Resample s[i] into space of s[i+1]""" 
                 if nlinFH:
