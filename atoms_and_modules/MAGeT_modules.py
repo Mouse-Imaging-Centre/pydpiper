@@ -92,7 +92,7 @@ def maskDirectoryStructure(FH, masking=True):
         FH.tmpDir = fh.createSubDir(FH.subjDir, "tmp")
         FH.logDir = fh.createLogDir(FH.subjDir)
     
-def MAGeTMask(atlases, inputs, numAtlases, regMethod):
+def MAGeTMask(atlases, inputs, numAtlases, regMethod, lsq12_protocol=None, nlin_protocol=None):
     """ Masking algorithm is as follows:
         1. Run HierarchicalMinctracc or mincANTS with mask=True, 
            using masks instead of labels. 
@@ -119,7 +119,9 @@ def MAGeTMask(atlases, inputs, numAtlases, regMethod):
                                atlasFH, 
                                regMethod, 
                                name="initial", 
-                               createMask=True)
+                               createMask=True,
+                               lsq12_protocol=lsq12_protocol,
+                               nlin_protocol=nlin_protocol)
             p.addPipeline(sp)          
     """ Prior to final masking, set log and tmp directories as they were."""
     for atlasFH in atlases:
@@ -141,20 +143,30 @@ def MAGeTMask(atlases, inputs, numAtlases, regMethod):
 
 def MAGeTRegister(inputFH, 
                   templateFH, 
-                  method,
+                  regMethod,
                   name="initial", 
-                  createMask=False):
+                  createMask=False,
+                  lsq12_protocol=None,
+                  nlin_protocol=None):
     
     p = Pipeline()
     if createMask:
         defaultDir="tmp"
     else:
         defaultDir="transforms"
-    if method == "minctracc":
-        sp = HierarchicalMinctracc(inputFH, templateFH, defaultDir=defaultDir)
+    if regMethod == "minctracc":
+        sp = HierarchicalMinctracc(inputFH, 
+                                   templateFH,
+                                   lsq12_protocol=lsq12_protocol,
+                                   nlin_protocol=nlin_protocol,
+                                   defaultDir=defaultDir)
         p.addPipeline(sp.p)
-    elif method == "mincANTS":
-        register = LSQ12ANTSNlin(inputFH, templateFH, defaultDir=defaultDir)
+    elif regMethod == "mincANTS":
+        register = LSQ12ANTSNlin(inputFH, 
+                                 templateFH, 
+                                 lsq12_protocol=lsq12_protocol,
+                                 nlin_protocol=nlin_protocol,
+                                 defaultDir=defaultDir)
         p.addPipeline(register.p)
         
     rp = LabelAndFileResampling(inputFH, templateFH, name=name, createMask=createMask)

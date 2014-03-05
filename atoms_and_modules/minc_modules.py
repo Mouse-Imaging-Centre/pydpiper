@@ -5,6 +5,8 @@ import atoms_and_modules.LSQ12 as lsq12
 import atoms_and_modules.minc_atoms as ma
 import atoms_and_modules.registration_file_handling as rfh
 import atoms_and_modules.stats_tools as st
+import atoms_and_modules.minc_parameters as mp
+import atoms_and_modules.registration_functions as rf
 import pydpiper.file_handling as fh
 from pyminc.volumes.factory import volumeFromFile
 
@@ -45,58 +47,76 @@ class LSQ12ANTSNlin:
     def __init__(self,
                  inputFH,
                  targetFH,
-                 lsq12Blurs=[0.3, 0.2, 0.15],
-                 lsq12StepSize=[1,0.5,0.333333333333333],
-                 lsq12UseGradient=[False,True,False],
-                 lsq12Simplex=[3,1.5,1],
-                 ANTSBlur=0.056,
+                 lsq12_protocol=None,
+                 nlin_protocol=None,
+                 subject_matter=None,
                  defaultDir="tmp"):
         
         self.p = Pipeline()
         self.inputFH = inputFH
         self.targetFH = targetFH
-        self.lsq12Blurs = lsq12Blurs
-        self.lsq12StepSize = lsq12StepSize
-        self.lsq12UseGradient = lsq12UseGradient
-        self.lsq12Simplex = lsq12Simplex
+        self.lsq12_protocol = lsq12_protocol
+        self.nlin_protocol = nlin_protocol
+        self.subject_matter = subject_matter
         self.defaultDir = defaultDir
-        self.ANTSBlur = ANTSBlur
+        try: # the attempt to access the minc volume will fail if it doesn't yet exist at pipeline creation
+            self.fileRes = rf.getFinestResolution(self.inputFH)
+        except: 
+            # if it indeed failed, get resolution from the original file specified for 
+            # one of the input files, which should exist. 
+            # Can be overwritten by the user through specifying a nonlinear protocol.
+            self.fileRes = rf.getFinestResolution(self.inputFH.inputFileName)
         
         self.buildPipeline()    
     
     def buildPipeline(self):
-        """Run lsq12 registration prior to non-linear"""
+        # Run lsq12 registration prior to non-linear
+        lp = mp.setLSQ12MinctraccParams(self.fileRes, 
+                                        subject_matter=self.subject_matter,
+                                        reg_protocol=self.lsq12_protocol)
         lsq12reg = lsq12.LSQ12(self.inputFH, 
-                            self.targetFH, 
-                            blurs=self.lsq12Blurs,
-                            step=self.lsq12StepSize,
-                            gradient=self.lsq12UseGradient,
-                            simplex=self.lsq12Simplex,
-                            defaultDir=self.defaultDir)
+                               self.targetFH, 
+                               blurs=lp.blurs,
+                               step=lp.stepSize,
+                               gradient=lp.useGradient,
+                               simplex=lp.simplex,
+                               w_translations=lp.w_translations,
+                               defaultDir=self.defaultDir)
         self.p.addPipeline(lsq12reg.p)
-        """Resample input using final lsq12 transform"""
+        
+        #Resample using final LSQ12 transform and reset last base volume. 
         res = ma.mincresample(self.inputFH, self.targetFH, likeFile=self.targetFH, argArray=["-sinc"])   
         self.p.addStage(res)
         self.inputFH.setLastBasevol(res.outputFiles[0])
-        # MF TODO: For future implementations, perhaps keep track of the xfm
-        # by creating a new registration group. Not necessary for current use,
-        # but could be essential in the future.  
         lsq12xfm = self.inputFH.getLastXfm(self.targetFH)
-        """Blur input and template files prior to running mincANTS command"""
-        tblur = ma.blur(self.targetFH, self.ANTSBlur, gradient=True)
-        iblur = ma.blur(self.inputFH, self.ANTSBlur, gradient=True)               
-        self.p.addStage(tblur)
-        self.p.addStage(iblur)
+        
+        #Get registration parameters from nlin protocol, blur and register
+        #Assume a SINGLE generation here. 
+        np = mp.setOneGenMincANTSParams(self.fileRes, reg_protocol=self.nlin_protocol)
+        for b in np.blurs:
+            for j in b:
+                #Note that blurs for ANTS params in an array of arrays. 
+                if j != -1:            
+                    self.p.addStage(ma.blur(self.targetFH, j, gradient=True))
+                    self.p.addStage(ma.blur(self.inputFH, j, gradient=True))
+                    
         sp = ma.mincANTS(self.inputFH,
                          self.targetFH,
                          defaultDir=self.defaultDir, 
-                         blur=[-1, self.ANTSBlur])
+                         blur=np.blurs[0],
+                         gradient=np.gradient[0],
+                         similarity_metric=np.similarityMetric[0],
+                         weight=np.weight[0],
+                         iterations=np.iterations[0],
+                         radius_or_histo=np.radiusHisto[0],
+                         transformation_model=np.transformationModel[0], 
+                         regularization=np.regularization[0],
+                         useMask=np.useMask[0])
         self.p.addStage(sp)
         nlinXfm = sp.outputFiles[0]
-        """Reset last base volume to original input for future registrations."""
+        #Reset last base volume to original input for future registrations.
         self.inputFH.setLastBasevol(setToOriginalInput=True)
-        """Concatenate transforms to get final lsq12 + nlin. Register volume handles naming and setting of lastXfm"""
-        #MF TODO: May want to change the output name to include a "concat" to indicate lsq12 and nlin concatenation?
+        #Concatenate transforms to get final lsq12 + nlin. Register volume handles naming and setting of lastXfm
         output = self.inputFH.registerVolume(self.targetFH, "transforms")
         xc = ma.xfmConcat([lsq12xfm, nlinXfm], output, fh.logFromFile(self.inputFH.logDir, output))
         self.p.addStage(xc)

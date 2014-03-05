@@ -56,6 +56,7 @@ import sys
     2. addLSQ12OptionGroup: adds --lsq12-protocol option
     3. addNLINOptionGroup: adds --nlin-protocol option
     4. addRegParamsOptionGroup: adds options for all protocols
+    5. addLSQ12NLINParamsOptionGroup: adds --lsq12-protocol and --nlin-protocol options
 """
     
 class paramsOptions(object):
@@ -117,6 +118,13 @@ class addNLINOptionGroup(paramsOptions):
         paramsOptions.__init__(self, parser)
         self.whichProtocol = "NLIN"
         self.toAdd = [self.nlinParams]
+        self.addParams()
+        
+class addLSQ12NLINOptionGroup(paramsOptions):
+    def __init__(self, parser):
+        paramsOptions.__init__(self, parser)
+        self.whichProtocol = "LSQ12 and NLIN"
+        self.toAdd = [self.lsq12Params, self.nlinParams]
         self.addParams()
     
 class addRegParamsOptionGroup(paramsOptions):
@@ -262,7 +270,7 @@ class setMincANTSParams(object):
 
 class setOneGenMincANTSParams(setMincANTSParams):
     def __init__(self, fileRes, reg_protocol=None):
-        setMincANTSParams.__init__(fileRes, reg_protocol=reg_protocol)
+        setMincANTSParams.__init__(self, fileRes, reg_protocol=reg_protocol)
     
     def defaultParams(self):
         """

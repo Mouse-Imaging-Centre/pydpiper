@@ -21,6 +21,9 @@ logger = logging.getLogger(__name__)
 
 Pyro.config.PYRO_MOBILE_CODE=1 
 
+"""NOTE: This application needs a significant overhaul and/or combining with the RegistrationChain
+         Application. Until this comment is removed, please consider this class DEPRECATED."""
+
 class PairwiseNonlinear(AbstractApplication):
     def setup_options(self):
         group = OptionGroup(self.parser, "Pairwise non-linear options", 
