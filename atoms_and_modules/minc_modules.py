@@ -242,16 +242,19 @@ class LongitudinalStatsConcatAndResample:
             xfm = s[i].getLastXfm(s[i+1]) 
         else:
             xfm = s[i].getLastXfm(s[i-1])
-        self.xfmToCommon.insert(0, xfm)
-        """ Concat transforms to get xfmToCommon and calculate statistics 
-            Note that inverted transform, which is what we want, is calculated in
-            the statistics module. """
-        xtc = fh.createBaseName(s[i].transformsDir, s[i].basename + "_to_" + self.commonName + ".xfm")
-        xc = ma.xfmConcat(self.xfmToCommon, xtc, fh.logFromFile(s[i].logDir, xtc))
-        self.p.addStage(xc)
         """Set this transform as last xfm from input to nlin and calculate nlin to s[i] stats"""
-        s[i].addAndSetXfmToUse(self.nlinFH, xtc)
-        self.statsCalculation(s[i], self.nlinFH, xfm=None, useChainStats=False)
+        if self.nlinFH:
+            self.xfmToCommon.insert(0, xfm)
+            """ Concat transforms to get xfmToCommon and calculate statistics 
+                Note that inverted transform, which is what we want, is calculated in
+                the statistics module. """
+            xtc = fh.createBaseName(s[i].transformsDir, s[i].basename + "_to_" + self.commonName + ".xfm")
+            xc = ma.xfmConcat(self.xfmToCommon, xtc, fh.logFromFile(s[i].logDir, xtc))
+            self.p.addStage(xc)
+            s[i].addAndSetXfmToUse(self.nlinFH, xtc)
+            self.statsCalculation(s[i], self.nlinFH, xfm=None, useChainStats=False)
+        else:
+            xtc=None
         """Calculate i to i+1 stats for all but final timePoint"""
         if count - i > 1:
             self.statsCalculation(s[i], s[i+1], xfm=xtc, useChainStats=True)
@@ -270,7 +273,8 @@ class LongitudinalStatsConcatAndResample:
             """Calculate stats first from average to timpoint included in average.
                If timepoint included in average is NOT final timepoint, also calculate
                i to i+1 stats."""
-            self.statsCalculation(s[self.timePoint], self.nlinFH, xfm=None, useChainStats=False)
+            if self.nlinFH:
+                self.statsCalculation(s[self.timePoint], self.nlinFH, xfm=None, useChainStats=False)
             if count - self.timePoint > 1:
                 self.statsCalculation(s[self.timePoint], s[self.timePoint+1], xfm=xfmToNlin, useChainStats=True)
             if not self.timePoint - 1 < 0:
