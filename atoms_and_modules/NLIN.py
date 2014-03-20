@@ -128,7 +128,7 @@ class NonlinearRegistration(AbstractApplication):
             finalNlin = self.nlinAverages[numGens-1]
             """For each input file, calculate statistics from finalNlin to input"""
             for inputFH in inputFiles:
-                stats = CalcStats(inputFH, finalNlin, blurs, inputFiles)
+                stats = CalcStats(inputFH, finalNlin, blurs)
                 stats.fullStatsCalc()
                 self.pipeline.addPipeline(stats.p)
 
@@ -221,7 +221,7 @@ class NLINANTS(NLINBase):
         NLINBase.__init__(self, inputArray, targetFH, nlinOutputDir)
         
         """Setup parameters, either as defaults, or read from a .csv"""
-        params = mp.setMincANTSParams(self.fileRes, nlin_protocol)
+        params = mp.setMincANTSParams(self.fileRes, reg_protocol=nlin_protocol)
     
         self.blurs = params.blurs
         self.gradient = params.gradient
@@ -272,6 +272,8 @@ class NLINANTS(NLINBase):
         #Do we need to resample any masks?
         filesToAvg.append(rs.outputFiles[0])
         self.p.addStage(rs)
+        if i == (self.generations -1):
+            inputFH.setLastBasevol(newBaseVol=rs.outputFiles[0])
 
 class NLINminctracc(NLINBase):
     """
@@ -282,7 +284,7 @@ class NLINminctracc(NLINBase):
         NLINBase.__init__(self, inputArray, targetFH, nlinOutputDir)
         
         """Setup parameters, either as defaults, or read from a .csv"""
-        params = mp.setNlinMinctraccParams(self.fileRes, nlin_protocol=nlin_protocol)
+        params = mp.setNlinMinctraccParams(self.fileRes, reg_protocol=nlin_protocol)
         self.blurs = params.blurs
         self.stepSize = params.stepSize
         self.iterations = params.iterations
@@ -353,6 +355,8 @@ class NLINminctracc(NLINBase):
             #Do we need to resample any masks?
             filesToAvg.append(rs.outputFiles[0])
             self.p.addStage(rs)
+        if i == (self.generations -1):
+            inputFH.setLastBasevol(newBaseVol=rs.outputFiles[0])
             
 if __name__ == "__main__":
     

@@ -132,9 +132,8 @@ class MBMApplication(AbstractApplication):
             for inputFH in inputFiles:
                 stats = st.CalcStats(inputFH, 
                                      finalNlin, 
-                                     blurs, 
-                                     inputArray=inputFiles,
-                                     scalingFactor=lsq12module.lsq12AvgXfms[inputFH])
+                                     blurs,
+                                     additionalXfm=lsq12module.lsq12AvgXfms[inputFH])
                 stats.fullStatsCalc()
                 self.pipeline.addPipeline(stats.p)
         
