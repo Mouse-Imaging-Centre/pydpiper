@@ -6,6 +6,7 @@ import atoms_and_modules.registration_file_handling as rfh
 import atoms_and_modules.LSQ6 as lsq6
 import atoms_and_modules.LSQ12 as lsq12
 import atoms_and_modules.NLIN as nlin
+import atoms_and_modules.minc_parameters as mp
 import atoms_and_modules.stats_tools as st
 import Pyro
 import os
@@ -25,11 +26,12 @@ def addMBMGroup(parser):
 class MBMApplication(AbstractApplication):
     def setup_options(self):
         """Add option groups from specific modules"""
-        rf.addGenRegOptionGroup(self.parser)
         addMBMGroup(self.parser)
+        rf.addGenRegOptionGroup(self.parser)
         lsq6.addLSQ6OptionGroup(self.parser)
         lsq12.addLSQ12OptionGroup(self.parser)
         nlin.addNlinRegOptionGroup(self.parser)
+        mp.addRegParamsOptionGroup(self.parser)
         st.addStatsOptions(self.parser)
         
         self.parser.set_usage("%prog [options] input files") 
@@ -130,9 +132,8 @@ class MBMApplication(AbstractApplication):
             for inputFH in inputFiles:
                 stats = st.CalcStats(inputFH, 
                                      finalNlin, 
-                                     blurs, 
-                                     inputArray=inputFiles,
-                                     scalingFactor=lsq12module.lsq12AvgXfms[inputFH])
+                                     blurs,
+                                     additionalXfm=lsq12module.lsq12AvgXfms[inputFH])
                 stats.fullStatsCalc()
                 self.pipeline.addPipeline(stats.p)
         

@@ -1,15 +1,13 @@
 #!/usr/bin/env python
 
 from pydpiper.application import AbstractApplication
-from pydpiper.pipeline import CmdStage, InputFile, OutputFile, LogFile
-import pydpiper.file_handling as fh
 import atoms_and_modules.registration_functions as rf
 import atoms_and_modules.registration_file_handling as rfh
 import atoms_and_modules.minc_modules as mm
 import atoms_and_modules.minc_atoms as ma
 import atoms_and_modules.stats_tools as st
 import atoms_and_modules.option_groups as og
-import atoms_and_modules.hierarchical_minctracc as hmt
+import atoms_and_modules.minc_parameters as mp
 import atoms_and_modules.old_MBM_interface_functions as ombm
 import Pyro
 from optparse import OptionGroup
@@ -34,11 +32,12 @@ class RegistrationChain(AbstractApplication):
                       help="Option to specify space of input-files. Can be lsq6 (default), lsq12 or native.")
         group.add_option("--common-space-name", dest="common_name",
                       type="string", default="common", 
-                      help="Option to specify a name for the common space. This is useful for the \
-                            creation of more readable output file names. Default is common.")
+                      help="Option to specify a name for the common space. This is useful for the "
+                            "creation of more readable output file names. Default is common.")
         self.parser.add_option_group(group)
         """Add option groups from specific modules"""
         rf.addGenRegOptionGroup(self.parser)
+        mp.addLSQ12NLINOptionGroup(self.parser)
         og.tmpLongitudinalOptionGroup(self.parser)
         st.addStatsOptions(self.parser)
         
@@ -103,12 +102,17 @@ class RegistrationChain(AbstractApplication):
             count = len(s) 
             for i in range(count - 1):
                 # Create new groups
-                # MF TODO: Make generalization of registration parameters easier. 
                 if self.options.reg_method == "mincANTS":
-                    register = mm.LSQ12ANTSNlin(s[i], s[i+1])
+                    register = mm.LSQ12ANTSNlin(s[i], 
+                                                s[i+1],
+                                                lsq12_protocol=self.options.lsq12_protocol,
+                                                nlin_protocol=self.options.nlin_protocol)
                     self.pipeline.addPipeline(register.p)
                 elif self.options.reg_method == "minctracc":
-                    hm = hmt.HierarchicalMinctracc(s[i], s[i+1])
+                    hm = mm.HierarchicalMinctracc(s[i], 
+                                                  s[i+1], 
+                                                  lsq12_protocol=self.options.lsq12_protocol,
+                                                  nlin_protocol=self.options.nlin_protocol)
                     self.pipeline.addPipeline(hm.p)
                 """Resample s[i] into space of s[i+1]""" 
                 if nlinFH:
