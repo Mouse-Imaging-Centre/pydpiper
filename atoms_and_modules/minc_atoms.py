@@ -300,7 +300,10 @@ class minctracc(CmdStage):
         else:
             #MF TODO: Enforce that options must be lsq6/7/9/12?
             """add the options for a linear fit"""
-            _numCmd = "-" + self.linearparam
+            if self.linearparam == "lsq6-identity":
+                _numCmd = "-" + "lsq6"
+            else:
+                _numCmd = "-" + self.linearparam
             self.cmd += ["-xcorr", _numCmd]
 
 class blur(CmdStage):

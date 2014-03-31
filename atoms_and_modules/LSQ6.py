@@ -1075,6 +1075,22 @@ class LSQ6HierarchicalMinctracc(LSQ6Base):
         self.simplex = params.simplex
         self.w_translations = params.w_translations
         self.generations = params.generations
+        
+        # Setup linearparams for minctracc atom
+        self.setupLinearParams()
+    
+    def setupLinearParams(self):
+        #All linearparams should be "lsq6" except first, which is based on initial_transform. 
+        self.linearParams=[]
+        for i in range(self.generations - 1):
+            self.linearParams.append("lsq6")
+        if self.initial_transform == "estimate":
+            self.linearParams.insert(0,"lsq6")
+        elif self.initial_transform == "identity":
+            self.linearParams.insert(0, "lsq6-identity")
+        else:
+            print "Error: unknown option used for initial_transform in LSQ6HierarchicalMinctracc: ", self.initial_transform
+            sys.exit()
     
     def createLSQ6Transformation(self):
         """
@@ -1097,7 +1113,7 @@ class LSQ6HierarchicalMinctracc(LSQ6Base):
                                   step = self.stepSize[i],
                                   gradient = self.useGradient[i],
                                   w_translations = self.w_translations[i],
-                                  linearparam = "lsq6") 
+                                  linearparam = self.linearParams[i]) 
                 self.p.addStage(mt)
 
 
