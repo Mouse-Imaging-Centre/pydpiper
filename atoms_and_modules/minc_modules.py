@@ -298,9 +298,9 @@ def resampleToCommon(xfm, FH, statsGroup, blurs, nlinFH):
     outputDirectory = FH.statsDir
     filesToResample = []
     for b in blurs:
-        filesToResample.append(statsGroup.jacobians[b])
-        if statsGroup.scaledJacobians:
-            filesToResample.append(statsGroup.scaledJacobians[b])
+        filesToResample.append(statsGroup.relativeJacobians[b])
+        if statsGroup.absoluteJacobians:
+            filesToResample.append(statsGroup.absoluteJacobians[b])
     for f in filesToResample:
         outputBase = fh.removeBaseAndExtension(f).split(".mnc")[0]
         outputFile = fh.createBaseName(outputDirectory, outputBase + "_common" + ".mnc")
