@@ -22,13 +22,11 @@ def addGenRegOptionGroup(parser):
                       help="Name of pipeline and prefix for models.")
     group.add_option("--registration-method", dest="reg_method",
                       default="minctracc", type="string",
-                      help="Specify whether to use minctracc or mincANTS. Default is minctracc")
+                      help="Specify whether to use minctracc or mincANTS for non-linear registrations. "
+                           "Default is minctracc.")
     group.add_option("--mask-dir", dest="mask_dir",
                       type="string", default=None, 
                       help="Directory of masks. If not specified, no masks are used. If only one mask in directory, same mask used for all inputs.")
-    group.add_option("--calc-stats", dest="calc_stats",
-                      action="store_true", default=False, 
-                      help="Calculate statistics at the end of the registration. Default is False.")
     parser.add_option_group(group)
 
 class StandardMBMDirectories(object):

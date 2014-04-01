@@ -5,12 +5,12 @@ from pydpiper.pipeline import Pipeline, InputFile, OutputFile, LogFile, CmdStage
 from pydpiper.file_handling import createBaseName, logFromFile
 import atoms_and_modules.minc_atoms as ma
 import atoms_and_modules.registration_functions as rf
+import atoms_and_modules.minc_parameters as mp
 from atoms_and_modules.registration_file_handling import RegistrationPipeFH, RegistrationFHBase
 from optparse import OptionGroup
 from os.path import basename, abspath
 import sys
 import logging
-import csv
 
 logger = logging.getLogger(__name__)
 
@@ -21,9 +21,6 @@ def addLSQ12OptionGroup(parser):
     group.add_option("--lsq12-max-pairs", dest="lsq12_max_pairs",
                      type="string", default=None,
                      help="Maximum number of pairs to register together.")
-    group.add_option("--lsq12-protocol", dest="lsq12_protocol",
-                     type="string", default=None,
-                     help="Can optionally specify a registration protocol that is different from defaults. Default is None.")
     group.add_option("--lsq12-likefile", dest="lsq12_likeFile",
                      type="string", default=None,
                      help="Can optionally specify a like file for resampling at the end of pairwise "
@@ -50,6 +47,7 @@ class LSQ12Registration(AbstractApplication):
         """Add option groups from specific modules"""
         rf.addGenRegOptionGroup(self.parser)
         addLSQ12OptionGroup(self.parser)
+        mp.addLSQ12OptionGroup(self.parser)
          
         self.parser.set_usage("%prog [options] input files") 
 
@@ -130,8 +128,6 @@ class FullLSQ12(object):
             transform for that particular subject. 
             These xfms may be used subsequently for statistics calculations. """
         self.lsq12AvgXfms = {}
-        # what sort of subject matter do we deal with?
-        self.subject_matter = subject_matter
         
         """Create the blurring resolution from the file resolution"""
         try:
@@ -141,104 +137,21 @@ class FullLSQ12(object):
             # initial input volume, which should exist. 
             self.fileRes = rf.getFinestResolution(self.inputs[0].inputFileName)
         
-        """ 
-            Similarly to LSQ6 and NLIN modules, an optional SEMI-COLON delimited csv may 
-            be specified to override the default registration protocol. An example protocol
-            may be found in:
-            
-            Note that if no protocol is specified, then defaults will be used. 
-            Based on the length of these parameter arrays, the number of generations is set. 
-        """
-        self.defaultParams()
-        if lsq12_protocol:
-            self.setParams(lsq12_protocol)
-        self.generations = self.getGenerations() 
+        """"Set up parameter array"""
+        params = mp.setLSQ12MinctraccParams(self.fileRes, 
+                                            subject_matter=subject_matter, 
+                                            reg_protocol=lsq12_protocol)
+        self.blurs = params.blurs
+        self.stepSize = params.stepSize
+        self.useGradient = params.useGradient
+        self.simplex = params.simplex
+        self.w_translations = params.w_translations
+        self.generations = params.generations
         
         # Create new lsq12 group for each input prior to registration
         for i in range(len(self.inputs)):
             self.inputs[i].newGroup(groupName="lsq12")
          
-    
-    def defaultParams(self):
-        """ 
-            Default minctracc parameters based on resolution of file, unless
-            a particular subject matter was provided
-        """
-        
-        blurfactors      = [       5,   10.0/3.0,         2.5]
-        stepfactors      = [50.0/3.0,   25.0/3.0,         5.5]
-        simplexfactors   = [      50,         25,    50.0/3.0]
-        
-        if(self.subject_matter == "mousebrain"):
-            # the default for mouse brains should be:
-            # blurs:   0.3   0.2   0.15
-            # steps:   1     0.5   0.333
-            # simplex: 3     1.5   1
-            self.blurs =    [0.3, 0.2, 0.15]
-            self.stepSize=  [1,   0.5, 1.0/3.0]
-            self.simplex=   [3,   1.5, 1]
-        else:
-            self.blurs = [i * self.fileRes for i in blurfactors]
-            self.stepSize=[i * self.fileRes for i in stepfactors]
-            self.simplex=[i * self.fileRes for i in simplexfactors]
-        
-        self.useGradient=[False,True,False]
-        
-    def setParams(self, lsq12_protocol):
-        """Set parameters from specified protocol"""
-        
-        """Read parameters into array from csv."""
-        inputCsv = open(abspath(lsq12_protocol), 'rb')
-        csvReader = csv.reader(inputCsv, delimiter=';', skipinitialspace=True)
-        params = []
-        for r in csvReader:
-            params.append(r)
-        """initialize arrays """
-        self.blurs = []
-        self.stepSize = []
-        self.useGradient = []
-        self.simplex = []
-
-        """Parse through rows and assign appropriate values to each parameter array.
-           Everything is read in as strings, but in some cases, must be converted to 
-           floats, booleans or gradients. 
-        """
-        for p in params:
-            if p[0]=="blur":
-                """Blurs must be converted to floats."""
-                for i in range(1,len(p)):
-                    self.blurs.append(float(p[i]))
-            elif p[0]=="step":
-                """Steps are strings but must be converted to a float."""
-                for i in range(1,len(p)):
-                    self.stepSize.append(float(p[i]))
-            elif p[0]=="gradient":
-                """Gradients must be converted to bools."""
-                for i in range(1,len(p)):
-                    if p[i]=="True" or p[i]=="TRUE":
-                        self.useGradient.append(True)  
-                    elif p[i]=="False" or p[i]=="FALSE":
-                        self.useGradient.append(False) 
-            elif p[0]=="simplex":
-                """Simplex must be converted to an int."""
-                for i in range(1,len(p)):
-                    self.simplex.append(int(p[i]))
-            else:
-                print "Improper parameter specified for minctracc protocol: " + str(p[0])
-                print "Exiting..."
-                sys.exit()
-        
-    def getGenerations(self):
-        arrayLength = len(self.blurs)
-        errorMsg = "Array lengths in lsq12 minctracc protocol do not match."
-        if (len(self.stepSize) != arrayLength 
-            or len(self.useGradient) != arrayLength
-            or len(self.simplex) != arrayLength):
-            print errorMsg
-            raise
-        else:
-            return arrayLength 
-        
     def iterate(self):
         if not self.maxPairs:
             xfmsToAvg = {}
@@ -250,10 +163,11 @@ class FullLSQ12(object):
                     if inputFH != targetFH:
                         lsq12 = LSQ12(inputFH,
                                       targetFH,
-                                      self.blurs,
-                                      self.stepSize,
-                                      self.useGradient,
-                                      self.simplex)
+                                      blurs=self.blurs,
+                                      step=self.stepSize,
+                                      gradient=self.useGradient,
+                                      simplex=self.simplex,
+                                      w_translations=self.w_translations)
                         self.p.addPipeline(lsq12.p)
                         xfmsToAvg[inputFH].append(inputFH.getLastXfm(targetFH))
                 
@@ -323,6 +237,7 @@ class LSQ12(object):
                  step=[1,0.5,0.333333333333333],
                  gradient=[False,True,False],
                  simplex=[3,1.5,1],
+                 w_translations=[0.4,0.4,0.4],
                  defaultDir="tmp"):                                      
 
         # TO DO: Might want to take this out and pass in # of generations, since
@@ -342,6 +257,7 @@ class LSQ12(object):
         self.blurs = blurs
         self.gradient = gradient
         self.simplex = simplex
+        self.w_translations = w_translations
         self.defaultDir = defaultDir
             
         self.blurFiles()
@@ -364,6 +280,7 @@ class LSQ12(object):
                                        gradient=self.gradient[i],                                     
                                        linearparam="lsq12",
                                        step=self.step[i],
+                                       w_translations=self.w_translations[i],
                                        simplex=self.simplex[i])
             self.p.addStage(linearStage)
 

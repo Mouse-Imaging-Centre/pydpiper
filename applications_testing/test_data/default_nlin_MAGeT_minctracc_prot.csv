@@ -1,0 +1,7 @@
+"blur";0.25;0.25;0.25;0.25;0.25;-1
+"step";1;0.5;0.5;0.2;0.2;0.1
+"iterations";60;60;60;10;10;4
+"simplex";3;3;3;1.5;1.5;1
+"gradient";False;False;True;False;True;False
+"w_translations";0.2;0.2;0.2;0.2;0.2;0.2
+"optimization";"-use_simplex";"-use_simplex";"-use_simplex";"-use_simplex";"-use_simplex";"-use_simplex"

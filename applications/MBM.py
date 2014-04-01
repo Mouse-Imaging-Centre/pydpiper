@@ -6,6 +6,7 @@ import atoms_and_modules.registration_file_handling as rfh
 import atoms_and_modules.LSQ6 as lsq6
 import atoms_and_modules.LSQ12 as lsq12
 import atoms_and_modules.NLIN as nlin
+import atoms_and_modules.minc_parameters as mp
 import atoms_and_modules.stats_tools as st
 import Pyro
 import os
@@ -25,11 +26,12 @@ def addMBMGroup(parser):
 class MBMApplication(AbstractApplication):
     def setup_options(self):
         """Add option groups from specific modules"""
-        rf.addGenRegOptionGroup(self.parser)
         addMBMGroup(self.parser)
+        rf.addGenRegOptionGroup(self.parser)
         lsq6.addLSQ6OptionGroup(self.parser)
         lsq12.addLSQ12OptionGroup(self.parser)
         nlin.addNlinRegOptionGroup(self.parser)
+        mp.addRegParamsOptionGroup(self.parser)
         st.addStatsOptions(self.parser)
         
         self.parser.set_usage("%prog [options] input files") 
@@ -119,20 +121,23 @@ class MBMApplication(AbstractApplication):
         
         #STATS MODULE
         if options.calc_stats:
-            """Get blurs from command line option and put into array"""
+            #Get blurs from command line option and put into array
             blurs = []
             for i in options.stats_kernels.split(","):
                 blurs.append(float(i))
-            """Choose final average from array of nlin averages"""
+            #Choose final average from array of nlin averages
             numGens = len(nlinModule.nlinAverages)
             finalNlin = nlinModule.nlinAverages[numGens-1]
-            """For each input file, calculate statistics from finalNlin to input"""
+            # For each input file, calculate statistics from final average (finalNlin) 
+            # to the inputFH space where all linear differences have been accounted for (LSQ12). 
+            # The additionalXfm specified for each inputFH is the transform from the lsq6 to lsq12 
+            # space for that scan. This encapsulates linear differences and is necessary for
+            # some of the calculations in CalcStats.  
             for inputFH in inputFiles:
                 stats = st.CalcStats(inputFH, 
                                      finalNlin, 
-                                     blurs, 
-                                     inputArray=inputFiles,
-                                     scalingFactor=lsq12module.lsq12AvgXfms[inputFH])
+                                     blurs,
+                                     additionalXfm=lsq12module.lsq12AvgXfms[inputFH])
                 stats.fullStatsCalc()
                 self.pipeline.addPipeline(stats.p)
         

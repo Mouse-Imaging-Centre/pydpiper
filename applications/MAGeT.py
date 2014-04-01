@@ -5,6 +5,7 @@ import pydpiper.file_handling as fh
 from atoms_and_modules.registration_file_handling import RegistrationPipeFH
 from atoms_and_modules.registration_functions import initializeInputFiles, addGenRegOptionGroup
 from atoms_and_modules.MAGeT_modules import MAGeTMask, MAGeTRegister, voxelVote, addMAGeTOptionGroup
+from atoms_and_modules.minc_parameters import addLSQ12NLINOptionGroup
 import Pyro
 from os.path import abspath, join
 import logging
@@ -20,6 +21,7 @@ class MAGeTApplication(AbstractApplication):
     def setup_options(self):
         addGenRegOptionGroup(self.parser)
         addMAGeTOptionGroup(self.parser)
+        addLSQ12NLINOptionGroup(self.parser)
         self.parser.set_usage("%prog [options] input files") 
 
     def setup_appName(self):
@@ -92,7 +94,12 @@ class MAGeTApplication(AbstractApplication):
         
         """ If --mask is specified and we are masking brains, do it here."""
         if self.options.mask or self.options.mask_only:
-            mp = MAGeTMask(atlases, inputs, numAtlases, self.options.mask_method)
+            mp = MAGeTMask(atlases, 
+                           inputs, 
+                           numAtlases, 
+                           self.options.mask_method,
+                           lsq12_protocol=self.options.lsq12_protocol,
+                           nlin_protocol=self.options.nlin_protocol)
             self.pipeline.addPipeline(mp)
         
         if not self.options.mask_only:
@@ -105,7 +112,9 @@ class MAGeTApplication(AbstractApplication):
                                        atlases[afile],
                                        self.options.reg_method,
                                        name="initial",
-                                       createMask=False)
+                                       createMask=False,
+                                       lsq12_protocol=self.options.lsq12_protocol,
+                                       nlin_protocol=self.options.nlin_protocol)
                     self.pipeline.addPipeline(sp)
                 # each template needs to be added only once, but will have multiple 
                 # input labels
@@ -122,7 +131,9 @@ class MAGeTApplication(AbstractApplication):
                                                tmplFH, 
                                                self.options.reg_method,
                                                name="templates", 
-                                               createMask=False)
+                                               createMask=False,
+                                               lsq12_protocol=self.options.lsq12_protocol,
+                                               nlin_protocol=self.options.nlin_protocol)
                             self.pipeline.addPipeline(sp)
                     voxel = voxelVote(inputFH, self.options.pairwise, False)
                     self.pipeline.addStage(voxel)

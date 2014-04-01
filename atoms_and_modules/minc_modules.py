@@ -5,6 +5,8 @@ import atoms_and_modules.LSQ12 as lsq12
 import atoms_and_modules.minc_atoms as ma
 import atoms_and_modules.registration_file_handling as rfh
 import atoms_and_modules.stats_tools as st
+import atoms_and_modules.minc_parameters as mp
+import atoms_and_modules.registration_functions as rf
 import pydpiper.file_handling as fh
 from pyminc.volumes.factory import volumeFromFile
 
@@ -45,61 +47,151 @@ class LSQ12ANTSNlin:
     def __init__(self,
                  inputFH,
                  targetFH,
-                 lsq12Blurs=[0.3, 0.2, 0.15],
-                 lsq12StepSize=[1,0.5,0.333333333333333],
-                 lsq12UseGradient=[False,True,False],
-                 lsq12Simplex=[3,1.5,1],
-                 ANTSBlur=0.056,
+                 lsq12_protocol=None,
+                 nlin_protocol=None,
+                 subject_matter=None,
                  defaultDir="tmp"):
         
         self.p = Pipeline()
         self.inputFH = inputFH
         self.targetFH = targetFH
-        self.lsq12Blurs = lsq12Blurs
-        self.lsq12StepSize = lsq12StepSize
-        self.lsq12UseGradient = lsq12UseGradient
-        self.lsq12Simplex = lsq12Simplex
+        self.lsq12_protocol = lsq12_protocol
+        self.nlin_protocol = nlin_protocol
+        self.subject_matter = subject_matter
         self.defaultDir = defaultDir
-        self.ANTSBlur = ANTSBlur
+        try: # the attempt to access the minc volume will fail if it doesn't yet exist at pipeline creation
+            self.fileRes = rf.getFinestResolution(self.inputFH)
+        except: 
+            # if it indeed failed, get resolution from the original file specified for 
+            # one of the input files, which should exist. 
+            # Can be overwritten by the user through specifying a nonlinear protocol.
+            self.fileRes = rf.getFinestResolution(self.inputFH.inputFileName)
         
         self.buildPipeline()    
     
     def buildPipeline(self):
-        """Run lsq12 registration prior to non-linear"""
+        # Run lsq12 registration prior to non-linear
+        lp = mp.setLSQ12MinctraccParams(self.fileRes, 
+                                        subject_matter=self.subject_matter,
+                                        reg_protocol=self.lsq12_protocol)
         lsq12reg = lsq12.LSQ12(self.inputFH, 
-                            self.targetFH, 
-                            blurs=self.lsq12Blurs,
-                            step=self.lsq12StepSize,
-                            gradient=self.lsq12UseGradient,
-                            simplex=self.lsq12Simplex,
-                            defaultDir=self.defaultDir)
+                               self.targetFH, 
+                               blurs=lp.blurs,
+                               step=lp.stepSize,
+                               gradient=lp.useGradient,
+                               simplex=lp.simplex,
+                               w_translations=lp.w_translations,
+                               defaultDir=self.defaultDir)
         self.p.addPipeline(lsq12reg.p)
-        """Resample input using final lsq12 transform"""
+        
+        #Resample using final LSQ12 transform and reset last base volume. 
         res = ma.mincresample(self.inputFH, self.targetFH, likeFile=self.targetFH, argArray=["-sinc"])   
         self.p.addStage(res)
         self.inputFH.setLastBasevol(res.outputFiles[0])
-        # MF TODO: For future implementations, perhaps keep track of the xfm
-        # by creating a new registration group. Not necessary for current use,
-        # but could be essential in the future.  
         lsq12xfm = self.inputFH.getLastXfm(self.targetFH)
-        """Blur input and template files prior to running mincANTS command"""
-        tblur = ma.blur(self.targetFH, self.ANTSBlur, gradient=True)
-        iblur = ma.blur(self.inputFH, self.ANTSBlur, gradient=True)               
-        self.p.addStage(tblur)
-        self.p.addStage(iblur)
+        
+        #Get registration parameters from nlin protocol, blur and register
+        #Assume a SINGLE generation here. 
+        np = mp.setOneGenMincANTSParams(self.fileRes, reg_protocol=self.nlin_protocol)
+        for b in np.blurs:
+            for j in b:
+                #Note that blurs for ANTS params in an array of arrays. 
+                if j != -1:            
+                    self.p.addStage(ma.blur(self.targetFH, j, gradient=True))
+                    self.p.addStage(ma.blur(self.inputFH, j, gradient=True))
+                    
         sp = ma.mincANTS(self.inputFH,
                          self.targetFH,
                          defaultDir=self.defaultDir, 
-                         blur=[-1, self.ANTSBlur])
+                         blur=np.blurs[0],
+                         gradient=np.gradient[0],
+                         similarity_metric=np.similarityMetric[0],
+                         weight=np.weight[0],
+                         iterations=np.iterations[0],
+                         radius_or_histo=np.radiusHisto[0],
+                         transformation_model=np.transformationModel[0], 
+                         regularization=np.regularization[0],
+                         useMask=np.useMask[0])
         self.p.addStage(sp)
         nlinXfm = sp.outputFiles[0]
-        """Reset last base volume to original input for future registrations."""
+        #Reset last base volume to original input for future registrations.
         self.inputFH.setLastBasevol(setToOriginalInput=True)
-        """Concatenate transforms to get final lsq12 + nlin. Register volume handles naming and setting of lastXfm"""
-        #MF TODO: May want to change the output name to include a "concat" to indicate lsq12 and nlin concatenation?
+        #Concatenate transforms to get final lsq12 + nlin. Register volume handles naming and setting of lastXfm
         output = self.inputFH.registerVolume(self.targetFH, "transforms")
         xc = ma.xfmConcat([lsq12xfm, nlinXfm], output, fh.logFromFile(self.inputFH.logDir, output))
         self.p.addStage(xc)
+
+class HierarchicalMinctracc:
+    """Default HierarchicalMinctracc currently does:
+        1. A standard three stage LSQ12 alignment. (See defaults for LSQ12 module.)
+        2. A six generation non-linear minctracc alignment. 
+       To override these defaults, lsq12 and nlin protocols may be specified. """
+    def __init__(self, 
+                 inputFH, 
+                 targetFH,
+                 lsq12_protocol=None,
+                 nlin_protocol=None,
+                 includeLinear = True,
+                 subject_matter = None,  
+                 defaultDir="tmp"):
+        
+        self.p = Pipeline()
+        self.inputFH = inputFH
+        self.targetFH = targetFH
+        self.lsq12_protocol = lsq12_protocol
+        self.nlin_protocol = nlin_protocol
+        self.includeLinear = includeLinear
+        self.subject_matter = subject_matter
+        self.defaultDir = defaultDir
+        
+        try: # the attempt to access the minc volume will fail if it doesn't yet exist at pipeline creation
+            self.fileRes = rf.getFinestResolution(self.inputFH)
+        except: 
+            # if it indeed failed, get resolution from the original file specified for 
+            # one of the input files, which should exist. 
+            # Can be overwritten by the user through specifying a nonlinear protocol.
+            self.fileRes = rf.getFinestResolution(self.inputFH.inputFileName)
+        
+        self.buildPipeline()
+        
+    def buildPipeline(self):
+            
+        # Do LSQ12 alignment prior to non-linear stages if desired
+        if self.includeLinear: 
+            lp = mp.setLSQ12MinctraccParams(self.fileRes,
+                                            subject_matter=self.subject_matter,
+                                            reg_protocol=self.lsq12_protocol)
+            lsq12reg = lsq12.LSQ12(self.inputFH, 
+                                   self.targetFH, 
+                                   blurs=lp.blurs,
+                                   step=lp.stepSize,
+                                   gradient=lp.useGradient,
+                                   simplex=lp.simplex,
+                                   w_translations=lp.w_translations,
+                                   defaultDir=self.defaultDir)
+            self.p.addPipeline(lsq12reg.p)
+        
+        # create the nonlinear registrations
+        np = mp.setNlinMinctraccParams(self.fileRes, reg_protocol=self.nlin_protocol)
+        for b in np.blurs: 
+            if b != -1:           
+                self.p.addStage(ma.blur(self.inputFH, b, gradient=True))
+                self.p.addStage(ma.blur(self.targetFH, b, gradient=True))
+        for i in range(len(np.stepSize)):
+            #For the final stage, make sure the output directory is transforms.
+            if i == (len(np.stepSize) - 1):
+                self.defaultDir = "transforms"
+            nlinStage = ma.minctracc(self.inputFH, 
+                                     self.targetFH,
+                                     defaultDir=self.defaultDir,
+                                     blur=np.blurs[i],
+                                     gradient=np.useGradient[i],
+                                     iterations=np.iterations[i],
+                                     step=np.stepSize[i],
+                                     w_translations=np.w_translations[i],
+                                     simplex=np.simplex[i],
+                                     optimization=np.optimization[i])
+            self.p.addStage(nlinStage)
 
 class LongitudinalStatsConcatAndResample:
     """ For each subject:
@@ -150,16 +242,19 @@ class LongitudinalStatsConcatAndResample:
             xfm = s[i].getLastXfm(s[i+1]) 
         else:
             xfm = s[i].getLastXfm(s[i-1])
-        self.xfmToCommon.insert(0, xfm)
-        """ Concat transforms to get xfmToCommon and calculate statistics 
-            Note that inverted transform, which is what we want, is calculated in
-            the statistics module. """
-        xtc = fh.createBaseName(s[i].transformsDir, s[i].basename + "_to_" + self.commonName + ".xfm")
-        xc = ma.xfmConcat(self.xfmToCommon, xtc, fh.logFromFile(s[i].logDir, xtc))
-        self.p.addStage(xc)
         """Set this transform as last xfm from input to nlin and calculate nlin to s[i] stats"""
-        s[i].addAndSetXfmToUse(self.nlinFH, xtc)
-        self.statsCalculation(s[i], self.nlinFH, xfm=None, useChainStats=False)
+        if self.nlinFH:
+            self.xfmToCommon.insert(0, xfm)
+            """ Concat transforms to get xfmToCommon and calculate statistics 
+                Note that inverted transform, which is what we want, is calculated in
+                the statistics module. """
+            xtc = fh.createBaseName(s[i].transformsDir, s[i].basename + "_to_" + self.commonName + ".xfm")
+            xc = ma.xfmConcat(self.xfmToCommon, xtc, fh.logFromFile(s[i].logDir, xtc))
+            self.p.addStage(xc)
+            s[i].addAndSetXfmToUse(self.nlinFH, xtc)
+            self.statsCalculation(s[i], self.nlinFH, xfm=None, useChainStats=False)
+        else:
+            xtc=None
         """Calculate i to i+1 stats for all but final timePoint"""
         if count - i > 1:
             self.statsCalculation(s[i], s[i+1], xfm=xtc, useChainStats=True)
@@ -178,7 +273,8 @@ class LongitudinalStatsConcatAndResample:
             """Calculate stats first from average to timpoint included in average.
                If timepoint included in average is NOT final timepoint, also calculate
                i to i+1 stats."""
-            self.statsCalculation(s[self.timePoint], self.nlinFH, xfm=None, useChainStats=False)
+            if self.nlinFH:
+                self.statsCalculation(s[self.timePoint], self.nlinFH, xfm=None, useChainStats=False)
             if count - self.timePoint > 1:
                 self.statsCalculation(s[self.timePoint], s[self.timePoint+1], xfm=xfmToNlin, useChainStats=True)
             if not self.timePoint - 1 < 0:
@@ -202,9 +298,9 @@ def resampleToCommon(xfm, FH, statsGroup, blurs, nlinFH):
     outputDirectory = FH.statsDir
     filesToResample = []
     for b in blurs:
-        filesToResample.append(statsGroup.jacobians[b])
-        if statsGroup.scaledJacobians:
-            filesToResample.append(statsGroup.scaledJacobians[b])
+        filesToResample.append(statsGroup.relativeJacobians[b])
+        if statsGroup.absoluteJacobians:
+            filesToResample.append(statsGroup.absoluteJacobians[b])
     for f in filesToResample:
         outputBase = fh.removeBaseAndExtension(f).split(".mnc")[0]
         outputFile = fh.createBaseName(outputDirectory, outputBase + "_common" + ".mnc")

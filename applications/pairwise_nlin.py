@@ -8,7 +8,6 @@ import atoms_and_modules.minc_modules as mm
 import atoms_and_modules.minc_atoms as ma
 import atoms_and_modules.stats_tools as st
 import atoms_and_modules.option_groups as og
-import atoms_and_modules.hierarchical_minctracc as hmt
 import atoms_and_modules.old_MBM_interface_functions as ombm
 import Pyro
 from optparse import OptionGroup
@@ -20,6 +19,9 @@ import sys
 logger = logging.getLogger(__name__)
 
 Pyro.config.PYRO_MOBILE_CODE=1 
+
+"""NOTE: This application needs a significant overhaul and/or combining with the RegistrationChain
+         Application. Until this comment is removed, please consider this class DEPRECATED."""
 
 class PairwiseNonlinear(AbstractApplication):
     def setup_options(self):
@@ -95,7 +97,7 @@ class PairwiseNonlinear(AbstractApplication):
                         register = mm.LSQ12ANTSNlin(inputFH, targetFH)
                         self.pipeline.addPipeline(register.p)
                     elif self.options.reg_method == "minctracc":
-                        hm = hmt.HierarchicalMinctracc(inputFH, targetFH)
+                        hm = mm.HierarchicalMinctracc(inputFH, targetFH)
                         self.pipeline.addPipeline(hm.p)
                     if nlinFH:
                         resample = ma.mincresample(inputFH, targetFH, likeFile=nlinFH)
