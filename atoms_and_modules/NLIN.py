@@ -346,15 +346,15 @@ class NLINminctracc(NLINBase):
             self.p.addStage(mtb)
             """Need to set last xfm so that next generation will use it as the input transform"""
             inputFH.setLastXfm(nlinFH, mtb.outputFiles[0])
-            rs = mincresample(inputFH, 
-                                self.target, 
-                                likeFile=self.target, 
-                                output=resampleOutput,
-                                defaultDir="tmp", 
-                                argArray=["-sinc"])
-            #Do we need to resample any masks?
-            filesToAvg.append(rs.outputFiles[0])
-            self.p.addStage(rs)
+        rs = mincresample(inputFH, 
+                          self.target, 
+                          likeFile=self.target, 
+                          output=resampleOutput,
+                          defaultDir="tmp", 
+                          argArray=["-sinc"])
+        #Do we need to resample any masks?
+        filesToAvg.append(rs.outputFiles[0])
+        self.p.addStage(rs)
         if i == (self.generations -1):
             inputFH.setLastBasevol(newBaseVol=rs.outputFiles[0])
             
