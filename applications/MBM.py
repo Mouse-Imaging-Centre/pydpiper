@@ -78,17 +78,19 @@ class MBMApplication(AbstractApplication):
         self.pipeline.addPipeline(lsq6module.p)
         
         # NUC 
-        nucorrection = lsq6.NonUniformityCorrection(inputFiles,
-                                                    initial_model = initModel,
-                                                    resampleNUCtoLSQ6 = False)
-        nucorrection.finalize()
-        self.pipeline.addPipeline(nucorrection.p)
+        if options.nuc:
+            nucorrection = lsq6.NonUniformityCorrection(inputFiles, 
+                                                        initial_model=initModel,
+                                                        resampleNUCtoLSQ6=False)
+            nucorrection.finalize()
+            self.pipeline.addPipeline(nucorrection.p)
         
-        # INORMALIZE
-        intensity_normalization = lsq6.IntensityNormalization(inputFiles,
-                                                              initial_model = initModel,
-                                                              resampleINORMtoLSQ6 = True)
-        self.pipeline.addPipeline(intensity_normalization.p)
+        #INORMALIZE
+        if options.inormalize:
+            intensity_normalization = lsq6.IntensityNormalization(inputFiles,
+                                                                  initial_model=initModel,
+                                                                  resampleINORMtoLSQ6=True)
+            self.pipeline.addPipeline(intensity_normalization.p)
         
         # LSQ12 MODULE
         # We need to specify a likeFile/space when all files are resampled
