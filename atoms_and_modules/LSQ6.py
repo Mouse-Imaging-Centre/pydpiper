@@ -62,6 +62,20 @@ def addLSQ6OptionGroup(parser):
                      type="int", default=10,
                      help="Settings for the rotational interval in degrees when running the large rotation alignment."
                      " [default: %default]")
+    group.add_option("--nuc", dest="nuc",
+                      action="store_true", 
+                      help="Perform non-uniformity correction. [Default]")
+    group.add_option("--no-nuc", dest="nuc",
+                      action="store_false", 
+                      help="If specified, do not perform non-uniformity correction. Opposite of --nuc.")
+    group.add_option("--inormalize", dest="inormalize",
+                      action="store_true", 
+                      help="Normalize the intensities after lsq6 alignment and nuc, if done. [Default] ")
+    group.add_option("--no-inormalize", dest="inormalize",
+                      action="store_false", 
+                      help="If specified, do not perform intensity normalization. Opposite of --inormalize.")
+    parser.set_defaults(nuc=True)
+    parser.set_defaults(inormalize=True)
     parser.add_option_group(group)
 
 class LSQ6Registration(AbstractApplication):
@@ -159,22 +173,19 @@ class LSQ6Registration(AbstractApplication):
         lsq6module.finalize()
         self.pipeline.addPipeline(lsq6module.p)
         
-        ###########################################################################
-        # TESTING
-        nucorrection = NonUniformityCorrection(inputFiles, 
-                                               initial_model=initModel,
-                                               resampleNUCtoLSQ6=False)
-        nucorrection.finalize()
-        self.pipeline.addPipeline(nucorrection.p)
+        if options.nuc:
+            nucorrection = NonUniformityCorrection(inputFiles, 
+                                                   initial_model=initModel,
+                                                   resampleNUCtoLSQ6=False)
+            nucorrection.finalize()
+            self.pipeline.addPipeline(nucorrection.p)
         
-        intensity_normalization = IntensityNormalization(inputFiles,
-                                                         initial_model=initModel,
-                                                         resampleINORMtoLSQ6=True)
-        self.pipeline.addPipeline(intensity_normalization.p)
+        if options.inormalize:
+            intensity_normalization = IntensityNormalization(inputFiles,
+                                                             initial_model=initModel,
+                                                             resampleINORMtoLSQ6=True)
+            self.pipeline.addPipeline(intensity_normalization.p)
         
-#         intensity_normalization.setINORMasLastBaseVolume()
-        # TESTING
-        ###########################################################################
 
 def getLSQ6Module(inputFiles,
                   targetPipeFH,
@@ -338,6 +349,7 @@ class NonUniformityCorrection(object):
             self.masks = [self.singlemask] * len(self.inputs)
         elif(rf.isFileHandler(self.inputs[0])):
             if(self.inputs[0].getMask() != None):
+                self.masks = []
                 # the input files have a mask associated with them which we will use
                 for inputFH in self.inputs:
                     self.masks.append(inputFH.getMask())

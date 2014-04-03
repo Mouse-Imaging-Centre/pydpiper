@@ -469,7 +469,7 @@ class mincresampleFileAndMask(object):
                 # for instance, we should remove that argument for the mask resampling
                 # these options would reside in the argArray...
                 maskArgs = copy.deepcopy(kwargs)
-                if(maskArgs["argArray"]):
+                if maskArgs.has_key("argArray"):
                     argList = maskArgs["argArray"]
                     for i in range(len(argList)):
                         if(re.match("-sinc", argList[i]) or
@@ -480,9 +480,9 @@ class mincresampleFileAndMask(object):
                 
                 # if the output file for the mincresample command was already
                 # specified, add "_mask.mnc" to it
-                if(maskArgs["output"]):
+                if maskArgs.has_key("output"):
                     maskArgs["output"] = re.sub(".mnc", "_mask.mnc", maskArgs["output"])
-                    
+
                 maskRS = mincresampleMask(inFile,
                                           targetFile,
                                           **maskArgs)
