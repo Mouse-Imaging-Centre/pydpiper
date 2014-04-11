@@ -119,16 +119,12 @@ class NonlinearRegistration(AbstractApplication):
             
         """Calculate statistics between final nlin average and individual mice"""
         if options.calc_stats:
-            """Get blurs from command line option and put into array"""
-            blurs = []
-            for i in options.stats_kernels.split(","):
-                blurs.append(float(i))
             """Choose final average from array of nlin averages"""
             numGens = len(self.nlinAverages)
             finalNlin = self.nlinAverages[numGens-1]
             """For each input file, calculate statistics from finalNlin to input"""
             for inputFH in inputFiles:
-                stats = CalcStats(inputFH, finalNlin, blurs)
+                stats = CalcStats(inputFH, finalNlin, options.stats_kernels)
                 stats.fullStatsCalc()
                 self.pipeline.addPipeline(stats.p)
 

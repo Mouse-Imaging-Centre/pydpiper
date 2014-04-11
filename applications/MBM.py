@@ -123,10 +123,6 @@ class MBMApplication(AbstractApplication):
         
         #STATS MODULE
         if options.calc_stats:
-            #Get blurs from command line option and put into array
-            blurs = []
-            for i in options.stats_kernels.split(","):
-                blurs.append(float(i))
             #Choose final average from array of nlin averages
             numGens = len(nlinModule.nlinAverages)
             finalNlin = nlinModule.nlinAverages[numGens-1]
@@ -138,7 +134,7 @@ class MBMApplication(AbstractApplication):
             for inputFH in inputFiles:
                 stats = st.CalcStats(inputFH, 
                                      finalNlin, 
-                                     blurs,
+                                     options.stats_kernels,
                                      additionalXfm=lsq12module.lsq12AvgXfms[inputFH])
                 stats.fullStatsCalc()
                 self.pipeline.addPipeline(stats.p)
