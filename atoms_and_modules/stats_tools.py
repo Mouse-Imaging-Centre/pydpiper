@@ -49,7 +49,7 @@ class CalcStats(object):
        3. If needed, invert transform between input and target in setupXfms(). This is necessary
           as this class assumes that the target is the reference space, from which all stats
           are calculated. 
-       4. Call fullStatsCalc in calling class after instantiation. This calculates linear and 
+       4. Call fullStatsCalc. This calculates linear and 
           pure nonlinear displacement before calculating jacobians.    
        5. Ability to recenter displacements using an average may be re-added in the future. 
     """
@@ -69,6 +69,7 @@ class CalcStats(object):
             transform specified may be the lsq6 to lsq12 transform from input to target. 
         """
         self.additionalXfm = additionalXfm
+        self.fullStatsCalc()
         
     def setupBlurs(self, statsKernels):
         if isinstance(statsKernels, list):

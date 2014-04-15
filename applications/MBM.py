@@ -136,7 +136,6 @@ class MBMApplication(AbstractApplication):
                                      finalNlin, 
                                      options.stats_kernels,
                                      additionalXfm=lsq12module.lsq12AvgXfms[inputFH])
-                stats.fullStatsCalc()
                 self.pipeline.addPipeline(stats.p)
         
 if __name__ == "__main__":

@@ -236,7 +236,6 @@ class LongitudinalStatsConcatAndResample:
             stats = st.CalcChainStats(inputFH, targetFH, self.blurs)
         else:
             stats = st.CalcStats(inputFH, targetFH, self.blurs)
-        stats.fullStatsCalc()
         self.p.addPipeline(stats.p)
         """If an xfm is specified, resample all to this common space"""
         if xfm:

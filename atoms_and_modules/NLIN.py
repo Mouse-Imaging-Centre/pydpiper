@@ -125,7 +125,6 @@ class NonlinearRegistration(AbstractApplication):
             """For each input file, calculate statistics from finalNlin to input"""
             for inputFH in inputFiles:
                 stats = CalcStats(inputFH, finalNlin, options.stats_kernels)
-                stats.fullStatsCalc()
                 self.pipeline.addPipeline(stats.p)
 
 class NLINBase(object):
