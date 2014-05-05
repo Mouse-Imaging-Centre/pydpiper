@@ -3,7 +3,7 @@
 import atoms_and_modules.registration_file_handling as rfh
 import pydpiper.file_handling as fh
 from optparse import OptionGroup
-from os.path import abspath, exists, dirname, splitext
+from os.path import abspath, exists, dirname, splitext, isfile
 from os import curdir, walk
 from datetime import date
 import sys
@@ -188,7 +188,17 @@ def getFinestResolution(inSource):
     """
     imageResolution = []
     if isFileHandler(inSource):
-        imageResolution = volumeFromFile(inSource.getLastBasevol()).separations
+        # make sure that pyminc does not complain about non-existing files. During the
+        # creation of the overall compute graph the following file might not exist. In
+        # that case, use the inputFileName, or raise an exception
+        if(isfile(inSource.getLastBasevol())):
+            imageResolution = volumeFromFile(inSource.getLastBasevol()).separations
+        elif(isfile(inSource.inputFileName)):
+            imageResolution = volumeFromFile(inSource.inputFileName).separations
+        else:
+            # neither the last base volume, nor the input file name exist at this point
+            # this could happen when we evaluate an average for instance
+            raise
     else: 
         imageResolution = volumeFromFile(inSource).separations
     
