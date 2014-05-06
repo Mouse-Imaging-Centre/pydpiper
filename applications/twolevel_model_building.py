@@ -6,6 +6,7 @@ import pydpiper.file_handling as fh
 import atoms_and_modules.registration_functions as rf
 import atoms_and_modules.registration_file_handling as rfh
 import atoms_and_modules.minc_modules as mm
+import atoms_and_modules.minc_parameters as mp
 import atoms_and_modules.NLIN as nl
 import atoms_and_modules.minc_atoms as ma
 import atoms_and_modules.stats_tools as st
@@ -52,6 +53,8 @@ with each scan per subject listed on the same line and separated by a comma.
         # own options go here
         nl.addNlinRegOptionGroup(self.parser)
         rf.addGenRegOptionGroup(self.parser)
+        mp.addNLINOptionGroup(self.parser)
+        st.addStatsOptions(self.parser)
         
         # TODO: better usage description (once I've figured out what the usage will be ...)
         self.parser.set_usage("%prog [options] input.csv")
@@ -123,11 +126,15 @@ with each scan per subject listed on the same line and separated by a comma.
             lsq12FH.setLastBasevol(avg.outputFiles[0])
             self.pipeline.addStage(avg)
             ### step 2: run iterative ANTS model building for each subject
-            NL = nl.NLINANTS(subjects[i], lsq12FH, firstNlinDirectory, options.nlin_protocol)
+            NL = nl.initNLINModule(subjects[i], 
+                                   lsq12FH, 
+                                   firstNlinDirectory, 
+                                   options.nlin_protocol, 
+                                   options.reg_method)
             NL.iterate()
             self.pipeline.addPipeline(NL.p)
             # add the last NLIN average to the volumes that will proceed to step 2
-            firstlevelNlins.append(NL.nlinAvg[-1])
+            firstlevelNlins.append(NL.nlinAverages[-1])
         ### second level of registrations: register across subjects
         ## start by averaging all the NLINs from the first level; should be replaced by an LSQ12
         lsq12AvgFile = abspath(dirs.processedDir) + "/firstlevelNlins-lsq12avg.mnc"
@@ -137,7 +144,11 @@ with each scan per subject listed on the same line and separated by a comma.
         self.pipeline.addStage(avg)
         ## run iterative ANTS model building across the per subject averages
         # TODO: allow for a different protocol here.
-        NL = nl.NLINANTS(firstlevelNlins, lsq12FH, dirs.nlinDir, options.nlin_protocol)
+        NL = nl.initNLINModule(firstlevelNlins, 
+                               lsq12FH, 
+                               dirs.nlinDir, 
+                               options.nlin_protocol,
+                               options.reg_method)
         NL.iterate()
         self.pipeline.addPipeline(NL.p)
         # and done! Still to do: create the different stats files and resample to appropriate places.

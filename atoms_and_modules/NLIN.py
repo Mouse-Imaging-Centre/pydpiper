@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-from os.path import abspath
+from os.path import abspath, isfile
 from optparse import OptionGroup
 from pydpiper.pipeline import Pipeline
 from pydpiper.file_handling import createBaseName, createLogFile, removeBaseAndExtension
@@ -87,7 +87,7 @@ class NonlinearRegistration(AbstractApplication):
     def run(self):
         options = self.options
         args = self.args
-        
+       
         # Setup output directories for non-linear registration.        
         dirs = rf.setupDirectories(self.outputDir, options.pipeline_name, module="NLIN")
         
@@ -153,7 +153,13 @@ class NLINBase(object):
             # if it indeed failed, get resolution from the original file specified for 
             # one of the input files, which should exist. 
             # Can be overwritten by the user through specifying a nonlinear protocol.
-            self.fileRes = rf.getFinestResolution(self.inputs[0].inputFileName)
+            if isfile(self.inputs[0].inputFileName):
+                self.fileRes = rf.getFinestResolution(self.inputs[0])
+            else:
+                #HACK to get twolevel model building to run. We will eventually fix this
+                #and if a non-linear protocol is specified, it does not matter anyway.
+                #Still...a hard-coded hack. Gross. 
+                self.fileRes = 0.1  
         
         # Create new nlin group for each input prior to registration
         for i in range(len(self.inputs)):
