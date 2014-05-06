@@ -12,5 +12,5 @@ setup(name='pydpiper',
       url='https://github.com/mfriedel/pydpiper',
       platforms="any",
       packages=['pydpiper', 'applications', 'atoms_and_modules'], 
-      scripts=['pydpiper/pipeline_executor.py', 'applications/MAGeT.py', 'applications/MBM.py', 'applications/registration_chain.py', 
-	       'applications/pairwise_nlin.py', 'atoms_and_modules/NLIN.py', 'atoms_and_modules/LSQ12.py', 'atoms_and_modules/LSQ6.py'])
+      scripts=['pydpiper/pipeline_executor.py', 'applications/MAGeT.py', 'applications/MBM.py', 'applications/registration_chain.py',
+               'applications/twolevel_model_building.py', 'applications/pairwise_nlin.py', 'atoms_and_modules/NLIN.py', 'atoms_and_modules/LSQ12.py', 'atoms_and_modules/LSQ6.py'])

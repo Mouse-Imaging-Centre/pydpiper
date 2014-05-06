@@ -66,11 +66,6 @@ class RegistrationChain(AbstractApplication):
             subjects[index] = rf.initializeInputFiles(subj, dirs.processedDir, self.options.mask_dir)
             index += 1
         
-        """Put blurs into array"""
-        blurs = []
-        for i in self.options.stats_kernels.split(","):
-            blurs.append(float(i))
-        
         """Create file handler for nlin average from MBM"""
         if self.options.nlin_avg:
             nlinFH = rfh.RegistrationPipeFH(abspath(self.options.nlin_avg), basedir=dirs.processedDir)
@@ -133,7 +128,7 @@ class RegistrationChain(AbstractApplication):
         car = mm.LongitudinalStatsConcatAndResample(subjects, 
                                                     avgTime, 
                                                     nlinFH, 
-                                                    blurs, 
+                                                    self.options.stats_kernels, 
                                                     self.options.common_name) 
         self.pipeline.addPipeline(car.p)
 

@@ -9,6 +9,7 @@ import atoms_and_modules.minc_parameters as mp
 import atoms_and_modules.registration_functions as rf
 import pydpiper.file_handling as fh
 from pyminc.volumes.factory import volumeFromFile
+import sys
 
 class SetResolution:
     def __init__(self, filesToResample, resolution):
@@ -201,17 +202,28 @@ class LongitudinalStatsConcatAndResample:
         3. Calculate the stats (displacement, jacobians, scaled jacobians) from common space
            to each timepoint.
     """
-    def __init__(self, subjects, timePoint, nlinFH, blurs, commonName):
+    def __init__(self, subjects, timePoint, nlinFH, statsKernels, commonName):
         
         self.subjects = subjects
         self.timePoint = timePoint
         self.nlinFH = nlinFH
-        self.blurs = blurs 
+        self.blurs = [] 
+        self.setupBlurs(statsKernels)
         self.commonName = commonName
         
         self.p = Pipeline()
         
         self.buildPipeline()
+    
+    def setupBlurs(self, statsKernels):
+        if isinstance(statsKernels, list):
+            self.blurs = statsKernels
+        elif isinstance(statsKernels, str):
+            for i in statsKernels.split(","):
+                self.blurs.append(float(i))
+        else:
+            print "Improper type of blurring kernels specified for stats calculation: " + str(statsKernels)
+            sys.exit()
     
     def statsCalculation(self, inputFH, targetFH, xfm=None, useChainStats=True):
         """If useChainStats=True, calculate stats between input and target. 
@@ -224,7 +236,6 @@ class LongitudinalStatsConcatAndResample:
             stats = st.CalcChainStats(inputFH, targetFH, self.blurs)
         else:
             stats = st.CalcStats(inputFH, targetFH, self.blurs)
-        stats.fullStatsCalc()
         self.p.addPipeline(stats.p)
         """If an xfm is specified, resample all to this common space"""
         if xfm:

@@ -40,23 +40,25 @@ class CalcStats(object):
     """Statistics calculation between an input and target. 
        This class calculates multiple displacement fields, relative and absolute jacobians.  
        General functionality as follows:
-       1. Class instantiated with input, target and blurs. Note that here, the blurs specified
-          are used to smooth the displacement fields prior to additional calculations.
+       1. Class instantiated with input, target and statsKernels. Note that here, the statsKernels 
+          specified are blurs used to smooth the displacement fields prior to additional calculations. 
+          They may be a string of comma separated values or an array of doubles. 
        2. An additional transform may also be included to calculate absolute 
           jacobians to a different space, as is described in the __init__ function, 
           documentation and elsewhere in the code.  
        3. If needed, invert transform between input and target in setupXfms(). This is necessary
           as this class assumes that the target is the reference space, from which all stats
           are calculated. 
-       4. Call fullStatsCalc in calling class after instantiation. This calculates linear and 
+       4. Call fullStatsCalc. This calculates linear and 
           pure nonlinear displacement before calculating jacobians.    
        5. Ability to recenter displacements using an average may be re-added in the future. 
     """
-    def __init__(self, inputFH, targetFH, blurs, additionalXfm=None):
+    def __init__(self, inputFH, targetFH, statsKernels, additionalXfm=None):
         self.p = Pipeline()
         self.inputFH = inputFH
         self.targetFH = targetFH
-        self.blurs = blurs
+        self.blurs = []
+        self.setupBlurs(statsKernels)
         self.statsGroup = StatsGroup()
         self.setupXfms()
         """ additionalXfm is an optional transform that may be specified. If it is, 
@@ -67,7 +69,18 @@ class CalcStats(object):
             transform specified may be the lsq6 to lsq12 transform from input to target. 
         """
         self.additionalXfm = additionalXfm
+        self.fullStatsCalc()
         
+    def setupBlurs(self, statsKernels):
+        if isinstance(statsKernels, list):
+            self.blurs = statsKernels
+        elif isinstance(statsKernels, str):
+            for i in statsKernels.split(","):
+                self.blurs.append(float(i))
+        else:
+            print "Improper type of blurring kernels specified for stats calculation: " + str(statsKernels)
+            sys.exit()
+           
     def setupXfms(self):
         self.xfm = self.inputFH.getLastXfm(self.targetFH)
         if not self.xfm:
@@ -202,8 +215,8 @@ class CalcChainStats(CalcStats):
        jacobians. IT DOES NOT allow for adding an additional transform, as in the
        base class (CalcStats). This child class is designed specifically for the 
        registration chain application (or similar) and has less complexity than CalcStats()"""
-    def __init__(self, inputFH, targetFH, blurs):
-        CalcStats.__init__(self, inputFH, targetFH, blurs)
+    def __init__(self, inputFH, targetFH, statsKernels):
+        CalcStats.__init__(self, inputFH, targetFH, statsKernels)
     
     def setupXfms(self):
         self.xfm = self.inputFH.getLastXfm(self.targetFH)
