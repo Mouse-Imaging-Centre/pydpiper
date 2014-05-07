@@ -304,7 +304,16 @@ class LongitudinalStatsConcatAndResample:
             for i in range(self.timePoint + 1, count):
                 self.statsAndConcat(s, i, count, beforeAvg=False)
  
-def resampleToCommon(xfm, FH, statsGroup, blurs, nlinFH):
+def resampleToCommon(xfm, FH, statsGroup, statsKernels, nlinFH):
+    blurs = []
+    if isinstance(statsKernels, list):
+        blurs = statsKernels
+    elif isinstance(statsKernels, str):
+        for i in statsKernels.split(","):
+            blurs.append(float(i))
+    else:
+        print "Improper type of blurring kernels specified for stats calculation: " + str(statsKernels)
+        sys.exit()
     pipeline = Pipeline()
     outputDirectory = FH.statsDir
     filesToResample = []

@@ -82,33 +82,12 @@ with each scan per subject listed on the same line and separated by a comma.
             subjects[index] = rf.initializeInputFiles(subj, dirs.processedDir, maskDir=options.mask_dir)
             index += 1
         
-        # testing only part of the code: run one lsq12 followed by an NLIN
-        
-        # this actually makes little sense, but what the hell
-#         blurs = [10,5,5]
-#         step = [4,4,4]
-#         simplex = [20,20,20]
-#         filesToAvg = []
-#         LSQ12 = mm.LSQ12(inputFiles[0], inputFiles[1], blurs, step, simplex)
-#         rs = ma.mincresample(inputFiles[0], inputFiles[1], likeFile=inputFiles[1])
-#         filesToAvg.append(rs.outputFiles[0])
-#         self.pipeline.addStage(rs)
-#         self.pipeline.addPipeline(LSQ12.p)
-#         LSQ12 = mm.LSQ12(inputFiles[1], inputFiles[0], blurs, step, simplex)
-#         rs = ma.mincresample(inputFiles[1], inputFiles[0], likeFile=inputFiles[0])
-#         filesToAvg.append(rs.outputFiles[0])
-#         self.pipeline.addPipeline(LSQ12.p)
-#         self.pipeline.addStage(rs)
-#         lsq12AvgFile = abspath(processedDirectory) + "/" + "lsq12avg.mnc"
-#         avg = ma.mincAverage(filesToAvg, lsq12AvgFile)
-#         self.pipeline.addStage(avg)
-
-        # TODO: LSQ6 registration if requested
-        # TODO: LSQ12 registration if requested
-        
         # for the moment assume that all input files are in LSQ12 space
+        # TODO: Add in LSQ6 and LSQ12 registrations if requested
+        
         index = 0
         firstlevelNlins = [] # stores the per subject NLINs avgs
+        subjStats = [] #used for storing first level stats, which will have to be resampled later
         ### first level of registrations: register within subject
         for i in range(len(subjects)):
             ### filename munging ###
@@ -135,8 +114,17 @@ with each scan per subject listed on the same line and separated by a comma.
             self.pipeline.addPipeline(NL.p)
             # add the last NLIN average to the volumes that will proceed to step 2
             firstlevelNlins.append(NL.nlinAverages[-1])
+            if options.calc_stats:
+                finalNlin = NL.nlinAverages[-1]
+                tmpStats=[]
+                for s in subjects[i]:
+                    stats = st.CalcStats(s, finalNlin, options.stats_kernels)
+                    self.pipeline.addPipeline(stats.p)
+                    tmpStats.append(stats)
+                subjStats.append(tmpStats)
         ### second level of registrations: register across subjects
-        ## start by averaging all the NLINs from the first level; should be replaced by an LSQ12
+        ## start by averaging all the NLINs from the first level; 
+        # TODO: This should actually be replaced by an LSQ12
         lsq12AvgFile = abspath(dirs.processedDir) + "/firstlevelNlins-lsq12avg.mnc"
         lsq12FH = rfh.RegistrationPipeFH(lsq12AvgFile, basedir=dirs.nlinDir)
         avg = ma.mincAverage(firstlevelNlins, lsq12FH)
@@ -151,7 +139,23 @@ with each scan per subject listed on the same line and separated by a comma.
                                options.reg_method)
         NL.iterate()
         self.pipeline.addPipeline(NL.p)
-        # and done! Still to do: create the different stats files and resample to appropriate places.
+        if options.calc_stats:
+            finalNlin = NL.nlinAverages[-1]
+            for s in firstlevelNlins:
+                stats = st.CalcStats(s, finalNlin, options.stats_kernels)
+                self.pipeline.addPipeline(stats.p)
+                # now resample the stats files from the first level registration to the common space
+                # created by the second level of registration
+                for i in range(len(subjects)):
+                    for s in range(len(subjects[i])):
+                        # get the last xfm from the second level registrations
+                        xfm = firstlevelNlins[i].getLastXfm(NL.nlinAverages[-1])
+                        p = mm.resampleToCommon(xfm,
+                                                subjects[i][s], 
+                                                subjStats[i][s].statsGroup, 
+                                                options.stats_kernels, 
+                                                lsq12FH)
+                        self.pipeline.addPipeline(p)
         
 if __name__ == "__main__":
     application = LongitudinalTwolevelNlin()
