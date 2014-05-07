@@ -78,7 +78,7 @@ def voxelVote(inputFH, pairwise, mask):
     else: 
         out += "_votedlabels.mnc"
     logFile = fh.logFromFile(inputFH.logDir, out)
-    cmd = ["voxel_vote.py"] + [InputFile(l) for l in labels] + [OutputFile(out)]
+    cmd = ["voxel_vote"] + [InputFile(l) for l in labels] + [OutputFile(out)]
     voxel = CmdStage(cmd)
     voxel.setLogFile(LogFile(logFile))
     return(voxel)
