@@ -195,6 +195,12 @@ class RegistrationPipeFH(RegistrationFHBase):
         self.groupedFiles.append(RegistrationGroupedFiles(inputVolume, mask))
         self.groupNames[groupIndex] = groupName
         self.currentGroupIndex = groupIndex
+    
+    def getGroupIndex(self, groupName):
+        "Returns the group index for a specified name"
+        for index, name in self.groupNames.iteritems():
+            if name == groupName:
+                return index
 
     def setupNames(self):
         """string munging to create necessary basenames and directories"""

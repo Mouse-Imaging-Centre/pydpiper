@@ -45,6 +45,7 @@ def getXfms(nlinFH, subjects, space, mbmDir, time=None):
     pipeline = Pipeline()
     baseNames = walk(mbmDir).next()[1]
     for b in baseNames:
+        #TODO: Fix this to connect to new build model (use new naming system) and remove LSQ12. 
         if space == "lsq6":
             xfmToNative = abspath(mbmDir + "/" + b + "/transforms/" + b + "-final-to_lsq6.xfm")
         elif space == "lsq12":

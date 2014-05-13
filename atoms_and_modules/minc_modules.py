@@ -230,8 +230,7 @@ class LongitudinalStatsConcatAndResample:
            This happens for all i to i+1 calcs.
            
            If useChainStats=False, calculate stats in the standard way, from target to
-           input, but without removal of average displacement. We do this, when we go
-           from the common space to all others. """
+           input, We do this, when we go from the common space to all others. """
         if useChainStats:
             stats = st.CalcChainStats(inputFH, targetFH, self.blurs)
         else:
@@ -273,19 +272,26 @@ class LongitudinalStatsConcatAndResample:
     def buildPipeline(self):
         for subj in self.subjects:
             s = self.subjects[subj]
-            # xfmToNlin will be either to lsq6 or native depending on other factors
-            # may need an additional argument for this function
-            xfmToNlin = s[self.timePoint].getLastXfm(self.nlinFH, groupIndex=0)
             count = len(s)
+            """Wherever iterative model building was run, the indiv --> nlin xfm is stored
+               in the group with the name "final". We need to use this group for to get the
+               transform and do the stats calculation, and then reset to the current group.
+               Calculate stats first from average to timepoint included in average"""
+               
+            currGroup = s[self.timePoint].currentGroupIndex
+            index = s[self.timePoint].getGroupIndex("final")
+            xfmToNlin = s[self.timePoint].getLastXfm(self.nlinFH, groupIndex=index)
+            
             if xfmToNlin:
                 self.xfmToCommon = [xfmToNlin]
             else:
                 self.xfmToCommon = []
-            """Calculate stats first from average to timpoint included in average.
-               If timepoint included in average is NOT final timepoint, also calculate
-               i to i+1 stats."""
             if self.nlinFH:
+                s[self.timePoint].currentGroupIndex = index
                 self.statsCalculation(s[self.timePoint], self.nlinFH, xfm=None, useChainStats=False)
+                s[self.timePoint].currentGroupIndex = currGroup
+            """Next: If timepoint included in average is NOT final timepoint, 
+               also calculate i to i+1 stats."""
             if count - self.timePoint > 1:
                 self.statsCalculation(s[self.timePoint], s[self.timePoint+1], xfm=xfmToNlin, useChainStats=True)
             if not self.timePoint - 1 < 0:
