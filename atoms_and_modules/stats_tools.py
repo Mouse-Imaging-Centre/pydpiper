@@ -85,6 +85,8 @@ class CalcStats(object):
         self.xfm = self.inputFH.getLastXfm(self.targetFH)
         if not self.xfm:
             print "Cannot calculate statistics. No transform between input and target specified."
+            print "Input: " + self.inputFH.getLastBasevol()
+            print "Target: " + self.targetFH.getLastBasevol()
             sys.exit()
         else:
             self.invXfm = self.targetFH.getLastXfm(self.inputFH)
