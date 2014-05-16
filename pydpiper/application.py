@@ -3,6 +3,7 @@ from pydpiper.pipeline import Pipeline, pipelineDaemon
 from pydpiper.queueing import runOnQueueingSystem
 from pydpiper.file_handling import makedirsIgnoreExisting
 from datetime import datetime
+from pkg_resources import get_distribution
 import Pyro
 import logging
 import networkx as nx
@@ -44,6 +45,7 @@ class AbstractApplication(object):
     def __init__(self):
         Pyro.config.PYRO_MOBILE_CODE=1 
         self.parser = MyParser()
+        self.__version__ = get_distribution("pydpiper").version
     
     def _setup_options(self):
             # PydPiper options
@@ -92,7 +94,15 @@ class AbstractApplication(object):
         basic_group.add_option("--no-execute", dest="execute",
                                action="store_false",
                                help="Opposite of --execute")
+        basic_group.add_option("--version", dest="show_version",
+                               action="store_true",
+                               help="Print the version number and exit.")
         self.parser.add_option_group(basic_group)
+    
+    def _print_version(self):
+        if self.options.show_version:
+            print self.__version__
+            sys.exit()
     
     def _setup_pipeline(self):
         self.pipeline = Pipeline()
@@ -115,7 +125,9 @@ class AbstractApplication(object):
         self._setup_options()
         self.setup_options()
         
-        self.options, self.args = self.parser.parse_args()        
+        self.options, self.args = self.parser.parse_args()
+        
+        self._print_version()        
         self._setup_pipeline()
         self._setup_directories()
         
