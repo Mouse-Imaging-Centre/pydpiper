@@ -279,7 +279,27 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
         logger.info("Graph heads: " + str(graphHeads))
     def getStage(self, i):
         """given an index, return the actual pipelineStage object"""
+        # June 2014, this function returns a PipelineStage object. 
+        # We are currently using Pyro 3, and for reasons not 100%
+        # clear to me, this does not work anymore. Only standard
+        # variables such as strings/integers can be passed. (Note 
+        # that pipeline_executor has access to the class definition
+        # of a PipelineStage, so supposedly it should work)
         return(self.stages[i])
+    # June 2014, following up on the comment above (in getStage), the following
+    # functions are created to facilitate communication between the client
+    # and the server using standard variables
+    def getStageMem(self, i):
+        return(self.stages[i].mem)
+    def getStageProcs(self,i):
+        return(self.stages[i].procs)
+    def getStageCommand(self,i):
+        return(repr(self.stages[i]))
+    def getStage_is_effectively_complete(self,i):
+        return(self.stages[i].is_effectively_complete())
+    def getStageLogfile(self,i):
+        return(self.stages[i].logFile)
+    # \ June 2014
     def getRunnableStageIndex(self):
         """returns the next runnable stage, or None"""
         if self.runnable.empty():
