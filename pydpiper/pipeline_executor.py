@@ -10,6 +10,7 @@ from multiprocessing import Process, Pool, Lock
 from subprocess import call
 import pydpiper.queueing as q
 import logging
+import socket
 
 logger = logging.getLogger(__name__)
 
@@ -114,7 +115,16 @@ class pipelineExecutor():
         # initialize pipeline_executor as both client and server      
         Pyro.core.initClient()
         Pyro.core.initServer()
-        daemon = Pyro.core.Daemon()
+        # Due to changes in how the network address is resolved, the Daemon on Linux will basically use:
+        #
+        # import socket
+        # socket.gethostbyname(socket.gethostname())
+        #
+        # depending on how your machine is set up, this could return localhost ("127...")
+        # to avoid this from happening, provide the correct network address from the start:
+        network_address = [(s.connect(('8.8.8.8', 80)), s.getsockname()[0], s.close()) for s in [socket.socket(socket.AF_INET, socket.SOCK_DGRAM)]][0][1]
+        daemon = Pyro.core.Daemon(host=network_address)
+        
         # set up communication with server from the URI string
         if self.ns:
             ns = Pyro.naming.NameServerLocator().getNS()

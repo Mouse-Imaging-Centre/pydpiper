@@ -382,7 +382,15 @@ def skip_completed_stages(pipeline):
 def launchServer(pipeline, options, e):
     """Starts Pyro Server in a separate thread"""
     Pyro.core.initServer()
-    daemon=Pyro.core.Daemon()
+    # Due to changes in how the network address is resolved, the Daemon on Linux will basically use:
+    #
+    # import socket
+    # socket.gethostbyname(socket.gethostname())
+    #
+    # depending on how your machine is set up, this could return localhost ("127...")
+    # to avoid this from happening, provide the correct network address from the start:
+    network_address = [(s.connect(('8.8.8.8', 80)), s.getsockname()[0], s.close()) for s in [socket.socket(socket.AF_INET, socket.SOCK_DGRAM)]][0][1]
+    daemon = Pyro.core.Daemon(host=network_address)
     
     #Note: Pyro NameServer must be started for this function to work properly
     if options.use_ns:
