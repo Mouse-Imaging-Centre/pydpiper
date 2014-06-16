@@ -8,8 +8,11 @@ from optparse import OptionParser
 from datetime import datetime
 from multiprocessing import Process, Pool, Lock
 from subprocess import call
+from shlex import split
 import pydpiper.queueing as q
 import logging
+import socket
+
 
 logger = logging.getLogger(__name__)
 
@@ -35,14 +38,32 @@ class clientExecutor(Pyro.core.SynchronizedObjBase):
 def runStage(serverURI, clientURI, i):
     # Proc needs its own proxy as it's independent of executor
     p = Pyro.core.getProxyForURI(serverURI)
-    s = p.getStage(i)
     
-    # Run stage, set finished or failed accordingly  
+    # Retrieve stage information, run stage and set finished or failed accordingly  
     try:
         logger.info("Running stage %i: ", i)
         p.setStageStarted(i, clientURI)
         try:
-            r = s.execStage()
+            # get stage information
+            command_to_run  = p.getStageCommand(i)
+            logger.info(command_to_run)
+            command_logfile = p.getStageLogfile(i)
+            
+            # log file for the stage
+            of = open(command_logfile, 'w')
+            of.write("Running on: " + socket.gethostname() + " at " + datetime.isoformat(datetime.now(), " ") + "\n")
+            of.write(command_to_run + "\n")
+            of.flush()
+            
+            # check whether the stage is completed already. If not, run stage command
+            if p.getStage_is_effectively_complete(i):
+                of.write("All output files exist. Skipping stage.\n")
+                returncode = 0
+            else:
+                args = split(command_to_run) 
+                returncode = call(args, stdout=of, stderr=of, shell=False) 
+            of.close()
+            r = returncode
         except:
             logger.exception("Exception whilst running stage: %i ", i)   
             p.setStageFailed(i)
@@ -53,7 +74,7 @@ def runStage(serverURI, clientURI, i):
             else:
                 p.setStageFailed(i)
 
-        return [s.getMem(),s.getProcs()] # If completed, return mem & processes back for re-use    
+        return [p.getStageMem(i),p.getStageProcs(i)] # If completed, return mem & processes back for re-use    
     except:
         logger.exception("Error communicating to server in runStage. " 
                          "Error raised to calling thread in launchExecutor. ")
@@ -114,7 +135,16 @@ class pipelineExecutor():
         # initialize pipeline_executor as both client and server      
         Pyro.core.initClient()
         Pyro.core.initServer()
-        daemon = Pyro.core.Daemon()
+        # Due to changes in how the network address is resolved, the Daemon on Linux will basically use:
+        #
+        # import socket
+        # socket.gethostbyname(socket.gethostname())
+        #
+        # depending on how your machine is set up, this could return localhost ("127...")
+        # to avoid this from happening, provide the correct network address from the start:
+        network_address = [(s.connect(('8.8.8.8', 80)), s.getsockname()[0], s.close()) for s in [socket.socket(socket.AF_INET, socket.SOCK_DGRAM)]][0][1]
+        daemon = Pyro.core.Daemon(host=network_address)
+        
         # set up communication with server from the URI string
         if self.ns:
             ns = Pyro.naming.NameServerLocator().getNS()
@@ -177,8 +207,7 @@ class pipelineExecutor():
 
                 # Before running stage, check usable mem & procs
                 logger.debug("Considering stage %i" % i)
-                s = p.getStage(i)
-                stageMem, stageProcs = s.getMem(), s.getProcs()
+                stageMem, stageProcs = p.getStageMem(i), p.getStageProcs(i)
                 if self.canRun(stageMem, stageProcs, runningMem, runningProcs):
                     runningMem += stageMem
                     runningProcs += stageProcs            
