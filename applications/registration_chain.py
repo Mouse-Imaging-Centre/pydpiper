@@ -16,7 +16,6 @@ import Pyro
 from optparse import OptionGroup
 from os.path import abspath, isdir, isfile
 import logging
-import csv
 import sys
 
 logger = logging.getLogger(__name__)
@@ -90,13 +89,7 @@ class RegistrationChain(AbstractApplication):
         avgTime = self.options.avg_time_point - 1
         
         """Read in files from csv"""
-        fileList = open(self.args[0], 'rb')
-        subjectList = csv.reader(fileList, delimiter=',', skipinitialspace=True)
-        subjects = {} # One array of images for each subject
-        index = 0 
-        for subj in subjectList:
-            subjects[index] = rf.initializeInputFiles(subj, dirs.processedDir, self.options.mask_dir)
-            index += 1
+        subjects = rf.setupSubjectHash(self.args[0], dirs, self.options.mask_dir)
         
         # TODO: Add if input = native space then do LSQ6 first.
             

@@ -8,6 +8,7 @@ from os import curdir, walk
 from datetime import date
 import sys
 import re
+import csv
 import logging
 import fnmatch
 from pyminc.volumes.factory import volumeFromFile
@@ -109,6 +110,18 @@ def initializeInputFiles(args, mainDirectory, maskDir=None):
     else:
         logger.info("No mask directory specified as command line option. No masks included during RegistrationPipeFH initialization.")
     return inputs
+
+def setupSubjectHash(csvFile, dirs, maskDir):
+    """Reads in subjects from .csv and returns a hash.
+       Each row of the .csv is a series of scans for a single subject."""
+    fileList = open(csvFile, 'rb')
+    subjectList = csv.reader(fileList, delimiter=',', skipinitialspace=True)
+    subjects = {} # One array of images for each subject
+    index = 0 
+    for subj in subjectList:
+        subjects[index] = initializeInputFiles(subj, dirs.processedDir, maskDir)
+        index += 1
+    return subjects
 
 def isFileHandler(inSource, inTarget=None):
     """Source and target types can be either RegistrationPipeFH (or its base class) 
