@@ -132,31 +132,17 @@ class LSQ6Registration(AbstractApplication):
         options = self.options
         args = self.args
 
-        # verify that we have some sort of target specified
-        if(options.init_model == None and options.lsq6_target == None):
-            print "Error: please specify either a target file for the registration (--lsq6-target), or an initial model (--init-model)\n"
-            sys.exit()   
-        if(options.init_model != None and options.lsq6_target != None):
-            print "Error: please specify only one of the options: --lsq6-target  --init-model\n"
-            sys.exit()
-        
         # Setup output directories for LSQ6 registration.        
         dirs = rf.setupDirectories(self.outputDir, options.pipeline_name, module="LSQ6")
         
         # create file handles for the input file(s) 
         inputFiles = rf.initializeInputFiles(args, dirs.processedDir, maskDir=options.mask_dir)
 
-        initModel = None
-        if(options.lsq6_target != None):
-            targetPipeFH = rfh.RegistrationPipeFH(abspath(options.lsq6_target), basedir=dirs.lsq6Dir)
-        else: # options.init_model != None  
-            initModel = rf.setupInitModel(options.init_model, self.outputDir)
-            if (initModel[1] != None):
-                # we have a target in "native" space 
-                targetPipeFH = initModel[1]
-            else:
-                # we will use the target in "standard" space
-                targetPipeFH = initModel[0]
+        #Setup init model and inital target. Function also exists if no target was specified.
+        initModel, targetPipeFH = rf.setInitialTarget(options.init_model, 
+                                                      options.lsq6_target, 
+                                                      dirs.lsq6Dir,
+                                                      self.outputDir)
         
         lsq6module = getLSQ6Module(inputFiles,
                                    targetPipeFH,

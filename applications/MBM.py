@@ -48,18 +48,11 @@ class MBMApplication(AbstractApplication):
         dirs = rf.setupDirectories(self.outputDir, options.pipeline_name, module="ALL")
         inputFiles = rf.initializeInputFiles(args, dirs.processedDir, maskDir=options.mask_dir)
         
-        # TODO: Write this as a function in LSQ6 and call from there. 
-        initModel = None
-        if(options.lsq6_target != None):
-            targetPipeFH = rfh.RegistrationPipeFH(os.path.abspath(options.lsq6_target), basedir=dirs.lsq6Dir)
-        else: # options.init_model != None  
-            initModel = rf.setupInitModel(options.init_model, self.outputDir)
-            if (initModel[1] != None):
-                # we have a target in "native" space 
-                targetPipeFH = initModel[1]
-            else:
-                # we will use the target in "standard" space
-                targetPipeFH = initModel[0]
+        #Setup init model and inital target. Function also exists if no target was specified.
+        initModel, targetPipeFH = rf.setInitialTarget(options.init_model, 
+                                                      options.lsq6_target, 
+                                                      dirs.lsq6Dir,
+                                                      self.outputDir)
             
         #LSQ6 MODULE
         lsq6module = lsq6.getLSQ6Module(inputFiles, 
