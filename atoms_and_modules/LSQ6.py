@@ -144,33 +144,15 @@ class LSQ6Registration(AbstractApplication):
                                                       dirs.lsq6Dir,
                                                       self.outputDir)
         
-        lsq6module = getLSQ6Module(inputFiles,
-                                   targetPipeFH,
-                                   dirs.lsq6Dir,
-                                   initialTransform = options.lsq6_method,
-                                   initModel        = initModel,
-                                   lsq6Protocol     =  options.lsq6_protocol,
-                                   largeRotationParameters = options.large_rotation_parameters,
-                                   largeRotationRange      = options.large_rotation_range,
-                                   largeRotationInterval   = options.large_rotation_interval)       
-        # after the correct module has been set, get the transformation and
-        # deal with resampling and potential model building
-        lsq6module.createLSQ6Transformation()
-        lsq6module.finalize()
-        self.pipeline.addPipeline(lsq6module.p)
-        
-        if options.nuc:
-            nucorrection = NonUniformityCorrection(inputFiles, 
-                                                   initial_model=initModel,
-                                                   resampleNUCtoLSQ6=False)
-            nucorrection.finalize()
-            self.pipeline.addPipeline(nucorrection.p)
-        
-        if options.inormalize:
-            intensity_normalization = IntensityNormalization(inputFiles,
-                                                             initial_model=initModel,
-                                                             resampleINORMtoLSQ6=True)
-            self.pipeline.addPipeline(intensity_normalization.p)
+        # Initialize LSQ6, NonUniformityCorrection and IntensityNormalization classes and
+        # construct their pipelines. Note that because we read in the options directly, running
+        # NUC and inormalize is still optional 
+        runLSQ6NucInorm = LSQ6NUCInorm(inputFiles,
+                                       targetPipeFH,
+                                       initModel, 
+                                       dirs.lsq6Dir, 
+                                       options)
+        self.pipeline.addPipeline(runLSQ6NucInorm.p)
         
 
 def getLSQ6Module(inputFiles,
@@ -239,6 +221,54 @@ def getLSQ6Module(inputFiles,
                                              large_rotation_range      = largeRotationRange,
                                              large_rotation_interval   = largeRotationInterval)
     return lsq6module
+
+class LSQ6NUCInorm(object):
+    """Because LSQ6 is often called in conjunction with NUC and IntensityNormalization, this class
+       enables the calling of both in a single class. This is intended to reduce repeated code and 
+       simplify reading/writing at the highest levels."""
+    def __init__(self, 
+                 inputFiles, 
+                 targetPipeFH,
+                 initModel, 
+                 lsq6Directory,
+                 options):
+        self.p = Pipeline()
+        self.inputFiles = inputFiles
+        self.target = targetPipeFH
+        self.initModel = initModel
+        self.lsq6Dir = lsq6Directory
+        self.options = options 
+        
+        self.setupPipeline()
+    
+    def setupPipeline(self):
+        lsq6module = getLSQ6Module(self.inputFiles,
+                                   self.target,
+                                   self.lsq6Dir,
+                                   initialTransform = self.options.lsq6_method,
+                                   initModel        = self.initModel,
+                                   lsq6Protocol     =  self.options.lsq6_protocol,
+                                   largeRotationParameters = self.options.large_rotation_parameters,
+                                   largeRotationRange      = self.options.large_rotation_range,
+                                   largeRotationInterval   = self.options.large_rotation_interval)       
+        # after the correct module has been set, get the transformation and
+        # deal with resampling and potential model building
+        lsq6module.createLSQ6Transformation()
+        lsq6module.finalize()
+        self.p.addPipeline(lsq6module.p)
+        
+        if self.options.nuc:
+            nucorrection = NonUniformityCorrection(self.inputFiles, 
+                                                   initial_model=self.initModel,
+                                                   resampleNUCtoLSQ6=False)
+            nucorrection.finalize()
+            self.p.addPipeline(nucorrection.p)
+        
+        if self.options.inormalize:
+            intensity_normalization = IntensityNormalization(self.inputFiles,
+                                                             initial_model=self.initModel,
+                                                             resampleINORMtoLSQ6=True)
+            self.p.addPipeline(intensity_normalization.p)
 
 class NonUniformityCorrection(object):
     """

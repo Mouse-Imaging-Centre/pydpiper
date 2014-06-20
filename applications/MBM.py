@@ -54,36 +54,13 @@ class MBMApplication(AbstractApplication):
                                                       dirs.lsq6Dir,
                                                       self.outputDir)
             
-        #LSQ6 MODULE
-        lsq6module = lsq6.getLSQ6Module(inputFiles, 
-                                        targetPipeFH, 
-                                        lsq6Directory = dirs.lsq6Dir, 
-                                        initialTransform = options.lsq6_method, 
-                                        initModel = initModel, 
-                                        lsq6Protocol = options.lsq6_protocol, 
-                                        largeRotationParameters = options.large_rotation_parameters,
-                                        largeRotationRange      = options.large_rotation_range,
-                                        largeRotationInterval   = options.large_rotation_interval)
-        # after the correct module has been set, get the transformation and
-        # deal with resampling and potential model building
-        lsq6module.createLSQ6Transformation()
-        lsq6module.finalize()
-        self.pipeline.addPipeline(lsq6module.p)
-        
-        # NUC 
-        if options.nuc:
-            nucorrection = lsq6.NonUniformityCorrection(inputFiles, 
-                                                        initial_model=initModel,
-                                                        resampleNUCtoLSQ6=False)
-            nucorrection.finalize()
-            self.pipeline.addPipeline(nucorrection.p)
-        
-        #INORMALIZE
-        if options.inormalize:
-            intensity_normalization = lsq6.IntensityNormalization(inputFiles,
-                                                                  initial_model=initModel,
-                                                                  resampleINORMtoLSQ6=True)
-            self.pipeline.addPipeline(intensity_normalization.p)
+        #LSQ6 MODULE, NUC and INORM
+        runLSQ6NucInorm = lsq6.LSQ6NUCInorm(inputFiles,
+                                            targetPipeFH,
+                                            initModel, 
+                                            dirs.lsq6Dir, 
+                                            options)
+        self.pipeline.addPipeline(runLSQ6NucInorm.p)
         
         # LSQ12 MODULE
         # We need to specify a likeFile/space when all files are resampled

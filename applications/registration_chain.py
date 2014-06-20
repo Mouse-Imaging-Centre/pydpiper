@@ -65,6 +65,7 @@ class RegistrationChain(AbstractApplication):
         addRegChainOptionGroup(self.parser)
         rf.addGenRegOptionGroup(self.parser)
         mp.addRegParamsOptionGroup(self.parser)
+        lsq6.addLSQ6OptionGroup(self.parser)
         lsq12.addLSQ12OptionGroup(self.parser)
         nlin.addNlinRegOptionGroup(self.parser)
         st.addStatsOptions(self.parser)
@@ -77,21 +78,41 @@ class RegistrationChain(AbstractApplication):
 
     def run(self):
         
-        """Setup output directories for registration chain (_processed only)."""       
+        #Setup output directories for registration chain (_processed only)       
         dirs = rf.setupDirectories(self.outputDir, self.options.pipeline_name, module="ALL")
         
-        """Check that correct registration method was specified"""
+        #Check that correct registration method was specified
         if self.options.reg_method != "minctracc" and self.options.reg_method != "mincANTS":
             logger.error("Incorrect registration method specified: " + self.options.reg_method)
             sys.exit()
         
-        """Take average time point, subtract 1 for proper indexing"""
+        #Take average time point, subtract 1 for proper indexing
         avgTime = self.options.avg_time_point - 1
         
-        """Read in files from csv"""
+        #Read in files from csv
         subjects = rf.setupSubjectHash(self.args[0], dirs, self.options.mask_dir)
         
-        # TODO: Add if input = native space then do LSQ6 first.
+        # If input = native space then do LSQ6 first on all files.
+        if self.options.input_space == "native":
+            initModel, targetPipeFH = rf.setInitialTarget(self.options.init_model, 
+                                                          self.options.lsq6_target, 
+                                                          dirs.lsq6Dir,
+                                                          self.outputDir)
+            #LSQ6 MODULE, NUC and INORM
+            inputFiles = []
+            for subj in subjects:
+                for i in range(len(subjects[subj])):
+                    inputFiles.append(subjects[subj][i])
+            runLSQ6NucInorm = lsq6.LSQ6NUCInorm(inputFiles,
+                                                targetPipeFH,
+                                                initModel, 
+                                                dirs.lsq6Dir, 
+                                                self.options)
+            self.pipeline.addPipeline(runLSQ6NucInorm.p)
+            
+        #Retrieve current group index for use later, when chain is run
+        #Note that the value will be different if input_space == native or LSQ6
+        currGroupIndex = rf.getCurrIndexForInputs(subjects)
             
         """If requested, run iterative groupwise registration for all subjects at the specified
            common timepoint, otherwise look to see if files are specified from a previous run. """
@@ -103,9 +124,8 @@ class RegistrationChain(AbstractApplication):
             lsq12LikeFH = None 
             if self.options.input_space == "lsq6" and self.options.lsq12_likeFile: 
                 lsq12LikeFH = self.options.lsq12_likeFile 
-            #TODO: Uncomment elif to use initModel as like file if we already ran LSQ6
-            #elif self.options.input_space == "native":
-                #lsq12LikeFH = initModel[0]
+            elif self.options.input_space == "native":
+                lsq12LikeFH = initModel[0]
             lsq12module = lsq12.FullLSQ12(inputs, 
                                           dirs.lsq12Dir, 
                                           likeFile=lsq12LikeFH,
@@ -130,10 +150,9 @@ class RegistrationChain(AbstractApplication):
                 xc = ma.xfmConcat([linXfm, nlinXfm], outXfm, fh.logFromFile(i.logDir, outXfm))
                 self.pipeline.addStage(xc)
                 i.addAndSetXfmToUse(nlinFH, outXfm)
-            #Set lastBasevol and group to lsq6 space, for now this is assumed to be input space
-            #Will fix to make more general
+            #Set lastBasevol and group to lsq6 space, using currGroupIndex set above.
             for i in inputs:
-                i.currentGroupIndex = 0
+                i.currentGroupIndex = currGroupIndex
         else: 
             if self.options.mbm_dir and self.options.nlin_avg:
                 if (not isdir(self.options.mbm_dir)) or (not isfile(self.options.nlin_avg)):
@@ -155,13 +174,13 @@ class RegistrationChain(AbstractApplication):
                     self.pipeline.addPipeline(xfmsPipe)
             else:
                 logger.info("MBM directory and nlin_average not specified.")
-                logger.info("Calculating registration chain only")    
+                logger.info("Calculating registration chain only") 
+                nlinFH = None
         
         for subj in subjects:
             s = subjects[subj]
             count = len(s) 
             for i in range(count - 1):
-                # TODO: make sure lastbasevol is lsq6
                 s[i].newGroup(groupName="chain")
                 if self.options.reg_method == "mincANTS":
                     register = mm.LSQ12ANTSNlin(s[i], 

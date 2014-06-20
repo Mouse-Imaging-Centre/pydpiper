@@ -123,6 +123,23 @@ def setupSubjectHash(csvFile, dirs, maskDir):
         index += 1
     return subjects
 
+def getCurrIndexForInputs(subjects):
+    if isinstance(subjects, dict):
+        for subj in subjects:
+            for i in range(len(subjects[subj])):
+                s = subjects[subj]
+                if subj== 0 and i == 0:
+                    currentGroupIndex = s[i].currentGroupIndex
+                else:
+                    if s[i].currentGroupIndex != currentGroupIndex:
+                        print "Current group indices do not match for all subjects after LSQ6. Exiting..."
+                        sys.exit()
+    else:
+        print "getCurrIndexForInputs function currently only works with a dictionary. Exiting..."
+        sys.exit()
+        
+    return currentGroupIndex
+
 def isFileHandler(inSource, inTarget=None):
     """Source and target types can be either RegistrationPipeFH (or its base class) 
     or strings. Regardless of which is chosen, they must both be the same type.
