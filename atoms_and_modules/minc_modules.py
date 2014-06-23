@@ -196,10 +196,10 @@ class HierarchicalMinctracc:
 
 class LongitudinalStatsConcatAndResample:
     """ For each subject:
-        1. Calculate stats (displacement, jacobians, scaled jacobians) between i and i+1 time points 
+        1. Calculate stats (displacement, absolute jacobians, relative jacobians) between i and i+1 time points 
         2. Calculate transform from subject to common space (nlinFH) and invert it. 
            For most subjects this will require some amount of transform concatenation. 
-        3. Calculate the stats (displacement, jacobians, scaled jacobians) from common space
+        3. Calculate the stats (displacement, absolute jacobians, relative jacobians) from common space
            to each timepoint.
     """
     def __init__(self, subjects, timePoint, nlinFH, statsKernels, commonName):
