@@ -264,3 +264,49 @@ def getFinestResolution(inSource):
     
     return finestRes
     
+def getXfms(nlinFH, subjects, space, mbmDir, time=None):
+
+    """ This function retrieves the last transform from each subject 
+        to a final nlin average, generated during a previously completed build model run. 
+       
+        subjects passed in must be a dictionary or a list. If a dictionary, function assumes
+        use with registration chain code and gets transforms only for subjects at the specified
+        common time point (time). Otherwise, assumes an array and gets xfms for all subjects in array.
+        
+        Input spaces currently allowed: lsq6, lsq12. native is allowed, but until pydpiper
+        calculates the back to native xfms, it will return with an error. 
+        
+    """
+    
+    #First handle subjects if dictionary or list
+    if isinstance(subjects, list):
+        inputs = subjects
+    elif isinstance(subjects, dict):
+        inputs = []
+        for s in subjects:
+            inputs.append(subjects[s][time])
+    else:
+        logger.error("getXfms only takes a dictionary or list of subjects. Incorrect type has been passed. Exiting...")
+        sys.exit()
+    
+    #Walk through specified directories and find appropriate transforms. 
+    #Note that the names for xfms assume current pydpiper naming conventions. 
+    baseNames = walk(mbmDir).next()[1]
+    for b in baseNames:
+        if space == "lsq6":
+            xfmAvgToSubj = abspath(mbmDir + "/" + b + "/transforms/" + b + "-final-nlin_with_additional_inverted.xfm")
+            xfmSubjToAvg = abspath(mbmDir + "/" + b + "/transforms/" + b + "-final-nlin_with_additional.xfm")
+        elif space == "lsq12":
+            xfmAvgToSubj = abspath(mbmDir + "/" + b + "/transforms/" + b + "-final-nlin_inverted.xfm")
+            xfmSubjToAvg = abspath(mbmDir + "/" + b + "/transforms/" + b + "-final-nlin.xfm")    
+        elif space == "native":
+            logger.error("Pydpiper does not currently calculate the transforms back to native space.")
+            sys.exit()
+        else:
+            logger.error("getXfms can only retrieve transforms to lsq6 or lsq12 space. Invalid parameter has been passed.")
+            sys.exit()
+        for inputFH in inputs:
+            if fnmatch.fnmatch(inputFH.getLastBasevol(), "*" + b + "*"):
+                nlinFH.setLastXfm(inputFH, xfmAvgToSubj)
+                inputFH.newGroup(groupName="final")
+                inputFH.setLastXfm(nlinFH, xfmSubjToAvg)

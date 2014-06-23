@@ -11,7 +11,6 @@ import atoms_and_modules.LSQ12 as lsq12
 import atoms_and_modules.NLIN as nlin
 import atoms_and_modules.stats_tools as st
 import atoms_and_modules.minc_parameters as mp
-import atoms_and_modules.old_MBM_interface_functions as ombm
 import Pyro
 from optparse import OptionGroup
 from os.path import abspath, isdir, isfile
@@ -114,8 +113,8 @@ class RegistrationChain(AbstractApplication):
         #Note that the value will be different if input_space == native or LSQ6
         currGroupIndex = rf.getCurrIndexForInputs(subjects)
             
-        """If requested, run iterative groupwise registration for all subjects at the specified
-           common timepoint, otherwise look to see if files are specified from a previous run. """
+        #If requested, run iterative groupwise registration for all subjects at the specified
+        #common timepoint, otherwise look to see if files are specified from a previous run.
         if self.options.run_groupwise:
             inputs = []
             for s in subjects:
@@ -162,16 +161,8 @@ class RegistrationChain(AbstractApplication):
                     sys.exit()
                 # create file handler for nlin average
                 nlinFH = rfh.RegistrationPipeFH(abspath(self.options.nlin_avg), basedir=dirs.processedDir)
-                # Get transforms from inputs to final nlin average and vice versa, invert if necessary
-                #TODO: Fix this so that it assumes pydpiper file names instead of old build model
-                #ALSO, use "final" as name for group
-                xfmsPipe = ombm.getXfms(nlinFH, 
-                                        subjects, 
-                                        self.options.input_space, 
-                                        abspath(self.options.mbm_dir), 
-                                        time=avgTime)
-                if len(xfmsPipe.stages) > 0:
-                    self.pipeline.addPipeline(xfmsPipe)
+                # Get transforms from subjects at avg time point to final nlin average and vice versa 
+                rf.getXfms(nlinFH, subjects, "lsq6", abspath(self.options.mbm_dir), time=avgTime)
             else:
                 logger.info("MBM directory and nlin_average not specified.")
                 logger.info("Calculating registration chain only") 

@@ -8,7 +8,6 @@ import atoms_and_modules.minc_modules as mm
 import atoms_and_modules.minc_atoms as ma
 import atoms_and_modules.stats_tools as st
 import atoms_and_modules.option_groups as og
-import atoms_and_modules.old_MBM_interface_functions as ombm
 import Pyro
 from optparse import OptionGroup
 from datetime import date
@@ -76,9 +75,7 @@ class PairwiseNonlinear(AbstractApplication):
         
         """Get transforms from inputs to final nlin average and vice versa as well as lsq6 files"""
         if self.options.nlin_avg and self.options.mbm_dir:
-            xfmsPipe = ombm.getXfms(nlinFH, inputs, self.options.input_space, abspath(self.options.mbm_dir))
-            if len(xfmsPipe.stages) > 0:
-                self.pipeline.addPipeline(xfmsPipe)
+            rf.getXfms(nlinFH, inputs, self.options.input_space, abspath(self.options.mbm_dir))
         else:
             logger.info("MBM directory and nlin_average not specified.")
             logger.info("Calculating pairwise nlin only without resampling to common space.")

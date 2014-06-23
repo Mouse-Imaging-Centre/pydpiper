@@ -10,7 +10,6 @@ import atoms_and_modules.minc_parameters as mp
 import atoms_and_modules.NLIN as nl
 import atoms_and_modules.minc_atoms as ma
 import atoms_and_modules.stats_tools as st
-import atoms_and_modules.old_MBM_interface_functions as ombm
 import Pyro
 from optparse import OptionGroup
 from datetime import date
