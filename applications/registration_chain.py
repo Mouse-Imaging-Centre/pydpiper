@@ -108,9 +108,16 @@ class RegistrationChain(AbstractApplication):
                                                 dirs.lsq6Dir, 
                                                 self.options)
             self.pipeline.addPipeline(runLSQ6NucInorm.p)
+        
+        elif self.options.input_space == "lsq6":
+            initModel = None
+        else:
+            print """Only native and lsq6 are allowed as input_space options. You specified: """ + str(self.options.input_space)
+            print "Exiting..."
+            sys.exit()
             
-        #Retrieve current group index for use later, when chain is run
-        #Note that the value will be different if input_space == native or LSQ6
+        #Get current group index for use later, when chain is run. 
+        #Value will be different for input_space == native vs LSQ6
         currGroupIndex = rf.getCurrIndexForInputs(subjects)
             
         #If requested, run iterative groupwise registration for all subjects at the specified
@@ -119,36 +126,11 @@ class RegistrationChain(AbstractApplication):
             inputs = []
             for s in subjects:
                 inputs.append(subjects[s][avgTime])
-            #TODO: We are going to want to put this into a class.
-            lsq12LikeFH = None 
-            if self.options.input_space == "lsq6" and self.options.lsq12_likeFile: 
-                lsq12LikeFH = self.options.lsq12_likeFile 
-            elif self.options.input_space == "native":
-                lsq12LikeFH = initModel[0]
-            lsq12module = lsq12.FullLSQ12(inputs, 
-                                          dirs.lsq12Dir, 
-                                          likeFile=lsq12LikeFH,
-                                          maxPairs=self.options.lsq12_max_pairs, 
-                                          lsq12_protocol=self.options.lsq12_protocol, 
-                                          subject_matter=self.options.lsq12_subject_matter)
-            lsq12module.iterate()
-            self.pipeline.addPipeline(lsq12module.p)
-            nlinModule = nlin.initNLINModule(inputs, 
-                                             lsq12module.lsq12AvgFH, 
-                                             dirs.nlinDir, 
-                                             self.options.nlin_protocol, 
-                                             self.options.reg_method)
-            nlinModule.iterate()
-            self.pipeline.addPipeline(nlinModule.p)
-            nlinFH = nlinModule.nlinAverages[-1]
-            # Now we need the full transform to go back to LSQ6 space
-            for i in inputs:
-                linXfm = lsq12module.lsq12AvgXfms[i]
-                nlinXfm = i.getLastXfm(nlinFH)
-                outXfm = st.createOutputFileName(i, nlinXfm, "transforms", "_with_additional.xfm")
-                xc = ma.xfmConcat([linXfm, nlinXfm], outXfm, fh.logFromFile(i.logDir, outXfm))
-                self.pipeline.addStage(xc)
-                i.addAndSetXfmToUse(nlinFH, outXfm)
+            #Run full LSQ12 and NLIN modules.
+            lsq12Nlin = mm.FullIterativeLSQ12Nlin(inputs, dirs, initModel, self.options)
+            self.pipeline.addPipeline(lsq12Nlin.p)
+            nlinFH = lsq12Nlin.nlinFH
+            
             #Set lastBasevol and group to lsq6 space, using currGroupIndex set above.
             for i in inputs:
                 i.currentGroupIndex = currGroupIndex
