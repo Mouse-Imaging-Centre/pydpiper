@@ -92,6 +92,13 @@ class pipelineExecutor():
         if self.uri==None:
             self.uri = os.path.abspath(os.curdir + "/" + "uri")
         self.setLogger()
+        # the next variable is used to keep track of how long the
+        # executor has been continuously idle/sleeping for. Measured
+        # in seconds
+        self.idle_time = 0
+        # the maximum number of minutes an executor can be continuously
+        # idle for, before it has to kill itself.
+        self.time_to_seppuku = options.time_to_seppuku
     
     def setLogger(self):
         FORMAT = '%(asctime)-15s %(name)s %(levelname)s: %(message)s'
@@ -118,6 +125,7 @@ class pipelineExecutor():
             if self.sge_queue_opts:
                 cmd += ["-q", self.sge_queue_opts]
             cmd += ["pipeline_executor.py", "--uri-file", self.uri, "--proc", strprocs, "--mem", str(self.mem)]
+            cmd += ["--time-to-seppuku", str(self.time_to_seppuku)]
             call(cmd)   
         else:
             print("Specified queueing system is: %s" % (self.queue))
@@ -185,7 +193,18 @@ class pipelineExecutor():
         try:
             while executor.continueLoop(): 
                 executor.mutex.release()               
-                daemon.handleRequests(0)               
+                daemon.handleRequests(0)   
+                
+                # first check whether it's time to perform seppuku: has the
+                # idle_time exceeded the allowed time to be idle
+                # time_to_seppuku is given in minutes
+                # idle_time       is given in seconds
+                if self.time_to_seppuku != None :
+                    if (self.time_to_seppuku * 60) < self.idle_time :
+                        logger.debug("Exceeded allowed idle time... Seppuku!")
+                        executor.serverShutdownCall()
+                        continue
+                
                 # Free up resources from any completed (successful or otherwise) stages
                 for child in [x for x in runningChildren if x.result.ready()]:
                     logger.debug("Freeing up resources for stage %i." % child.stage)
@@ -203,6 +222,8 @@ class pipelineExecutor():
                 if i == None:
                     logger.debug("No runnable stages. Sleeping...")
                     time.sleep(POLLING_INTERVAL)
+                    # increase the idle time by POLLING_INTERVAL
+                    self.idle_time += POLLING_INTERVAL
                     continue
 
                 # Before running stage, check usable mem & procs
@@ -221,7 +242,7 @@ class pipelineExecutor():
             logger.exception("Error during executor polling loop. Shutting down executor...")
             raise
         else:
-            logger.info("Server has shutdown. Killing executor thread.")
+            logger.info("Killing executor thread.")
         finally:
             """Acquires lock if it doesn't already have it, 
                releases lock either way"""
@@ -269,6 +290,9 @@ if __name__ == "__main__":
     parser.add_option("--sge-queue-opts", dest="sge_queue_opts", 
                       type="string", default=None,
                       help="For --queue=sge, allows you to specify different queues. If not specified, default is used.")
+    parser.add_option("--time-to-seppuku", dest="time_to_seppuku", 
+                      type="int", default=None,
+                      help="The number of minutes an executor is allowed to continuously sleep, i.e. wait for an available job, while active on a compute node/farm before it kills itself due to resource hogging. (Default=None, which means it will not kill itself for this reason)")
                       
     (options,args) = parser.parse_args()
 
