@@ -99,6 +99,11 @@ class pipelineExecutor():
         # the maximum number of minutes an executor can be continuously
         # idle for, before it has to kill itself.
         self.time_to_seppuku = options.time_to_seppuku
+        # the time in minutes after which an executor will not accept new jobs
+        self.time_to_accept_jobs = options.time_to_accept_jobs
+        # stores the time of connection with the server
+        self.connection_time_with_server = None
+        self.accept_jobs = 1
     
     def setLogger(self):
         FORMAT = '%(asctime)-15s %(name)s %(levelname)s: %(message)s'
@@ -125,7 +130,9 @@ class pipelineExecutor():
             if self.sge_queue_opts:
                 cmd += ["-q", self.sge_queue_opts]
             cmd += ["pipeline_executor.py", "--uri-file", self.uri, "--proc", strprocs, "--mem", str(self.mem)]
+            # pass these along when submitting to the queue
             cmd += ["--time-to-seppuku", str(self.time_to_seppuku)]
+            cmd += ["--time-to-accept-jobs", str(self.time_to_accept_jobs)]
             call(cmd)   
         else:
             print("Specified queueing system is: %s" % (self.queue))
@@ -188,6 +195,10 @@ class pipelineExecutor():
  
         print "Connected to ", serverURI
         print "Client URI is ", clientURI
+        
+        # connection time with the server
+        self.connection_time_with_server = time.time()
+        
         # loop until the pipeline sets executor.continueLoop() to false
         pool = Pool(processes = self.proc)
         try:
@@ -205,13 +216,33 @@ class pipelineExecutor():
                         executor.serverShutdownCall()
                         continue
                 
+                # second check whether there is a limit to how long the executor
+                # is allowed to accept jobs for. 
+                if (self.time_to_accept_jobs != None) and (self.accept_jobs == 1):
+                    current_time = time.time()
+                    time_take_so_far = current_time - self.connection_time_with_server
+                    minutes_so_far, seconds_so_far = divmod(time_take_so_far, 60)
+                    if (self.time_to_accept_jobs < minutes_so_far):
+                        logger.debug("Exceeded allowed time to accept jobs... not getting any new ones!")
+                        self.accept_jobs = 0
+                
                 # Free up resources from any completed (successful or otherwise) stages
                 for child in [x for x in runningChildren if x.result.ready()]:
                     logger.debug("Freeing up resources for stage %i." % child.stage)
                     runningMem -= child.mem
                     runningProcs -= child.procs
                     runningChildren.remove(child)
-
+                
+                # It is possible that the executor does not accept any new jobs
+                # anymore. If that is the case, the executor should shut down as
+                # soon as all current running jobs (children) have finished
+                if (self.accept_jobs == 0) and (len(runningChildren) == 0):
+                    # that's it, we're done. Nothing is running anymore
+                    # and no jobs can be accepted anymore.
+                    logger.debug("Now shutting down because not accepting new jobs and finished running jobs.")
+                    executor.serverShutdownCall()
+                    continue
+                
                 # check if we have any free processes, and even a little bit of memory
                 if not self.canRun(1, 1, runningMem, runningProcs): 
                     time.sleep(POLLING_INTERVAL)
@@ -293,6 +324,9 @@ if __name__ == "__main__":
     parser.add_option("--time-to-seppuku", dest="time_to_seppuku", 
                       type="int", default=None,
                       help="The number of minutes an executor is allowed to continuously sleep, i.e. wait for an available job, while active on a compute node/farm before it kills itself due to resource hogging. (Default=None, which means it will not kill itself for this reason)")
+    parser.add_option("--time-to-accept-jobs", dest="time_to_accept_jobs", 
+                      type="int", default=None,
+                      help="The number of minutes after which an executor will not accept new jobs anymore. This can be useful when running executors on a batch system where other (competing) jobs run for a limited amount of time. The executors can behave in a similar way by given them a rough end time. (Default=None, which means that the executor will always accept jobs)")
                       
     (options,args) = parser.parse_args()
 
