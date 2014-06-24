@@ -82,8 +82,11 @@ class AbstractApplication(object):
                                type="string", default=None,
                                help="For --queue=sge, allows you to specify different queues. If not specified, default is used.")
         basic_group.add_option("--time-to-seppuku", dest="time_to_seppuku", 
-                              type="int", default=None,
-                              help="The number of minutes an executor is allowed to continuously sleep, i.e. wait for an available job, while active on a compute node/farm before it kills itself due to resource hogging. (Default=None, which means it will not kill itself for this reason)")
+                               type="int", default=None,
+                               help="The number of minutes an executor is allowed to continuously sleep, i.e. wait for an available job, while active on a compute node/farm before it kills itself due to resource hogging. (Default=None, which means it will not kill itself for this reason)")
+        basic_group.add_option("--time-to-accept-jobs", dest="time_to_accept_jobs", 
+                               type="int", default=None,
+                               help="The number of minutes after which an executor will not accept new jobs anymore. This can be useful when running executors on a batch system where other (competing) jobs run for a limited amount of time. The executors can behave in a similar way by given them a rough end time. (Default=None, which means that the executor will always accept jobs)")
         basic_group.add_option("--restart", dest="restart", 
                                action="store_true",
                                help="Restart pipeline using backup files.")
