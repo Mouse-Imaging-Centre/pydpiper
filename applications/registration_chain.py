@@ -50,8 +50,7 @@ def addRegChainOptionGroup(parser):
                             "--nlin-average options. (See below.)")
     group.add_option("--MBM-directory", dest="mbm_dir",
                       type="string", default=None, 
-                      help="_processed directory from MBM used to average specified time point " 
-                            "Right now this assumes OLD BUILD MODEL FILE NAMES BUT WILL BE CHANGED.")
+                      help="_processed directory from MBM used to average specified time point ")
     group.add_option("--nlin-average", dest="nlin_avg",
                       type="string", default=None, 
                       help="Final nlin average from MBM run.")
