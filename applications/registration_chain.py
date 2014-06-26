@@ -11,12 +11,10 @@ import atoms_and_modules.LSQ12 as lsq12
 import atoms_and_modules.NLIN as nlin
 import atoms_and_modules.stats_tools as st
 import atoms_and_modules.minc_parameters as mp
-import atoms_and_modules.old_MBM_interface_functions as ombm
 import Pyro
 from optparse import OptionGroup
 from os.path import abspath, isdir, isfile
 import logging
-import csv
 import sys
 
 logger = logging.getLogger(__name__)
@@ -52,8 +50,7 @@ def addRegChainOptionGroup(parser):
                             "--nlin-average options. (See below.)")
     group.add_option("--MBM-directory", dest="mbm_dir",
                       type="string", default=None, 
-                      help="_processed directory from MBM used to average specified time point " 
-                            "Right now this assumes OLD BUILD MODEL FILE NAMES BUT WILL BE CHANGED.")
+                      help="_processed directory from MBM used to average specified time point ")
     group.add_option("--nlin-average", dest="nlin_avg",
                       type="string", default=None, 
                       help="Final nlin average from MBM run.")
@@ -66,6 +63,7 @@ class RegistrationChain(AbstractApplication):
         addRegChainOptionGroup(self.parser)
         rf.addGenRegOptionGroup(self.parser)
         mp.addRegParamsOptionGroup(self.parser)
+        lsq6.addLSQ6OptionGroup(self.parser)
         lsq12.addLSQ12OptionGroup(self.parser)
         nlin.addNlinRegOptionGroup(self.parser)
         st.addStatsOptions(self.parser)
@@ -78,69 +76,63 @@ class RegistrationChain(AbstractApplication):
 
     def run(self):
         
-        """Setup output directories for registration chain (_processed only)."""       
+        #Setup output directories for registration chain (_processed only)       
         dirs = rf.setupDirectories(self.outputDir, self.options.pipeline_name, module="ALL")
         
-        """Check that correct registration method was specified"""
+        #Check that correct registration method was specified
         if self.options.reg_method != "minctracc" and self.options.reg_method != "mincANTS":
             logger.error("Incorrect registration method specified: " + self.options.reg_method)
             sys.exit()
         
-        """Take average time point, subtract 1 for proper indexing"""
+        #Take average time point, subtract 1 for proper indexing
         avgTime = self.options.avg_time_point - 1
         
-        """Read in files from csv"""
-        fileList = open(self.args[0], 'rb')
-        subjectList = csv.reader(fileList, delimiter=',', skipinitialspace=True)
-        subjects = {} # One array of images for each subject
-        index = 0 
-        for subj in subjectList:
-            subjects[index] = rf.initializeInputFiles(subj, dirs.processedDir, self.options.mask_dir)
-            index += 1
+        #Read in files from csv
+        subjects = rf.setupSubjectHash(self.args[0], dirs, self.options.mask_dir)
         
-        # TODO: Add if input = native space then do LSQ6 first.
+        # If input = native space then do LSQ6 first on all files.
+        if self.options.input_space == "native":
+            initModel, targetPipeFH = rf.setInitialTarget(self.options.init_model, 
+                                                          self.options.lsq6_target, 
+                                                          dirs.lsq6Dir,
+                                                          self.outputDir)
+            #LSQ6 MODULE, NUC and INORM
+            inputFiles = []
+            for subj in subjects:
+                for i in range(len(subjects[subj])):
+                    inputFiles.append(subjects[subj][i])
+            runLSQ6NucInorm = lsq6.LSQ6NUCInorm(inputFiles,
+                                                targetPipeFH,
+                                                initModel, 
+                                                dirs.lsq6Dir, 
+                                                self.options)
+            self.pipeline.addPipeline(runLSQ6NucInorm.p)
+        
+        elif self.options.input_space == "lsq6":
+            initModel = None
+        else:
+            print """Only native and lsq6 are allowed as input_space options. You specified: """ + str(self.options.input_space)
+            print "Exiting..."
+            sys.exit()
             
-        """If requested, run iterative groupwise registration for all subjects at the specified
-           common timepoint, otherwise look to see if files are specified from a previous run. """
+        #Get current group index for use later, when chain is run. 
+        #Value will be different for input_space == native vs LSQ6
+        currGroupIndex = rf.getCurrIndexForInputs(subjects)
+            
+        #If requested, run iterative groupwise registration for all subjects at the specified
+        #common timepoint, otherwise look to see if files are specified from a previous run.
         if self.options.run_groupwise:
             inputs = []
             for s in subjects:
                 inputs.append(subjects[s][avgTime])
-            #TODO: We are going to want to put this into a class.
-            lsq12LikeFH = None 
-            if self.options.input_space == "lsq6" and self.options.lsq12_likeFile: 
-                lsq12LikeFH = self.options.lsq12_likeFile 
-            #TODO: Uncomment elif to use initModel as like file if we already ran LSQ6
-            #elif self.options.input_space == "native":
-                #lsq12LikeFH = initModel[0]
-            lsq12module = lsq12.FullLSQ12(inputs, 
-                                          dirs.lsq12Dir, 
-                                          likeFile=lsq12LikeFH,
-                                          maxPairs=self.options.lsq12_max_pairs, 
-                                          lsq12_protocol=self.options.lsq12_protocol, 
-                                          subject_matter=self.options.lsq12_subject_matter)
-            lsq12module.iterate()
-            self.pipeline.addPipeline(lsq12module.p)
-            nlinModule = nlin.initNLINModule(inputs, 
-                                             lsq12module.lsq12AvgFH, 
-                                             dirs.nlinDir, 
-                                             self.options.nlin_protocol, 
-                                             self.options.reg_method)
-            nlinModule.iterate()
-            self.pipeline.addPipeline(nlinModule.p)
-            nlinFH = nlinModule.nlinAverages[-1]
-            # Now we need the full transform to go back to LSQ6 space
+            #Run full LSQ12 and NLIN modules.
+            lsq12Nlin = mm.FullIterativeLSQ12Nlin(inputs, dirs, initModel, self.options)
+            self.pipeline.addPipeline(lsq12Nlin.p)
+            nlinFH = lsq12Nlin.nlinFH
+            
+            #Set lastBasevol and group to lsq6 space, using currGroupIndex set above.
             for i in inputs:
-                linXfm = lsq12module.lsq12AvgXfms[i]
-                nlinXfm = i.getLastXfm(nlinFH)
-                outXfm = st.createOutputFileName(i, nlinXfm, "transforms", "_with_additional.xfm")
-                xc = ma.xfmConcat([linXfm, nlinXfm], outXfm, fh.logFromFile(i.logDir, outXfm))
-                self.pipeline.addStage(xc)
-                i.addAndSetXfmToUse(nlinFH, outXfm)
-            #Set lastBasevol and group to lsq6 space, for now this is assumed to be input space
-            #Will fix to make more general
-            for i in inputs:
-                i.currentGroupIndex = 0
+                i.currentGroupIndex = currGroupIndex
         else: 
             if self.options.mbm_dir and self.options.nlin_avg:
                 if (not isdir(self.options.mbm_dir)) or (not isfile(self.options.nlin_avg)):
@@ -150,25 +142,17 @@ class RegistrationChain(AbstractApplication):
                     sys.exit()
                 # create file handler for nlin average
                 nlinFH = rfh.RegistrationPipeFH(abspath(self.options.nlin_avg), basedir=dirs.processedDir)
-                # Get transforms from inputs to final nlin average and vice versa, invert if necessary
-                #TODO: Fix this so that it assumes pydpiper file names instead of old build model
-                #ALSO, use "final" as name for group
-                xfmsPipe = ombm.getXfms(nlinFH, 
-                                        subjects, 
-                                        self.options.input_space, 
-                                        abspath(self.options.mbm_dir), 
-                                        time=avgTime)
-                if len(xfmsPipe.stages) > 0:
-                    self.pipeline.addPipeline(xfmsPipe)
+                # Get transforms from subjects at avg time point to final nlin average and vice versa 
+                rf.getXfms(nlinFH, subjects, "lsq6", abspath(self.options.mbm_dir), time=avgTime)
             else:
                 logger.info("MBM directory and nlin_average not specified.")
-                logger.info("Calculating registration chain only")    
+                logger.info("Calculating registration chain only") 
+                nlinFH = None
         
         for subj in subjects:
             s = subjects[subj]
             count = len(s) 
             for i in range(count - 1):
-                # TODO: make sure lastbasevol is lsq6
                 s[i].newGroup(groupName="chain")
                 if self.options.reg_method == "mincANTS":
                     register = mm.LSQ12ANTSNlin(s[i], 
