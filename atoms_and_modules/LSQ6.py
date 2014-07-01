@@ -494,7 +494,7 @@ class NonUniformityCorrection(object):
         for i in range(len(self.inputs)):
             impField = self.impFields[i]
             inputName   = self.inputFilenames[i]
-            outFileBase = fh.removeBaseAndExtension(inputName) + "_nu_corrected.mnc"
+            outFileBase = fh.removeBaseAndExtension(inputName) + "_nuc.mnc"
             outFileDir  = self.inputs[i].resampledDir
             outFile     = fh.createBaseName(outFileDir, outFileBase)
             nuCorrected.append(outFile)
@@ -709,7 +709,7 @@ class IntensityNormalization(object):
         normalized = []
         for i in range(len(self.inputFilenames)):    
             inputName   = self.inputFilenames[i]
-            outFileBase = fh.removeBaseAndExtension(inputName) + "_inormalized.mnc"
+            outFileBase = fh.removeBaseAndExtension(inputName) + "_inorm.mnc"
             outFileDir  = self.inputs[i].resampledDir
             outFile     = fh.createBaseName(outFileDir, outFileBase)
             normalized.append(outFile)
