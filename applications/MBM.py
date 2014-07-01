@@ -82,6 +82,12 @@ class MBMApplication(AbstractApplication):
         #TODO: Additional NUC step here. This will impact both the lsq6 and lsq12 modules. 
         # May want to not do resampling and averaging by default. TBD. 
         
+        #Target mask for registration--I HATE this hack, as is noted in check-in and
+        #as a github issue. 
+        if lsq12module.lsq12AvgFH.getMask()== None:
+            if initModel[0]:
+                lsq12module.lsq12AvgFH.setMask(initModel[0].getMask())
+        
         #NLIN MODULE - Register with minctracc or mincANTS based on options.reg_method
         nlinModule = nlin.initNLINModule(inputFiles, 
                                          lsq12module.lsq12AvgFH, 
