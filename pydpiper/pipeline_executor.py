@@ -30,16 +30,16 @@ def addExecutorOptionGroup(parser):
                       action="store_true",
                       help="Use the Pyro NameServer to store object locations")
     group.add_option("--num-executors", dest="num_exec", 
-                      type="int", default=1, 
-                      help="Number of independent executors to launch.")
+                      type="int", default=0, 
+                      help="Number of independent executors to launch. [Default = 0. Number must be explicitly stated]")
     group.add_option("--time", dest="time", 
                       type="string", default="2:00:00:00", 
-                      help="Wall time to request for each executor in the format dd:hh:mm:ss")
+                      help="Wall time to request for each executor in the format dd:hh:mm:ss. Required only if --queue=pbs.")
     group.add_option("--proc", dest="proc", 
-                      type="int", default=8,
+                      type="int", default=1,
                       help="Number of processes per executor. If not specified, default is 8. Also sets max value for processor use per executor.")
     group.add_option("--mem", dest="mem", 
-                      type="float", default=16,
+                      type="float", default=6,
                       help="Total amount of requested memory for all processes the executor runs. If not specified, default is 16G.")
     group.add_option("--ppn", dest="ppn", 
                       type="int", default=8,
@@ -51,11 +51,11 @@ def addExecutorOptionGroup(parser):
                       type="string", default=None,
                       help="For --queue=sge, allows you to specify different queues. If not specified, default is used.")
     group.add_option("--time-to-seppuku", dest="time_to_seppuku", 
-                      type="int", default=None,
-                      help="The number of minutes an executor is allowed to continuously sleep, i.e. wait for an available job, while active on a compute node/farm before it kills itself due to resource hogging. (Default=None, which means it will not kill itself for this reason)")
+                      type="int", default=15,
+                      help="The number of minutes an executor is allowed to continuously sleep, i.e. wait for an available job, while active on a compute node/farm before it kills itself due to resource hogging. [Default=15 minutes]")
     group.add_option("--time-to-accept-jobs", dest="time_to_accept_jobs", 
-                      type="int", default=None,
-                      help="The number of minutes after which an executor will not accept new jobs anymore. This can be useful when running executors on a batch system where other (competing) jobs run for a limited amount of time. The executors can behave in a similar way by given them a rough end time. (Default=None, which means that the executor will always accept jobs)")
+                      type="int", default=180,
+                      help="The number of minutes after which an executor will not accept new jobs anymore. This can be useful when running executors on a batch system where other (competing) jobs run for a limited amount of time. The executors can behave in a similar way by given them a rough end time. [Default=3 hours]")
     parser.add_option_group(group)
 
 #use Pyro.core.CallbackObjBase?? - need further review of documentation
