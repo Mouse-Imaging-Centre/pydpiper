@@ -72,6 +72,16 @@ class clientExecutor(Pyro.core.SynchronizedObjBase):
         self.mutex.acquire()
         self.continueRunning = False
         self.mutex.release()
+    def internalShutdownCall(self, clientURI,proxy_for_server):
+        # This method is called when the executor shuts itself down. Currently
+        # this happens either when time_to_seppuku is set and the executor has 
+        # been idle for too long, or when time_to_accept_jobs is set and regardless
+        # of whether there are jobs available the executor will shut down. 
+        # When a shutdown like this happens, the executor should first unregister
+        # with the server in order to keep it up to date with how many slaves it
+        # has roaming around.
+        proxy_for_server.unregister(clientURI)
+        self.continueRunning = False
          
 def runStage(serverURI, clientURI, i):
     # Proc needs its own proxy as it's independent of executor
@@ -236,6 +246,7 @@ class pipelineExecutor():
         
         # connection time with the server
         self.connection_time_with_server = time.time()
+        logger.info("Connected to the server at: %s" % datetime.isoformat(datetime.now(), " "))
         
         # loop until the pipeline sets executor.continueLoop() to false
         pool = Pool(processes = self.proc)
@@ -251,7 +262,7 @@ class pipelineExecutor():
                 if self.time_to_seppuku != None :
                     if (self.time_to_seppuku * 60) < self.idle_time :
                         logger.debug("Exceeded allowed idle time... Seppuku!")
-                        executor.serverShutdownCall()
+                        executor.internalShutdownCall(clientURI,p)
                         continue
                 
                 # second check whether there is a limit to how long the executor
@@ -278,7 +289,7 @@ class pipelineExecutor():
                     # that's it, we're done. Nothing is running anymore
                     # and no jobs can be accepted anymore.
                     logger.debug("Now shutting down because not accepting new jobs and finished running jobs.")
-                    executor.serverShutdownCall()
+                    executor.internalShutdownCall(clientURI,p)
                     continue
                 
                 # check if we have any free processes, and even a little bit of memory
