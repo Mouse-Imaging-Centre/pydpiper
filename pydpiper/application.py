@@ -2,7 +2,7 @@ from optparse import OptionParser,OptionGroup
 from pydpiper.pipeline import Pipeline, pipelineDaemon
 from pydpiper.queueing import runOnQueueingSystem
 from pydpiper.file_handling import makedirsIgnoreExisting
-from pydpiper.pipeline_executor import addExecutorOptionGroup
+from pydpiper.pipeline_executor import addExecutorOptionGroup, noExecSpecified
 from datetime import datetime
 from pkg_resources import get_distribution
 import Pyro
@@ -104,7 +104,11 @@ class AbstractApplication(object):
         
         self.options, self.args = self.parser.parse_args()
         
-        self._print_version()        
+        self._print_version()   
+        
+        #Check to make sure some executors have been specified. 
+        noExecSpecified(self.options.num_exec)
+             
         self._setup_pipeline()
         self._setup_directories()
         

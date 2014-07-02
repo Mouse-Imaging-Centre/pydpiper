@@ -30,8 +30,8 @@ def addExecutorOptionGroup(parser):
                       action="store_true",
                       help="Use the Pyro NameServer to store object locations")
     group.add_option("--num-executors", dest="num_exec", 
-                      type="int", default=0, 
-                      help="Number of independent executors to launch. [Default = 0. Number must be explicitly stated]")
+                      type="int", default=-1, 
+                      help="Number of independent executors to launch. [Default = -1. Code will not run without an explicit number specified.]")
     group.add_option("--time", dest="time", 
                       type="string", default="2:00:00:00", 
                       help="Wall time to request for each executor in the format dd:hh:mm:ss. Required only if --queue=pbs.")
@@ -57,6 +57,12 @@ def addExecutorOptionGroup(parser):
                       type="int", default=180,
                       help="The number of minutes after which an executor will not accept new jobs anymore. This can be useful when running executors on a batch system where other (competing) jobs run for a limited amount of time. The executors can behave in a similar way by given them a rough end time. [Default=3 hours]")
     parser.add_option_group(group)
+    
+def noExecSpecified(numExec):
+    #Exit with helpful message if no executors are specified
+    if numExec < 0:
+        print "You need to specify some executors for this pipeline to run. Please use the --num-executors command line option. Exiting..."
+        sys.exit()
 
 #use Pyro.core.CallbackObjBase?? - need further review of documentation
 class clientExecutor(Pyro.core.SynchronizedObjBase):
@@ -347,6 +353,9 @@ if __name__ == "__main__":
                       
     (options,args) = parser.parse_args()
 
+    #Check to make sure some executors have been specified. 
+    noExecSpecified(options.num_exec)
+    
     pe = pipelineExecutor(options)
     if options.queue=="pbs":
         roq = q.runOnQueueingSystem(options)
