@@ -184,7 +184,8 @@ class pipelineExecutor():
             if self.sge_queue_opts:
                 cmd += ["-q", self.sge_queue_opts]
             cmd += ["pipeline_executor.py", "--uri-file", self.uri, "--proc", strprocs, "--mem", str(self.mem)]
-            # pass these along when submitting to the queue
+            #Only one exec is launched at a time in this manner, so we assume --num-executors=1
+            cmd += ["--num-executors", str(1)]  
             cmd += ["--time-to-seppuku", str(self.time_to_seppuku)]
             cmd += ["--time-to-accept-jobs", str(self.time_to_accept_jobs)]
             call(cmd)   
