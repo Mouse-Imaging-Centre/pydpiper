@@ -48,49 +48,19 @@ class MBMApplication(AbstractApplication):
         dirs = rf.setupDirectories(self.outputDir, options.pipeline_name, module="ALL")
         inputFiles = rf.initializeInputFiles(args, dirs.processedDir, maskDir=options.mask_dir)
         
-        # TODO: Write this as a function in LSQ6 and call from there. 
-        initModel = None
-        if(options.lsq6_target != None):
-            targetPipeFH = rfh.RegistrationPipeFH(os.path.abspath(options.lsq6_target), basedir=dirs.lsq6Dir)
-        else: # options.init_model != None  
-            initModel = rf.setupInitModel(options.init_model, self.outputDir)
-            if (initModel[1] != None):
-                # we have a target in "native" space 
-                targetPipeFH = initModel[1]
-            else:
-                # we will use the target in "standard" space
-                targetPipeFH = initModel[0]
+        #Setup init model and inital target. Function also exists if no target was specified.
+        initModel, targetPipeFH = rf.setInitialTarget(options.init_model, 
+                                                      options.lsq6_target, 
+                                                      dirs.lsq6Dir,
+                                                      self.outputDir)
             
-        #LSQ6 MODULE
-        lsq6module = lsq6.getLSQ6Module(inputFiles, 
-                                        targetPipeFH, 
-                                        lsq6Directory = dirs.lsq6Dir, 
-                                        initialTransform = options.lsq6_method, 
-                                        initModel = initModel, 
-                                        lsq6Protocol = options.lsq6_protocol, 
-                                        largeRotationParameters = options.large_rotation_parameters,
-                                        largeRotationRange      = options.large_rotation_range,
-                                        largeRotationInterval   = options.large_rotation_interval)
-        # after the correct module has been set, get the transformation and
-        # deal with resampling and potential model building
-        lsq6module.createLSQ6Transformation()
-        lsq6module.finalize()
-        self.pipeline.addPipeline(lsq6module.p)
-        
-        # NUC 
-        if options.nuc:
-            nucorrection = lsq6.NonUniformityCorrection(inputFiles, 
-                                                        initial_model=initModel,
-                                                        resampleNUCtoLSQ6=False)
-            nucorrection.finalize()
-            self.pipeline.addPipeline(nucorrection.p)
-        
-        #INORMALIZE
-        if options.inormalize:
-            intensity_normalization = lsq6.IntensityNormalization(inputFiles,
-                                                                  initial_model=initModel,
-                                                                  resampleINORMtoLSQ6=True)
-            self.pipeline.addPipeline(intensity_normalization.p)
+        #LSQ6 MODULE, NUC and INORM
+        runLSQ6NucInorm = lsq6.LSQ6NUCInorm(inputFiles,
+                                            targetPipeFH,
+                                            initModel, 
+                                            dirs.lsq6Dir, 
+                                            options)
+        self.pipeline.addPipeline(runLSQ6NucInorm.p)
         
         # LSQ12 MODULE
         # We need to specify a likeFile/space when all files are resampled
@@ -111,6 +81,12 @@ class MBMApplication(AbstractApplication):
         
         #TODO: Additional NUC step here. This will impact both the lsq6 and lsq12 modules. 
         # May want to not do resampling and averaging by default. TBD. 
+        
+        #Target mask for registration--I HATE this hack, as is noted in check-in and
+        #as a github issue. 
+        if lsq12module.lsq12AvgFH.getMask()== None:
+            if initModel[0]:
+                lsq12module.lsq12AvgFH.setMask(initModel[0].getMask())
         
         #NLIN MODULE - Register with minctracc or mincANTS based on options.reg_method
         nlinModule = nlin.initNLINModule(inputFiles, 

@@ -2,6 +2,7 @@
 
 from pydpiper.pipeline import Pipeline
 import atoms_and_modules.LSQ12 as lsq12
+import atoms_and_modules.NLIN as nlin
 import atoms_and_modules.minc_atoms as ma
 import atoms_and_modules.registration_file_handling as rfh
 import atoms_and_modules.stats_tools as st
@@ -194,12 +195,58 @@ class HierarchicalMinctracc:
                                      optimization=np.optimization[i])
             self.p.addStage(nlinStage)
 
+class FullIterativeLSQ12Nlin:
+    """Does a full iterative LSQ12 and NLIN. Basically iterative model building starting from LSQ6
+       and without stats at the end. Designed to be called as part of a larger application. """
+    def __init__(self, inputs, dirs, initModel, options):
+        self.inputs = inputs
+        self.dirs = dirs
+        self.initModel = initModel
+        self.options = options
+        self.nlinFH = None
+        
+        self.p = Pipeline()
+        
+        self.buildPipeline()
+        
+    def buildPipeline(self):
+        lsq12LikeFH = None 
+        if self.options.input_space == "lsq6" and self.options.lsq12_likeFile: 
+            lsq12LikeFH = self.options.lsq12_likeFile 
+        elif self.options.input_space == "native":
+            lsq12LikeFH = self.initModel[0]
+        lsq12module = lsq12.FullLSQ12(self.inputs,
+                                      self.dirs.lsq12Dir,
+                                      likeFile=lsq12LikeFH,
+                                      maxPairs=self.options.lsq12_max_pairs,
+                                      lsq12_protocol=self.options.lsq12_protocol,
+                                      subject_matter=self.options.lsq12_subject_matter)
+        lsq12module.iterate()
+        self.p.addPipeline(lsq12module.p)
+        nlinModule = nlin.initNLINModule(self.inputs,
+                                         lsq12module.lsq12AvgFH,
+                                         self.dirs.nlinDir,
+                                         self.options.nlin_protocol,
+                                         self.options.reg_method)
+        nlinModule.iterate()
+        self.p.addPipeline(nlinModule.p)
+        self.nlinFH = nlinModule.nlinAverages[-1]
+        # Now we need the full transform to go back to LSQ6 space
+        for i in self.inputs:
+            linXfm = lsq12module.lsq12AvgXfms[i]
+            nlinXfm = i.getLastXfm(self.nlinFH)
+            outXfm = st.createOutputFileName(i, nlinXfm, "transforms", "_with_additional.xfm")
+            xc = ma.xfmConcat([linXfm, nlinXfm], outXfm, fh.logFromFile(i.logDir, outXfm))
+            self.p.addStage(xc)
+            i.addAndSetXfmToUse(self.nlinFH, outXfm)
+       
+
 class LongitudinalStatsConcatAndResample:
     """ For each subject:
-        1. Calculate stats (displacement, jacobians, scaled jacobians) between i and i+1 time points 
+        1. Calculate stats (displacement, absolute jacobians, relative jacobians) between i and i+1 time points 
         2. Calculate transform from subject to common space (nlinFH) and invert it. 
            For most subjects this will require some amount of transform concatenation. 
-        3. Calculate the stats (displacement, jacobians, scaled jacobians) from common space
+        3. Calculate the stats (displacement, absolute jacobians, relative jacobians) from common space
            to each timepoint.
     """
     def __init__(self, subjects, timePoint, nlinFH, statsKernels, commonName):

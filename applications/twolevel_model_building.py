@@ -10,14 +10,11 @@ import atoms_and_modules.minc_parameters as mp
 import atoms_and_modules.NLIN as nl
 import atoms_and_modules.minc_atoms as ma
 import atoms_and_modules.stats_tools as st
-import atoms_and_modules.option_groups as og
-import atoms_and_modules.old_MBM_interface_functions as ombm
 import Pyro
 from optparse import OptionGroup
 from datetime import date
 from os.path import abspath, isdir, split, splitext
 import logging
-import csv
 import sys
 
 logger = logging.getLogger(__name__)
@@ -73,13 +70,7 @@ with each scan per subject listed on the same line and separated by a comma.
         dirs = rf.setupDirectories(self.outputDir, options.pipeline_name, module="NLIN")
         
         # read in files from CSV
-        fileList = open(self.args[0], 'rb')
-        subjectList = csv.reader(fileList, delimiter=',', skipinitialspace=True)
-        subjects = {}
-        index = 0
-        for subj in subjectList:
-            subjects[index] = rf.initializeInputFiles(subj, dirs.processedDir, maskDir=options.mask_dir)
-            index += 1
+        subjects = rf.setupSubjectHash(self.args[0], dirs, self.options.mask_dir)
         
         # for the moment assume that all input files are in LSQ12 space
         # TODO: Add in LSQ6 and LSQ12 registrations if requested
