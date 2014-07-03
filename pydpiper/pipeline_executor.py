@@ -4,7 +4,7 @@ import Pyro.core, Pyro.naming
 import time
 import sys
 import os
-from optparse import OptionParser
+from optparse import OptionGroup, OptionParser
 from datetime import datetime
 from multiprocessing import Process, Pool, Lock
 from subprocess import call
@@ -19,6 +19,50 @@ logger = logging.getLogger(__name__)
 POLLING_INTERVAL = 5 # poll for new jobs
 
 Pyro.config.PYRO_MOBILE_CODE=1
+
+def addExecutorOptionGroup(parser):
+    group = OptionGroup(parser, "Executor options",
+                        "Options controlling how and where the code is run.")
+    group.add_option("--uri-file", dest="urifile",
+                      type="string", default=None,
+                      help="Location for uri file if NameServer is not used. If not specified, default is current working directory.")
+    group.add_option("--use-ns", dest="use_ns",
+                      action="store_true",
+                      help="Use the Pyro NameServer to store object locations")
+    group.add_option("--num-executors", dest="num_exec", 
+                      type="int", default=-1, 
+                      help="Number of independent executors to launch. [Default = -1. Code will not run without an explicit number specified.]")
+    group.add_option("--time", dest="time", 
+                      type="string", default="2:00:00:00", 
+                      help="Wall time to request for each executor in the format dd:hh:mm:ss. Required only if --queue=pbs.")
+    group.add_option("--proc", dest="proc", 
+                      type="int", default=1,
+                      help="Number of processes per executor. If not specified, default is 8. Also sets max value for processor use per executor.")
+    group.add_option("--mem", dest="mem", 
+                      type="float", default=6,
+                      help="Total amount of requested memory for all processes the executor runs. If not specified, default is 16G.")
+    group.add_option("--ppn", dest="ppn", 
+                      type="int", default=8,
+                      help="Number of processes per node. Default is 8. Used when --queue=pbs")
+    group.add_option("--queue", dest="queue", 
+                      type="string", default=None,
+                      help="Use specified queueing system to submit jobs. Default is None.")              
+    group.add_option("--sge-queue-opts", dest="sge_queue_opts", 
+                      type="string", default=None,
+                      help="For --queue=sge, allows you to specify different queues. If not specified, default is used.")
+    group.add_option("--time-to-seppuku", dest="time_to_seppuku", 
+                      type="int", default=15,
+                      help="The number of minutes an executor is allowed to continuously sleep, i.e. wait for an available job, while active on a compute node/farm before it kills itself due to resource hogging. [Default=15 minutes]")
+    group.add_option("--time-to-accept-jobs", dest="time_to_accept_jobs", 
+                      type="int", default=180,
+                      help="The number of minutes after which an executor will not accept new jobs anymore. This can be useful when running executors on a batch system where other (competing) jobs run for a limited amount of time. The executors can behave in a similar way by given them a rough end time. [Default=3 hours]")
+    parser.add_option_group(group)
+    
+def noExecSpecified(numExec):
+    #Exit with helpful message if no executors are specified
+    if numExec < 0:
+        print "You need to specify some executors for this pipeline to run. Please use the --num-executors command line option. Exiting..."
+        sys.exit()
 
 #use Pyro.core.CallbackObjBase?? - need further review of documentation
 class clientExecutor(Pyro.core.SynchronizedObjBase):
@@ -140,7 +184,8 @@ class pipelineExecutor():
             if self.sge_queue_opts:
                 cmd += ["-q", self.sge_queue_opts]
             cmd += ["pipeline_executor.py", "--uri-file", self.uri, "--proc", strprocs, "--mem", str(self.mem)]
-            # pass these along when submitting to the queue
+            #Only one exec is launched at a time in this manner, so we assume --num-executors=1
+            cmd += ["--num-executors", str(1)]  
             cmd += ["--time-to-seppuku", str(self.time_to_seppuku)]
             cmd += ["--time-to-accept-jobs", str(self.time_to_accept_jobs)]
             call(cmd)   
@@ -305,42 +350,13 @@ if __name__ == "__main__":
     # command line option handling    
     parser = OptionParser(usage=usage, description=description)
     
-    parser.add_option("--uri-file", dest="urifile",
-                      type="string", default=None,
-                      help="Location for uri file if NameServer is not used. If not specified, default is current working directory.")
-    parser.add_option("--use-ns", dest="use_ns",
-                      action="store_true",
-                      help="Use the Pyro NameServer to store object locations")
-    parser.add_option("--num-executors", dest="num_exec", 
-                      type="int", default=1, 
-                      help="Number of independent executors to launch.")
-    parser.add_option("--time", dest="time", 
-                      type="string", default="2:00:00:00", 
-                      help="Wall time to request for each executor in the format dd:hh:mm:ss")
-    parser.add_option("--proc", dest="proc", 
-                      type="int", default=8,
-                      help="Number of processes per executor. If not specified, default is 8. Also sets max value for processor use per executor.")
-    parser.add_option("--mem", dest="mem", 
-                      type="float", default=16,
-                      help="Total amount of requested memory for all processes the executor runs. If not specified, default is 16G.")
-    parser.add_option("--ppn", dest="ppn", 
-                      type="int", default=8,
-                      help="Number of processes per node. Default is 8. Used when --queue=pbs")
-    parser.add_option("--queue", dest="queue", 
-                      type="string", default=None,
-                      help="Use specified queueing system to submit jobs. Default is None.")              
-    parser.add_option("--sge-queue-opts", dest="sge_queue_opts", 
-                      type="string", default=None,
-                      help="For --queue=sge, allows you to specify different queues. If not specified, default is used.")
-    parser.add_option("--time-to-seppuku", dest="time_to_seppuku", 
-                      type="int", default=None,
-                      help="The number of minutes an executor is allowed to continuously sleep, i.e. wait for an available job, while active on a compute node/farm before it kills itself due to resource hogging. (Default=None, which means it will not kill itself for this reason)")
-    parser.add_option("--time-to-accept-jobs", dest="time_to_accept_jobs", 
-                      type="int", default=None,
-                      help="The number of minutes after which an executor will not accept new jobs anymore. This can be useful when running executors on a batch system where other (competing) jobs run for a limited amount of time. The executors can behave in a similar way by given them a rough end time. (Default=None, which means that the executor will always accept jobs)")
+    addExecutorOptionGroup(parser)
                       
     (options,args) = parser.parse_args()
 
+    #Check to make sure some executors have been specified. 
+    noExecSpecified(options.num_exec)
+    
     pe = pipelineExecutor(options)
     if options.queue=="pbs":
         roq = q.runOnQueueingSystem(options)
