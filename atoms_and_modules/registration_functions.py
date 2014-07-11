@@ -111,7 +111,7 @@ def initializeInputFiles(args, mainDirectory, maskDir=None):
         logger.info("No mask directory specified as command line option. No masks included during RegistrationPipeFH initialization.")
     return inputs
 
-def setupFirstLevelDirectories(csvFile, outputDir, pipeName, module):
+def setupTwoLevelDirectories(csvFile, outputDir, pipeName, module):
     """Creates outputDir/pipelineName_firstlevel for twolevel_registration
        Within first level directory, creates _lsq6/12/nlin/processed for each subject,
        based on the name of the first file in the csv
@@ -129,7 +129,9 @@ def setupFirstLevelDirectories(csvFile, outputDir, pipeName, module):
         dirs = setupDirectories(firstLevelDir, base, module)
         subjectDirs[index] = dirs
         index += 1    
-    return subjectDirs   
+    secondLevelDir = fh.createSubDir(outputDir, pipeName + "_secondlevel")
+    dirs = setupDirectories(secondLevelDir, "second_level", "ALL")
+    return (subjectDirs, dirs)   
 
 def setupSubjectHash(csvFile, dirs, maskDir):
     """Reads in subjects from .csv and returns a hash.

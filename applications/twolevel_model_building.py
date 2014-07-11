@@ -71,13 +71,7 @@ with each scan per subject listed on the same line and separated by a comma.
         # first level directory will contain an _LSQ6, _LSQ12, _NLIN and _processed directory
         # for each subject. The second level directory will contain an _lsq6/12/NLIN/processed
         # directory that will be used for registering the consensus averages.         
-        subjectDirs = rf.setupFirstLevelDirectories(args[0], self.outputDir, options.pipeline_name, module="ALL")
-        if not options.pipeline_name:
-            pipeName = str(date.today()) + "_pipeline"
-        else:
-            pipeName = options.pipeline_name
-        secondLevelDir = fh.createSubDir(self.outputDir, pipeName + "_secondlevel")
-        dirs = rf.setupDirectories(secondLevelDir, "second_level", "ALL")
+        (subjectDirs, dirs) = rf.setupTwoLevelDirectories(args[0], self.outputDir, options.pipeline_name, module="ALL")
         
         # read in files from CSV
         subjects = rf.setupSubjectHash(args[0], subjectDirs, self.options.mask_dir)
