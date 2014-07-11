@@ -66,43 +66,49 @@ with each scan per subject listed on the same line and separated by a comma.
         options = self.options
         args = self.args
         
-        # Setup output directories for two-level model building (_processed and _nlin for now).        
-        dirs = rf.setupDirectories(self.outputDir, options.pipeline_name, module="NLIN")
+        # Setup output directories for two-level model building:
+        # All first level registrations go into the first level directory. The main
+        # first level directory will contain an _LSQ6, _LSQ12, _NLIN and _processed directory
+        # for each subject. The second level directory will contain an _lsq6/12/NLIN/processed
+        # directory that will be used for registering the consensus averages.         
+        subjectDirs = rf.setupFirstLevelDirectories(args[0], self.outputDir, options.pipeline_name, module="ALL")
+        if not options.pipeline_name:
+            pipeName = str(date.today()) + "_pipeline"
+        else:
+            pipeName = options.pipeline_name
+        secondLevelDir = fh.createSubDir(self.outputDir, pipeName + "_secondlevel")
+        dirs = rf.setupDirectories(secondLevelDir, "second_level", "ALL")
         
         # read in files from CSV
-        subjects = rf.setupSubjectHash(self.args[0], dirs, self.options.mask_dir)
+        subjects = rf.setupSubjectHash(args[0], subjectDirs, self.options.mask_dir)
         
-        # for the moment assume that all input files are in LSQ12 space
-        # TODO: Add in LSQ6 and LSQ12 registrations if requested
-        
-        index = 0
         firstlevelNlins = [] # stores the per subject NLINs avgs
         subjStats = [] #used for storing first level stats, which will have to be resampled later
         ### first level of registrations: register within subject
         for i in range(len(subjects)):
-            ### filename munging ###
-            # takes the filename of the first file in the list and prepends FIRSTLEVEL- to it
+            # Add in LSQ6/12 here. 
+            #TODO: Entire build model as a single call. 
             baseVol = subjects[i][0].getLastBasevol()
-            subjBase = "FIRSTLEVEL-" + splitext(split(baseVol)[1])[0]
-            # create an NLIN directory inside the main NLIN directory per subject
-            firstNlinDirectory = fh.createSubDir(dirs.nlinDir, subjBase)
-            # put the lsq12 averages in the processed directory for now
-            lsq12AvgFile = abspath(dirs.processedDir) + "/" + subjBase + "-lsq12avg.mnc"
-            lsq12FH = rfh.RegistrationPipeFH(lsq12AvgFile, basedir=dirs.nlinDir)
+            subjBase = splitext(split(baseVol)[1])[0]
             ### step 1: create an average of all the input files per subject ###
-            # TODO: optionally allow LSQ12 or LSQ6 + LSQ12 here rather than assume they come prealigned
-            avg = ma.mincAverage(subjects[i], lsq12FH)
+            lsq12AvgFile = abspath(subjectDirs[i].lsq12Dir) + "/" + subjBase + "-lsq12avg.mnc"
+            lsq12FH = rfh.RegistrationPipeFH(lsq12AvgFile, basedir=subjectDirs[i].lsq12Dir)
+            avg = ma.mincAverage(subjects[i], 
+                                 lsq12FH, 
+                                 output=lsq12AvgFile, 
+                                 defaultDir=subjectDirs[i].lsq12Dir)
             lsq12FH.setLastBasevol(avg.outputFiles[0])
             self.pipeline.addStage(avg)
-            ### step 2: run iterative ANTS model building for each subject
+            ### step 2: run iterative model building for each subject
             NL = nl.initNLINModule(subjects[i], 
                                    lsq12FH, 
-                                   firstNlinDirectory, 
+                                   subjectDirs[i].nlinDir, 
                                    options.nlin_protocol, 
                                    options.reg_method)
             NL.iterate()
             self.pipeline.addPipeline(NL.p)
             # add the last NLIN average to the volumes that will proceed to step 2
+            # TODO: ?? Rename each final nlin and reinitialize as FH to put output in new directory
             firstlevelNlins.append(NL.nlinAverages[-1])
             if options.calc_stats:
                 finalNlin = NL.nlinAverages[-1]
@@ -115,9 +121,12 @@ with each scan per subject listed on the same line and separated by a comma.
         ### second level of registrations: register across subjects
         ## start by averaging all the NLINs from the first level; 
         # TODO: This should actually be replaced by an LSQ12
-        lsq12AvgFile = abspath(dirs.processedDir) + "/firstlevelNlins-lsq12avg.mnc"
-        lsq12FH = rfh.RegistrationPipeFH(lsq12AvgFile, basedir=dirs.nlinDir)
-        avg = ma.mincAverage(firstlevelNlins, lsq12FH)
+        lsq12AvgFile = abspath(dirs.lsq12Dir) + "/firstlevelNlins-lsq12avg.mnc"
+        lsq12FH = rfh.RegistrationPipeFH(lsq12AvgFile, basedir=dirs.lsq12Dir)
+        avg = ma.mincAverage(firstlevelNlins, 
+                             lsq12FH,
+                             output=lsq12AvgFile,
+                             defaultDir=dirs.lsq12Dir)
         lsq12FH.setLastBasevol(avg.outputFiles[0])
         self.pipeline.addStage(avg)
         ## run iterative ANTS model building across the per subject averages
