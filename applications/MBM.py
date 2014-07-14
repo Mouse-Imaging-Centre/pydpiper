@@ -89,19 +89,21 @@ class MBMApplication(AbstractApplication):
                 lsq12module.lsq12AvgFH.setMask(initModel[0].getMask())
         
         #NLIN MODULE - Register with minctracc or mincANTS based on options.reg_method
-        nlinModule = nlin.initNLINModule(inputFiles, 
-                                         lsq12module.lsq12AvgFH, 
-                                         dirs.nlinDir, 
-                                         options.nlin_protocol, 
-                                         options.reg_method)
-        nlinModule.iterate()
-        self.pipeline.addPipeline(nlinModule.p)
+        nlinObj = nlin.initializeAndRunNLIN(dirs.lsq12Dir,
+                                            inputFiles,
+                                            dirs.nlinDir,
+                                            createAvg=False,
+                                            targetAvg=lsq12module.lsq12AvgFH,
+                                            nlin_protocol=options.nlin_protocol,
+                                            reg_method=options.reg_method)
+        
+        self.pipeline.addPipeline(nlinObj.p)
+        self.nlinAverages = nlinObj.nlinAverages
         
         #STATS MODULE
         if options.calc_stats:
             #Choose final average from array of nlin averages
-            numGens = len(nlinModule.nlinAverages)
-            finalNlin = nlinModule.nlinAverages[numGens-1]
+            finalNlin = self.nlinAverages[-1]
             # For each input file, calculate statistics from final average (finalNlin) 
             # to the inputFH space where all linear differences have been accounted for (LSQ12). 
             # The additionalXfm specified for each inputFH is the transform from the lsq6 to lsq12 

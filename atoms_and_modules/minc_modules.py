@@ -223,12 +223,16 @@ class FullIterativeLSQ12Nlin:
                                       subject_matter=self.options.lsq12_subject_matter)
         lsq12module.iterate()
         self.p.addPipeline(lsq12module.p)
-        nlinModule = nlin.initNLINModule(self.inputs,
-                                         lsq12module.lsq12AvgFH,
-                                         self.dirs.nlinDir,
-                                         self.options.nlin_protocol,
-                                         self.options.reg_method)
-        nlinModule.iterate()
+        if lsq12module.lsq12AvgFH.getMask()== None:
+            if self.initModel[0]:
+                lsq12module.lsq12AvgFH.setMask(self.initModel[0].getMask())
+        nlinModule = nlin.initializeAndRunNLIN(self.dirs.lsq12Dir,
+                                               self.inputs,
+                                               self.dirs.nlinDir,
+                                               createAvg=False,
+                                               targetAvg=lsq12module.lsq12AvgFH,
+                                               nlin_protocol=self.options.nlin_protocol,
+                                               reg_method=self.options.reg_method)
         self.p.addPipeline(nlinModule.p)
         self.nlinFH = nlinModule.nlinAverages[-1]
         # Now we need the full transform to go back to LSQ6 space

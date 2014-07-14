@@ -81,31 +81,27 @@ with each scan per subject listed on the same line and separated by a comma.
         ### first level of registrations: register within subject
         for i in range(len(subjects)):
             # Add in LSQ6/12 here. 
-            #TODO: Entire build model as a single call. 
+            #TODO: Are we handling the masking correctly?  
             baseVol = subjects[i][0].getLastBasevol()
             subjBase = splitext(split(baseVol)[1])[0]
-            ### step 1: create an average of all the input files per subject ###
+            ### create an average of all the input files per subject + run registration###
             lsq12AvgFile = abspath(subjectDirs[i].lsq12Dir) + "/" + subjBase + "-lsq12avg.mnc"
-            lsq12FH = rfh.RegistrationPipeFH(lsq12AvgFile, basedir=subjectDirs[i].lsq12Dir)
-            avg = ma.mincAverage(subjects[i], 
-                                 lsq12FH, 
-                                 output=lsq12AvgFile, 
-                                 defaultDir=subjectDirs[i].lsq12Dir)
-            lsq12FH.setLastBasevol(avg.outputFiles[0])
-            self.pipeline.addStage(avg)
-            ### step 2: run iterative model building for each subject
-            NL = nl.initNLINModule(subjects[i], 
-                                   lsq12FH, 
-                                   subjectDirs[i].nlinDir, 
-                                   options.nlin_protocol, 
-                                   options.reg_method)
-            NL.iterate()
-            self.pipeline.addPipeline(NL.p)
+            nlinObj = nl.initializeAndRunNLIN(subjectDirs[i].lsq12Dir,
+                                              subjects[i],
+                                              subjectDirs[i].nlinDir,
+                                              createAvg=True,
+                                              targetAvg=lsq12AvgFile,
+                                              targetMask=options.target_mask,
+                                              nlin_protocol=options.nlin_protocol,
+                                              reg_method=options.reg_method)
+        
+            self.pipeline.addPipeline(nlinObj.p)
+            self.nlinAverages = nlinObj.nlinAverages
+            
             # add the last NLIN average to the volumes that will proceed to step 2
-            # TODO: ?? Rename each final nlin and reinitialize as FH to put output in new directory
-            firstlevelNlins.append(NL.nlinAverages[-1])
+            firstlevelNlins.append(self.nlinAverages[-1])
             if options.calc_stats:
-                finalNlin = NL.nlinAverages[-1]
+                finalNlin = self.nlinAverages[-1]
                 tmpStats=[]
                 for s in subjects[i]:
                     stats = st.CalcStats(s, finalNlin, options.stats_kernels)
@@ -113,27 +109,24 @@ with each scan per subject listed on the same line and separated by a comma.
                     tmpStats.append(stats)
                 subjStats.append(tmpStats)
         ### second level of registrations: register across subjects
-        ## start by averaging all the NLINs from the first level; 
+        ## average all the NLINs from the first level, iterative model building across 
+        ## per subject averages  
         # TODO: This should actually be replaced by an LSQ12
         lsq12AvgFile = abspath(dirs.lsq12Dir) + "/firstlevelNlins-lsq12avg.mnc"
-        lsq12FH = rfh.RegistrationPipeFH(lsq12AvgFile, basedir=dirs.lsq12Dir)
-        avg = ma.mincAverage(firstlevelNlins, 
-                             lsq12FH,
-                             output=lsq12AvgFile,
-                             defaultDir=dirs.lsq12Dir)
-        lsq12FH.setLastBasevol(avg.outputFiles[0])
-        self.pipeline.addStage(avg)
-        ## run iterative ANTS model building across the per subject averages
-        # TODO: allow for a different protocol here.
-        NL = nl.initNLINModule(firstlevelNlins, 
-                               lsq12FH, 
-                               dirs.nlinDir, 
-                               options.nlin_protocol,
-                               options.reg_method)
-        NL.iterate()
-        self.pipeline.addPipeline(NL.p)
+        nlinObj = nl.initializeAndRunNLIN(dirs.lsq12Dir,
+                                          firstlevelNlins,
+                                          dirs.nlinDir,
+                                          createAvg=True,
+                                          targetAvg=lsq12AvgFile,
+                                          targetMask=options.target_mask,
+                                          nlin_protocol=options.nlin_protocol,
+                                          reg_method=options.reg_method)
+        
+        self.pipeline.addPipeline(nlinObj.p)
+        self.nlinAverages = nlinObj.nlinAverages
+        
         if options.calc_stats:
-            finalNlin = NL.nlinAverages[-1]
+            finalNlin = self.nlinAverages[-1]
             for s in firstlevelNlins:
                 stats = st.CalcStats(s, finalNlin, options.stats_kernels)
                 self.pipeline.addPipeline(stats.p)
@@ -142,12 +135,12 @@ with each scan per subject listed on the same line and separated by a comma.
                 for i in range(len(subjects)):
                     for s in range(len(subjects[i])):
                         # get the last xfm from the second level registrations
-                        xfm = firstlevelNlins[i].getLastXfm(NL.nlinAverages[-1])
+                        xfm = firstlevelNlins[i].getLastXfm(nlinObj.nlinAverages[-1])
                         p = mm.resampleToCommon(xfm,
                                                 subjects[i][s], 
                                                 subjStats[i][s].statsGroup, 
                                                 options.stats_kernels, 
-                                                lsq12FH)
+                                                nlinObj.initialTarget)
                         self.pipeline.addPipeline(p)
         
 if __name__ == "__main__":
