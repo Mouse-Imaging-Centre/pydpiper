@@ -838,12 +838,7 @@ class LSQ6Base(object):
         self.setLSQ6GroupToInputs()
         
         #Get file resolution for each file: will need for subclasses. 
-        try:
-            self.fileRes = rf.getFinestResolution(self.inputs[0])
-        except: 
-            # if this fails (because file doesn't exist when pipeline is created) grab from
-            # initial input volume, which should exist. 
-            self.fileRes = rf.getFinestResolution(self.inputs[0].inputFileName)
+        self.fileRes = rf.returnFinestResolution(self.inputs[0])
         
     def check_inputs(self):
         """

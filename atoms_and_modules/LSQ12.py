@@ -130,12 +130,10 @@ class FullLSQ12(object):
         self.lsq12AvgXfms = {}
         
         """Create the blurring resolution from the file resolution"""
-        try:
-            self.fileRes = rf.getFinestResolution(self.inputs[0])
-        except: 
-            # if this fails (because file doesn't exist when pipeline is created) grab from
-            # initial input volume, which should exist. 
-            self.fileRes = rf.getFinestResolution(self.inputs[0].inputFileName)
+        if (subject_matter==None and lsq12_protocol==None):
+            self.fileRes = rf.returnFinestResolution(self.inputs[0])
+        else:
+            self.fileRes = None
         
         """"Set up parameter array"""
         params = mp.setLSQ12MinctraccParams(self.fileRes, 

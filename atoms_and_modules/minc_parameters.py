@@ -13,10 +13,10 @@ import sys
     and mincANTS classes are the same, the parameters each uses are different
     enough that a common base class doesn't make sense. 
     
-    In each __init__ function, defaults are set first before checking to see if 
-    a non-linear protocol has been specified. A non-linear protocol may specify only 
-    a subset of the parameters, but all parameters must be set for the registration
-    to run properly, so the defaults are set first and then overridden if need be. 
+    In each __init__ function, if a protocol is specified, it is used. 
+    Otherwise, defaults are set based on the file resolution. This means that
+    a protocol specified as a csv must include all values necessary for an 
+    LSQ6, LSQ12, or NLIN minctracc registration or NLIN ANTS registration.  
             
     Currently, a specified protocol MUST be a csv file that uses a SEMI-COLON 
     to separate the fields. Examples are:
@@ -145,9 +145,14 @@ class setMincANTSParams(object):
         self.iterations = []
         self.useMask = []
         
-        self.defaultParams()
         if reg_protocol:
-            self.setParams(reg_protocol)    
+            self.setParams(reg_protocol) 
+        else:
+            if self.fileRes:
+                self.defaultParams()   
+            else:
+                print "Unable to set parameters due to lack of file resolution. Something is awry."
+                sys.exit()
         self.generations = self.getGenerations()
 
     def defaultParams(self):
@@ -297,9 +302,14 @@ class setNlinMinctraccParams(object):
         self.optimization = []
         self.w_translations = []
         
-        self.defaultParams()
         if reg_protocol:
-            self.setParams(reg_protocol)    
+            self.setParams(reg_protocol)
+        else:
+            if self.fileRes:
+                self.defaultParams()
+            else:
+                print "Unable to set parameters due to lack of file resolution. Something is awry."
+                sys.exit()
         self.generations = self.getGenerations()
 
     def defaultParams(self):

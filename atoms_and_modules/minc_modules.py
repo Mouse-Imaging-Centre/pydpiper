@@ -61,13 +61,11 @@ class LSQ12ANTSNlin:
         self.nlin_protocol = nlin_protocol
         self.subject_matter = subject_matter
         self.defaultDir = defaultDir
-        try: # the attempt to access the minc volume will fail if it doesn't yet exist at pipeline creation
-            self.fileRes = rf.getFinestResolution(self.inputFH)
-        except: 
-            # if it indeed failed, get resolution from the original file specified for 
-            # one of the input files, which should exist. 
-            # Can be overwritten by the user through specifying a nonlinear protocol.
-            self.fileRes = rf.getFinestResolution(self.inputFH.inputFileName)
+        
+        if self.lsq12_protocol == None and self.nlin_protocol == None and self.subject_matter==None:
+            self.fileRes = rf.returnFinestResolution(self.inputFH)
+        else:
+            self.fileRes = None
         
         self.buildPipeline()    
     
@@ -146,13 +144,10 @@ class HierarchicalMinctracc:
         self.subject_matter = subject_matter
         self.defaultDir = defaultDir
         
-        try: # the attempt to access the minc volume will fail if it doesn't yet exist at pipeline creation
-            self.fileRes = rf.getFinestResolution(self.inputFH)
-        except: 
-            # if it indeed failed, get resolution from the original file specified for 
-            # one of the input files, which should exist. 
-            # Can be overwritten by the user through specifying a nonlinear protocol.
-            self.fileRes = rf.getFinestResolution(self.inputFH.inputFileName)
+        if self.lsq12_protocol==None and self.nlin_protocol==None and self.subject_matter==None:
+            self.fileRes = rf.returnFinestResolution(self.inputFH)
+        else:
+            self.fileRes = None
         
         self.buildPipeline()
         
@@ -197,8 +192,9 @@ class HierarchicalMinctracc:
 
 class FullIterativeLSQ12Nlin:
     """Does a full iterative LSQ12 and NLIN. Basically iterative model building starting from LSQ6
-       and without stats at the end. Designed to be called as part of a larger application. """
-    def __init__(self, inputs, dirs, initModel, options):
+       and without stats at the end. Designed to be called as part of a larger application. 
+       Specifying an initModel is optional, all other arguments are mandatory."""
+    def __init__(self, inputs, dirs, options, initModel=None):
         self.inputs = inputs
         self.dirs = dirs
         self.initModel = initModel
@@ -211,10 +207,10 @@ class FullIterativeLSQ12Nlin:
         
     def buildPipeline(self):
         lsq12LikeFH = None 
-        if self.options.input_space == "lsq6" and self.options.lsq12_likeFile: 
-            lsq12LikeFH = self.options.lsq12_likeFile 
-        elif self.options.input_space == "native":
+        if self.initModel:
             lsq12LikeFH = self.initModel[0]
+        elif self.options.lsq12_likeFile: 
+            lsq12LikeFH = self.options.lsq12_likeFile 
         lsq12module = lsq12.FullLSQ12(self.inputs,
                                       self.dirs.lsq12Dir,
                                       likeFile=lsq12LikeFH,
@@ -224,7 +220,7 @@ class FullIterativeLSQ12Nlin:
         lsq12module.iterate()
         self.p.addPipeline(lsq12module.p)
         if lsq12module.lsq12AvgFH.getMask()== None:
-            if self.initModel[0]:
+            if self.initModel:
                 lsq12module.lsq12AvgFH.setMask(self.initModel[0].getMask())
         nlinModule = nlin.initializeAndRunNLIN(self.dirs.lsq12Dir,
                                                self.inputs,

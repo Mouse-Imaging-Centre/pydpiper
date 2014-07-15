@@ -854,7 +854,7 @@ class RotationalMinctracc(CmdStage):
             print "Unexpected error: ", sys.exc_info()
             raise
         
-        highestResolution = rf.getFinestResolution(inSource)
+        highestResolution = rf.returnFinestResolution(inSource)
         
         # TODO: finish the following if clause... hahaha
         #if(mousedata):

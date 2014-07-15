@@ -292,6 +292,21 @@ def getFinestResolution(inSource):
             finestRes = abs(imageResolution[i])
     
     return finestRes
+
+def returnFinestResolution(inputFile):
+    try:
+        fileRes = getFinestResolution(inputFile)
+        return fileRes
+    except: 
+        # if this fails (because file doesn't exist when pipeline is created) grab from
+        # initial input volume, which should exist. 
+        try:
+            fileRes = getFinestResolution(inputFile.inputFileName)
+            return fileRes
+        except:
+            print "Cannot get file resolution from specified files to setup default registration protocol: " + str(inputFile.inputFileName)
+            print "Please specify a registration protocol or a value for the subject matter."
+            sys.exit()
     
 def getXfms(nlinFH, subjects, space, mbmDir, time=None):
 

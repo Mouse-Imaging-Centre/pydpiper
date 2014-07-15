@@ -188,7 +188,7 @@ class NLINBase(object):
             regAndResample()
         
     """
-    def __init__(self, inputArray, targetFH, nlinOutputDir):
+    def __init__(self, inputArray, targetFH, nlinOutputDir, nlin_protocol):
         self.p = Pipeline()
         """Initial inputs should be an array of fileHandlers with lastBasevol in lsq12 space"""
         self.inputs = inputArray
@@ -199,19 +199,10 @@ class NLINBase(object):
         """Empty array that we will fill with averages as we create them"""
         self.nlinAverages = [] 
         """Create the blurring resolution from the file resolution"""
-        try: # the attempt to access the minc volume will fail if it doesn't yet exist at pipeline creation
-            self.fileRes = rf.getFinestResolution(self.target)
-        except: 
-            # if it indeed failed, get resolution from the original file specified for 
-            # one of the input files, which should exist. 
-            # Can be overwritten by the user through specifying a nonlinear protocol.
-            if isfile(self.inputs[0].inputFileName):
-                self.fileRes = rf.getFinestResolution(self.inputs[0])
-            else:
-                #HACK to get twolevel model building to run. We will eventually fix this
-                #and if a non-linear protocol is specified, it does not matter anyway.
-                #Still...a hard-coded hack. Gross. 
-                self.fileRes = 0.1  
+        if nlin_protocol==None:
+            self.fileRes = rf.returnFinestResolution(self.inputs[0]) 
+        else:
+            self.fileRes = None
         
         # Create new nlin group for each input prior to registration
         for i in range(len(self.inputs)):
@@ -271,7 +262,7 @@ class NLINANTS(NLINBase):
         registration protocol. The default number of generations is three. 
     """
     def __init__(self, inputArray, targetFH, nlinOutputDir, nlin_protocol=None):
-        NLINBase.__init__(self, inputArray, targetFH, nlinOutputDir)
+        NLINBase.__init__(self, inputArray, targetFH, nlinOutputDir, nlin_protocol)
         
         """Setup parameters, either as defaults, or read from a .csv"""
         params = mp.setMincANTSParams(self.fileRes, reg_protocol=nlin_protocol)
@@ -334,7 +325,7 @@ class NLINminctracc(NLINBase):
         registration protocol. Default number of generations is 6. 
     """
     def __init__(self, inputArray, targetFH, nlinOutputDir, nlin_protocol=None):
-        NLINBase.__init__(self, inputArray, targetFH, nlinOutputDir)
+        NLINBase.__init__(self, inputArray, targetFH, nlinOutputDir, nlin_protocol)
         
         """Setup parameters, either as defaults, or read from a .csv"""
         params = mp.setNlinMinctraccParams(self.fileRes, reg_protocol=nlin_protocol)

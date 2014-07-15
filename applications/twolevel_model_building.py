@@ -1,12 +1,10 @@
 #!/usr/bin/env python
 
 from pydpiper.application import AbstractApplication
-from pydpiper.pipeline import CmdStage, InputFile, OutputFile, LogFile
-import pydpiper.file_handling as fh
 import atoms_and_modules.registration_functions as rf
-import atoms_and_modules.registration_file_handling as rfh
 import atoms_and_modules.minc_modules as mm
 import atoms_and_modules.minc_parameters as mp
+import atoms_and_modules.LSQ12 as lsq12
 import atoms_and_modules.NLIN as nl
 import atoms_and_modules.minc_atoms as ma
 import atoms_and_modules.stats_tools as st
@@ -47,9 +45,10 @@ with each scan per subject listed on the same line and separated by a comma.
 """
         
         # own options go here
+        lsq12.addLSQ12OptionGroup(self.parser)
         nl.addNlinRegOptionGroup(self.parser)
         rf.addGenRegOptionGroup(self.parser)
-        mp.addNLINOptionGroup(self.parser)
+        mp.addRegParamsOptionGroup(self.parser)
         st.addStatsOptions(self.parser)
         
         # TODO: better usage description (once I've figured out what the usage will be ...)
@@ -110,23 +109,12 @@ with each scan per subject listed on the same line and separated by a comma.
                 subjStats.append(tmpStats)
         ### second level of registrations: register across subjects
         ## average all the NLINs from the first level, iterative model building across 
-        ## per subject averages  
-        # TODO: This should actually be replaced by an LSQ12
-        lsq12AvgFile = abspath(dirs.lsq12Dir) + "/firstlevelNlins-lsq12avg.mnc"
-        nlinObj = nl.initializeAndRunNLIN(dirs.lsq12Dir,
-                                          firstlevelNlins,
-                                          dirs.nlinDir,
-                                          createAvg=True,
-                                          targetAvg=lsq12AvgFile,
-                                          targetMask=options.target_mask,
-                                          nlin_protocol=options.nlin_protocol,
-                                          reg_method=options.reg_method)
-        
-        self.pipeline.addPipeline(nlinObj.p)
-        self.nlinAverages = nlinObj.nlinAverages
+        ## per subject averages - do LSQ12/NLIN only 
+        lsq12Nlin = mm.FullIterativeLSQ12Nlin(firstlevelNlins, dirs, options)
+        self.pipeline.addPipeline(lsq12Nlin.p)
+        finalNlin = lsq12Nlin.nlinFH
         
         if options.calc_stats:
-            finalNlin = self.nlinAverages[-1]
             for s in firstlevelNlins:
                 stats = st.CalcStats(s, finalNlin, options.stats_kernels)
                 self.pipeline.addPipeline(stats.p)
