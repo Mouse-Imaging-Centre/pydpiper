@@ -140,6 +140,7 @@ class initializeAndRunNLIN(object):
         self.nlinModule.iterate()
         self.p.addPipeline(self.nlinModule.p)
         self.nlinAverages = self.nlinModule.nlinAverages
+        self.nlinParams = self.nlinModule.nlinParams
         
     def setupTarget(self):
         if self.targetAvg:
@@ -265,18 +266,18 @@ class NLINANTS(NLINBase):
         NLINBase.__init__(self, inputArray, targetFH, nlinOutputDir, nlin_protocol)
         
         """Setup parameters, either as defaults, or read from a .csv"""
-        params = mp.setMincANTSParams(self.fileRes, reg_protocol=nlin_protocol)
+        self.nlinParams = mp.setMincANTSParams(self.fileRes, reg_protocol=nlin_protocol)
     
-        self.blurs = params.blurs
-        self.gradient = params.gradient
-        self.similarityMetric = params.similarityMetric
-        self.weight = params.weight
-        self.radiusHisto = params.radiusHisto
-        self.transformationModel = params.transformationModel
-        self.regularization = params.regularization
-        self.iterations = params.iterations
-        self.useMask = params.useMask
-        self.generations = params.generations
+        self.blurs = self.nlinParams.blurs
+        self.gradient = self.nlinParams.gradient
+        self.similarityMetric = self.nlinParams.similarityMetric
+        self.weight = self.nlinParams.weight
+        self.radiusHisto = self.nlinParams.radiusHisto
+        self.transformationModel = self.nlinParams.transformationModel
+        self.regularization = self.nlinParams.regularization
+        self.iterations = self.nlinParams.iterations
+        self.useMask = self.nlinParams.useMask
+        self.generations = self.nlinParams.generations
     
     def addBlurStage(self, FH, i):
         for j in self.blurs[i]:
@@ -328,15 +329,15 @@ class NLINminctracc(NLINBase):
         NLINBase.__init__(self, inputArray, targetFH, nlinOutputDir, nlin_protocol)
         
         """Setup parameters, either as defaults, or read from a .csv"""
-        params = mp.setNlinMinctraccParams(self.fileRes, reg_protocol=nlin_protocol)
-        self.blurs = params.blurs
-        self.stepSize = params.stepSize
-        self.iterations = params.iterations
-        self.simplex = params.simplex
-        self.useGradient = params.useGradient
-        self.optimization = params.optimization
-        self.generations = params.generations
-        self.w_translations = params.w_translations
+        self.nlinParams = mp.setNlinMinctraccParams(self.fileRes, reg_protocol=nlin_protocol)
+        self.blurs = self.nlinParams.blurs
+        self.stepSize = self.nlinParams.stepSize
+        self.iterations = self.nlinParams.iterations
+        self.simplex = self.nlinParams.simplex
+        self.useGradient = self.nlinParams.useGradient
+        self.optimization = self.nlinParams.optimization
+        self.generations = self.nlinParams.generations
+        self.w_translations = self.nlinParams.w_translations
     
     
     def addBlurStage(self, FH, i):

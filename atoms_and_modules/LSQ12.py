@@ -136,15 +136,15 @@ class FullLSQ12(object):
             self.fileRes = None
         
         """"Set up parameter array"""
-        params = mp.setLSQ12MinctraccParams(self.fileRes, 
+        self.lsq12Params = mp.setLSQ12MinctraccParams(self.fileRes, 
                                             subject_matter=subject_matter, 
                                             reg_protocol=lsq12_protocol)
-        self.blurs = params.blurs
-        self.stepSize = params.stepSize
-        self.useGradient = params.useGradient
-        self.simplex = params.simplex
-        self.w_translations = params.w_translations
-        self.generations = params.generations
+        self.blurs = self.lsq12Params.blurs
+        self.stepSize = self.lsq12Params.stepSize
+        self.useGradient = self.lsq12Params.useGradient
+        self.simplex = self.lsq12Params.simplex
+        self.w_translations = self.lsq12Params.w_translations
+        self.generations = self.lsq12Params.generations
         
         # Create new lsq12 group for each input prior to registration
         for i in range(len(self.inputs)):
