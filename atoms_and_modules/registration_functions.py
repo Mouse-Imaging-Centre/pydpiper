@@ -304,8 +304,10 @@ def returnFinestResolution(inputFile):
             fileRes = getFinestResolution(inputFile.inputFileName)
             return fileRes
         except:
+            print "------------------------------------------------------------------------------------"
             print "Cannot get file resolution from specified files to setup default registration protocol: " + str(inputFile.inputFileName)
             print "Please specify a registration protocol or a value for the subject matter."
+            print "------------------------------------------------------------------------------------"
             sys.exit()
     
 def getXfms(nlinFH, subjects, space, mbmDir, time=None):

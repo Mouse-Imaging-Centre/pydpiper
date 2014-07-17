@@ -135,6 +135,7 @@ class addRegParamsOptionGroup(paramsOptions):
 class setMincANTSParams(object):
     def __init__(self, fileRes, reg_protocol=None):
         self.fileRes = fileRes
+        self.regProtocol=reg_protocol
         self.blurs = []
         self.gradient = []
         self.similarityMetric = []
@@ -145,13 +146,31 @@ class setMincANTSParams(object):
         self.iterations = []
         self.useMask = []
         
+        #If a registration protocol exists, use it to setup parameters. Assume it is a csv. If this fails,
+        #the except clause assumes it is an object of type(self). 
         if reg_protocol:
-            self.setParams(reg_protocol) 
+            try:
+                self.setParams(reg_protocol)
+            except:
+                try:
+                    self.blurs = reg_protocol.blurs
+                    self.gradient = reg_protocol.gradient
+                    self.similarityMetric = reg_protocol.similarityMetric
+                    self.weight = reg_protocol.weight
+                    self.radiusHisto = reg_protocol.radiusHisto
+                    self.transformationModel = reg_protocol.transformationModel
+                    self.regularization = reg_protocol.regularization
+                    self.iterations = reg_protocol.iterations
+                    self.useMask = reg_protocol.useMask
+                except:
+                    print "The non-linear protocol you have specified is in an unrecognized form. Exiting..."
+                    sys.exit()
         else:
             if self.fileRes:
-                self.defaultParams()   
+                self.defaultParams()
             else:
-                print "Unable to set parameters due to lack of file resolution. Something is awry."
+                print "Unable to set default registration parameters due to lack of file resolution."
+                print "Try specifying a non-linear protocol, or investigate why this is happening."
                 sys.exit()
         self.generations = self.getGenerations()
 
@@ -294,6 +313,7 @@ class setOneGenMincANTSParams(setMincANTSParams):
 class setNlinMinctraccParams(object):
     def __init__(self, fileRes, reg_protocol=None):
         self.fileRes = fileRes
+        self.regProtocol = reg_protocol
         self.blurs = []
         self.stepSize = []
         self.iterations = []
@@ -302,13 +322,29 @@ class setNlinMinctraccParams(object):
         self.optimization = []
         self.w_translations = []
         
+        #If a registration protocol exists, use it to setup parameters. Assume it is a csv. If this fails,
+        #the except clause assumes it is an object of type(self). 
         if reg_protocol:
-            self.setParams(reg_protocol)
+            try:
+                self.setParams(reg_protocol)
+            except:
+                try:
+                    self.blurs = reg_protocol.blurs
+                    self.stepSize = reg_protocol.stepSize
+                    self.iterations = reg_protocol.iterations
+                    self.simplex = reg_protocol.simplex
+                    self.useGradient = reg_protocol.useGradient
+                    self.optimization = reg_protocol.optimization
+                    self.w_translations = reg_protocol.w_translations
+                except:
+                    print "The non-linear protocol you have specified is in an unrecognized form. Exiting..."
+                    sys.exit()
         else:
             if self.fileRes:
                 self.defaultParams()
             else:
-                print "Unable to set parameters due to lack of file resolution. Something is awry."
+                print "Unable to set default registration parameters due to lack of file resolution."
+                print "Try specifying a non-linear protocol, or investigate why this is happening."
                 sys.exit()
         self.generations = self.getGenerations()
 

@@ -110,6 +110,10 @@ with each scan per subject listed on the same line and separated by a comma.
         ### second level of registrations: register across subjects
         ## average all the NLINs from the first level, iterative model building across 
         ## per subject averages - do LSQ12/NLIN only 
+        if options.input_space == "lsq12":
+            #Fix this to get protocol based on one of the input files from step 1!!!
+            options.lsq12_protocol = nlinObj.nlinParams
+        options.nlin_protocol = nlinObj.nlinParams
         lsq12Nlin = mm.FullIterativeLSQ12Nlin(firstlevelNlins, dirs, options)
         self.pipeline.addPipeline(lsq12Nlin.p)
         finalNlin = lsq12Nlin.nlinFH
