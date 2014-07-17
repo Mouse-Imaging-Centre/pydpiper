@@ -226,6 +226,7 @@ class FullIterativeLSQ12Nlin:
         nlinModule = nlin.initializeAndRunNLIN(self.dirs.lsq12Dir,
                                                self.inputs,
                                                self.dirs.nlinDir,
+                                               avgPrefix=self.options.pipeline_name, 
                                                createAvg=False,
                                                targetAvg=lsq12module.lsq12AvgFH,
                                                nlin_protocol=self.options.nlin_protocol,

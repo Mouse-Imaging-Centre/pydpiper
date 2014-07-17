@@ -91,6 +91,7 @@ class NonlinearRegistration(AbstractApplication):
         nlinObj = initializeAndRunNLIN(self.outputDir,
                                        inputFiles,
                                        dirs.nlinDir,
+                                       avgPrefix=options.pipeline_name,
                                        createAvg=createAvg,
                                        targetAvg=options.target_avg,
                                        targetMask=options.target_mask,
@@ -117,6 +118,7 @@ class initializeAndRunNLIN(object):
                   targetOutputDir, #Output directory for files related to initial target (often _lsq12)
                   inputFiles, 
                   nlinDir, 
+                  avgPrefix, #Prefix for nlin-1.mnc, ... nlin-k.mnc 
                   createAvg=True, #True=call mincAvg, False=targetAvg already exists
                   targetAvg=None, #Optional path to initial target - passing name does not guarantee existence
                   targetMask=None, #Optional path to mask for initial target
@@ -126,6 +128,7 @@ class initializeAndRunNLIN(object):
         self.targetOutputDir = targetOutputDir
         self.inputFiles = inputFiles
         self.nlinDir = nlinDir
+        self.avgPrefix = avgPrefix
         self.createAvg = createAvg
         self.targetAvg = targetAvg
         self.targetMask = targetMask
@@ -173,9 +176,9 @@ class initializeAndRunNLIN(object):
             
     def initNlinModule(self):
         if self.reg_method=="mincANTS":
-            self.nlinModule = NLINANTS(self.inputFiles, self.initialTarget, self.nlinDir, self.nlin_protocol)
+            self.nlinModule = NLINANTS(self.inputFiles, self.initialTarget, self.nlinDir, self.avgPrefix, self.nlin_protocol)
         elif self.reg_method=="minctracc":
-            self.nlinModule = NLINminctracc(self.inputFiles, self.initialTarget, self.nlinDir, self.nlin_protocol)
+            self.nlinModule = NLINminctracc(self.inputFiles, self.initialTarget, self.nlinDir, self.avgPrefix, self.nlin_protocol)
         else:
             logger.error("Incorrect registration method specified: " + self.reg_method)
             sys.exit()
@@ -189,7 +192,7 @@ class NLINBase(object):
             regAndResample()
         
     """
-    def __init__(self, inputArray, targetFH, nlinOutputDir, nlin_protocol):
+    def __init__(self, inputArray, targetFH, nlinOutputDir, avgPrefix, nlin_protocol):
         self.p = Pipeline()
         """Initial inputs should be an array of fileHandlers with lastBasevol in lsq12 space"""
         self.inputs = inputArray
@@ -197,6 +200,8 @@ class NLINBase(object):
         self.target = targetFH 
         """Output directory should be _nlin """
         self.nlinDir = nlinOutputDir
+        """Prefix to pre-pend to averages at each generation"""
+        self.avgPrefix = avgPrefix
         """Empty array that we will fill with averages as we create them"""
         self.nlinAverages = [] 
         """Create the blurring resolution from the file resolution"""
@@ -223,7 +228,10 @@ class NLINBase(object):
     
     def iterate(self):
         for i in range(self.generations):
-            nlinOutput = abspath(self.nlinDir) + "/" + "nlin-%g.mnc" % (i+1)
+            outputName = "nlin-%g.mnc" % (i+1)
+            if self.avgPrefix:
+                outputName = str(self.avgPrefix) + "-" + outputName
+            nlinOutput = abspath(self.nlinDir) + "/" + outputName
             nlinFH = RegistrationPipeFH(nlinOutput, mask=self.target.getMask(), basedir=self.nlinDir)
             self.addBlurStage(self.target, i)
             filesToAvg = []
@@ -262,8 +270,8 @@ class NLINANTS(NLINBase):
         This class does an iterative non-linear registration using the mincANTS
         registration protocol. The default number of generations is three. 
     """
-    def __init__(self, inputArray, targetFH, nlinOutputDir, nlin_protocol=None):
-        NLINBase.__init__(self, inputArray, targetFH, nlinOutputDir, nlin_protocol)
+    def __init__(self, inputArray, targetFH, nlinOutputDir, avgPrefix, nlin_protocol=None):
+        NLINBase.__init__(self, inputArray, targetFH, nlinOutputDir, avgPrefix, nlin_protocol)
         
         """Setup parameters, either as defaults, or read from a .csv"""
         self.nlinParams = mp.setMincANTSParams(self.fileRes, reg_protocol=nlin_protocol)
@@ -325,8 +333,8 @@ class NLINminctracc(NLINBase):
         This class does an iterative non-linear registration using the minctracc
         registration protocol. Default number of generations is 6. 
     """
-    def __init__(self, inputArray, targetFH, nlinOutputDir, nlin_protocol=None):
-        NLINBase.__init__(self, inputArray, targetFH, nlinOutputDir, nlin_protocol)
+    def __init__(self, inputArray, targetFH, nlinOutputDir, avgPrefix, nlin_protocol=None):
+        NLINBase.__init__(self, inputArray, targetFH, nlinOutputDir, avgPrefix, nlin_protocol)
         
         """Setup parameters, either as defaults, or read from a .csv"""
         self.nlinParams = mp.setNlinMinctraccParams(self.fileRes, reg_protocol=nlin_protocol)
