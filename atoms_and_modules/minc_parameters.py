@@ -146,22 +146,29 @@ class setMincANTSParams(object):
         self.iterations = []
         self.useMask = []
         
+        #Setup protocol
+        self.setupProtocol()
+        
+        #Get number of iterations
+        self.generations = self.getGenerations()
+        
         #If a registration protocol exists, use it to setup parameters. Assume it is a csv. If this fails,
-        #the except clause assumes it is an object of type(self). 
-        if reg_protocol:
+        #the except clause assumes it is an object of type(self).
+    def setupProtocol(self): 
+        if self.regProtocol:
             try:
-                self.setParams(reg_protocol)
+                self.setParams()
             except:
                 try:
-                    self.blurs = reg_protocol.blurs
-                    self.gradient = reg_protocol.gradient
-                    self.similarityMetric = reg_protocol.similarityMetric
-                    self.weight = reg_protocol.weight
-                    self.radiusHisto = reg_protocol.radiusHisto
-                    self.transformationModel = reg_protocol.transformationModel
-                    self.regularization = reg_protocol.regularization
-                    self.iterations = reg_protocol.iterations
-                    self.useMask = reg_protocol.useMask
+                    self.blurs = self.regProtocol.blurs
+                    self.gradient = self.regProtocol.gradient
+                    self.similarityMetric = self.regProtocol.similarityMetric
+                    self.weight = self.regProtocol.weight
+                    self.radiusHisto = self.regProtocol.radiusHisto
+                    self.transformationModel = self.regProtocol.transformationModel
+                    self.regularization = self.regProtocol.regularization
+                    self.iterations = self.regProtocol.iterations
+                    self.useMask = self.regProtocol.useMask
                 except:
                     print "The non-linear protocol you have specified is in an unrecognized form. Exiting..."
                     sys.exit()
@@ -194,11 +201,11 @@ class setMincANTSParams(object):
         self.iterations = ["100x100x100x0", "100x100x100x20", "100x100x100x50"]
         self.useMask = [False, True, True]
         
-    def setParams(self, reg_protocol):
+    def setParams(self):
         """Set parameters from specified protocol"""
         
         """Read parameters into array from csv."""
-        inputCsv = open(abspath(reg_protocol), 'rb')
+        inputCsv = open(abspath(self.regProtocol), 'rb')
         csvReader = csv.reader(inputCsv, delimiter=';', skipinitialspace=True)
         params = []
         for r in csvReader:
@@ -322,20 +329,27 @@ class setNlinMinctraccParams(object):
         self.optimization = []
         self.w_translations = []
         
+        #Setup protocol
+        self.setupProtocol()
+        
+        #Get number of iterations
+        self.generations = self.getGenerations()
+        
+    def setupProtocol(self):
         #If a registration protocol exists, use it to setup parameters. Assume it is a csv. If this fails,
         #the except clause assumes it is an object of type(self). 
-        if reg_protocol:
+        if self.regProtocol:
             try:
-                self.setParams(reg_protocol)
+                self.setParams()
             except:
                 try:
-                    self.blurs = reg_protocol.blurs
-                    self.stepSize = reg_protocol.stepSize
-                    self.iterations = reg_protocol.iterations
-                    self.simplex = reg_protocol.simplex
-                    self.useGradient = reg_protocol.useGradient
-                    self.optimization = reg_protocol.optimization
-                    self.w_translations = reg_protocol.w_translations
+                    self.blurs = self.regProtocol.blurs
+                    self.stepSize = self.regProtocol.stepSize
+                    self.iterations = self.regProtocol.iterations
+                    self.simplex = self.regProtocol.simplex
+                    self.useGradient = self.regProtocol.useGradient
+                    self.optimization = self.regProtocol.optimization
+                    self.w_translations = self.regProtocol.w_translations
                 except:
                     print "The non-linear protocol you have specified is in an unrecognized form. Exiting..."
                     sys.exit()
@@ -346,7 +360,7 @@ class setNlinMinctraccParams(object):
                 print "Unable to set default registration parameters due to lack of file resolution."
                 print "Try specifying a non-linear protocol, or investigate why this is happening."
                 sys.exit()
-        self.generations = self.getGenerations()
+        
 
     def defaultParams(self):
         """ Default minctracc parameters """
@@ -363,11 +377,11 @@ class setNlinMinctraccParams(object):
                              "-use_simplex", "-use_simplex"]
         self.w_translations = [0.4,0.4,0.4,0.4,0.4,0.4]
             
-    def setParams(self, reg_protocol):
+    def setParams(self):
         """Set parameters from specified protocol"""
         
         """Read parameters into array from csv."""
-        inputCsv = open(abspath(reg_protocol), 'rb')
+        inputCsv = open(abspath(self.regProtocol), 'rb')
         csvReader = csv.reader(inputCsv, delimiter=';', skipinitialspace=True)
         params = []
         for r in csvReader:
@@ -437,6 +451,12 @@ class setLSQ12MinctraccParams(setNlinMinctraccParams):
     def __init__(self, fileRes, subject_matter=None, reg_protocol=None):
         self.subject_matter = subject_matter
         setNlinMinctraccParams.__init__(self, fileRes, reg_protocol=reg_protocol)
+        
+    def setupProtocol(self):
+        if self.subject_matter:
+            self.defaultParams()
+        else:
+            super(setLSQ12MinctraccParams, self).setupProtocol()
 
     def defaultParams(self):
         """ 

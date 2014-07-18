@@ -92,7 +92,7 @@ class MBMApplication(AbstractApplication):
         nlinObj = nlin.initializeAndRunNLIN(dirs.lsq12Dir,
                                             inputFiles,
                                             dirs.nlinDir,
-                                            avgPrefix=options.pipelineName,
+                                            avgPrefix=options.pipeline_name,
                                             createAvg=False,
                                             targetAvg=lsq12module.lsq12AvgFH,
                                             nlin_protocol=options.nlin_protocol,

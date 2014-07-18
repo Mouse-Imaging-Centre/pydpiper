@@ -137,8 +137,8 @@ class FullLSQ12(object):
         
         """"Set up parameter array"""
         self.lsq12Params = mp.setLSQ12MinctraccParams(self.fileRes, 
-                                            subject_matter=subject_matter, 
-                                            reg_protocol=lsq12_protocol)
+                                                      subject_matter=subject_matter, 
+                                                      reg_protocol=lsq12_protocol)
         self.blurs = self.lsq12Params.blurs
         self.stepSize = self.lsq12Params.stepSize
         self.useGradient = self.lsq12Params.useGradient
