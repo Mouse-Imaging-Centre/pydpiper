@@ -194,11 +194,12 @@ class FullIterativeLSQ12Nlin:
     """Does a full iterative LSQ12 and NLIN. Basically iterative model building starting from LSQ6
        and without stats at the end. Designed to be called as part of a larger application. 
        Specifying an initModel is optional, all other arguments are mandatory."""
-    def __init__(self, inputs, dirs, options, initModel=None):
+    def __init__(self, inputs, dirs, options, avgPrefix=None, initModel=None):
         self.inputs = inputs
         self.dirs = dirs
-        self.initModel = initModel
         self.options = options
+        self.avgPrefix = avgPrefix
+        self.initModel = initModel
         self.nlinFH = None
         
         self.p = Pipeline()
@@ -223,10 +224,12 @@ class FullIterativeLSQ12Nlin:
         if lsq12module.lsq12AvgFH.getMask()== None:
             if self.initModel:
                 lsq12module.lsq12AvgFH.setMask(self.initModel[0].getMask())
+        if not self.avgPrefix:
+            self.avgPrefix = self.options.pipeline_name
         nlinModule = nlin.initializeAndRunNLIN(self.dirs.lsq12Dir,
                                                self.inputs,
                                                self.dirs.nlinDir,
-                                               avgPrefix=self.options.pipeline_name, 
+                                               avgPrefix=self.avgPrefix, 
                                                createAvg=False,
                                                targetAvg=lsq12module.lsq12AvgFH,
                                                nlin_protocol=self.options.nlin_protocol,
@@ -234,6 +237,7 @@ class FullIterativeLSQ12Nlin:
         self.p.addPipeline(nlinModule.p)
         self.nlinFH = nlinModule.nlinAverages[-1]
         self.nlinParams = nlinModule.nlinParams
+        self.initialTarget = nlinModule.initialTarget
         # Now we need the full transform to go back to LSQ6 space
         for i in self.inputs:
             linXfm = lsq12module.lsq12AvgXfms[i]

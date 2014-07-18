@@ -123,7 +123,7 @@ class RegistrationChain(AbstractApplication):
             for s in subjects:
                 inputs.append(subjects[s][avgTime])
             #Run full LSQ12 and NLIN modules.
-            lsq12Nlin = mm.FullIterativeLSQ12Nlin(inputs, dirs, self.options, initModel)
+            lsq12Nlin = mm.FullIterativeLSQ12Nlin(inputs, dirs, self.options, initModel=initModel)
             self.pipeline.addPipeline(lsq12Nlin.p)
             nlinFH = lsq12Nlin.nlinFH
             
