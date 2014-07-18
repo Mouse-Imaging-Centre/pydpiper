@@ -61,28 +61,26 @@ class LSQ12ANTSNlin:
         self.nlin_protocol = nlin_protocol
         self.subject_matter = subject_matter
         self.defaultDir = defaultDir
-        try: # the attempt to access the minc volume will fail if it doesn't yet exist at pipeline creation
-            self.fileRes = rf.getFinestResolution(self.inputFH)
-        except: 
-            # if it indeed failed, get resolution from the original file specified for 
-            # one of the input files, which should exist. 
-            # Can be overwritten by the user through specifying a nonlinear protocol.
-            self.fileRes = rf.getFinestResolution(self.inputFH.inputFileName)
+        
+        if ((self.lsq12_protocol == None and self.subject_matter==None) or self.nlin_protocol == None):
+            self.fileRes = rf.returnFinestResolution(self.inputFH)
+        else:
+            self.fileRes = None
         
         self.buildPipeline()    
     
     def buildPipeline(self):
         # Run lsq12 registration prior to non-linear
-        lp = mp.setLSQ12MinctraccParams(self.fileRes, 
-                                        subject_matter=self.subject_matter,
-                                        reg_protocol=self.lsq12_protocol)
+        self.lsq12Params = mp.setLSQ12MinctraccParams(self.fileRes, 
+                                                      subject_matter=self.subject_matter,
+                                                      reg_protocol=self.lsq12_protocol)
         lsq12reg = lsq12.LSQ12(self.inputFH, 
                                self.targetFH, 
-                               blurs=lp.blurs,
-                               step=lp.stepSize,
-                               gradient=lp.useGradient,
-                               simplex=lp.simplex,
-                               w_translations=lp.w_translations,
+                               blurs=self.lsq12Params.blurs,
+                               step=self.lsq12Params.stepSize,
+                               gradient=self.lsq12Params.useGradient,
+                               simplex=self.lsq12Params.simplex,
+                               w_translations=self.lsq12Params.w_translations,
                                defaultDir=self.defaultDir)
         self.p.addPipeline(lsq12reg.p)
         
@@ -94,8 +92,8 @@ class LSQ12ANTSNlin:
         
         #Get registration parameters from nlin protocol, blur and register
         #Assume a SINGLE generation here. 
-        np = mp.setOneGenMincANTSParams(self.fileRes, reg_protocol=self.nlin_protocol)
-        for b in np.blurs:
+        self.nlinParams = mp.setOneGenMincANTSParams(self.fileRes, reg_protocol=self.nlin_protocol)
+        for b in self.nlinParams.blurs:
             for j in b:
                 #Note that blurs for ANTS params in an array of arrays. 
                 if j != -1:            
@@ -105,15 +103,15 @@ class LSQ12ANTSNlin:
         sp = ma.mincANTS(self.inputFH,
                          self.targetFH,
                          defaultDir=self.defaultDir, 
-                         blur=np.blurs[0],
-                         gradient=np.gradient[0],
-                         similarity_metric=np.similarityMetric[0],
-                         weight=np.weight[0],
-                         iterations=np.iterations[0],
-                         radius_or_histo=np.radiusHisto[0],
-                         transformation_model=np.transformationModel[0], 
-                         regularization=np.regularization[0],
-                         useMask=np.useMask[0])
+                         blur=self.nlinParams.blurs[0],
+                         gradient=self.nlinParams.gradient[0],
+                         similarity_metric=self.nlinParams.similarityMetric[0],
+                         weight=self.nlinParams.weight[0],
+                         iterations=self.nlinParams.iterations[0],
+                         radius_or_histo=self.nlinParams.radiusHisto[0],
+                         transformation_model=self.nlinParams.transformationModel[0], 
+                         regularization=self.nlinParams.regularization[0],
+                         useMask=self.nlinParams.useMask[0])
         self.p.addStage(sp)
         nlinXfm = sp.outputFiles[0]
         #Reset last base volume to original input for future registrations.
@@ -146,13 +144,10 @@ class HierarchicalMinctracc:
         self.subject_matter = subject_matter
         self.defaultDir = defaultDir
         
-        try: # the attempt to access the minc volume will fail if it doesn't yet exist at pipeline creation
-            self.fileRes = rf.getFinestResolution(self.inputFH)
-        except: 
-            # if it indeed failed, get resolution from the original file specified for 
-            # one of the input files, which should exist. 
-            # Can be overwritten by the user through specifying a nonlinear protocol.
-            self.fileRes = rf.getFinestResolution(self.inputFH.inputFileName)
+        if ((self.lsq12_protocol == None and self.subject_matter==None) or self.nlin_protocol == None):
+            self.fileRes = rf.returnFinestResolution(self.inputFH)
+        else:
+            self.fileRes = None
         
         self.buildPipeline()
         
@@ -160,49 +155,51 @@ class HierarchicalMinctracc:
             
         # Do LSQ12 alignment prior to non-linear stages if desired
         if self.includeLinear: 
-            lp = mp.setLSQ12MinctraccParams(self.fileRes,
+            self.lsq12Params = mp.setLSQ12MinctraccParams(self.fileRes,
                                             subject_matter=self.subject_matter,
                                             reg_protocol=self.lsq12_protocol)
             lsq12reg = lsq12.LSQ12(self.inputFH, 
                                    self.targetFH, 
-                                   blurs=lp.blurs,
-                                   step=lp.stepSize,
-                                   gradient=lp.useGradient,
-                                   simplex=lp.simplex,
-                                   w_translations=lp.w_translations,
+                                   blurs=self.lsq12Params.blurs,
+                                   step=self.lsq12Params.stepSize,
+                                   gradient=self.lsq12Params.useGradient,
+                                   simplex=self.lsq12Params.simplex,
+                                   w_translations=self.lsq12Params.w_translations,
                                    defaultDir=self.defaultDir)
             self.p.addPipeline(lsq12reg.p)
         
         # create the nonlinear registrations
-        np = mp.setNlinMinctraccParams(self.fileRes, reg_protocol=self.nlin_protocol)
-        for b in np.blurs: 
+        self.nlinParams = mp.setNlinMinctraccParams(self.fileRes, reg_protocol=self.nlin_protocol)
+        for b in self.nlinParams.blurs: 
             if b != -1:           
                 self.p.addStage(ma.blur(self.inputFH, b, gradient=True))
                 self.p.addStage(ma.blur(self.targetFH, b, gradient=True))
-        for i in range(len(np.stepSize)):
+        for i in range(len(self.nlinParams.stepSize)):
             #For the final stage, make sure the output directory is transforms.
-            if i == (len(np.stepSize) - 1):
+            if i == (len(self.nlinParams.stepSize) - 1):
                 self.defaultDir = "transforms"
             nlinStage = ma.minctracc(self.inputFH, 
                                      self.targetFH,
                                      defaultDir=self.defaultDir,
-                                     blur=np.blurs[i],
-                                     gradient=np.useGradient[i],
-                                     iterations=np.iterations[i],
-                                     step=np.stepSize[i],
-                                     w_translations=np.w_translations[i],
-                                     simplex=np.simplex[i],
-                                     optimization=np.optimization[i])
+                                     blur=self.nlinParams.blurs[i],
+                                     gradient=self.nlinParams.useGradient[i],
+                                     iterations=self.nlinParams.iterations[i],
+                                     step=self.nlinParams.stepSize[i],
+                                     w_translations=self.nlinParams.w_translations[i],
+                                     simplex=self.nlinParams.simplex[i],
+                                     optimization=self.nlinParams.optimization[i])
             self.p.addStage(nlinStage)
 
 class FullIterativeLSQ12Nlin:
     """Does a full iterative LSQ12 and NLIN. Basically iterative model building starting from LSQ6
-       and without stats at the end. Designed to be called as part of a larger application. """
-    def __init__(self, inputs, dirs, initModel, options):
+       and without stats at the end. Designed to be called as part of a larger application. 
+       Specifying an initModel is optional, all other arguments are mandatory."""
+    def __init__(self, inputs, dirs, options, avgPrefix=None, initModel=None):
         self.inputs = inputs
         self.dirs = dirs
-        self.initModel = initModel
         self.options = options
+        self.avgPrefix = avgPrefix
+        self.initModel = initModel
         self.nlinFH = None
         
         self.p = Pipeline()
@@ -211,10 +208,10 @@ class FullIterativeLSQ12Nlin:
         
     def buildPipeline(self):
         lsq12LikeFH = None 
-        if self.options.input_space == "lsq6" and self.options.lsq12_likeFile: 
-            lsq12LikeFH = self.options.lsq12_likeFile 
-        elif self.options.input_space == "native":
+        if self.initModel:
             lsq12LikeFH = self.initModel[0]
+        elif self.options.lsq12_likeFile: 
+            lsq12LikeFH = self.options.lsq12_likeFile 
         lsq12module = lsq12.FullLSQ12(self.inputs,
                                       self.dirs.lsq12Dir,
                                       likeFile=lsq12LikeFH,
@@ -223,14 +220,24 @@ class FullIterativeLSQ12Nlin:
                                       subject_matter=self.options.lsq12_subject_matter)
         lsq12module.iterate()
         self.p.addPipeline(lsq12module.p)
-        nlinModule = nlin.initNLINModule(self.inputs,
-                                         lsq12module.lsq12AvgFH,
-                                         self.dirs.nlinDir,
-                                         self.options.nlin_protocol,
-                                         self.options.reg_method)
-        nlinModule.iterate()
+        self.lsq12Params = lsq12module.lsq12Params
+        if lsq12module.lsq12AvgFH.getMask()== None:
+            if self.initModel:
+                lsq12module.lsq12AvgFH.setMask(self.initModel[0].getMask())
+        if not self.avgPrefix:
+            self.avgPrefix = self.options.pipeline_name
+        nlinModule = nlin.initializeAndRunNLIN(self.dirs.lsq12Dir,
+                                               self.inputs,
+                                               self.dirs.nlinDir,
+                                               avgPrefix=self.avgPrefix, 
+                                               createAvg=False,
+                                               targetAvg=lsq12module.lsq12AvgFH,
+                                               nlin_protocol=self.options.nlin_protocol,
+                                               reg_method=self.options.reg_method)
         self.p.addPipeline(nlinModule.p)
         self.nlinFH = nlinModule.nlinAverages[-1]
+        self.nlinParams = nlinModule.nlinParams
+        self.initialTarget = nlinModule.initialTarget
         # Now we need the full transform to go back to LSQ6 space
         for i in self.inputs:
             linXfm = lsq12module.lsq12AvgXfms[i]

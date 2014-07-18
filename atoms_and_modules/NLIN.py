@@ -11,7 +11,6 @@ import atoms_and_modules.minc_parameters as mp
 from atoms_and_modules.minc_atoms import blur, mincresample, mincANTS, mincAverage, minctracc
 from atoms_and_modules.stats_tools import addStatsOptions, CalcStats
 import sys
-import csv
 import logging
 
 logger = logging.getLogger(__name__)
@@ -40,16 +39,6 @@ def finalGenerationFileNames(inputFH):
     resampleFileName = removeBaseAndExtension(inputFH.basename) + "-resampled-final-nlin.mnc"
     resampleOutput = createBaseName(resampleDir, resampleFileName)
     return (registerOutput, resampleOutput)
-
-def initNLINModule(inputFiles, initialTarget, nlinDir, nlin_protocol, reg_method):
-    if reg_method=="mincANTS":
-        nlinModule = NLINANTS(inputFiles, initialTarget, nlinDir, nlin_protocol)
-    elif reg_method=="minctracc":
-        nlinModule = NLINminctracc(inputFiles, initialTarget, nlinDir, nlin_protocol)
-    else:
-        logger.error("Incorrect registration method specified: " + reg_method)
-        sys.exit()
-    return nlinModule
 
 class NonlinearRegistration(AbstractApplication):
     """
@@ -91,41 +80,108 @@ class NonlinearRegistration(AbstractApplication):
         # Setup output directories for non-linear registration.        
         dirs = rf.setupDirectories(self.outputDir, options.pipeline_name, module="NLIN")
         
-        """Initialize input files (from args) and initial target"""
+        #Initialize input files (from args)
         inputFiles = rf.initializeInputFiles(args, dirs.processedDir, maskDir=options.mask_dir)
-        if options.target_avg: 
-            initialTarget = RegistrationPipeFH(options.target_avg, 
-                                               mask=options.target_mask, 
-                                               basedir=dirs.nlinDir)
-        else:
-            # if no target is specified, create an average from the inputs
-            targetName = abspath(self.outputDir) + "/" + "initial-target.mnc" 
-            initialTarget = RegistrationPipeFH(targetName, basedir=self.outputDir)
-            avg = mincAverage(inputFiles, 
-                              initialTarget, 
-                              output=targetName,
-                              defaultDir=self.outputDir)
-            self.pipeline.addStage(avg)
         
-        """Based on options.reg_method, register with minctracc or mincANTS"""
-        nlinModule = initNLINModule(inputFiles, 
-                                    initialTarget, 
-                                    dirs.nlinDir, 
-                                    options.nlin_protocol, 
-                                    options.reg_method)
-        nlinModule.iterate()
-        self.pipeline.addPipeline(nlinModule.p)
-        self.nlinAverages = nlinModule.nlinAverages
+        #Setup initial target and run iterative non-linear registration
+        if options.target_avg:
+            createAvg=False
+        else:
+            createAvg=True
+        nlinObj = initializeAndRunNLIN(self.outputDir,
+                                       inputFiles,
+                                       dirs.nlinDir,
+                                       avgPrefix=options.pipeline_name,
+                                       createAvg=createAvg,
+                                       targetAvg=options.target_avg,
+                                       targetMask=options.target_mask,
+                                       nlin_protocol=options.nlin_protocol,
+                                       reg_method=options.reg_method)
+        
+        self.pipeline.addPipeline(nlinObj.p)
+        self.nlinAverages = nlinObj.nlinAverages
             
         """Calculate statistics between final nlin average and individual mice"""
         if options.calc_stats:
             """Choose final average from array of nlin averages"""
-            numGens = len(self.nlinAverages)
-            finalNlin = self.nlinAverages[numGens-1]
+            finalNlin = self.nlinAverages[-1]
             """For each input file, calculate statistics from finalNlin to input"""
             for inputFH in inputFiles:
                 stats = CalcStats(inputFH, finalNlin, options.stats_kernels)
                 self.pipeline.addPipeline(stats.p)
+
+class initializeAndRunNLIN(object):
+    """Class to setup target average (if needed), 
+       instantiate correct version of NLIN class,
+       and run NLIN registration."""
+    def __init__(self, 
+                  targetOutputDir, #Output directory for files related to initial target (often _lsq12)
+                  inputFiles, 
+                  nlinDir, 
+                  avgPrefix, #Prefix for nlin-1.mnc, ... nlin-k.mnc 
+                  createAvg=True, #True=call mincAvg, False=targetAvg already exists
+                  targetAvg=None, #Optional path to initial target - passing name does not guarantee existence
+                  targetMask=None, #Optional path to mask for initial target
+                  nlin_protocol=None,
+                  reg_method=None):
+        self.p = Pipeline()
+        self.targetOutputDir = targetOutputDir
+        self.inputFiles = inputFiles
+        self.nlinDir = nlinDir
+        self.avgPrefix = avgPrefix
+        self.createAvg = createAvg
+        self.targetAvg = targetAvg
+        self.targetMask = targetMask
+        self.nlin_protocol = nlin_protocol
+        self.reg_method = reg_method
+        
+        # setup initialTarget (if needed) and initialize non-linear module
+        self.setupTarget()
+        self.initNlinModule()
+        
+        #iterate through non-linear registration and setup averages
+        self.nlinModule.iterate()
+        self.p.addPipeline(self.nlinModule.p)
+        self.nlinAverages = self.nlinModule.nlinAverages
+        self.nlinParams = self.nlinModule.nlinParams
+        
+    def setupTarget(self):
+        if self.targetAvg:
+            if isinstance(self.targetAvg, str): 
+                self.initialTarget = RegistrationPipeFH(self.targetAvg, 
+                                                        mask=self.targetMask, 
+                                                        basedir=self.targetOutputDir)
+                self.outputAvg = self.targetAvg
+            elif isinstance(self.targetAvg, RegistrationPipeFH):
+                self.initialTarget = self.targetAvg
+                self.outputAvg = self.targetAvg.getLastBasevol()
+                if not self.initialTarget.getMask():
+                    if self.targetMask:
+                        self.initialTarget.setMask(self.targetMask)
+            else:
+                print "You have passed a target average that is neither a string nor a file handler: " + str(self.targetAvg)
+                print "Exiting..."
+        else:
+            self.targetAvg = abspath(self.targetOutputDir) + "/" + "initial-target.mnc" 
+            self.initialTarget = RegistrationPipeFH(self.targetAvg, 
+                                                    mask=self.targetMask, 
+                                                    basedir=self.targetOutputDir)
+            self.outputAvg = self.targetAvg
+        if self.createAvg:
+            avg = mincAverage(self.inputFiles, 
+                              self.initialTarget, 
+                              output=self.outputAvg,
+                              defaultDir=self.targetOutputDir)
+            self.p.addStage(avg)
+            
+    def initNlinModule(self):
+        if self.reg_method=="mincANTS":
+            self.nlinModule = NLINANTS(self.inputFiles, self.initialTarget, self.nlinDir, self.avgPrefix, self.nlin_protocol)
+        elif self.reg_method=="minctracc":
+            self.nlinModule = NLINminctracc(self.inputFiles, self.initialTarget, self.nlinDir, self.avgPrefix, self.nlin_protocol)
+        else:
+            logger.error("Incorrect registration method specified: " + self.reg_method)
+            sys.exit()
 
 class NLINBase(object):
     """
@@ -136,7 +192,7 @@ class NLINBase(object):
             regAndResample()
         
     """
-    def __init__(self, inputArray, targetFH, nlinOutputDir):
+    def __init__(self, inputArray, targetFH, nlinOutputDir, avgPrefix, nlin_protocol):
         self.p = Pipeline()
         """Initial inputs should be an array of fileHandlers with lastBasevol in lsq12 space"""
         self.inputs = inputArray
@@ -144,22 +200,15 @@ class NLINBase(object):
         self.target = targetFH 
         """Output directory should be _nlin """
         self.nlinDir = nlinOutputDir
+        """Prefix to pre-pend to averages at each generation"""
+        self.avgPrefix = avgPrefix
         """Empty array that we will fill with averages as we create them"""
         self.nlinAverages = [] 
         """Create the blurring resolution from the file resolution"""
-        try: # the attempt to access the minc volume will fail if it doesn't yet exist at pipeline creation
-            self.fileRes = rf.getFinestResolution(self.target)
-        except: 
-            # if it indeed failed, get resolution from the original file specified for 
-            # one of the input files, which should exist. 
-            # Can be overwritten by the user through specifying a nonlinear protocol.
-            if isfile(self.inputs[0].inputFileName):
-                self.fileRes = rf.getFinestResolution(self.inputs[0])
-            else:
-                #HACK to get twolevel model building to run. We will eventually fix this
-                #and if a non-linear protocol is specified, it does not matter anyway.
-                #Still...a hard-coded hack. Gross. 
-                self.fileRes = 0.1  
+        if nlin_protocol==None:
+            self.fileRes = rf.returnFinestResolution(self.inputs[0]) 
+        else:
+            self.fileRes = None
         
         # Create new nlin group for each input prior to registration
         for i in range(len(self.inputs)):
@@ -179,7 +228,10 @@ class NLINBase(object):
     
     def iterate(self):
         for i in range(self.generations):
-            nlinOutput = abspath(self.nlinDir) + "/" + "nlin-%g.mnc" % (i+1)
+            outputName = "nlin-%g.mnc" % (i+1)
+            if self.avgPrefix:
+                outputName = str(self.avgPrefix) + "-" + outputName
+            nlinOutput = abspath(self.nlinDir) + "/" + outputName
             nlinFH = RegistrationPipeFH(nlinOutput, mask=self.target.getMask(), basedir=self.nlinDir)
             self.addBlurStage(self.target, i)
             filesToAvg = []
@@ -218,22 +270,22 @@ class NLINANTS(NLINBase):
         This class does an iterative non-linear registration using the mincANTS
         registration protocol. The default number of generations is three. 
     """
-    def __init__(self, inputArray, targetFH, nlinOutputDir, nlin_protocol=None):
-        NLINBase.__init__(self, inputArray, targetFH, nlinOutputDir)
+    def __init__(self, inputArray, targetFH, nlinOutputDir, avgPrefix, nlin_protocol=None):
+        NLINBase.__init__(self, inputArray, targetFH, nlinOutputDir, avgPrefix, nlin_protocol)
         
         """Setup parameters, either as defaults, or read from a .csv"""
-        params = mp.setMincANTSParams(self.fileRes, reg_protocol=nlin_protocol)
+        self.nlinParams = mp.setMincANTSParams(self.fileRes, reg_protocol=nlin_protocol)
     
-        self.blurs = params.blurs
-        self.gradient = params.gradient
-        self.similarityMetric = params.similarityMetric
-        self.weight = params.weight
-        self.radiusHisto = params.radiusHisto
-        self.transformationModel = params.transformationModel
-        self.regularization = params.regularization
-        self.iterations = params.iterations
-        self.useMask = params.useMask
-        self.generations = params.generations
+        self.blurs = self.nlinParams.blurs
+        self.gradient = self.nlinParams.gradient
+        self.similarityMetric = self.nlinParams.similarityMetric
+        self.weight = self.nlinParams.weight
+        self.radiusHisto = self.nlinParams.radiusHisto
+        self.transformationModel = self.nlinParams.transformationModel
+        self.regularization = self.nlinParams.regularization
+        self.iterations = self.nlinParams.iterations
+        self.useMask = self.nlinParams.useMask
+        self.generations = self.nlinParams.generations
     
     def addBlurStage(self, FH, i):
         for j in self.blurs[i]:
@@ -281,19 +333,19 @@ class NLINminctracc(NLINBase):
         This class does an iterative non-linear registration using the minctracc
         registration protocol. Default number of generations is 6. 
     """
-    def __init__(self, inputArray, targetFH, nlinOutputDir, nlin_protocol=None):
-        NLINBase.__init__(self, inputArray, targetFH, nlinOutputDir)
+    def __init__(self, inputArray, targetFH, nlinOutputDir, avgPrefix, nlin_protocol=None):
+        NLINBase.__init__(self, inputArray, targetFH, nlinOutputDir, avgPrefix, nlin_protocol)
         
         """Setup parameters, either as defaults, or read from a .csv"""
-        params = mp.setNlinMinctraccParams(self.fileRes, reg_protocol=nlin_protocol)
-        self.blurs = params.blurs
-        self.stepSize = params.stepSize
-        self.iterations = params.iterations
-        self.simplex = params.simplex
-        self.useGradient = params.useGradient
-        self.optimization = params.optimization
-        self.generations = params.generations
-        self.w_translations = params.w_translations
+        self.nlinParams = mp.setNlinMinctraccParams(self.fileRes, reg_protocol=nlin_protocol)
+        self.blurs = self.nlinParams.blurs
+        self.stepSize = self.nlinParams.stepSize
+        self.iterations = self.nlinParams.iterations
+        self.simplex = self.nlinParams.simplex
+        self.useGradient = self.nlinParams.useGradient
+        self.optimization = self.nlinParams.optimization
+        self.generations = self.nlinParams.generations
+        self.w_translations = self.nlinParams.w_translations
     
     
     def addBlurStage(self, FH, i):

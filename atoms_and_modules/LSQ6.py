@@ -838,12 +838,7 @@ class LSQ6Base(object):
         self.setLSQ6GroupToInputs()
         
         #Get file resolution for each file: will need for subclasses. 
-        try:
-            self.fileRes = rf.getFinestResolution(self.inputs[0])
-        except: 
-            # if this fails (because file doesn't exist when pipeline is created) grab from
-            # initial input volume, which should exist. 
-            self.fileRes = rf.getFinestResolution(self.inputs[0].inputFileName)
+        self.fileRes = rf.returnFinestResolution(self.inputs[0])
         
     def check_inputs(self):
         """
@@ -1094,15 +1089,15 @@ class LSQ6HierarchicalMinctracc(LSQ6Base):
         self.lsq6_protocol     = lsq6_protocol
         
         #Read parameters from input file or setup defaults. 
-        params = mp.setLSQ6MinctraccParams(self.fileRes, 
+        self.lsq6Params = mp.setLSQ6MinctraccParams(self.fileRes, 
                                             initial_transform=initial_transform, 
                                             reg_protocol=lsq6_protocol)
-        self.blurs = params.blurs
-        self.stepSize = params.stepSize
-        self.useGradient = params.useGradient
-        self.simplex = params.simplex
-        self.w_translations = params.w_translations
-        self.generations = params.generations
+        self.blurs = self.lsq6Params.blurs
+        self.stepSize = self.lsq6Params.stepSize
+        self.useGradient = self.lsq6Params.useGradient
+        self.simplex = self.lsq6Params.simplex
+        self.w_translations = self.lsq6Params.w_translations
+        self.generations = self.lsq6Params.generations
         
         # Setup linearparams for minctracc atom
         self.setupLinearParams()

@@ -3,7 +3,7 @@
 import atoms_and_modules.registration_file_handling as rfh
 import pydpiper.file_handling as fh
 from optparse import OptionGroup
-from os.path import abspath, exists, dirname, splitext, isfile
+from os.path import abspath, exists, dirname, splitext, isfile, basename
 from os import curdir, walk
 from datetime import date
 import sys
@@ -21,6 +21,9 @@ def addGenRegOptionGroup(parser):
     group.add_option("--pipeline-name", dest="pipeline_name",
                       type="string", default=None,
                       help="Name of pipeline and prefix for models.")
+    group.add_option("--input-space", dest="input_space",
+                      type="string", default="native", 
+                      help="Option to specify space of input-files. Can be native (default), lsq6, lsq12.")
     group.add_option("--registration-method", dest="reg_method",
                       default="minctracc", type="string",
                       help="Specify whether to use minctracc or mincANTS for non-linear registrations. "
@@ -111,6 +114,28 @@ def initializeInputFiles(args, mainDirectory, maskDir=None):
         logger.info("No mask directory specified as command line option. No masks included during RegistrationPipeFH initialization.")
     return inputs
 
+def setupTwoLevelDirectories(csvFile, outputDir, pipeName, module):
+    """Creates outputDir/pipelineName_firstlevel for twolevel_registration
+       Within first level directory, creates _lsq6/12/nlin/processed for each subject,
+       based on the name of the first file in the csv
+    """
+    
+    if not pipeName:
+        pipeName = str(date.today()) + "_pipeline"
+    firstLevelDir = fh.createSubDir(outputDir, pipeName + "_firstlevel")
+    fileList = open(csvFile, 'rb')
+    subjectList = csv.reader(fileList, delimiter=',', skipinitialspace=True)
+    subjectDirs = {} # One StandardMBMDirectories for each subject
+    index = 0
+    for subj in subjectList:
+        base = splitext(basename(subj[0]))[0]
+        dirs = setupDirectories(firstLevelDir, base, module)
+        subjectDirs[index] = dirs
+        index += 1    
+    secondLevelDir = fh.createSubDir(outputDir, pipeName + "_secondlevel")
+    dirs = setupDirectories(secondLevelDir, "second_level", "ALL")
+    return (subjectDirs, dirs)   
+
 def setupSubjectHash(csvFile, dirs, maskDir):
     """Reads in subjects from .csv and returns a hash.
        Each row of the .csv is a series of scans for a single subject."""
@@ -119,7 +144,11 @@ def setupSubjectHash(csvFile, dirs, maskDir):
     subjects = {} # One array of images for each subject
     index = 0 
     for subj in subjectList:
-        subjects[index] = initializeInputFiles(subj, dirs.processedDir, maskDir)
+        if isinstance(dirs, StandardMBMDirectories):
+            pd = dirs.processedDir
+        elif isinstance(dirs, dict):
+            pd = dirs[index].processedDir
+        subjects[index] = initializeInputFiles(subj, pd, maskDir)
         index += 1
     return subjects
 
@@ -263,6 +292,23 @@ def getFinestResolution(inSource):
             finestRes = abs(imageResolution[i])
     
     return finestRes
+
+def returnFinestResolution(inputFile):
+    try:
+        fileRes = getFinestResolution(inputFile)
+        return fileRes
+    except: 
+        # if this fails (because file doesn't exist when pipeline is created) grab from
+        # initial input volume, which should exist. 
+        try:
+            fileRes = getFinestResolution(inputFile.inputFileName)
+            return fileRes
+        except:
+            print "------------------------------------------------------------------------------------"
+            print "Cannot get file resolution from specified files to setup default registration protocol: " + str(inputFile.inputFileName)
+            print "Please specify a registration protocol or a value for the subject matter."
+            print "------------------------------------------------------------------------------------"
+            sys.exit()
     
 def getXfms(nlinFH, subjects, space, mbmDir, time=None):
 

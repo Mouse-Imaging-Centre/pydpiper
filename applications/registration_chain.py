@@ -28,9 +28,6 @@ def addRegChainOptionGroup(parser):
     group.add_option("--avg-time-point", dest="avg_time_point",
                       type="int", default=1,
                       help="Time point averaged prior to this registration to get common nlin space.")
-    group.add_option("--input-space", dest="input_space",
-                      type="string", default="lsq6", 
-                      help="Option to specify space of input-files. Can be lsq6 (default) or native.")
     group.add_option("--common-space-name", dest="common_name",
                       type="string", default="common", 
                       help="Option to specify a name for the common space. This is useful for the "
@@ -111,14 +108,14 @@ class RegistrationChain(AbstractApplication):
         elif self.options.input_space == "lsq6":
             initModel = None
         else:
-            print """Only native and lsq6 are allowed as input_space options. You specified: """ + str(self.options.input_space)
+            print """Only native and lsq6 are allowed as input_space options for the registration chain. You specified: """ + str(self.options.input_space)
             print "Exiting..."
             sys.exit()
             
         #Get current group index for use later, when chain is run. 
         #Value will be different for input_space == native vs LSQ6
         currGroupIndex = rf.getCurrIndexForInputs(subjects)
-            
+        
         #If requested, run iterative groupwise registration for all subjects at the specified
         #common timepoint, otherwise look to see if files are specified from a previous run.
         if self.options.run_groupwise:
@@ -126,7 +123,11 @@ class RegistrationChain(AbstractApplication):
             for s in subjects:
                 inputs.append(subjects[s][avgTime])
             #Run full LSQ12 and NLIN modules.
-            lsq12Nlin = mm.FullIterativeLSQ12Nlin(inputs, dirs, initModel, self.options)
+            lsq12Nlin = mm.FullIterativeLSQ12Nlin(inputs, 
+                                                  dirs, 
+                                                  self.options, 
+                                                  avgPrefix=self.options.common_name, 
+                                                  initModel=initModel)
             self.pipeline.addPipeline(lsq12Nlin.p)
             nlinFH = lsq12Nlin.nlinFH
             
