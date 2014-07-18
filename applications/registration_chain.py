@@ -115,7 +115,7 @@ class RegistrationChain(AbstractApplication):
         #Get current group index for use later, when chain is run. 
         #Value will be different for input_space == native vs LSQ6
         currGroupIndex = rf.getCurrIndexForInputs(subjects)
-            
+        
         #If requested, run iterative groupwise registration for all subjects at the specified
         #common timepoint, otherwise look to see if files are specified from a previous run.
         if self.options.run_groupwise:
@@ -123,7 +123,11 @@ class RegistrationChain(AbstractApplication):
             for s in subjects:
                 inputs.append(subjects[s][avgTime])
             #Run full LSQ12 and NLIN modules.
-            lsq12Nlin = mm.FullIterativeLSQ12Nlin(inputs, dirs, self.options, initModel=initModel)
+            lsq12Nlin = mm.FullIterativeLSQ12Nlin(inputs, 
+                                                  dirs, 
+                                                  self.options, 
+                                                  avgPrefix=self.options.common_name, 
+                                                  initModel=initModel)
             self.pipeline.addPipeline(lsq12Nlin.p)
             nlinFH = lsq12Nlin.nlinFH
             

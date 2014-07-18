@@ -62,7 +62,7 @@ class LSQ12ANTSNlin:
         self.subject_matter = subject_matter
         self.defaultDir = defaultDir
         
-        if self.lsq12_protocol == None and self.nlin_protocol == None and self.subject_matter==None:
+        if ((self.lsq12_protocol == None and self.subject_matter==None) or self.nlin_protocol == None):
             self.fileRes = rf.returnFinestResolution(self.inputFH)
         else:
             self.fileRes = None
@@ -72,8 +72,8 @@ class LSQ12ANTSNlin:
     def buildPipeline(self):
         # Run lsq12 registration prior to non-linear
         self.lsq12Params = mp.setLSQ12MinctraccParams(self.fileRes, 
-                                        subject_matter=self.subject_matter,
-                                        reg_protocol=self.lsq12_protocol)
+                                                      subject_matter=self.subject_matter,
+                                                      reg_protocol=self.lsq12_protocol)
         lsq12reg = lsq12.LSQ12(self.inputFH, 
                                self.targetFH, 
                                blurs=self.lsq12Params.blurs,
@@ -144,7 +144,7 @@ class HierarchicalMinctracc:
         self.subject_matter = subject_matter
         self.defaultDir = defaultDir
         
-        if self.lsq12_protocol==None and self.nlin_protocol==None and self.subject_matter==None:
+        if ((self.lsq12_protocol == None and self.subject_matter==None) or self.nlin_protocol == None):
             self.fileRes = rf.returnFinestResolution(self.inputFH)
         else:
             self.fileRes = None
