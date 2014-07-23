@@ -31,7 +31,6 @@ class MBMApplication(AbstractApplication):
         lsq6.addLSQ6OptionGroup(self.parser)
         lsq12.addLSQ12OptionGroup(self.parser)
         nlin.addNlinRegOptionGroup(self.parser)
-        mp.addRegParamsOptionGroup(self.parser)
         st.addStatsOptions(self.parser)
         
         self.parser.set_usage("%prog [options] input files") 
