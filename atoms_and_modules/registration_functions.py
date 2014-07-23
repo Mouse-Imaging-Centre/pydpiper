@@ -24,10 +24,6 @@ def addGenRegOptionGroup(parser):
     group.add_option("--input-space", dest="input_space",
                       type="string", default="native", 
                       help="Option to specify space of input-files. Can be native (default), lsq6, lsq12.")
-    group.add_option("--registration-method", dest="reg_method",
-                      default="minctracc", type="string",
-                      help="Specify whether to use minctracc or mincANTS for non-linear registrations. "
-                           "Default is minctracc.")
     group.add_option("--mask-dir", dest="mask_dir",
                       type="string", default=None, 
                       help="Directory of masks. If not specified, no masks are used. If only one mask in directory, same mask used for all inputs.")
