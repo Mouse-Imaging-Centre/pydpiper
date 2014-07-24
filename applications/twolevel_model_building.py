@@ -48,7 +48,6 @@ with each scan per subject listed on the same line and separated by a comma.
         lsq12.addLSQ12OptionGroup(self.parser)
         nl.addNlinRegOptionGroup(self.parser)
         rf.addGenRegOptionGroup(self.parser)
-        mp.addRegParamsOptionGroup(self.parser)
         st.addStatsOptions(self.parser)
         
         # TODO: better usage description (once I've figured out what the usage will be ...)

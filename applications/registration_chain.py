@@ -59,7 +59,6 @@ class RegistrationChain(AbstractApplication):
         """Add option groups from specific modules"""
         addRegChainOptionGroup(self.parser)
         rf.addGenRegOptionGroup(self.parser)
-        mp.addRegParamsOptionGroup(self.parser)
         lsq6.addLSQ6OptionGroup(self.parser)
         lsq12.addLSQ12OptionGroup(self.parser)
         nlin.addNlinRegOptionGroup(self.parser)

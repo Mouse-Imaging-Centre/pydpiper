@@ -20,7 +20,7 @@ def addLSQ12OptionGroup(parser):
                         "Options for performing a pairwise, affine registration")
     group.add_option("--lsq12-max-pairs", dest="lsq12_max_pairs",
                      type="string", default=None,
-                     help="Maximum number of pairs to register together.")
+                     help="Maximum number of pairs to register together. NOTE: Not yet implemented!!")
     group.add_option("--lsq12-likefile", dest="lsq12_likeFile",
                      type="string", default=None,
                      help="Can optionally specify a like file for resampling at the end of pairwise "
@@ -30,6 +30,12 @@ def addLSQ12OptionGroup(parser):
                      help="Can specify the subject matter for the pipeline. This will set the parameters "
                      "for the 12 parameter alignment based on the subject matter rather than the file "
                      "resolution. Currently supported option is: \"mousebrain\". Default is None.")
+    group.add_option("--lsq12-protocol", dest="lsq12_protocol",
+                     type="string", default=None,
+                     help="Can optionally specify a registration protocol that is different from defaults. "
+                     "Parameters must be specified as in the following example: \n"
+                     "applications_testing/test_data/minctracc_example_linear_protocol.csv \n"
+                     "Default is None.")
     parser.add_option_group(group)
 
 class LSQ12Registration(AbstractApplication):
@@ -47,7 +53,6 @@ class LSQ12Registration(AbstractApplication):
         """Add option groups from specific modules"""
         rf.addGenRegOptionGroup(self.parser)
         addLSQ12OptionGroup(self.parser)
-        mp.addLSQ12OptionGroup(self.parser)
          
         self.parser.set_usage("%prog [options] input files") 
 

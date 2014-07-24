@@ -74,6 +74,12 @@ def addLSQ6OptionGroup(parser):
     group.add_option("--no-inormalize", dest="inormalize",
                       action="store_false", 
                       help="If specified, do not perform intensity normalization. Opposite of --inormalize.")
+    group.add_option("--lsq6-protocol", dest="lsq6_protocol",
+                      type="string", default=None,
+                      help="Specify an lsq6 protocol that overrides the default setting for stages in "
+                      "the 6 parameter minctracc call. Parameters must be specified as in the following \n"
+                      "example: applications_testing/test_data/minctracc_example_linear_protocol.csv \n"
+                      "Default is None.")
     parser.set_defaults(nuc=True)
     parser.set_defaults(inormalize=True)
     parser.add_option_group(group)
@@ -121,7 +127,6 @@ class LSQ6Registration(AbstractApplication):
         """Add option groups from specific modules"""
         rf.addGenRegOptionGroup(self.parser)
         addLSQ6OptionGroup(self.parser)
-        mp.addLSQ6OptionGroup(self.parser)
         self.parser.set_usage("%prog [options] [--target target.mnc or --init-model /init/model/file.mnc] input file(s)")
 
     def setup_appName(self):
