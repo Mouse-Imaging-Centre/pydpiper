@@ -400,18 +400,18 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
     def numberOfExecutorsToLaunch(self):
         executors_to_launch = 0
         if(self.main_options_hash.num_exec != 0):
-            # server is able to launch executors
-            if((self.main_options_hash.time_to_seppuku != None) or 
-               (self.main_options_hash.time_to_accept_jobs != None)):
-                # executors can kill themselves
-                active_executors = self.number_launched_and_waiting_clients + len(self.clients)
-                max_num_executors = self.main_options_hash.num_exec
-                executor_launch_room = max_num_executors - active_executors
-                if(( self.runnable.qsize() > 0 ) and 
-                   ( executor_launch_room > 0 )):
-                    # there are runnable stages, and there is room to launch 
-                    # additional executors
-                    executors_to_launch = min(self.runnable.qsize(), executor_launch_room)
+            # Server should launch executors itself
+            # This should happen regardless of whether or not executors
+            # can kill themselves, because the server is now responsible 
+            # for the inital launches as well.
+            active_executors = self.number_launched_and_waiting_clients + len(self.clients)
+            max_num_executors = self.main_options_hash.num_exec
+            executor_launch_room = max_num_executors - active_executors
+            if(( self.runnable.qsize() > 0 ) and 
+                ( executor_launch_room > 0 )):
+                # there are runnable stages, and there is room to launch 
+                # additional executors
+                executors_to_launch = min(self.runnable.qsize(), executor_launch_room)
         return(executors_to_launch)
         
     def launchExecutorfromServer(self, number_to_launch):
@@ -456,7 +456,7 @@ def launchPipelineExecutor(options, programName=None):
     if options.queue=="sge":
         pipelineExecutor.submitToQueue(programName) 
     else: 
-        pipelineExecutor.launchExecutor()    
+        pe.launchExecutor(pipelineExecutor)    
 
 def skip_completed_stages(pipeline):
     runnable = []
@@ -516,22 +516,41 @@ def launchServer(pipeline, options, e):
         # That method also keeps track of the number of active/running executors
         # and launches new executors if necessary
         daemon.requestLoop(pipeline.continueLoop) 
+    except KeyboardInterrupt:
+        logger.exception("Caught keyboard interrupt, killing executors and shutting down server.")
+        print("\nKeyboardInterrupt caught: cleaning up, shutting down executors.\n")
+        for c in pipeline.clients[:]:
+            try: 
+                clientObj = Pyro.core.getProxyForURI(c)
+                print "Invoking the shutdown call in : " + str(c)
+                sys.stdout.flush()
+                clientObj.generalShutdownCall()
+            except Pyro.errors.ConnectionClosedError:
+                # this error should only happen when the executor has shut itself down already
+                print("Client already shutdown: %s" % str(c))
+            except Pyro.errors.ProtocolError:
+                if( sys.exc_info()[1] == "connection failed"):
+                    print("Client already shutdown: %s" % str(c))
+            except :
+                logger.exception("Failed to successfully de-register all clients")
+                print("Failed to successfully de-register all clients")
+                raise
+        print("\n\nObjects successfully unregistered and daemon shutdown.\n")
+        daemon.shutdown(True)
     except:
         logger.exception("Failed running server in daemon.requestLoop. Server shutting down.")
     else:
         try:
-            print("All pipeline stages have been processed. Daemon unregistering " 
-                  + str(len(pipeline.clients)) + " client(s) and shutting down...")
+            print("\n\nAll pipeline stages have been processed. Daemon unregistering " 
+                  + str(len(pipeline.clients)) + " client(s) and shutting down...\n\n")
             sys.stdout.flush()
             for c in pipeline.clients[:]:
                 clientObj = Pyro.core.getProxyForURI(c)
-                clientObj.serverShutdownCall()
-                print "Made serverShutdownCall to: " + str(c)
-                pipeline.clients.remove(c)
-                print "Client deregistered from server: "  + str(c)
+                print "Invoking the shutdown call in : " + str(c)
                 sys.stdout.flush()
+                clientObj.generalShutdownCall()
             daemon.shutdown(True)
-            print("Objects successfully unregistered and daemon shutdown.")
+            print("\n\nObjects successfully unregistered and daemon shutdown.\n")
         except:
             logger.exception("Failed to successfully de-register all clients")
 
@@ -618,6 +637,9 @@ def pipelineDaemon(pipeline, options=None, programName=None):
     process.start()
     e.wait()
   
-    
-    process.join()
+    try:
+        process.join()
+    except KeyboardInterrupt:
+        sys.exit(0)
+        
     
