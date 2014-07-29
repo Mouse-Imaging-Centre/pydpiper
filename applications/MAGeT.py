@@ -5,7 +5,8 @@ import pydpiper.file_handling as fh
 from atoms_and_modules.registration_file_handling import RegistrationPipeFH
 from atoms_and_modules.registration_functions import initializeInputFiles, addGenRegOptionGroup
 from atoms_and_modules.MAGeT_modules import MAGeTMask, MAGeTRegister, voxelVote, addMAGeTOptionGroup
-from atoms_and_modules.minc_parameters import addLSQ12NLINOptionGroup
+from atoms_and_modules.LSQ12 import addLSQ12OptionGroup
+from atoms_and_modules.NLIN import addNlinRegOptionGroup
 import Pyro
 from os.path import abspath, join
 import logging
@@ -21,7 +22,8 @@ class MAGeTApplication(AbstractApplication):
     def setup_options(self):
         addGenRegOptionGroup(self.parser)
         addMAGeTOptionGroup(self.parser)
-        addLSQ12NLINOptionGroup(self.parser)
+        addLSQ12OptionGroup(self.parser)
+        addNlinRegOptionGroup(self.parser)
         self.parser.set_usage("%prog [options] input files") 
 
     def setup_appName(self):
