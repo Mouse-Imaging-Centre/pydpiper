@@ -3,11 +3,12 @@
 import atoms_and_modules.registration_file_handling as rfh
 import pydpiper.file_handling as fh
 from optparse import OptionGroup
-from os.path import abspath, exists, dirname, splitext, isfile
+from os.path import abspath, exists, dirname, splitext, isfile, basename
 from os import curdir, walk
 from datetime import date
 import sys
 import re
+import csv
 import logging
 import fnmatch
 from pyminc.volumes.factory import volumeFromFile
@@ -20,10 +21,9 @@ def addGenRegOptionGroup(parser):
     group.add_option("--pipeline-name", dest="pipeline_name",
                       type="string", default=None,
                       help="Name of pipeline and prefix for models.")
-    group.add_option("--registration-method", dest="reg_method",
-                      default="minctracc", type="string",
-                      help="Specify whether to use minctracc or mincANTS for non-linear registrations. "
-                           "Default is minctracc.")
+    group.add_option("--input-space", dest="input_space",
+                      type="string", default="native", 
+                      help="Option to specify space of input-files. Can be native (default), lsq6, lsq12.")
     group.add_option("--mask-dir", dest="mask_dir",
                       type="string", default=None, 
                       help="Directory of masks. If not specified, no masks are used. If only one mask in directory, same mask used for all inputs.")
@@ -110,6 +110,61 @@ def initializeInputFiles(args, mainDirectory, maskDir=None):
         logger.info("No mask directory specified as command line option. No masks included during RegistrationPipeFH initialization.")
     return inputs
 
+def setupTwoLevelDirectories(csvFile, outputDir, pipeName, module):
+    """Creates outputDir/pipelineName_firstlevel for twolevel_registration
+       Within first level directory, creates _lsq6/12/nlin/processed for each subject,
+       based on the name of the first file in the csv
+    """
+    
+    if not pipeName:
+        pipeName = str(date.today()) + "_pipeline"
+    firstLevelDir = fh.createSubDir(outputDir, pipeName + "_firstlevel")
+    fileList = open(csvFile, 'rb')
+    subjectList = csv.reader(fileList, delimiter=',', skipinitialspace=True)
+    subjectDirs = {} # One StandardMBMDirectories for each subject
+    index = 0
+    for subj in subjectList:
+        base = splitext(basename(subj[0]))[0]
+        dirs = setupDirectories(firstLevelDir, base, module)
+        subjectDirs[index] = dirs
+        index += 1    
+    secondLevelDir = fh.createSubDir(outputDir, pipeName + "_secondlevel")
+    dirs = setupDirectories(secondLevelDir, "second_level", "ALL")
+    return (subjectDirs, dirs)   
+
+def setupSubjectHash(csvFile, dirs, maskDir):
+    """Reads in subjects from .csv and returns a hash.
+       Each row of the .csv is a series of scans for a single subject."""
+    fileList = open(csvFile, 'rb')
+    subjectList = csv.reader(fileList, delimiter=',', skipinitialspace=True)
+    subjects = {} # One array of images for each subject
+    index = 0 
+    for subj in subjectList:
+        if isinstance(dirs, StandardMBMDirectories):
+            pd = dirs.processedDir
+        elif isinstance(dirs, dict):
+            pd = dirs[index].processedDir
+        subjects[index] = initializeInputFiles(subj, pd, maskDir)
+        index += 1
+    return subjects
+
+def getCurrIndexForInputs(subjects):
+    if isinstance(subjects, dict):
+        for subj in subjects:
+            for i in range(len(subjects[subj])):
+                s = subjects[subj]
+                if subj== 0 and i == 0:
+                    currentGroupIndex = s[i].currentGroupIndex
+                else:
+                    if s[i].currentGroupIndex != currentGroupIndex:
+                        print "Current group indices do not match for all subjects after LSQ6. Exiting..."
+                        sys.exit()
+    else:
+        print "getCurrIndexForInputs function currently only works with a dictionary. Exiting..."
+        sys.exit()
+        
+    return currentGroupIndex
+
 def isFileHandler(inSource, inTarget=None):
     """Source and target types can be either RegistrationPipeFH (or its base class) 
     or strings. Regardless of which is chosen, they must both be the same type.
@@ -180,6 +235,29 @@ def setupInitModel(inputModel, pipeDir=None):
         print "Exiting..."
         sys.exit()
 
+def setInitialTarget(initModelOption, lsq6Target, lsq6Dir, outputDir):
+    """Function checks to make sure either an init model or inital target are specified.
+       Sets up and returns target and initial model."""
+    if(initModelOption == None and lsq6Target == None):
+        print "Error: please specify either a target file for the registration (--lsq6-target), or an initial model (--init-model)\n"
+        sys.exit()   
+    if(initModelOption != None and lsq6Target != None):
+        print "Error: please specify ONLY ONE of the following options: --lsq6-target  --init-model\n"
+        sys.exit()
+        
+    initModel = None
+    if(lsq6Target != None):
+        targetPipeFH = rfh.RegistrationPipeFH(abspath(lsq6Target), basedir=lsq6Dir)
+    else: # options.init_model != None  
+        initModel = setupInitModel(initModelOption, outputDir)
+        if (initModel[1] != None):
+            # we have a target in "native" space 
+            targetPipeFH = initModel[1]
+        else:
+            # we will use the target in "standard" space
+            targetPipeFH = initModel[0]
+    
+    return(initModel, targetPipeFH)
 
 def getFinestResolution(inSource):
     """
@@ -210,4 +288,67 @@ def getFinestResolution(inSource):
             finestRes = abs(imageResolution[i])
     
     return finestRes
+
+def returnFinestResolution(inputFile):
+    try:
+        fileRes = getFinestResolution(inputFile)
+        return fileRes
+    except: 
+        # if this fails (because file doesn't exist when pipeline is created) grab from
+        # initial input volume, which should exist. 
+        try:
+            fileRes = getFinestResolution(inputFile.inputFileName)
+            return fileRes
+        except:
+            print "------------------------------------------------------------------------------------"
+            print "Cannot get file resolution from specified files to setup default registration protocol: " + str(inputFile.inputFileName)
+            print "Please specify a registration protocol or a value for the subject matter."
+            print "------------------------------------------------------------------------------------"
+            sys.exit()
     
+def getXfms(nlinFH, subjects, space, mbmDir, time=None):
+
+    """ This function retrieves the last transform from each subject 
+        to a final nlin average, generated during a previously completed build model run. 
+       
+        subjects passed in must be a dictionary or a list. If a dictionary, function assumes
+        use with registration chain code and gets transforms only for subjects at the specified
+        common time point (time). Otherwise, assumes an array and gets xfms for all subjects in array.
+        
+        Input spaces currently allowed: lsq6, lsq12. native is allowed, but until pydpiper
+        calculates the back to native xfms, it will return with an error. 
+        
+    """
+    
+    #First handle subjects if dictionary or list
+    if isinstance(subjects, list):
+        inputs = subjects
+    elif isinstance(subjects, dict):
+        inputs = []
+        for s in subjects:
+            inputs.append(subjects[s][time])
+    else:
+        logger.error("getXfms only takes a dictionary or list of subjects. Incorrect type has been passed. Exiting...")
+        sys.exit()
+    
+    #Walk through specified directories and find appropriate transforms. 
+    #Note that the names for xfms assume current pydpiper naming conventions. 
+    baseNames = walk(mbmDir).next()[1]
+    for b in baseNames:
+        if space == "lsq6":
+            xfmAvgToSubj = abspath(mbmDir + "/" + b + "/transforms/" + b + "-final-nlin_with_additional_inverted.xfm")
+            xfmSubjToAvg = abspath(mbmDir + "/" + b + "/transforms/" + b + "-final-nlin_with_additional.xfm")
+        elif space == "lsq12":
+            xfmAvgToSubj = abspath(mbmDir + "/" + b + "/transforms/" + b + "-final-nlin_inverted.xfm")
+            xfmSubjToAvg = abspath(mbmDir + "/" + b + "/transforms/" + b + "-final-nlin.xfm")    
+        elif space == "native":
+            logger.error("Pydpiper does not currently calculate the transforms back to native space.")
+            sys.exit()
+        else:
+            logger.error("getXfms can only retrieve transforms to lsq6 or lsq12 space. Invalid parameter has been passed.")
+            sys.exit()
+        for inputFH in inputs:
+            if fnmatch.fnmatch(inputFH.getLastBasevol(), "*" + b + "*"):
+                nlinFH.setLastXfm(inputFH, xfmAvgToSubj)
+                inputFH.newGroup(groupName="final")
+                inputFH.setLastXfm(nlinFH, xfmSubjToAvg)

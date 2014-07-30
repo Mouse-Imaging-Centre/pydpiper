@@ -2,6 +2,7 @@ from optparse import OptionParser,OptionGroup
 from pydpiper.pipeline import Pipeline, pipelineDaemon
 from pydpiper.queueing import runOnQueueingSystem
 from pydpiper.file_handling import makedirsIgnoreExisting
+from pydpiper.pipeline_executor import addExecutorOptionGroup, noExecSpecified
 from datetime import datetime
 from pkg_resources import get_distribution
 import Pyro
@@ -11,6 +12,29 @@ import sys
 import os
 
 logger = logging.getLogger(__name__)
+
+def addApplicationOptionGroup(parser):
+    group = OptionGroup(parser,  "General application options", "General options for all pydpiper applications.")
+    group.add_option("--restart", dest="restart", 
+                               action="store_true",
+                               help="Restart pipeline using backup files.")
+    group.add_option("--output-dir", dest="output_directory",
+                               type="string", default=None,
+                               help="Directory where output data and backups will be saved.")
+    group.add_option("--create-graph", dest="create_graph",
+                               action="store_true", default=False,
+                               help="Create a .dot file with graphical representation of pipeline relationships [default = %default]")
+    parser.set_defaults(execute=True)
+    group.add_option("--execute", dest="execute",
+                               action="store_true",
+                               help="Actually execute the planned commands [default]")
+    group.add_option("--no-execute", dest="execute",
+                               action="store_false",
+                               help="Opposite of --execute")
+    group.add_option("--version", dest="show_version",
+                               action="store_true",
+                               help="Print the version number and exit.")
+    parser.add_option_group(group)
 
 # Some sneakiness... Using the following lines, it's possible
 # to add an epilog to the parser that is written to screen
@@ -49,55 +73,8 @@ class AbstractApplication(object):
     
     def _setup_options(self):
             # PydPiper options
-        basic_group = OptionGroup(self.parser,  "Basic execution control",
-                                  "Options controlling how and where the code is run.")
-        basic_group.add_option("--uri-file", dest="urifile",
-                               type="string", default=None,
-                               help="Location for uri file if NameServer is not used. If not specified, default is current working directory.")
-        basic_group.add_option("--use-ns", dest="use_ns",
-                               action="store_true",
-                               help="Use the Pyro NameServer to store object locations")
-        basic_group.add_option("--create-graph", dest="create_graph",
-                               action="store_true", default=False,
-                               help="Create a .dot file with graphical representation of pipeline relationships [default = %default]")
-        basic_group.add_option("--num-executors", dest="num_exec", 
-                               type="int", default=0, 
-                               help="Launch executors automatically without having to run pipeline_excutor.py independently.")
-        basic_group.add_option("--time", dest="time", 
-                               type="string", default="2:00:00:00", 
-                               help="Wall time to request for each executor in the format dd:hh:mm:ss")
-        basic_group.add_option("--proc", dest="proc", 
-                               type="int", default=8,
-                               help="Number of processes per executor. Default is 8. Also sets max value for processor use per executor.")
-        basic_group.add_option("--mem", dest="mem", 
-                               type="float", default=16,
-                               help="Total amount of requested memory. Default is 16G.")
-        basic_group.add_option("--ppn", dest="ppn", 
-                               type="int", default=8,
-                               help="Number of processes per node. Default is 8. Used when --queue=pbs")
-        basic_group.add_option("--queue", dest="queue", 
-                               type="string", default=None,
-                               help="Use specified queueing system to submit jobs. Default is None.")
-        basic_group.add_option("--sge-queue-opts", dest="sge_queue_opts", 
-                               type="string", default=None,
-                               help="For --queue=sge, allows you to specify different queues. If not specified, default is used.")
-        basic_group.add_option("--restart", dest="restart", 
-                               action="store_true",
-                               help="Restart pipeline using backup files.")
-        basic_group.add_option("--output-dir", dest="output_directory",
-                               type="string", default=None,
-                               help="Directory where output data and backups will be saved.")
-        self.parser.set_defaults(execute=True)
-        basic_group.add_option("--execute", dest="execute",
-                               action="store_true",
-                               help="Actually execute the planned commands [default]")
-        basic_group.add_option("--no-execute", dest="execute",
-                               action="store_false",
-                               help="Opposite of --execute")
-        basic_group.add_option("--version", dest="show_version",
-                               action="store_true",
-                               help="Print the version number and exit.")
-        self.parser.add_option_group(basic_group)
+        addExecutorOptionGroup(self.parser)
+        addApplicationOptionGroup(self.parser)
     
     def _print_version(self):
         if self.options.show_version:
@@ -127,7 +104,11 @@ class AbstractApplication(object):
         
         self.options, self.args = self.parser.parse_args()
         
-        self._print_version()        
+        self._print_version()   
+        
+        #Check to make sure some executors have been specified. 
+        noExecSpecified(self.options.num_exec)
+             
         self._setup_pipeline()
         self._setup_directories()
         

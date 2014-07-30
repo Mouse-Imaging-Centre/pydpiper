@@ -20,7 +20,7 @@ def addLSQ12OptionGroup(parser):
                         "Options for performing a pairwise, affine registration")
     group.add_option("--lsq12-max-pairs", dest="lsq12_max_pairs",
                      type="string", default=None,
-                     help="Maximum number of pairs to register together.")
+                     help="Maximum number of pairs to register together. NOTE: Not yet implemented!!")
     group.add_option("--lsq12-likefile", dest="lsq12_likeFile",
                      type="string", default=None,
                      help="Can optionally specify a like file for resampling at the end of pairwise "
@@ -30,6 +30,12 @@ def addLSQ12OptionGroup(parser):
                      help="Can specify the subject matter for the pipeline. This will set the parameters "
                      "for the 12 parameter alignment based on the subject matter rather than the file "
                      "resolution. Currently supported option is: \"mousebrain\". Default is None.")
+    group.add_option("--lsq12-protocol", dest="lsq12_protocol",
+                     type="string", default=None,
+                     help="Can optionally specify a registration protocol that is different from defaults. "
+                     "Parameters must be specified as in the following example: \n"
+                     "applications_testing/test_data/minctracc_example_linear_protocol.csv \n"
+                     "Default is None.")
     parser.add_option_group(group)
 
 class LSQ12Registration(AbstractApplication):
@@ -47,7 +53,6 @@ class LSQ12Registration(AbstractApplication):
         """Add option groups from specific modules"""
         rf.addGenRegOptionGroup(self.parser)
         addLSQ12OptionGroup(self.parser)
-        mp.addLSQ12OptionGroup(self.parser)
          
         self.parser.set_usage("%prog [options] input files") 
 
@@ -130,23 +135,21 @@ class FullLSQ12(object):
         self.lsq12AvgXfms = {}
         
         """Create the blurring resolution from the file resolution"""
-        try:
-            self.fileRes = rf.getFinestResolution(self.inputs[0])
-        except: 
-            # if this fails (because file doesn't exist when pipeline is created) grab from
-            # initial input volume, which should exist. 
-            self.fileRes = rf.getFinestResolution(self.inputs[0].inputFileName)
+        if (subject_matter==None and lsq12_protocol==None):
+            self.fileRes = rf.returnFinestResolution(self.inputs[0])
+        else:
+            self.fileRes = None
         
         """"Set up parameter array"""
-        params = mp.setLSQ12MinctraccParams(self.fileRes, 
-                                            subject_matter=subject_matter, 
-                                            reg_protocol=lsq12_protocol)
-        self.blurs = params.blurs
-        self.stepSize = params.stepSize
-        self.useGradient = params.useGradient
-        self.simplex = params.simplex
-        self.w_translations = params.w_translations
-        self.generations = params.generations
+        self.lsq12Params = mp.setLSQ12MinctraccParams(self.fileRes, 
+                                                      subject_matter=subject_matter, 
+                                                      reg_protocol=lsq12_protocol)
+        self.blurs = self.lsq12Params.blurs
+        self.stepSize = self.lsq12Params.stepSize
+        self.useGradient = self.lsq12Params.useGradient
+        self.simplex = self.lsq12Params.simplex
+        self.w_translations = self.lsq12Params.w_translations
+        self.generations = self.lsq12Params.generations
         
         # Create new lsq12 group for each input prior to registration
         for i in range(len(self.inputs)):
