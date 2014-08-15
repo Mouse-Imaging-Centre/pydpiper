@@ -175,6 +175,10 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
         # Initially set number of skipped stages to be 0
         self.skipped_stages = 0
         self.failed_stages = 0
+        self.verbose = 0
+        
+    def setVerbosity(self, verbosity):
+        self.verbose = verbosity
         
     def pipelineFullyCompleted(self):
         return( (len(self.stages) == len(self.processedStages)) )
@@ -468,15 +472,18 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
         self.clients.append(client)
         if(self.number_launched_and_waiting_clients > 0):
             self.number_launched_and_waiting_clients -= 1
-        print "Client   registered   (banzai!): " + str(client)
+        if(self.verbose):
+            print("Client   registered   (banzai!): " + str(client))
     def unregister(self, client):
         # removes a client from the array of registered clients. An executor 
         # calls this method when it decides on its own to shut down
         if str(client) in self.clients: 
             self.clients.remove(str(client))
-            print "Client un-registered (seppuku!): " + str(client)
+            if(self.verbose):
+                print("Client un-registered (seppuku!): " + str(client))
         else:
-            print "Unable to un-register client: " + str(client)
+            if(self.verbose):
+                print("Unable to un-register client: " + str(client))
     def increaseLaunchedClients(self):
         # increase the number of launched (and waiting) client with 1
         self.number_launched_and_waiting_clients += 1
@@ -514,6 +521,18 @@ def skip_completed_stages(pipeline):
         
 def launchServer(pipeline, options, e):
     """Starts Pyro Server in a separate thread"""
+    
+    # is the server going to be verbose or not?
+    if options.verbose:
+        def verboseprint(*args):
+            # Print each argument separately so caller doesn't need to
+            # stuff everything to be printed into a single string
+            for arg in args:
+                print arg,
+            print
+    else:   
+        verboseprint = lambda *a: None      # do-nothing
+    
     Pyro.core.initServer()
     # Due to changes in how the network address is resolved, the Daemon on Linux will basically use:
     #
@@ -531,8 +550,10 @@ def launchServer(pipeline, options, e):
         daemon.useNameServer(ns)
     
     uri=daemon.connect(pipeline, "pipeline")
-    print("Daemon is running on port: " + str(daemon.port))
-    print("The object's uri is: " + str(uri))
+    # set the verbosity of the pipeline before running it
+    pipeline.setVerbosity(options.verbose)
+    verboseprint("Daemon is running on port: " + str(daemon.port))
+    verboseprint("The object's uri is: " + str(uri))
 
     # If not using Pyro NameServer, must write uri to file for reading by client.
     if not options.use_ns:
@@ -552,21 +573,21 @@ def launchServer(pipeline, options, e):
         print("\nKeyboardInterrupt caught: cleaning up, shutting down executors.\n")
         for c in pipeline.clients[:]:
             try: 
-                clientObj = Pyro.core.getProxyForURI(c)
-                print "Invoking the shutdown call in : " + str(c)
+                verboseprint("Invoking the shutdown call in : " + str(c))
                 sys.stdout.flush()
+                clientObj = Pyro.core.getProxyForURI(c)
                 clientObj.generalShutdownCall()
             except Pyro.errors.ConnectionClosedError:
                 # this error should only happen when the executor has shut itself down already
-                print("Client already shutdown: %s" % str(c))
+                verboseprint("Client already shutdown: %s" % str(c))
             except Pyro.errors.ProtocolError:
                 if( sys.exc_info()[1] == "connection failed"):
-                    print("Client already shutdown: %s" % str(c))
+                    verboseprint("Client already shutdown: %s" % str(c))
             except :
                 logger.exception("Failed to successfully de-register all clients")
-                print("Failed to successfully de-register all clients")
+                verboseprint("Failed to successfully de-register all clients")
                 raise
-        print("\n\nObjects successfully unregistered and daemon shutdown.\n")
+        verboseprint("\n\nObjects successfully unregistered and daemon shutdown.\n")
         daemon.shutdown(True)
     except:
         logger.exception("Failed running server in daemon.requestLoop. Server shutting down.")
@@ -575,17 +596,30 @@ def launchServer(pipeline, options, e):
             # it is possible that pipeline.continueLoop returns false, even though the
             # pipeline is not completed (for instance, when stages failed, and no more stages
             # can be run) so check that in order to provide the correct feedback to the user
+            print("\n\n######################################################")
             if(pipeline.pipelineFullyCompleted()):
-                print("\n\nAll pipeline stages have been processed. Daemon unregistering " 
+                print("All pipeline stages have been processed. \nDaemon unregistering " 
                   + str(len(pipeline.clients)) + " client(s) and shutting down...\n\n")
             else:
-                print("\n\nNot all pipeline stages have been processed, however there are no more stages that can be run. Daemon unregistering " 
-                  + str(len(pipeline.clients)) + " client(s) and shutting down...\n\n")
+                print("Not all pipeline stages have been processed,")
+                print("however there are no more stages that can be run.")
+                print("Daemon unregistering " + str(len(pipeline.clients)) + " client(s) and shutting down...\n\n")
+            # we are still have issues properly shutting down the server and clients once in
+            # a while. That happens in the calls to the executors below. In case the server
+            # doesn't properly shut down, the user should press ctrl+c once which should 
+            # do the trick
+            sys.stdout.flush()
+            print("It is now: %s" % datetime.ctime(datetime.now()))
+            print("Sometimes the communication with the executors fails.")
+            print("If after 5 minutes from now, the program did not ")
+            print("shut down, please press: ctrl+c")
+            print("\nIn that case, if running on sge, you might have to use qdel on one or several jobs")
+            print("######################################################\n\n\n")
             sys.stdout.flush()
             for c in pipeline.clients[:]:
-                clientObj = Pyro.core.getProxyForURI(c)
-                print "Invoking the shutdown call in : " + str(c)
+                verboseprint("Invoking the shutdown call in : " + str(c))
                 sys.stdout.flush()
+                clientObj = Pyro.core.getProxyForURI(c)
                 clientObj.generalShutdownCall()
             daemon.shutdown(True)
             sys.stdout.flush()
