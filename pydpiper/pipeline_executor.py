@@ -98,6 +98,9 @@ def launchExecutor(executor):
     # instantiate the executor class and register the executor with the pipeline    
     clientURI=daemon.connect(executor,"executor")
     p = Pyro.core.getProxyForURI(serverURI)
+    # the following command only works if the server is alive. Currently if that's
+    # not the case, the executor will die which is okay, but this should be
+    # more properly handled: a more elegant check to verify the server is running
     p.register(clientURI)
     
     executor.registeredWithServer()
@@ -452,6 +455,7 @@ if __name__ == "__main__":
             roq.createExecutorJobFile(i)
     elif options.queue=="sge":
         for i in range(options.num_exec):
+            pe = pipelineExecutor(options)
             pe.submitToQueue()        
     else:
         for i in range(options.num_exec):

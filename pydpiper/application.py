@@ -25,6 +25,7 @@ def addApplicationOptionGroup(parser):
                                action="store_true", default=False,
                                help="Create a .dot file with graphical representation of pipeline relationships [default = %default]")
     parser.set_defaults(execute=True)
+    parser.set_defaults(verbose=False)
     group.add_option("--execute", dest="execute",
                                action="store_true",
                                help="Actually execute the planned commands [default]")
@@ -34,6 +35,12 @@ def addApplicationOptionGroup(parser):
     group.add_option("--version", dest="show_version",
                                action="store_true",
                                help="Print the version number and exit.")
+    group.add_option("--verbose", dest="verbose",
+                               action="store_true",
+                               help="Be verbose in what is printed to the screen")
+    group.add_option("--no-verbose", dest="verbose",
+                               action="store_false",
+                               help="Opposite of --verbose [default]")
     parser.add_option_group(group)
 
 # Some sneakiness... Using the following lines, it's possible
