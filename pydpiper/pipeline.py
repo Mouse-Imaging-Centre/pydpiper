@@ -268,8 +268,6 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
                    
     def printNumberProcessedStages(self):
         print "Number of stages already processed:     ", len(self.processedStages)
-        if(len(self.processedStages) == 1):
-            print "Index first stage finished: ", self.processedStages[0]
                    
     def createEdges(self):
         """computes stage dependencies by examining their inputs/outputs"""
