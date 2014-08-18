@@ -264,7 +264,12 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
         for i in range(len(self.stages)):
             pf.write(str(i) + "  " + str(self.stages[i]) + "\n")
         pf.close()
-        print self.skipped_stages, "stages skipped as redundant. ", len(self.stages), "stages to run."
+        print "Total number of stages in the pipeline: ", len(self.stages)
+                   
+    def printNumberProcessedStages(self):
+        print "Number of stages already processed:     ", len(self.processedStages)
+        if(len(self.processedStages) == 1):
+            print "Index first stage finished: ", self.processedStages[0]
                    
     def createEdges(self):
         """computes stage dependencies by examining their inputs/outputs"""
@@ -520,7 +525,9 @@ def skip_completed_stages(pipeline):
         pipeline.requeue(i)
         
 def launchServer(pipeline, options, e):
-    """Starts Pyro Server in a separate thread"""
+    # first follow up on the previously reported total number of 
+    # stages in the pipeline with how many have already finished:
+    pipeline.printNumberProcessedStages()
     
     # is the server going to be verbose or not?
     if options.verbose:
@@ -533,6 +540,7 @@ def launchServer(pipeline, options, e):
     else:   
         verboseprint = lambda *a: None      # do-nothing
     
+    """Starts Pyro Server in a separate thread"""
     Pyro.core.initServer()
     # Due to changes in how the network address is resolved, the Daemon on Linux will basically use:
     #
