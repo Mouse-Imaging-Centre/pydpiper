@@ -51,6 +51,7 @@ class PipelineStage():
         self.status = None
         self.name = ""
         self.colour = "black" # used when a graph is created of all stages to colour the nodes
+        self.number_retries = 0 
 
     def isFinished(self):
         if self.status == "finished":
@@ -85,6 +86,10 @@ class PipelineStage():
             return False
         else:
             return True
+    def getNumberOfRetries(self):
+        return self.number_retries
+    def increaseNumberOfRetries(self):
+        self.number_retries += 1
 
 class CmdStage(PipelineStage):
     def __init__(self, argArray):
@@ -369,19 +374,34 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
                 self.runnable.put(i)
 
     def setStageFailed(self, index):
-        """given an index, sets stage to failed, adds to processed stages array"""
-        self.stages[index].setFailed()
-        logger.info("ERROR in Stage " + str(index) + ": " + str(self.stages[index]))
-        # This is something we should also directly report back to the user:
-        print("\nERROR in Stage %s: %s" % (str(index),str(self.stages[index])))
-        print("Logfile for (potentially) more information:\n%s\n" % self.stages[index].logFile)
-        sys.stdout.flush()
-        self.processedStages.append(index)
-        self.failed_stages += 1
-        # remove job from currently running processes
-        self.currently_running_stage.remove(index)
-        for i in nx.dfs_successor(self.G, index).keys():
-            self.processedStages.append(i)
+        # given an index, sets stage to failed, adds to processed stages array
+        # But... only if this stage has already been retried twice (<- for now static)
+        # Once in while retrying a stage makes sense, because of some odd I/O
+        # read write issue (NFS race condition?). At least that's what I think is 
+        # happening, so trying this to see whether it solves the issue.
+        num_retries = self.stages[index].getNumberOfRetries()
+        if(num_retries < 2):
+            self.stages[index].increaseNumberOfRetries()
+            # remove job from currently running processes
+            self.currently_running_stage.remove(index)
+            logger.debug("RETRYING: ERROR in Stage " + str(index) + ": " + str(self.stages[index]))
+            logger.debug("RETRYING: adding this stage back to the runnable queue.")
+            logger.debug("RETRYING: Logfile for Stage " + str(self.stages[index].logFile))
+            # retry the stage! Simply add it back to the runnable stages
+            self.requeue(index)
+        else:
+            self.stages[index].setFailed()
+            logger.info("ERROR in Stage " + str(index) + ": " + str(self.stages[index]))
+            # This is something we should also directly report back to the user:
+            print("\nERROR in Stage %s: %s" % (str(index),str(self.stages[index])))
+            print("Logfile for (potentially) more information:\n%s\n" % self.stages[index].logFile)
+            sys.stdout.flush()
+            self.processedStages.append(index)
+            self.failed_stages += 1
+            # remove job from currently running processes
+            self.currently_running_stage.remove(index)
+            for i in nx.dfs_successor(self.G, index).keys():
+                self.processedStages.append(i)
 
     def requeue(self, i):
         """If stage cannot be run due to insufficient mem/procs, executor returns it to the queue"""
