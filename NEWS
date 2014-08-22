@@ -1,0 +1,36 @@
+New in Version 1.6
+====================
+* fix to MAGeT.py. Solves issues with the voxel_vote command. 
+
+New in Version 1.5
+====================
+* added retrying/resubmitting of failed files to the server. At this moment
+  each stage is resubmitted twice before considering it truly failed. This solves
+  an apparent nfs race condition issue.
+
+New in Version 1.4
+====================
+* added a warning statement when the server is finished running and shutting
+  down. There is still a communication issue, and sometimes executors do not
+  shut down correctly.
+* added verbosity option to the server. By default is now less verbose
+* changed the output of the server to the user. Now displays more meaningful
+  information: total number of stages to be run, and the number of stages that
+  have already been processed.
+* bug fix in the pipeline executor: can now be launched from the command line
+  again
+
+New in Version 1.3
+====================
+* huge amounts of code restructuring
+* server now launches and relaunches executors (keeps track of executors that
+  are registered with the server. However, for now does not check whether the 
+  registered executors are alive once in a while)
+* executors can kill themselves when they've been idle for too long. They can also
+  "drain" themselves (not accept any new jobs) after a certain time and then 
+  shutdown when the running jobs have finished.
+* added an interrupt handler for ctr+c to the server and executors
+* executors on shutdown kill the running processes by using their process IDs (pid)
+* a whole bunch of changes to the twolevel_model_building code... (see GitHub)
+* a whole bunch of changes to the registration_chain code... (see GitHub)
+
