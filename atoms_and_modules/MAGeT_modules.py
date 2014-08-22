@@ -66,12 +66,31 @@ def maskFiles(FH, isAtlas, numAtlases=1):
     return(p)
 
 def voxelVote(inputFH, pairwise, mask):
-    # if we do pairwise crossing, use output labels for voting (Default)
-    # otherwise, return inputLabels from initial atlas-input crossing
-    useInputLabels = False
-    if not pairwise:
-        useInputLabels = True
-    labels = inputFH.returnLabels(useInputLabels)
+    # In the main MAGeT.py code, when not only a mask is created for the
+    # input files, the process works as follows:
+    # 
+    # 1) the template files (library) are aligned to each input upto max_templates input files
+    # 2) all templates (library + newly created) are aligned to each input
+    # 
+    # That second stage contains alignments that have already run in the first stage.
+    # And pydpiper is coded such, that this duplicated stage is not performed. In order
+    # to get all labels for voxel voting, we need to combine atlases from both these 
+    # stages, i.e., the "initial" and the "templates". This means that we should always
+    # get the "useInputLabels". (In the special case where there is only 1 input file 
+    # and pairwise is set to true, this is particularly important, because of the duplicate
+    # stages, only the inputlabels will exists.)
+    
+    # 1) get the input templates
+    # the True parameter will return "inputLabels" from the groupedFiles for inputFH
+    labels = inputFH.returnLabels(True)
+    
+    # 2) if we do pairwise crossing, also get the output labels for voting 
+    if pairwise:
+        # False will return "labels" from the groupedFiles for inputFH
+        outputLabels = inputFH.returnLabels(False)
+        # add these labels to the "initial" or input labels:
+        labels = labels + outputLabels
+    
     out = fh.createBaseName(inputFH.labelsDir, inputFH.basename)
     if mask:
         out += "_mask.mnc"
