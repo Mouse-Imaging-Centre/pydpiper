@@ -255,6 +255,9 @@ class setNlinMinctraccParams(object):
         self.useGradient = []
         self.optimization = []
         self.w_translations = []
+        self.stiffness = []
+        self.weight = []
+        self.similarity = []
         
         #Setup protocol
         self.setupProtocol()
@@ -277,6 +280,9 @@ class setNlinMinctraccParams(object):
                     self.useGradient = self.regProtocol.useGradient
                     self.optimization = self.regProtocol.optimization
                     self.w_translations = self.regProtocol.w_translations
+                    self.similarity = self.regProtocol.similarity
+                    self.weight = self.regProtocol.weight
+                    self.stiffness = self.regProtocol.stiffness
                 except:
                     print "The non-linear protocol you have specified is in an unrecognized form. Exiting..."
                     sys.exit()
@@ -298,11 +304,14 @@ class setNlinMinctraccParams(object):
         self.stepSize = [self.fileRes*(35.0/3.0), self.fileRes*10.0, self.fileRes*(25.0/3.0),
                       self.fileRes*4.0, self.fileRes*2.0, self.fileRes]
         self.iterations = [20,6,8,8,8,8]
-        self.simplex = [5,2,2,2,2,2]
+        self.simplex =    [5,2,2,2,2,2]
         self.useGradient = [True, True, True, True, True, True]
         self.optimization = ["-use_simplex", "-use_simplex", "-use_simplex", "-use_simplex", 
                              "-use_simplex", "-use_simplex"]
-        self.w_translations = [0.4,0.4,0.4,0.4,0.4,0.4]
+        self.w_translations = [0.4, 0.4, 0.4, 0.4, 0.4, 0.4 ]
+        self.stiffness  =     [0.98,0.98,0.98,0.98,0.98,0.98]
+        self.weight     =     [0.8, 0.8, 0.8, 0.8, 0.8, 0.8 ]
+        self.similarity =     [0.8, 0.8, 0.8, 0.8, 0.8, 0.8 ]
             
     def setParams(self):
         """Set parameters from specified protocol"""
@@ -317,6 +326,11 @@ class setNlinMinctraccParams(object):
            Everything is read in as strings, but in some cases, must be converted to 
            floats, booleans or gradients. 
         """
+        # the following parameters do not need to be present in the protocol
+        # keep track of whether they were found, otherwise set defaults at the end
+        stiffness_found = 0
+        weight_found = 0
+        similarity_found = 0
         for p in params:
             if p[0]=="blur":
                 self.blurs = []
@@ -355,11 +369,40 @@ class setNlinMinctraccParams(object):
                 """w_translations are strings but must be converted to a float."""
                 for i in range(1,len(p)):
                     self.w_translations.append(float(p[i]))
+            elif p[0] == "stiffness":
+                stiffness_found = 1
+                self.stiffness = []
+                """stiffness is a minctracc weighting factor, should be float"""
+                for i in range(1,len(p)):
+                    self.stiffness.append(float(p[i]))
+            elif p[0] == "weight":
+                weight_found = 1
+                self.weight = []
+                """weight is a minctracc weighting factor, should be float"""
+                for i in range(1,len(p)):
+                    self.weight.append(float(p[i]))
+            elif p[0] == "similarity":
+                similarity_found = 1
+                self.similarity = []
+                """similarity is a minctracc weighting factor, should be float"""
+                for i in range(1,len(p)):
+                    self.similarity.append(float(p[i]))
             else:
                 print "Improper parameter specified for minctracc protocol: " + str(p[0])
                 print "Exiting..."
                 sys.exit()
-        
+        # set defaults that don't have to appear in the protocol
+        if(not stiffness_found):
+            # default: 0.98 for each stage. Take length of stepSize list as reference for number of stages
+            self.stiffness = [0.98 for i in range(len(self.stepSize))]
+        if(not weight_found):
+            # default: 0.8 for each stage. Take length of stepSize list as reference for number of stages
+            self.weight = [0.8 for i in range(len(self.stepSize))]
+        if(not similarity_found):
+            # default: 0.8 for each stage. Take length of stepSize list as reference for number of stages
+            self.similarity = [0.8 for i in range(len(self.stepSize))]
+
+      
     def getGenerations(self):
         arrayLength = len(self.blurs)
         errorMsg = "Number of parameters in non-linear minctracc protocol is not consistent."
@@ -368,7 +411,10 @@ class setNlinMinctraccParams(object):
             or len(self.simplex) != arrayLength
             or len(self.useGradient) != arrayLength
             or len(self.w_translations) != arrayLength
-            or len(self.optimization) != arrayLength):
+            or len(self.optimization) != arrayLength
+            or len(self.similarity) != arrayLength
+            or len(self.weight) != arrayLength
+            or len(self.stiffness) != arrayLength):
             print errorMsg
             sys.exit()
         else:
