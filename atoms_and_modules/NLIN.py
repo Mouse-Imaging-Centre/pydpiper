@@ -356,6 +356,9 @@ class NLINminctracc(NLINBase):
         self.optimization = self.nlinParams.optimization
         self.generations = self.nlinParams.generations
         self.w_translations = self.nlinParams.w_translations
+        self.stiffness = self.nlinParams.stiffness
+        self.weight = self.nlinParams.weight
+        self.similarity = self.nlinParams.similarity
     
     
     def addBlurStage(self, FH, i):
@@ -387,9 +390,9 @@ class NLINminctracc(NLINBase):
                         gradient=False,
                         iterations=self.iterations[i],
                         step=self.stepSize[i],
-                        weight=0.8, 
-                        stiffness=0.98,
-                        similarity=0.8,
+                        weight=self.weight[i], 
+                        stiffness=self.stiffness[i],
+                        similarity=self.similarity[i],
                         w_translations = self.w_translations[i],
                         simplex=self.simplex[i])
         self.p.addStage(mta)
@@ -402,9 +405,9 @@ class NLINminctracc(NLINBase):
                             gradient=True,
                             iterations=self.iterations[i],
                             step=self.stepSize[i],
-                            weight=0.8, 
-                            stiffness=0.98,
-                            similarity=0.8,
+                            weight=self.weight[i], 
+                            stiffness=self.stiffness[i],
+                            similarity=self.similarity[i],
                             simplex=self.simplex[i])
             self.p.addStage(mtb)
             """Need to set last xfm so that next generation will use it as the input transform"""
