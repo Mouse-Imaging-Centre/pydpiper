@@ -11,15 +11,12 @@ import atoms_and_modules.LSQ12 as lsq12
 import atoms_and_modules.NLIN as nlin
 import atoms_and_modules.stats_tools as st
 import atoms_and_modules.minc_parameters as mp
-import Pyro
 from optparse import OptionGroup
 from os.path import abspath, isdir, isfile
 import logging
 import sys
 
 logger = logging.getLogger(__name__)
-
-Pyro.config.PYRO_MOBILE_CODE=1 
 
 def addRegChainOptionGroup(parser):
     """option group for the command line argument parser"""

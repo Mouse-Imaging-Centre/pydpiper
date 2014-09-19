@@ -4,9 +4,6 @@ from atoms_and_modules.minc_atoms import xfmConcat, xfmInvert
 import pydpiper.file_handling as fh
 from optparse import OptionGroup
 import sys
-import Pyro
-
-Pyro.config.PYRO_MOBILE_CODE=1
 
 def addStatsOptions(parser):
     group = OptionGroup(parser, "Statistics options", 
