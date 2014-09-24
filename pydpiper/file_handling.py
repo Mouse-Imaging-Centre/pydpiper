@@ -1,11 +1,7 @@
 #!/usr/bin/env python
 
-import Pyro.core
-import Pyro.naming
 from os.path import basename,isdir,splitext, abspath
 from os import mkdir,makedirs
-
-Pyro.config.PYRO_MOBILE_CODE=1 
 
 """File handling methods for creating subdirectories/base file names as needed"""
 

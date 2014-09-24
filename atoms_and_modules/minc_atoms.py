@@ -8,11 +8,8 @@ from os import curdir
 import pydpiper.file_handling as fh
 import sys
 import fnmatch
-import Pyro
 import re
 import copy
-
-Pyro.config.PYRO_MOBILE_CODE=1
 
 class mincANTS(CmdStage):
     def __init__(self,
