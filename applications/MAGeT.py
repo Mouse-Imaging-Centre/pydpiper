@@ -7,7 +7,6 @@ from atoms_and_modules.registration_functions import initializeInputFiles, addGe
 from atoms_and_modules.MAGeT_modules import MAGeTMask, MAGeTRegister, voxelVote, addMAGeTOptionGroup
 from atoms_and_modules.LSQ12 import addLSQ12OptionGroup
 from atoms_and_modules.NLIN import addNlinRegOptionGroup
-import Pyro
 from os.path import abspath, join
 import logging
 import glob
@@ -15,8 +14,6 @@ import fnmatch
 import sys
 
 logger = logging.getLogger(__name__)
-
-Pyro.config.PYRO_MOBILE_CODE=1 
 
 class MAGeTApplication(AbstractApplication):
     def setup_options(self):
