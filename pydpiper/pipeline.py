@@ -318,7 +318,10 @@ class Pipeline():
     def getStageLogfile(self,i):
         return(self.stages[i].logFile)
     def getRunnableStageIndex(self):
-        """returns the next runnable stage, or None"""
+        """Return a tuple of a status flag ("done" if all stages are finished,
+        "wait" if no stages are currently runnable, or "index" if a stage is
+        available) and the next runnable stage if the flag is "index", otherwise
+        None"""
 
         if self.allStagesComplete():
             return ("done", None)
@@ -388,7 +391,7 @@ class Pipeline():
             self.stages[index].setFailed()
             logger.info("ERROR in Stage " + str(index) + ": " + str(self.stages[index]))
             # This is something we should also directly report back to the user:
-            print("\nERROR in Stage %s: %s", (str(index), str(self.stages[index])))
+            print("\nERROR in Stage %s: %s" % (str(index), str(self.stages[index])))
             print("Logfile for (potentially) more information:\n%s\n" % self.stages[index].logFile)
             sys.stdout.flush()
             self.processedStages.append(index)
@@ -439,11 +442,14 @@ class Pipeline():
 
         if not self.allStagesComplete():
             return True
-        elif len(self.clients) > 0:
+        #elif len(self.clients) > 0:
+            # this branch is to allow clients asking for more jobs to shutdown
+            # gracefully when the server has no more jobs
+            # since it might hang the server if a client has become unresponsive
+            # it's currently commented.  We might turn it back on once the server
+            # has a way to detect unresponsive clients.
             # TODO what if a launched_and_waiting client registers here?
-            # need a more robust way to decide to shut down ...
-            # also, this might hang if a client is hung
-            return True
+        #    return True
         else:
             logger.debug("Server daemon shutting down")
             return False
@@ -501,14 +507,16 @@ class Pipeline():
         if self.verbose:
             print("Client registered (banzai!): %s" % client)
 
-    def unregister(self, client):
+    def unregisterClient(self, client):
         # removes a client from the array of registered clients. An executor 
         # calls this method when it decides on its own to shut down
         if client in self.clients:
             self.clients.remove(client)
-            print("Client un-registered (seppuku!): " + client)
+            if self.verbose:
+                print("Client un-registered (seppuku!): " + client)
         else:
-            print("Unable to un-register client: " + client)
+            if self.verbose:
+                print("Unable to un-register client: " + client)
 
     def increaseLaunchedClients(self):
         self.number_launched_and_waiting_clients += 1

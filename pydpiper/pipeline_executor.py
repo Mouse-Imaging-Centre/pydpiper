@@ -29,7 +29,7 @@ def addExecutorOptionGroup(parser):
                       help="Location for uri file if NameServer is not used. If not specified, default is current working directory.")
     group.add_option("--use-ns", dest="use_ns",
                       action="store_true",
-                      help="Use the Pyro NameServer to store object locations")
+                      help="Use the Pyro NameServer to store object locations. Currently a Pyro nameserver must be started separately for this to work.")
     group.add_option("--num-executors", dest="num_exec", 
                       type="int", default=-1, 
                       help="Number of independent executors to launch. [Default = -1. Code will not run without an explicit number specified.]")
@@ -267,7 +267,7 @@ class pipelineExecutor():
         for subprocID in self.current_running_job_pids:
             os.kill(subprocID, signal.SIGTERM)
         if self.registered_with_server:
-            self.pyro_proxy_for_server.unregister(self.clientURI.asString())
+            self.pyro_proxy_for_server.unregisterClient(self.clientURI.asString())
             self.registered_with_server = False
         
     def completeAndExitChildren(self):
@@ -280,7 +280,7 @@ class pipelineExecutor():
             # wait for the worker processes (children) to exit (must be called after terminate() or close()
             self.pool.join()
         if self.registered_with_server:
-            self.pyro_proxy_for_server.unregister(self.clientURI.asString())
+            self.pyro_proxy_for_server.unregisterClient(self.clientURI.asString())
             self.registered_with_server = False
     
     def setLogger(self):
@@ -361,12 +361,13 @@ class pipelineExecutor():
                 self.runningProcs -= child.procs
                 self.runningChildren.remove(child)
 
-    def notifyStageTerminated(self, i, r=None):
+    def notifyStageTerminated(self, i, returncode=None):
         # hack - if we had the ChildProcess we could do better:
         #self.free_resources()
-        if r == 0:
+        if returncode == 0:
             self.pyro_proxy_for_server.setStageFinished(i)
         else:
+            # a None returncode is also considered a failure
             self.pyro_proxy_for_server.setStageFailed(i)
 
 
@@ -410,14 +411,6 @@ class pipelineExecutor():
                 logger.debug("Now shutting down because not accepting new jobs and finished running jobs.")
                 self.continueRunning = False
                 break
-
-            # # check if we have any free processes, and even a little bit of memory
-            # if not self.canRun(1, 1, self.runningMem, self.runningProcs): 
-            #     # the executor's resources are all being used, can not accept any
-            #     # new jobs at this moment. Sleep, but do not increase the idle time here
-            #     time.sleep(POLLING_INTERVAL)
-            #     logger.debug("No resources ... sleeping for %d s", POLLING_INTERVAL)
-            #     return self.continueRunning
         
             # check for available stages
             # TODO we might want something more efficient, e.g., the client might
