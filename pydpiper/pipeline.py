@@ -20,6 +20,8 @@ logger = logging.getLogger(__name__)
 
 sys.excepthook = Pyro4.util.excepthook
 
+Pyro4.config.SERIALIZERS_ACCEPTED.add('pickle')
+
 class PipelineFile():
     def __init__(self, filename):
         self.filename = filename
@@ -126,7 +128,7 @@ class CmdStage(PipelineStage):
             args = split(repr(self)) 
             returncode = call(args, stdout=of, stderr=of, shell=False) 
         of.close()
-        return(returncode)
+        return returncode
     
     def is_effectively_complete(self):
         """check if this stage is effectively complete (if output files already exist)"""
@@ -306,17 +308,7 @@ class Pipeline():
     def getStage(self, i):
         """given an index, return the actual pipelineStage object"""
         return(self.stages[i])
-    # getStage<...> are currently used instead of getStage due to previous bug; could revert:
-    def getStageMem(self, i):
-        return(self.stages[i].mem)
-    def getStageProcs(self,i):
-        return(self.stages[i].procs)
-    def getStageCommand(self,i):
-        return(repr(self.stages[i]))
-    def getStage_is_effectively_complete(self,i):
-        return(self.stages[i].is_effectively_complete())
-    def getStageLogfile(self,i):
-        return(self.stages[i].logFile)
+    
     def getRunnableStageIndex(self):
         """Return a tuple of a status flag ("done" if all stages are finished,
         "wait" if no stages are currently runnable, or "index" if a stage is

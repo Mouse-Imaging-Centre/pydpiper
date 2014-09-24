@@ -7,7 +7,6 @@ from optparse import OptionGroup, OptionParser
 from datetime import datetime
 from multiprocessing import Process, Pool
 import subprocess as subprocess
-from shlex import split
 import pydpiper.queueing as q
 import logging
 import socket
@@ -20,6 +19,8 @@ POLLING_INTERVAL = 5
 logger = logging.getLogger(__name__)
 
 sys.excepthook = Pyro4.util.excepthook
+
+Pyro4.config.SERIALIZER = 'pickle'
 
 def addExecutorOptionGroup(parser):
     group = OptionGroup(parser, "Executor options",
@@ -140,44 +141,24 @@ def runStage(serverURI, clientURI, i):
     ## Proc needs its own proxy as it's independent of executor
     p = Pyro4.core.Proxy(serverURI)
     client = Pyro4.core.Proxy(clientURI)
+
+    s = p.getStage(i)
     
     # Retrieve stage information, run stage and set finished or failed accordingly  
     try:
         logger.info("Running stage %i: ", i)
         p.setStageStarted(i, clientURI)
         try:
-            # get stage information
-            command_to_run  = p.getStageCommand(i)
-            logger.info(command_to_run)
-            command_logfile = p.getStageLogfile(i)
-            
-            # log file for the stage
-            of = open(command_logfile, 'w')
-            of.write("Running on: " + socket.gethostname() + " at " + datetime.isoformat(datetime.now(), " ") + "\n")
-            of.write(command_to_run + "\n")
-            of.flush()
-            
-            # check whether the stage is completed already. If not, run stage command
-            if p.getStage_is_effectively_complete(i):
-                of.write("All output files exist. Skipping stage.\n")
-                ret = 0
-            else:
-                args = split(command_to_run) 
-                process = subprocess.Popen(args, stdout=of, stderr=of, shell=False)
-                client.addPIDtoRunningList(process.pid)
-                process.communicate()
-                client.removePIDfromRunningList(process.pid)
-                ret = process.returncode 
-            of.close()
+   	    r = s.execStage()
         except:
             logger.exception("Exception whilst running stage: %i ", i)   
             client.notifyStageTerminated(i)
         else:
-            logger.info("Stage %i finished, return was: %i", i, ret)
-            client.notifyStageTerminated(i, ret)
+            logger.info("Stage %i finished, return was: %i", i, r)
+            client.notifyStageTerminated(i, r)
 
         # If completed, return mem & processes back for re-use
-        return (p.getStageMem(i), p.getStageProcs(i))
+        return (s.getMem(), s.getProcs())
     except:
         logger.exception("Error communicating to server in runStage. " 
                         "Error raised to calling thread in launchExecutor. ")
@@ -427,7 +408,8 @@ class pipelineExecutor():
             elif flag == "index":
                 # Before running stage, check usable mem & procs
                 logger.debug("Considering stage %i", i)
-                stageMem, stageProcs = self.pyro_proxy_for_server.getStageMem(i), self.pyro_proxy_for_server.getStageProcs(i)
+                s = self.pyro_proxy_for_server.getStage(i)
+                stageMem, stageProcs = s.getMem(), s.getProcs()
                 if self.canRun(stageMem, stageProcs, self.runningMem, self.runningProcs):
                     # reset the idle time, we are running a stage!
                     self.idle_time = 0
