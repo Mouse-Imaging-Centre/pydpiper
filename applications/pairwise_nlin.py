@@ -8,7 +8,6 @@ import atoms_and_modules.minc_modules as mm
 import atoms_and_modules.minc_atoms as ma
 import atoms_and_modules.stats_tools as st
 import atoms_and_modules.option_groups as og
-import Pyro
 from optparse import OptionGroup
 from datetime import date
 from os.path import abspath, isdir
@@ -16,8 +15,6 @@ import logging
 import sys
 
 logger = logging.getLogger(__name__)
-
-Pyro.config.PYRO_MOBILE_CODE=1 
 
 """NOTE: This application needs a significant overhaul and/or combining with the RegistrationChain
          Application. Until this comment is removed, please consider this class DEPRECATED."""

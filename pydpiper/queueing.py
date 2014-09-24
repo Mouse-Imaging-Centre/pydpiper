@@ -1,13 +1,11 @@
 #!/usr/bin/env python
 
-import Pyro
 from datetime import datetime
 from os.path import isdir, basename
 from os import mkdir
 import os
 import re
 
-Pyro.config.PYRO_MOBILE_CODE=1
 
 class runOnQueueingSystem():
     def __init__(self, options, sysArgs=None):

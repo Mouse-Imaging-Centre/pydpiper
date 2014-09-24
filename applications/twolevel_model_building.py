@@ -9,14 +9,11 @@ import atoms_and_modules.LSQ12 as lsq12
 import atoms_and_modules.NLIN as nl
 import atoms_and_modules.stats_tools as st
 import atoms_and_modules.registration_file_handling as rfh
-import Pyro
 from os.path import split, splitext, abspath
 import sys
 import logging
 
 logger = logging.getLogger(__name__)
-
-Pyro.config.PYRO_MOBILE_CODE=1 
 
 class LongitudinalTwolevelNlin(AbstractApplication):
     def setup_options(self):
