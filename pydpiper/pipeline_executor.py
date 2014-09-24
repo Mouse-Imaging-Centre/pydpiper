@@ -303,9 +303,16 @@ class pipelineExecutor(Pyro.core.SynchronizedObjBase):
                 executablePath = os.path.abspath(programName)
                 jobname = os.path.basename(executablePath) + "-" 
             now = datetime.now()
-            jobname += "pipeline-executor-" + now.strftime("%Y%m%d-%H%M%S%f")
+            ident = "pipeline-executor-" + now.strftime("%Y%m%d-%H%M%S%f")
+            jobname += ident
             # Add options for sge_batch command
-            cmd = ["sge_batch", "-J", jobname, "-m", strprocs, "-l", strmem] 
+            cmd = ["sge_batch", "-J", jobname, "-m", strprocs, "-l", strmem, "-k"]
+            # This is a bit ugly and we can't pass SGE_BATCH_LOGDIR to change logdir;
+            # the problem is sge_batch's '-o' and SGE_BATCH_LOGDIR conflate filename and dir,
+            # and we want to rename the log files to get rid of extra generated extensions,
+            # otherwise we could do something like:
+            #os.environ["SGE_BATCH_LOGDIR"] = os.environ.get("SGE_BATCH_LOGDIR") or os.getcwd()
+            cmd += [ "-o", os.path.join(os.getcwd(), ident + "-remote.log")]
             if self.sge_queue_opts:
                 cmd += ["-q", self.sge_queue_opts]
             cmd += ["pipeline_executor.py", "--uri-file", self.uri, "--proc", strprocs, "--mem", str(self.mem)]
