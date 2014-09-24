@@ -4,7 +4,7 @@ import time
 import sys
 import os
 from optparse import OptionGroup, OptionParser
-from datetime import datetime, timedelta
+from datetime import datetime
 from multiprocessing import Process, Pool
 import subprocess as subprocess
 from shlex import split
@@ -116,7 +116,7 @@ def launchExecutor(executor):
         # run the daemon, not the executor mainLoop, in a new thread
         # so that mainLoop exceptions (e.g., if we lose contact with the server)
         # cause us to shutdown (as Python makes it tedious to re-throw to calling thread)
-        t = threading.Thread(target=daemon.requestLoop, args=(executor.continueLoop,))
+        t = threading.Thread(target=daemon.requestLoop)
         t.daemon = True
         t.start()
         executor.mainLoop()
@@ -131,14 +131,10 @@ def launchExecutor(executor):
         daemon.shutdown()
         sys.exit(0)
     else:
-        # TODO is this join needed? daemon shuts down on the same condition as mainLoop
-        # also, things here are a bit fragile.  If mainLoop doesn't unset continueRunning
-        # _in addition to breaking/continuing_ when it's time to stop running,
-        # then this join() will block forever, which is a bit weird
+        daemon.shutdown()
         t.join()
         logger.info("Executor shutting down.")
         executor.completeAndExitChildren()
-        daemon.shutdown()
 
 def runStage(serverURI, clientURI, i):
     ## Proc needs its own proxy as it's independent of executor
@@ -217,8 +213,6 @@ class pipelineExecutor():
         # executor has been continuously idle/sleeping for. Measured
         # in seconds
         self.idle_time = 0
-        self.last_loop_time = None
-        self.dt = timedelta()
         # the maximum number of minutes an executor can be continuously
         # idle for, before it has to kill itself.
         self.time_to_seppuku = options.time_to_seppuku
@@ -361,7 +355,6 @@ class pipelineExecutor():
     def free_resources(self):
         # Free up resources from any completed (successful or otherwise) stages
         for child in self.runningChildren:
-            logger.debug("Child: %s ready: %s", child.stage, child.result.ready())
             if child.result.ready():
                 logger.debug("Freeing up resources for stage %i.", child.stage)
                 self.runningMem -= child.mem
