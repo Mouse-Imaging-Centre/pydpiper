@@ -15,7 +15,7 @@ import signal
 import threading
 import Pyro4
 
-POLLING_INTERVAL = 5
+WAIT_TIMEOUT = 5.0
 
 logger = logging.getLogger(__name__)
 
@@ -198,8 +198,14 @@ class ChildProcess():
 
 class pipelineExecutor():
     def __init__(self, options):
-        self.continueRunning =  True
-        #options cannot be null when used to instantiate pipelineExecutor
+        # TODO self.continueRunning is no longer used - since the server doesn't
+        # tell clients to shutdown, we can rely on the 'local' information 
+        # returned by mainFn.  However, executors currently crash
+        # when the server shuts down since it doesn't wait until all clients
+        # have learned of impending shutdown from generalShutdownCall, so 
+        # we might restore it or something ...
+        #self.continueRunning =  True
+        # options cannot be null when used to instantiate pipelineExecutor
         self.mem = options.mem
         self.proc = options.proc
         self.queue = options.queue   
@@ -213,6 +219,8 @@ class pipelineExecutor():
         # executor has been continuously idle/sleeping for. Measured
         # in seconds
         self.idle_time = 0
+        self.prev_time = None
+        self.current_time = None
         # the maximum number of minutes an executor can be continuously
         # idle for, before it has to kill itself.
         self.time_to_seppuku = options.time_to_seppuku
@@ -258,7 +266,6 @@ class pipelineExecutor():
         logger.debug("Executor shutting down ...")
         sys.stdout.flush()
 
-        self.continueRunning = False
         # stop the worker processes (children) immediately without completing outstanding work
         # Initially I wanted to stop the running processes using pool.terminate() and pool.join()
         # but the keyboard interrupt handling proved tricky. Instead, the executor now keeps
@@ -355,7 +362,7 @@ class pipelineExecutor():
             current_time = time.time()
             time_take_so_far = current_time - self.connection_time_with_server
             minutes_so_far, seconds_so_far = divmod(time_take_so_far, 60)
-            if (self.time_to_accept_jobs < minutes_so_far):
+            if self.time_to_accept_jobs < minutes_so_far:
                 return True
         return False
     
@@ -377,90 +384,83 @@ class pipelineExecutor():
             # a None returncode is also considered a failure
             self.pyro_proxy_for_server.setStageFailed(i)
 
-
-    def continueLoop(self):
-        return self.continueRunning
-
+    # use an event set/timeout system to run the executor mainLoop -
+    # we might want to pass some extra information in addition to waking the system
     def mainLoop(self):
-        #
-        #
-        # This is the executor's main function; decisions are made here about
-        # what to do... (TODO flesh out info)
-        #
-        #
-        while self.continueLoop():
+        e = threading.Event() #TODO make this visible to other methods
+        while self.mainFn():
+            e.wait(WAIT_TIMEOUT)
+        logger.debug("Main loop finished")
 
-            logger.debug("executor loop - memory used: %s, cores in use: %s", self.runningMem, self.runningProcs)
-        
-            # TODO this seems a bit coarse
-            self.free_resources()
+    def mainFn(self):
+        logger.debug("executor loop - memory used: %s, cores in use: %s", self.runningMem, self.runningProcs)
 
-            # if we've been doing nothing since the last time through,
-            # increase idle_time by that amount:
-            if self.runningMem == 0 and self.runningProcs == 0:
-                self.idle_time += POLLING_INTERVAL
+        self.prev_time = self.current_time
+        self.current_time = time.time()
 
-            if self.is_seppuku_time():
-                logger.debug("Exceeded allowed idle time... Seppuku!")
-                self.continueRunning = False
-                break
+        # a bit coarse but we can't call `free_resources` directly in a function
+        # such as notifyStageTerminated which is called from _within_ `runStage`
+        # since resources won't be freed soon enough, causing a false resource starvation
+        self.free_resources()
 
-            if self.is_time_to_drain():
-                logger.debug("Exceeded allowed time to accept jobs... not getting any new ones!")
-                self.accept_jobs = False
-        
-            # It is possible that the executor does not accept any new jobs
-            # anymore. If that is the case, the executor should shut down as
-            # soon as all current running jobs (children) have finished
-            if (self.accept_jobs == False) and (len(self.runningChildren) == 0):
-                # that's it, we're done. Nothing is running anymore
-                # and no jobs can be accepted anymore.
-                logger.debug("Now shutting down because not accepting new jobs and finished running jobs.")
-                self.continueRunning = False
-                break
-        
-            # check for available stages
-            # TODO we might want something more efficient, e.g., the client might
-            # ask for a runnable stage within certain memory limits ...
-            flag, i = self.pyro_proxy_for_server.getRunnableStageIndex()
-            if flag == "done":
-                self.continueRunning = False
-                break
-            elif flag == "wait":
-                logger.debug("No runnable stages...waiting")
-                logger.debug("Current idle time: %d, and total seconds allowed: %d", self.idle_time, self.time_to_seppuku * 60)
-                time.sleep(POLLING_INTERVAL)
-                continue
-            elif flag == "index":
-                # Before running stage, check usable mem & procs
-                logger.debug("Considering stage %i", i)
-                stageMem, stageProcs = self.pyro_proxy_for_server.getStageMem(i), self.pyro_proxy_for_server.getStageProcs(i)
-                if self.canRun(stageMem, stageProcs, self.runningMem, self.runningProcs):
-                    # reset the idle time, we are running a stage!
-                    self.idle_time = 0
-                    self.runningMem += stageMem
-                    self.runningProcs += stageProcs
-                    # The multiprocessing library must pickle things in order to execute them.
-                    # I wanted the following function (runStage) to be a function of the pipelineExecutor
-                    # class. That way we can access self.serverURI and self.clientURI from
-                    # within the function. However, bound methods are not picklable (a bound method
-                    # is a method that has "self" as its first argument, because if I understand 
-                    # this correctly, that binds the function to a class instance). There is
-                    # a way to make a bound function picklable, but this seems cumbersome. So instead
-                    # runStage is now a standalone function.
-                    result = self.pool.apply_async(runStage, (self.serverURI, self.clientURI, i))
-                                                   
-                    self.runningChildren.append(ChildProcess(i, result, stageMem, stageProcs))
-                    logger.debug("Added stage %i to the running pool.", i)
-                else:
-                    logger.debug("Not enough resources to run stage %i. ", i)
-                    self.pyro_proxy_for_server.requeue(i)
-                    # TODO does it make sense to sleep here? might change when smarter...
-                    time.sleep(POLLING_INTERVAL)
+        if self.runningMem == 0 and self.runningProcs == 0 and self.prev_time:
+            logger.debug("Current idle time: %d, and total seconds allowed: %d", self.idle_time, self.time_to_seppuku * 60)
+            self.idle_time += self.current_time - self.prev_time
+
+        if self.is_seppuku_time():
+            logger.debug("Exceeded allowed idle time... Seppuku!")
+            return False
+
+        if self.is_time_to_drain():
+            logger.debug("Exceeded allowed time to accept jobs... not getting any new ones!")
+            self.accept_jobs = False
+            
+        # It is possible that the executor does not accept any new jobs
+        # anymore. If that is the case, the executor should shut down as
+        # soon as all current running jobs (children) have finished
+        if self.accept_jobs == False and len(self.runningChildren) == 0:
+            # that's it, we're done. Nothing is running anymore
+            # and no jobs can be accepted anymore.
+            logger.debug("Now shutting down because not accepting new jobs and finished running jobs.")
+            return False
+        # TODO we get only one stage per loop iteration, so we have to wait for
+        # another event/timeout to get another.  In general we might want to 
+        # call getRunnableStageIndex multiple times (or create getR--S--Indices)
+        # (setting the event is somewhat hackish as it confuses the control flow)
+        flag, i = self.pyro_proxy_for_server.getRunnableStageIndex()
+        if flag == "done":
+            return False
+        elif flag == "wait":
+            logger.debug("No additional runnable stages currently available")
+            return True
+        elif flag == "index":
+            # Before running stage, check usable mem & procs
+            logger.debug("Considering stage %i", i)
+            stageMem, stageProcs = self.pyro_proxy_for_server.getStageMem(i), self.pyro_proxy_for_server.getStageProcs(i)
+            if self.canRun(stageMem, stageProcs, self.runningMem, self.runningProcs):
+                # reset the idle time, we are running a stage!
+                self.idle_time = 0
+                self.runningMem += stageMem
+                self.runningProcs += stageProcs
+                # The multiprocessing library must pickle things in order to execute them.
+                # I wanted the following function (runStage) to be a function of the pipelineExecutor
+                # class. That way we can access self.serverURI and self.clientURI from
+                # within the function. However, bound methods are not picklable (a bound method
+                # is a method that has "self" as its first argument, because if I understand 
+                # this correctly, that binds the function to a class instance). There is
+                # a way to make a bound function picklable, but this seems cumbersome. So instead
+                # runStage is now a standalone function.
+                result = self.pool.apply_async(runStage, (self.serverURI, self.clientURI, i))
+
+                self.runningChildren.append(ChildProcess(i, result, stageMem, stageProcs))
+                logger.debug("Added stage %i to the running pool.", i)
             else:
-                raise Exception("Got invalid flag from server: %s" % flag)
+                logger.debug("Not enough resources to run stage %i. ", i)
+                self.pyro_proxy_for_server.requeue(i)
+            return True
+        else:
+            raise Exception("Got invalid flag from server: %s" % flag)
                 
-        logger.debug("main loop finished")
 
 
 ##########     ---     Start of program     ---     ##########   
