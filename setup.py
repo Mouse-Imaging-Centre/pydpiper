@@ -3,7 +3,7 @@
 from distutils.core import setup
 
 setup(name='pydpiper',
-      version='1.6',
+      version='1.7',
       license='Modified BSD',
       description='Python code for flexible pipeline control',
       long_description = 'Python code for flexible pipeline control', 

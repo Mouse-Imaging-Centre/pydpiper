@@ -10,12 +10,9 @@ import atoms_and_modules.minc_parameters as mp
 from os.path import abspath
 from optparse import OptionGroup
 import logging
-import Pyro
 import sys
 
 logger = logging.getLogger(__name__)
-
-Pyro.config.PYRO_MOBILE_CODE=1
 
 def addLSQ6OptionGroup(parser):
     """

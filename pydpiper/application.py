@@ -5,7 +5,6 @@ from pydpiper.file_handling import makedirsIgnoreExisting
 from pydpiper.pipeline_executor import addExecutorOptionGroup, noExecSpecified
 from datetime import datetime
 from pkg_resources import get_distribution
-import Pyro
 import logging
 import networkx as nx
 import sys
@@ -70,11 +69,10 @@ class AbstractApplication(object):
                 ... 
            
           if __name__ == "__main__":
-              application = ConcreteApplication()
+              application = MyApplication()
               application.start()
     """
     def __init__(self):
-        Pyro.config.PYRO_MOBILE_CODE=1 
         self.parser = MyParser()
         self.__version__ = get_distribution("pydpiper").version
     
@@ -159,7 +157,7 @@ class AbstractApplication(object):
 
     def setup_logger(self):
         """sets logging info specific to application"""
-        FORMAT = '%(asctime)-15s %(name)s %(levelname)s: %(message)s'
+        FORMAT = '%(asctime)-15s %(name)s %(levelname)s %(process)d/%(threadName)s: %(message)s'
         now = datetime.now()  
         FILENAME = str(self.appName) + "-" + now.strftime("%Y%m%d-%H%M%S%f") + ".log"
         logging.basicConfig(filename=FILENAME, format=FORMAT, level=logging.DEBUG)

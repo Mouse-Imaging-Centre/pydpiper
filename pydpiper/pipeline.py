@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 
 import networkx as nx
-import Pyro
 import Queue
 import cPickle as pickle
 import os
@@ -15,10 +14,11 @@ from multiprocessing import Process, Event
 import file_handling as fh
 import pipeline_executor as pe
 import logging
+import Pyro4
 
 logger = logging.getLogger(__name__)
 
-Pyro.config.PYRO_MOBILE_CODE=1 
+sys.excepthook = Pyro4.util.excepthook
 
 class PipelineFile():
     def __init__(self, filename):
@@ -142,10 +142,8 @@ class CmdStage(PipelineStage):
     def __repr__(self):
         return(" ".join(self.cmd))
 
-class Pipeline(Pyro.core.SynchronizedObjBase):
+class Pipeline():
     def __init__(self):
-        # initialize the remote objects bits
-        Pyro.core.SynchronizedObjBase.__init__(self)
         # the core pipeline is stored in a directed graph. The graph is made
         # up of integer indices
         self.G = nx.DiGraph()
@@ -155,7 +153,7 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
         # a queue of the stages ready to be run - contains indices
         self.runnable = Queue.Queue()
         # a list of currently running stages
-        self.currently_running_stage = []
+        self.currently_running_stages = []
         # the current stage counter
         self.counter = 0
         # hash to keep the output to stage association
@@ -186,7 +184,7 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
         self.verbose = verbosity
         
     def pipelineFullyCompleted(self):
-        return( (len(self.stages) == len(self.processedStages)) )
+        return (len(self.stages) == len(self.processedStages))
         
     def addStage(self, stage):
         """adds a stage to the pipeline"""
@@ -307,16 +305,8 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
         logger.info("Graph heads: " + str(graphHeads))
     def getStage(self, i):
         """given an index, return the actual pipelineStage object"""
-        # June 2014, this function returns a PipelineStage object. 
-        # We are currently using Pyro 3, and for reasons not 100%
-        # clear to me, this does not work anymore. Only standard
-        # variables such as strings/integers can be passed. (Note 
-        # that pipeline_executor has access to the class definition
-        # of a PipelineStage, so supposedly it should work)
         return(self.stages[i])
-    # June 2014, following up on the comment above (in getStage), the following
-    # functions are created to facilitate communication between the client
-    # and the server using standard variables
+    # getStage<...> are currently used instead of getStage due to previous bug; could revert:
     def getStageMem(self, i):
         return(self.stages[i].mem)
     def getStageProcs(self,i):
@@ -327,15 +317,23 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
         return(self.stages[i].is_effectively_complete())
     def getStageLogfile(self,i):
         return(self.stages[i].logFile)
-    # \ June 2014
     def getRunnableStageIndex(self):
-        """returns the next runnable stage, or None"""
-        if self.runnable.empty():
-            return None
+        """Return a tuple of a status flag ("done" if all stages are finished,
+        "wait" if no stages are currently runnable, or "index" if a stage is
+        available) and the next runnable stage if the flag is "index", otherwise
+        None"""
+
+        if self.allStagesComplete():
+            return ("done", None)
+        elif self.runnable.empty():
+            return ("wait", None)
         else:
             index = self.runnable.get()
-            self.stages[index].setRunning()
-            return index
+            self.stages[index].setRunning() # FIXME getters shouldn't touch state
+            return ("index", index)
+
+    def allStagesComplete(self):
+        return len(self.processedStages) == len(self.stages)
         
     def setStageStarted(self, index, clientURI=None):
         URIstring = " "
@@ -344,18 +342,18 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
         logger.debug("Starting Stage " + str(index) + ": " + str(self.stages[index]) +
                      URIstring)
         # add stage to the list of currently running jobs
-        self.currently_running_stage.append(index)
+        self.currently_running_stages.append(index)
 
     def checkIfRunnable(self, index):
         """stage added to runnable queue if all predecessors finished"""
         canRun = True
         logger.debug("Checking if stage " + str(index) + " is runnable ...")
-        if self.stages[index].isFinished() == True:
+        if self.stages[index].isFinished():
             canRun = False
         else:
             for i in self.G.predecessors(index):              
                 s = self.getStage(i)
-                if s.isFinished() == False:
+                if not s.isFinished():
                     canRun = False
         logger.debug("Stage " + str(index) + " Runnable: " + str(canRun))
         return canRun
@@ -366,7 +364,7 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
         self.stages[index].setFinished()
         self.processedStages.append(index)
         # remove job from currently running processes
-        self.currently_running_stage.remove(index)
+        self.currently_running_stages.remove(index)
         if save_state: 
             self.selfPickle()
         for i in self.G.successors(index):
@@ -380,10 +378,10 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
         # read write issue (NFS race condition?). At least that's what I think is 
         # happening, so trying this to see whether it solves the issue.
         num_retries = self.stages[index].getNumberOfRetries()
-        if(num_retries < 2):
+        if num_retries < 2:
             self.stages[index].increaseNumberOfRetries()
             # remove job from currently running processes
-            self.currently_running_stage.remove(index)
+            self.currently_running_stages.remove(index)
             logger.debug("RETRYING: ERROR in Stage " + str(index) + ": " + str(self.stages[index]))
             logger.debug("RETRYING: adding this stage back to the runnable queue.")
             logger.debug("RETRYING: Logfile for Stage " + str(self.stages[index].logFile))
@@ -393,13 +391,13 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
             self.stages[index].setFailed()
             logger.info("ERROR in Stage " + str(index) + ": " + str(self.stages[index]))
             # This is something we should also directly report back to the user:
-            print("\nERROR in Stage %s: %s" % (str(index),str(self.stages[index])))
+            print("\nERROR in Stage %s: %s" % (str(index), str(self.stages[index])))
             print("Logfile for (potentially) more information:\n%s\n" % self.stages[index].logFile)
             sys.stdout.flush()
             self.processedStages.append(index)
             self.failed_stages += 1
             # remove job from currently running processes
-            self.currently_running_stage.remove(index)
+            self.currently_running_stages.remove(index)
             for i in nx.dfs_successor(self.G, index).keys():
                 self.processedStages.append(i)
 
@@ -414,7 +412,7 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
         self.computeGraphHeads()
         
     """
-        Returns 1 unless all stages are finished
+        Returns True unless all stages are finished, then False
         
         This function also checks to see whether executors can be launched. The
         server keeps track of how many executors are launched/registered. If the
@@ -425,26 +423,37 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
     def continueLoop(self):
         # check to see whether new executors need to be launched
         executors_to_launch = self.numberOfExecutorsToLaunch()
-        if(executors_to_launch > 0):
+        if executors_to_launch > 0:
             # launch some executors!
             self.launchExecutorfromServer(executors_to_launch)
         
         # exit if there are still stages that need to be run, 
         # but when there are no runnable nor any running stages left
-        if(self.runnable.empty() and
-           (len(self.currently_running_stage) == 0) and
-            self.failed_stages > 0):
+        if (self.runnable.empty() and
+            len(self.currently_running_stages) == 0
+            and self.failed_stages > 0):
             # nothing running, nothing can be run, but we're
             # also not done processing all stages
             logger.info("ERROR: no more runnable stages, however not all stages have finished. Going to shut down.")
             # This is something we should also directly report back to the user:
-            sys.stdout.flush()
             print("\nERROR: no more runnable stages, however not all stages have finished. Going to shut down.\n")
-            return(False)
+            sys.stdout.flush()
+            return False
+
+        if not self.allStagesComplete():
+            return True
+        #elif len(self.clients) > 0:
+            # this branch is to allow clients asking for more jobs to shutdown
+            # gracefully when the server has no more jobs
+            # since it might hang the server if a client has become unresponsive
+            # it's currently commented.  We might turn it back on once the server
+            # has a way to detect unresponsive clients.
+            # TODO what if a launched_and_waiting client registers here?
+        #    return True
+        else:
+            logger.debug("Server daemon shutting down")
+            return False
             
-        # are there still stages that need to be run:
-        return(len(self.stages) > len(self.processedStages))
-        
     """
         Returns an integer indicating the number of executors to launch
         
@@ -470,51 +479,79 @@ class Pipeline(Pyro.core.SynchronizedObjBase):
                 # there are runnable stages, and there is room to launch 
                 # additional executors
                 executors_to_launch = min(self.runnable.qsize(), executor_launch_room)
-        return(executors_to_launch)
+        return executors_to_launch
         
     def launchExecutorfromServer(self, number_to_launch):
         # As the function name suggests, here we launch executors!
         try:
-            logger.debug("Launching %i executors" % number_to_launch)
+            logger.debug("Launching %i executors", number_to_launch)
             processes = [Process(target=launchPipelineExecutor, args=(self.main_options_hash,self.programName,)) for i in range(number_to_launch)]
-            for p in processes :
+            for p in processes:
                 p.start()
                 # Update the number of clients that has been launched
                 self.increaseLaunchedClients()
         except:
             logger.exception("Failed launching executors from the server.")
         
-        
     def getProcessedStageCount(self):
-        return(len(self.processedStages))
-    def register(self, client):
+        return len(self.processedStages)
+
+    def registerClient(self, client):
         # Adds new client to array of registered clients. If the server launched
         # its own clients, we should remove 1 from the number of launched and waiting
         # clients (It's possible though that users launch clients themselves. In that 
         # case we should not decrease this variable)
         self.clients.append(client)
-        if(self.number_launched_and_waiting_clients > 0):
+        if self.number_launched_and_waiting_clients > 0:
             self.number_launched_and_waiting_clients -= 1
-        if(self.verbose):
-            print("Client   registered   (banzai!): " + str(client))
-    def unregister(self, client):
+        if self.verbose:
+            print("Client registered (banzai!): %s" % client)
+
+    def unregisterClient(self, client):
         # removes a client from the array of registered clients. An executor 
         # calls this method when it decides on its own to shut down
-        if str(client) in self.clients: 
-            self.clients.remove(str(client))
-            if(self.verbose):
-                print("Client un-registered (seppuku!): " + str(client))
+        if client in self.clients:
+            self.clients.remove(client)
+            if self.verbose:
+                print("Client un-registered (seppuku!): " + client)
         else:
-            if(self.verbose):
-                print("Unable to un-register client: " + str(client))
+            if self.verbose:
+                print("Unable to un-register client: " + client)
+
     def increaseLaunchedClients(self):
-        # increase the number of launched (and waiting) client with 1
         self.number_launched_and_waiting_clients += 1
+
+    def printShutdownMessage(self):
+        # it is possible that pipeline.continueLoop returns false, even though the
+        # pipeline is not completed (for instance, when stages failed, and no more stages
+        # can be run) so check that in order to provide the correct feedback to the user
+        print("\n\n######################################################")
+        if self.pipelineFullyCompleted():
+            print("All pipeline stages have been processed. \nDaemon unregistering " 
+              + str(len(self.clients)) + " client(s) and shutting down...\n\n")
+        else:
+            print("Not all pipeline stages have been processed,")
+            print("however there are no more stages that can be run.")
+            print("Daemon unregistering " + str(len(self.clients)) + " client(s) and shutting down...\n\n")
+        sys.stdout.flush()
+        print("It is now: %s" % datetime.ctime(datetime.now()))
+        print("Sometimes the communication with the executors fails.")
+        print("If after 5 minutes from now, the program did not ")
+        print("shut down, please press: ctrl+c")
+        print("\nIn that case, if running on sge, you might have to use qdel on one or several jobs")
+        print("######################################################\n\n\n")
+        print("\n\n######################################################")
+        print("Objects successfully unregistered and daemon shutdown.")
+        if self.pipelineFullyCompleted():
+            print("Pipeline finished successfully!")
+        else:
+            print("Pipeline failed...")
+        print("######################################################\n")
 
 def launchPipelineExecutor(options, programName=None):
     """Launch pipeline executor directly from pipeline"""
     pipelineExecutor = pe.pipelineExecutor(options)
-    if options.queue=="sge":
+    if options.queue == "sge":
         pipelineExecutor.submitToQueue(programName) 
     else: 
         pe.launchExecutor(pipelineExecutor)    
@@ -522,8 +559,8 @@ def launchPipelineExecutor(options, programName=None):
 def skip_completed_stages(pipeline):
     runnable = []
     while True:
-        i = pipeline.getRunnableStageIndex()                
-        if i == None:
+        flag,i = pipeline.getRunnableStageIndex()                
+        if i == None: # FIXME possibly broken by changes to getRunnableStageIndex?
             break
         
         s = pipeline.getStage(i)
@@ -537,7 +574,7 @@ def skip_completed_stages(pipeline):
         
         pipeline.setStageStarted(i, "PYRO://Previous.Run")
         pipeline.setStageFinished(i, save_state = False)
-        logger.debug("skipping stage %i" % i)
+        logger.debug("skipping stage %i", i)
     
     for i in runnable:
         pipeline.requeue(i)
@@ -558,106 +595,43 @@ def launchServer(pipeline, options, e):
     else:   
         verboseprint = lambda *a: None      # do-nothing
     
-    """Starts Pyro Server in a separate thread"""
-    Pyro.core.initServer()
-    # Due to changes in how the network address is resolved, the Daemon on Linux will basically use:
-    #
-    # import socket
-    # socket.gethostbyname(socket.gethostname())
-    #
-    # depending on how your machine is set up, this could return localhost ("127...")
-    # to avoid this from happening, provide the correct network address from the start:
-    network_address = [(s.connect(('8.8.8.8', 80)), s.getsockname()[0], s.close()) for s in [socket.socket(socket.AF_INET, socket.SOCK_DGRAM)]][0][1]
-    daemon = Pyro.core.Daemon(host=network_address)
+    # getIpAddress is similar to socket.gethostbyname(...) 
+    # but uses a hack to attempt to avoid returning localhost (127....)
+    network_address = Pyro4.socketutil.getIpAddress(socket.gethostname(),
+                                                    workaround127 = True, ipVersion = 4)
+    daemon = Pyro4.core.Daemon(host=network_address)
+    pipelineURI = daemon.register(pipeline)
     
-    #Note: Pyro NameServer must be started for this function to work properly
     if options.use_ns:
-        ns=Pyro.naming.NameServerLocator().getNS()
-        daemon.useNameServer(ns)
-    
-    uri=daemon.connect(pipeline, "pipeline")
-    # set the verbosity of the pipeline before running it
-    pipeline.setVerbosity(options.verbose)
-    verboseprint("Daemon is running on port: " + str(daemon.port))
-    verboseprint("The object's uri is: " + str(uri))
-
+        ns = Pyro4.locateNS()
+        ns.register("pipeline", pipelineURI, safe=True)
+    else:
     # If not using Pyro NameServer, must write uri to file for reading by client.
-    if not options.use_ns:
         uf = open(options.urifile, 'w')
-        uf.write(str(uri))
+        uf.write(pipelineURI.asString())
         uf.close()
     
+    # set the verbosity of the pipeline before running it
+    pipeline.setVerbosity(options.verbose)
+    verboseprint("Daemon is running at: %s" % daemon.locationStr)
+    verboseprint("The pipeline's uri is: %s" % str(pipelineURI))
+
     e.set()
     
     try:
-        # pipeline.continueLoop will return 1 unless all stages have finished.
+        # pipeline.continueLoop returns True unless all stages have finished.
         # That method also keeps track of the number of active/running executors
         # and launches new executors if necessary
-        daemon.requestLoop(pipeline.continueLoop) 
+        daemon.requestLoop(pipeline.continueLoop)
     except KeyboardInterrupt:
         logger.exception("Caught keyboard interrupt, killing executors and shutting down server.")
         print("\nKeyboardInterrupt caught: cleaning up, shutting down executors.\n")
-        for c in pipeline.clients[:]:
-            try: 
-                verboseprint("Invoking the shutdown call in : " + str(c))
-                sys.stdout.flush()
-                clientObj = Pyro.core.getProxyForURI(c)
-                clientObj.generalShutdownCall()
-            except Pyro.errors.ConnectionClosedError:
-                # this error should only happen when the executor has shut itself down already
-                verboseprint("Client already shutdown: %s" % str(c))
-            except Pyro.errors.ProtocolError:
-                if( sys.exc_info()[1] == "connection failed"):
-                    verboseprint("Client already shutdown: %s" % str(c))
-            except :
-                logger.exception("Failed to successfully de-register all clients")
-                verboseprint("Failed to successfully de-register all clients")
-                raise
-        verboseprint("\n\nObjects successfully unregistered and daemon shutdown.\n")
-        daemon.shutdown(True)
+        sys.stdio.flush()
     except:
         logger.exception("Failed running server in daemon.requestLoop. Server shutting down.")
-    else:
-        try:
-            # it is possible that pipeline.continueLoop returns false, even though the
-            # pipeline is not completed (for instance, when stages failed, and no more stages
-            # can be run) so check that in order to provide the correct feedback to the user
-            print("\n\n######################################################")
-            if(pipeline.pipelineFullyCompleted()):
-                print("All pipeline stages have been processed. \nDaemon unregistering " 
-                  + str(len(pipeline.clients)) + " client(s) and shutting down...\n\n")
-            else:
-                print("Not all pipeline stages have been processed,")
-                print("however there are no more stages that can be run.")
-                print("Daemon unregistering " + str(len(pipeline.clients)) + " client(s) and shutting down...\n\n")
-            # we are still have issues properly shutting down the server and clients once in
-            # a while. That happens in the calls to the executors below. In case the server
-            # doesn't properly shut down, the user should press ctrl+c once which should 
-            # do the trick
-            sys.stdout.flush()
-            print("It is now: %s" % datetime.ctime(datetime.now()))
-            print("Sometimes the communication with the executors fails.")
-            print("If after 5 minutes from now, the program did not ")
-            print("shut down, please press: ctrl+c")
-            print("\nIn that case, if running on sge, you might have to use qdel on one or several jobs")
-            print("######################################################\n\n\n")
-            sys.stdout.flush()
-            for c in pipeline.clients[:]:
-                verboseprint("Invoking the shutdown call in : " + str(c))
-                sys.stdout.flush()
-                clientObj = Pyro.core.getProxyForURI(c)
-                clientObj.generalShutdownCall()
-            daemon.shutdown(True)
-            sys.stdout.flush()
-            print("\n\n######################################################")
-            print("Objects successfully unregistered and daemon shutdown.")
-            if(pipeline.pipelineFullyCompleted()):
-                print("Pipeline finished successfully!")
-            else:
-                print("Pipeline failed...")
-            print("######################################################\n")
-        except:
-            logger.exception("Failed to successfully de-register all clients")
+    finally:
+        daemon.shutdown()
+        pipeline.printShutdownMessage()
 
 def flatten_pipeline(p):
     """return a list of tuples for each stage.
@@ -745,6 +719,7 @@ def pipelineDaemon(pipeline, options=None, programName=None):
     try:
         process.join()
     except KeyboardInterrupt:
+        print "\nCaught KeyboardInterrupt; exiting\n"
         sys.exit(0)
         
     
