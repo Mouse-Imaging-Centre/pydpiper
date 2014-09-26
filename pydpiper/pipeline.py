@@ -716,7 +716,7 @@ def pipelineDaemon(pipeline, options=None, programName=None):
     pipeline.main_options_hash = options
     pipeline.programName = programName
     logger.debug("Starting server...")
-    process = Process(target=launchServer, args=(pipeline,options,e))
+    process = Process(target=launchServer, args=(pipeline,options))
     process.start()
   
     try:
