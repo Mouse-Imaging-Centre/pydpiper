@@ -388,7 +388,7 @@ class pipelineExecutor():
         else:
             # a None returncode is also considered a failure
             self.pyro_proxy_for_server.setStageFailed(i)
-        self.e.set()  # some work has finished and server notified, so wake up
+        self.e.set()  # some work finished and server notified, so wake up
 
     # use an event set/timeout system to run the executor mainLoop -
     # we might want to pass some extra information in addition to waking the system
@@ -398,6 +398,9 @@ class pipelineExecutor():
         logger.debug("Main loop finished")
 
     def mainFn(self):
+        """This function is called by the executor's eventLoop whenever the event
+        `e` is set or after WAIT_TIMEOUT seconds.  It returns True if the loop
+        should continue calling it, otherwise False."""
         logger.debug("executor loop - memory used: %s, cores in use: %s", self.runningMem, self.runningProcs)
 
         self.prev_time = self.current_time
@@ -405,7 +408,9 @@ class pipelineExecutor():
 
         # a bit coarse but we can't call `free_resources` directly in a function
         # such as notifyStageTerminated which is called from _within_ `runStage`
-        # since resources won't be freed soon enough, causing a false resource starvation
+        # since resources won't be freed soon enough, causing a false resource starvation.
+        # we might like to move this outside of the mainFn so that mainFn could 
+        # terminate sooner but still be `principled`
         self.free_resources()
 
         if self.runningMem == 0 and self.runningProcs == 0 and self.prev_time:
@@ -422,15 +427,12 @@ class pipelineExecutor():
             
         # TODO the purpose of this mainLoop is to get and run new jobs from the server.
         # Therefore, we'd like to exit once it's time for us to shutdown.
-        # Currently, we do this if the server notifies that all jobs are farmed out
-        # or if we seppuku, but *we continue looping even when is_time_to_drain*.
+        # Currently, we do this if the server notifies that all jobs are done
+        # or if we seppuku, but we continue looping even when is_time_to_drain.
         # This is because the call to free_resources is here (doesn't matter for
         # is_seppuku_time as we're already idle in that case; already a "bug" in 
-        # case of a server shutdown), although that doesn't
-        # matter too much as there will never be new jobs (unless a new server is started)
-        # ALSO, we might like to split this mainFn into a few event-driven functions
-        # but this introduces questions of control - I guess restore a general shutdown
-        # flag/event ...
+        # case of a server-initiated shutdown, although that doesn't
+        # matter too much as there will never be new jobs unless a new server is started).
 
         # It is possible that the executor does not accept any new jobs
         # anymore. If that is the case, the executor should shut down as
