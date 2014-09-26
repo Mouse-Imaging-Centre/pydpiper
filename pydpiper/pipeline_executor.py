@@ -208,7 +208,7 @@ class pipelineExecutor():
         # options cannot be null when used to instantiate pipelineExecutor
         self.mem = options.mem
         self.proc = options.proc
-        self.queue = options.queue   
+        self.queue = options.queue
         self.sge_queue_opts = options.sge_queue_opts    
         self.ns = options.use_ns
         self.uri = options.urifile
@@ -239,6 +239,11 @@ class pipelineExecutor():
         self.serverURI = None
         self.current_running_job_pids = []
         self.registered_with_server = False
+        # we associate an event with each executor which is set when jobs complete.
+        # in the future it might also be set by the server, and we might have more
+        # than one event (for reclaiming, server messages, ...)
+        self.e = threading.Event()
+
         
     def registeredWithServer(self):
         self.registered_with_server = True
@@ -261,6 +266,8 @@ class pipelineExecutor():
     def setProxyForServer(self, proxy):
         self.pyro_proxy_for_server = proxy
     
+    # TODO rename completeAndExitChildren,generalShutdownCall to something like
+    # normalShutdown, dirtyShutdown
     def generalShutdownCall(self):
         # receive call from server when all stages are processed
         logger.debug("Executor shutting down ...")
@@ -376,20 +383,18 @@ class pipelineExecutor():
                 self.runningChildren.remove(child)
 
     def notifyStageTerminated(self, i, returncode=None):
-        # hack - if we had the ChildProcess we could do better:
-        #self.free_resources()
         if returncode == 0:
             self.pyro_proxy_for_server.setStageFinished(i)
         else:
             # a None returncode is also considered a failure
             self.pyro_proxy_for_server.setStageFailed(i)
+        self.e.set()  # some work has finished and server notified, so wake up
 
     # use an event set/timeout system to run the executor mainLoop -
     # we might want to pass some extra information in addition to waking the system
     def mainLoop(self):
-        e = threading.Event() #TODO make this visible to other methods
         while self.mainFn():
-            e.wait(WAIT_TIMEOUT)
+            self.e.wait(WAIT_TIMEOUT)
         logger.debug("Main loop finished")
 
     def mainFn(self):
@@ -404,8 +409,8 @@ class pipelineExecutor():
         self.free_resources()
 
         if self.runningMem == 0 and self.runningProcs == 0 and self.prev_time:
-            logger.debug("Current idle time: %d, and total seconds allowed: %d", self.idle_time, self.time_to_seppuku * 60)
             self.idle_time += self.current_time - self.prev_time
+            logger.debug("Current idle time: %d, and total seconds allowed: %d", self.idle_time, self.time_to_seppuku * 60)
 
         if self.is_seppuku_time():
             logger.debug("Exceeded allowed idle time... Seppuku!")
@@ -415,6 +420,18 @@ class pipelineExecutor():
             logger.debug("Exceeded allowed time to accept jobs... not getting any new ones!")
             self.accept_jobs = False
             
+        # TODO the purpose of this mainLoop is to get and run new jobs from the server.
+        # Therefore, we'd like to exit once it's time for us to shutdown.
+        # Currently, we do this if the server notifies that all jobs are farmed out
+        # or if we seppuku, but *we continue looping even when is_time_to_drain*.
+        # This is because the call to free_resources is here (doesn't matter for
+        # is_seppuku_time as we're already idle in that case; already a "bug" in 
+        # case of a server shutdown), although that doesn't
+        # matter too much as there will never be new jobs (unless a new server is started)
+        # ALSO, we might like to split this mainFn into a few event-driven functions
+        # but this introduces questions of control - I guess restore a general shutdown
+        # flag/event ...
+
         # It is possible that the executor does not accept any new jobs
         # anymore. If that is the case, the executor should shut down as
         # soon as all current running jobs (children) have finished
@@ -423,6 +440,7 @@ class pipelineExecutor():
             # and no jobs can be accepted anymore.
             logger.debug("Now shutting down because not accepting new jobs and finished running jobs.")
             return False
+
         # TODO we get only one stage per loop iteration, so we have to wait for
         # another event/timeout to get another.  In general we might want to 
         # call getRunnableStageIndex multiple times (or create getR--S--Indices)

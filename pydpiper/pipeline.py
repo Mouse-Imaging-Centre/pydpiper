@@ -14,7 +14,11 @@ from multiprocessing import Process, Event
 import file_handling as fh
 import pipeline_executor as pe
 import logging
+import threading
 import Pyro4
+
+WAIT_TIMEOUT = 5.0
+LOOP_INTERVAL = 5.0
 
 logger = logging.getLogger(__name__)
 
@@ -421,12 +425,6 @@ class Pipeline():
         the max number of executors it can launch
     """
     def continueLoop(self):
-        # check to see whether new executors need to be launched
-        executors_to_launch = self.numberOfExecutorsToLaunch()
-        if executors_to_launch > 0:
-            # launch some executors!
-            self.launchExecutorfromServer(executors_to_launch)
-        
         # exit if there are still stages that need to be run, 
         # but when there are no runnable nor any running stages left
         if (self.runnable.empty() and
@@ -453,6 +451,15 @@ class Pipeline():
         else:
             logger.debug("Server daemon shutting down")
             return False
+
+    def mainLoop(self):
+        while self.continueLoop():
+            # check to see whether new executors need to be launched
+            executors_to_launch = self.numberOfExecutorsToLaunch()
+            if executors_to_launch > 0:
+                # launch some executors!
+                self.launchExecutorsfromServer(executors_to_launch)
+            time.sleep(LOOP_INTERVAL)
             
     """
         Returns an integer indicating the number of executors to launch
@@ -481,7 +488,7 @@ class Pipeline():
                 executors_to_launch = min(self.runnable.qsize(), executor_launch_room)
         return executors_to_launch
         
-    def launchExecutorfromServer(self, number_to_launch):
+    def launchExecutorsfromServer(self, number_to_launch):
         # As the function name suggests, here we launch executors!
         try:
             logger.debug("Launching %i executors", number_to_launch)
@@ -532,21 +539,14 @@ class Pipeline():
         else:
             print("Not all pipeline stages have been processed,")
             print("however there are no more stages that can be run.")
-            print("Daemon unregistering " + str(len(self.clients)) + " client(s) and shutting down...\n\n")
-        sys.stdout.flush()
-        print("It is now: %s" % datetime.ctime(datetime.now()))
-        print("Sometimes the communication with the executors fails.")
-        print("If after 5 minutes from now, the program did not ")
-        print("shut down, please press: ctrl+c")
-        print("\nIn that case, if running on sge, you might have to use qdel on one or several jobs")
-        print("######################################################\n\n\n")
-        print("\n\n######################################################")
+            print("Daemon unregistering " + str(len(self.clients)) + " client(s) and shutting down...\n\n\n")
         print("Objects successfully unregistered and daemon shutdown.")
         if self.pipelineFullyCompleted():
             print("Pipeline finished successfully!")
         else:
             print("Pipeline failed...")
         print("######################################################\n")
+        sys.stdout.flush()
 
 def launchPipelineExecutor(options, programName=None):
     """Launch pipeline executor directly from pipeline"""
@@ -593,7 +593,7 @@ def launchServer(pipeline, options, e):
                 print arg,
             print
     else:   
-        verboseprint = lambda *a: None      # do-nothing
+        verboseprint = lambda *a: None
     
     # getIpAddress is similar to socket.gethostbyname(...) 
     # but uses a hack to attempt to avoid returning localhost (127....)
@@ -603,6 +603,8 @@ def launchServer(pipeline, options, e):
     pipelineURI = daemon.register(pipeline)
     
     if options.use_ns:
+        # in the future we might want to launch a nameserver here
+        # instead of relying on a separate executable running
         ns = Pyro4.locateNS()
         ns.register("pipeline", pipelineURI, safe=True)
     else:
@@ -622,7 +624,10 @@ def launchServer(pipeline, options, e):
         # pipeline.continueLoop returns True unless all stages have finished.
         # That method also keeps track of the number of active/running executors
         # and launches new executors if necessary
-        daemon.requestLoop(pipeline.continueLoop)
+        t = threading.Thread(target=daemon.requestLoop)
+        t.daemon = True
+        t.start()
+        pipeline.mainLoop()
     except KeyboardInterrupt:
         logger.exception("Caught keyboard interrupt, killing executors and shutting down server.")
         print("\nKeyboardInterrupt caught: cleaning up, shutting down executors.\n")
@@ -630,7 +635,9 @@ def launchServer(pipeline, options, e):
     except:
         logger.exception("Failed running server in daemon.requestLoop. Server shutting down.")
     finally:
+        time.sleep(2 * WAIT_TIMEOUT)
         daemon.shutdown()
+        t.join()
         pipeline.printShutdownMessage()
 
 def flatten_pipeline(p):
@@ -683,7 +690,7 @@ def pipelineDaemon(pipeline, options=None, programName=None):
     """Launches Pyro server and (if specified by options) pipeline executors"""
 
     #check for valid pipeline 
-    if pipeline.runnable.empty()==None:
+    if pipeline.runnable.empty():
         print "Pipeline has no runnable stages. Exiting..."
         sys.exit()
 
