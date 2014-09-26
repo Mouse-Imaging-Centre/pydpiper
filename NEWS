@@ -1,3 +1,20 @@
+New in Version 1.7
+==================
+* the communication between the server and the executors has been upgraded
+  from Pyro3 to Pyro4. Currently the following environment variables should
+  be set:
+  
+  PYRO_DETAILED_TRACEBACK=True
+  PYRO_COMMTIMEOUT=2
+  PYRO_SERVERTYPE=multiplex
+  PYRO_LOGLEVEL=DEBUG
+  
+* the stiffness, weight and similarity parameters for minctracc can now be
+  set through the non linear protocol in MBM.py 
+* all output from the server/executors will be stored in the current 
+  working directory
+
+
 New in Version 1.6
 ====================
 * fix to MAGeT.py. Solves issues with the voxel_vote command. 

@@ -5,3 +5,6 @@
 "gradient";TRUE;TRUE;TRUE;TRUE;TRUE;TRUE
 "w_translations";0.4;0.4;0.4;0.4;0.4;0.4
 "optimization";"-use_simplex";"-use_simplex";"-use_simplex";"-use_simplex";"-use_simplex";"-use_simplex"
+"stiffness";0.5;0.5;0.5;0.5;0.5;0.5
+"weight";0.3;0.3;0.3;0.3;0.3;0.3
+"similarity";0.5;0.5;0.5;0.5;0.5;0.5
