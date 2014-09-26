@@ -131,10 +131,10 @@ def launchExecutor(executor):
         daemon.shutdown()
         sys.exit(0)
     else:
+        executor.completeAndExitChildren()
+        logger.info("Executor shutting down.")
         daemon.shutdown()
         t.join()
-        logger.info("Executor shutting down.")
-        executor.completeAndExitChildren()
 
 def runStage(serverURI, clientURI, i):
     ## Proc needs its own proxy as it's independent of executor

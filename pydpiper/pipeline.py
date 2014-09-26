@@ -579,7 +579,7 @@ def skip_completed_stages(pipeline):
     for i in runnable:
         pipeline.requeue(i)
         
-def launchServer(pipeline, options, e):
+def launchServer(pipeline, options):
     # first follow up on the previously reported total number of 
     # stages in the pipeline with how many have already finished:
     pipeline.printNumberProcessedStages()
@@ -618,8 +618,6 @@ def launchServer(pipeline, options, e):
     verboseprint("Daemon is running at: %s" % daemon.locationStr)
     verboseprint("The pipeline's uri is: %s" % str(pipelineURI))
 
-    e.set()
-    
     try:
         # pipeline.continueLoop returns True unless all stages have finished.
         # That method also keeps track of the number of active/running executors
@@ -707,7 +705,6 @@ def pipelineDaemon(pipeline, options=None, programName=None):
     logger.debug("Examining filesystem to determine skippable stages...")
     skip_completed_stages(pipeline)
     
-    e = Event()
     logger.debug("Prior to starting server, total stages %i. Number processed: %i.", 
                  len(pipeline.stages), len(pipeline.processedStages))
     logger.debug("Number of stages in runnable index (size of queue): %i",
@@ -719,14 +716,11 @@ def pipelineDaemon(pipeline, options=None, programName=None):
     pipeline.main_options_hash = options
     pipeline.programName = programName
     logger.debug("Starting server...")
-    process = Process(target=launchServer, args=(pipeline,options,e,))
+    process = Process(target=launchServer, args=(pipeline,options,e))
     process.start()
-    e.wait()
   
     try:
         process.join()
     except KeyboardInterrupt:
         print "\nCaught KeyboardInterrupt; exiting\n"
-        sys.exit(0)
-        
-    
+        sys.exit(0)    
