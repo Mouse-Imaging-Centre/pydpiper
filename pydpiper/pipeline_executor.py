@@ -398,10 +398,10 @@ class pipelineExecutor():
         logger.debug("Main loop finished")
 
     def mainFn(self):
-        """This function is called by the executor's eventLoop whenever the event
-        `e` is set or after WAIT_TIMEOUT seconds.  It returns True if the loop
-        should continue calling it, otherwise False."""
-        logger.debug("executor loop - memory used: %s, cores in use: %s", self.runningMem, self.runningProcs)
+        """Return True if it should be called again (i.e., there is more to do
+        before shutting down), otherwise False.
+        This function is called by the executor's eventLoop whenever the event
+        `e` is set or after WAIT_TIMEOUT seconds."""
 
         self.prev_time = self.current_time
         self.current_time = time.time()
@@ -410,16 +410,13 @@ class pipelineExecutor():
         # such as notifyStageTerminated which is called from _within_ `runStage`
         # since resources won't be freed soon enough, causing a false resource starvation.
         # we might like to move this outside of the mainFn so that mainFn could 
-        # terminate sooner but still be `principled`
+        # terminate sooner but still be 'principled', i.e., correctly record current
+        # resources needed
         self.free_resources()
 
         if self.runningMem == 0 and self.runningProcs == 0 and self.prev_time:
             self.idle_time += self.current_time - self.prev_time
             logger.debug("Current idle time: %d, and total seconds allowed: %d", self.idle_time, self.time_to_seppuku * 60)
-
-        if self.is_seppuku_time():
-            logger.debug("Exceeded allowed idle time... Seppuku!")
-            return False
 
         if self.is_time_to_drain():
             logger.debug("Exceeded allowed time to accept jobs... not getting any new ones!")
@@ -434,6 +431,10 @@ class pipelineExecutor():
         # case of a server-initiated shutdown, although that doesn't
         # matter too much as there will never be new jobs unless a new server is started).
 
+        if self.is_seppuku_time():
+            logger.debug("Exceeded allowed idle time... Seppuku!")
+            return False
+
         # It is possible that the executor does not accept any new jobs
         # anymore. If that is the case, the executor should shut down as
         # soon as all current running jobs (children) have finished
@@ -444,16 +445,16 @@ class pipelineExecutor():
             return False
 
         # TODO we get only one stage per loop iteration, so we have to wait for
-        # another event/timeout to get another.  In general we might want to 
-        # call getRunnableStageIndex multiple times (or create getR--S--Indices)
-        # (setting the event is somewhat hackish as it confuses the control flow)
-        flag, i = self.pyro_proxy_for_server.getRunnableStageIndex()
-        if flag == "done":
+        # another event/timeout to get another.  In general we might want 
+        # issueCommand to order multiple stages to be run on the same server
+        # (just setting the event would be somewhat hackish and confuse the control flow)
+        cmd, i = self.pyro_proxy_for_server.issueCommand(clientURI = self.clientURI)
+        if cmd == "shutdown_normally":
             return False
-        elif flag == "wait":
-            logger.debug("No additional runnable stages currently available")
+        elif cmd == "wait":
+            #logger.debug("No additional runnable stages currently available")
             return True
-        elif flag == "index":
+        elif cmd == "run_stage":
             # Before running stage, check usable mem & procs
             logger.debug("Considering stage %i", i)
             stageMem, stageProcs = self.pyro_proxy_for_server.getStageMem(i), self.pyro_proxy_for_server.getStageProcs(i)
@@ -479,7 +480,7 @@ class pipelineExecutor():
                 self.pyro_proxy_for_server.requeue(i)
             return True
         else:
-            raise Exception("Got invalid flag from server: %s" % flag)
+            raise Exception("Got invalid cmd from server: %s" % cmd)
                 
 
 

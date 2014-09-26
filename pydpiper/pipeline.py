@@ -7,6 +7,7 @@ import os
 import sys
 import socket
 import time
+from collections import defaultdict
 from datetime import datetime
 from subprocess import call
 from shlex import split
@@ -58,10 +59,7 @@ class PipelineStage():
         self.number_retries = 0 
 
     def isFinished(self):
-        if self.status == "finished":
-            return True
-        else:
-            return False
+        return self.status == "finished"
     def setRunning(self):
         self.status = "running"
     def setFinished(self):
@@ -81,15 +79,9 @@ class PipelineStage():
     def getHash(self):
         return(hash("".join(self.outputFiles) + "".join(self.inputFiles)))
     def __eq__(self, other):
-        if self.inputFiles == other.inputFiles and self.outputFiles == other.outputFiles:
-            return True
-        else:
-            return False
+        return self.inputFiles == other.inputFiles and self.outputFiles == other.outputFiles
     def __ne__(self, other):
-        if self.inputFiles == other.inputFiles and self.outputFiles == other.outputFiles:
-            return False
-        else:
-            return True
+        return not(__eq__(self,other))
     def getNumberOfRetries(self):
         return self.number_retries
     def increaseNumberOfRetries(self):
@@ -134,12 +126,11 @@ class CmdStage(PipelineStage):
     
     def is_effectively_complete(self):
         """check if this stage is effectively complete (if output files already exist)"""
-        all_files_exist = True
         for output in self.outputFiles + self.inputFiles:
             if not os.path.exists(output):
-                all_files_exist = False
+                return False
                 break
-        return all_files_exist
+        return True
 
     def getHash(self):
         return(hash(" ".join(self.cmd)))
@@ -170,6 +161,11 @@ class Pipeline():
         self.backupFileLocation = None
         # list of registered clients
         self.clients = []
+        # map from clients to jobs running on each client
+        # TODO in principle this subsumes self.clients[] ...
+        # could have a map clientData : clients -> (timestamp,joblist) namedtuples
+        self.clientJobs = defaultdict(list)
+        self.clientTimestamps = {}
         # number of clients (executors) that have been launched by the server
         # we need to keep track of this because even though no (or few) clients
         # are actually registered, a whole bunch of them could be waiting in the
@@ -321,20 +317,32 @@ class Pipeline():
         return(self.stages[i].is_effectively_complete())
     def getStageLogfile(self,i):
         return(self.stages[i].logFile)
-    def getRunnableStageIndex(self):
-        """Return a tuple of a status flag ("done" if all stages are finished,
-        "wait" if no stages are currently runnable, or "index" if a stage is
-        available) and the next runnable stage if the flag is "index", otherwise
-        None"""
 
+    """Given client information, issue commands to the client (along similar
+    lines to getRunnableStageIndex) and update server's internal view of client"""
+    # TODO should this method be used for general client/server communication
+    # or should we have a separate heartbeat/notification system ?
+    def issueCommand(self, clientURI):
+        #TODO this method could also take client's available resources ...
+        flag, i = self.getRunnableStageIndex()
+        if flag == "run_stage":
+            self.stages[i].setRunning() # assume the client will run the stage ...
+        self.clientJobs[clientURI] = self.clientJobs[clientURI] + [i] # TODO ...
+        self.clientTimestamps[clientURI] = time.time()
+        return (flag, i)
+
+    """Return a tuple of a command ("shutdown_normally" if all stages are finished,
+    "wait" if no stages are currently runnable, or "run_stage" if a stage is
+    available) and the next runnable stage if the flag is "run_stage", otherwise
+    None"""
+    def getRunnableStageIndex(self):
         if self.allStagesComplete():
-            return ("done", None)
+            return ("shutdown_normally", None)
         elif self.runnable.empty():
             return ("wait", None)
         else:
             index = self.runnable.get()
-            self.stages[index].setRunning() # FIXME getters shouldn't touch state
-            return ("index", index)
+            return ("run_stage", index)
 
     def allStagesComplete(self):
         return len(self.processedStages) == len(self.stages)
@@ -446,6 +454,9 @@ class Pipeline():
             # since it might hang the server if a client has become unresponsive
             # it's currently commented.  We might turn it back on once the server
             # has a way to detect unresponsive clients.
+            # (also, before shutting down, we currently sleep for longer
+            # than the interval between client connections in order for
+            # clients to realize they need to shut down)
             # TODO what if a launched_and_waiting client registers here?
         #    return True
         else:
@@ -459,6 +470,14 @@ class Pipeline():
             if executors_to_launch > 0:
                 # launch some executors!
                 self.launchExecutorsfromServer(executors_to_launch)
+
+            # look for dead clients and requeue their jobs
+            t = time.time()
+            for client, jobs in self.clientJobs.iteritems():
+                if t - self.clientTimestamps[client] > WAIT_TIMEOUT + 1:
+                    # TODO kill off the client
+                    # TODO requeue the jobs
+            # TODO make this thread-safe ???
             time.sleep(LOOP_INTERVAL)
             
     """
@@ -509,6 +528,7 @@ class Pipeline():
         # clients (It's possible though that users launch clients themselves. In that 
         # case we should not decrease this variable)
         self.clients.append(client)
+        self.clientTimestamps[client] = time.time()
         if self.number_launched_and_waiting_clients > 0:
             self.number_launched_and_waiting_clients -= 1
         if self.verbose:
@@ -559,8 +579,8 @@ def launchPipelineExecutor(options, programName=None):
 def skip_completed_stages(pipeline):
     runnable = []
     while True:
-        flag,i = pipeline.getRunnableStageIndex()                
-        if i == None: # FIXME possibly broken by changes to getRunnableStageIndex?
+        flag,i = pipeline.getRunnableStageIndex()
+        if i == None:
             break
         
         s = pipeline.getStage(i)
@@ -632,8 +652,8 @@ def launchServer(pipeline, options):
         sys.stdio.flush()
     except:
         logger.exception("Failed running server in daemon.requestLoop. Server shutting down.")
-    finally:
-        time.sleep(2 * WAIT_TIMEOUT)
+    finally: #TODO should be else? fix `except` clauses
+        time.sleep(WAIT_TIMEOUT + 1)
         daemon.shutdown()
         t.join()
         pipeline.printShutdownMessage()
@@ -723,4 +743,4 @@ def pipelineDaemon(pipeline, options=None, programName=None):
         process.join()
     except KeyboardInterrupt:
         print "\nCaught KeyboardInterrupt; exiting\n"
-        sys.exit(0)    
+        sys.exit(0)
