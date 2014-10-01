@@ -395,6 +395,7 @@ class pipelineExecutor():
     def mainLoop(self):
         while self.mainFn():
             self.e.wait(WAIT_TIMEOUT)
+	    self.e.clear()
         logger.debug("Main loop finished")
 
     def mainFn(self):
