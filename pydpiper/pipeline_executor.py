@@ -84,8 +84,8 @@ def launchExecutor(executor):
         serverURI = ns.lookup("pipeline")
     else:
         try:
-            uf = open(executor.uri)
-            serverURI = uf.readline()
+            uf = open(executor.uri_file)
+            serverURI = Pyro4.URI(uf.readline())
             uf.close()
         except:
             logger.exception("Problem opening the specified uri file:")
@@ -99,8 +99,8 @@ def launchExecutor(executor):
     p.registerClient(clientURI.asString())
 
     executor.registeredWithServer()
-    executor.setClientURI(clientURI)
-    executor.setServerURI(serverURI)
+    executor.setClientURI(clientURI.asString())
+    executor.setServerURI(serverURI.asString())
     executor.setProxyForServer(p)
     
     logger.info("Connected to %s",  serverURI)
@@ -207,13 +207,13 @@ class pipelineExecutor():
         #self.continueRunning =  True
         # options cannot be null when used to instantiate pipelineExecutor
         self.mem = options.mem
-        self.proc = options.proc
+        self.procs = options.proc
         self.queue = options.queue
         self.sge_queue_opts = options.sge_queue_opts    
         self.ns = options.use_ns
-        self.uri = options.urifile
-        if self.uri==None:
-            self.uri = os.path.abspath(os.curdir + "/" + "uri")
+        self.uri_file = options.urifile
+        if self.uri_file == None:
+            self.uri_file = os.path.abspath(os.curdir + "/" + "uri")
         self.setLogger()
         # the next variable is used to keep track of how long the
         # executor has been continuously idle/sleeping for. Measured
@@ -255,7 +255,7 @@ class pipelineExecutor():
         self.current_running_job_pids.remove(pid)
 
     def initializePool(self):
-        self.pool = Pool(processes = self.proc)
+        self.pool = Pool(processes = self.procs)
         
     def setClientURI(self, cURI):
         self.clientURI = cURI 
@@ -271,7 +271,6 @@ class pipelineExecutor():
     def generalShutdownCall(self):
         # receive call from server when all stages are processed
         logger.debug("Executor shutting down ...")
-        sys.stdout.flush()
 
         # stop the worker processes (children) immediately without completing outstanding work
         # Initially I wanted to stop the running processes using pool.terminate() and pool.join()
@@ -281,7 +280,7 @@ class pipelineExecutor():
         for subprocID in self.current_running_job_pids:
             os.kill(subprocID, signal.SIGTERM)
         if self.registered_with_server:
-            self.pyro_proxy_for_server.unregisterClient(self.clientURI.asString())
+            self.pyro_proxy_for_server.unregisterClient(self.clientURI)
             self.registered_with_server = False
         
     def completeAndExitChildren(self):
@@ -294,7 +293,7 @@ class pipelineExecutor():
             # wait for the worker processes (children) to exit (must be called after terminate() or close()
             self.pool.join()
         if self.registered_with_server:
-            self.pyro_proxy_for_server.unregisterClient(self.clientURI.asString())
+            self.pyro_proxy_for_server.unregisterClient(self.clientURI)
             self.registered_with_server = False
     
     def setLogger(self):
@@ -306,10 +305,10 @@ class pipelineExecutor():
     def submitToQueue(self, programName=None):
         """Submits to sge queueing system using sge_batch script""" 
         if self.queue == "sge":
-            strprocs = str(self.proc) 
+            strprocs = str(self.procs) 
             # NOTE: sge_batch multiplies vf value by # of processors. 
-            # Since options.mem = total amount of memory needed, divide by self.proc to get value 
-            memPerProc = float(self.mem)/float(self.proc)
+            # Since options.mem = total amount of memory needed, divide by self.procs to get value 
+            memPerProc = float(self.mem)/float(self.procs)
             strmem = "vf=" + str(memPerProc) + "G" 
             jobname = ""
             if not programName==None: 
@@ -335,9 +334,9 @@ class pipelineExecutor():
                 cmd += ["--use-ns"]
             # TODO this is/was breaking silently -
             # is something using this even in ns mode? (resolved?)
-            #if self.uri:
-            #    cmd += ["--uri-file", self.uri]
-            cmd += ["--uri-file", self.uri]
+            #if self.uri_file:
+            #    cmd += ["--uri-file", self.uri_file]
+            cmd += ["--uri-file", self.uri_file]
             #Only one exec is launched at a time in this manner, so we assume --num-executors=1
             cmd += ["--num-executors", str(1)]  
             cmd += ["--time-to-seppuku", str(self.time_to_seppuku)]
@@ -351,7 +350,7 @@ class pipelineExecutor():
 
     def canRun(self, stageMem, stageProcs, runningMem, runningProcs):
         """Calculates if stage is runnable based on memory and processor availibility"""
-        return stageMem <= self.mem - runningMem and stageProcs <= self.proc - runningProcs
+        return stageMem <= self.mem - runningMem and stageProcs <= self.procs - runningProcs
     def is_seppuku_time(self):
         # Is it time to perform seppuku: has the
         # idle_time exceeded the allowed time to be idle?
@@ -384,10 +383,10 @@ class pipelineExecutor():
 
     def notifyStageTerminated(self, i, returncode=None):
         if returncode == 0:
-            self.pyro_proxy_for_server.setStageFinished(i)
+            self.pyro_proxy_for_server.setStageFinished(i, self.clientURI)
         else:
             # a None returncode is also considered a failure
-            self.pyro_proxy_for_server.setStageFailed(i)
+            self.pyro_proxy_for_server.setStageFailed(i, self.clientURI)
         self.e.set()  # some work finished and server notified, so wake up
 
     # use an event set/timeout system to run the executor mainLoop -
@@ -395,13 +394,14 @@ class pipelineExecutor():
     def mainLoop(self):
         while self.mainFn():
             self.e.wait(WAIT_TIMEOUT)
+            self.e.clear()
         logger.debug("Main loop finished")
 
     def mainFn(self):
-        """Return True if it should be called again (i.e., there is more to do
-        before shutting down), otherwise False.
-        This function is called by the executor's eventLoop whenever the event
-        `e` is set or after WAIT_TIMEOUT seconds."""
+        """Try to get a job from the server (if appropriate) and update
+        internal state accordingly.  Return True if it should be called
+        again (i.e., there is more to do before shutting down),
+        otherwise False."""
 
         self.prev_time = self.current_time
         self.current_time = time.time()
@@ -429,7 +429,9 @@ class pipelineExecutor():
         # This is because the call to free_resources is here (doesn't matter for
         # is_seppuku_time as we're already idle in that case; already a "bug" in 
         # case of a server-initiated shutdown, although that doesn't
-        # matter too much as there will never be new jobs unless a new server is started).
+        # matter too much as there will never be new jobs unless a new server is started)
+        # and because getCommand is being used as a heartbeat so the server may
+        # detect unresponsive clients and restart relevant stages.
 
         if self.is_seppuku_time():
             logger.debug("Exceeded allowed idle time... Seppuku!")
@@ -446,9 +448,11 @@ class pipelineExecutor():
 
         # TODO we get only one stage per loop iteration, so we have to wait for
         # another event/timeout to get another.  In general we might want 
-        # issueCommand to order multiple stages to be run on the same server
-        # (just setting the event would be somewhat hackish and confuse the control flow)
-        cmd, i = self.pyro_proxy_for_server.issueCommand(clientURI = self.clientURI)
+        # getCommand to order multiple stages to be run on the same server
+        # (just setting the event immediately would be somewhat hackish)
+        cmd, i = self.pyro_proxy_for_server.getCommand(clientURIstr = self.clientURI,
+                                                       clientMemFree = self.mem - self.runningMem,
+                                                       clientProcsFree = self.procs - self.runningProcs)
         if cmd == "shutdown_normally":
             return False
         elif cmd == "wait":
@@ -458,26 +462,26 @@ class pipelineExecutor():
             # Before running stage, check usable mem & procs
             logger.debug("Considering stage %i", i)
             stageMem, stageProcs = self.pyro_proxy_for_server.getStageMem(i), self.pyro_proxy_for_server.getStageProcs(i)
-            if self.canRun(stageMem, stageProcs, self.runningMem, self.runningProcs):
-                # reset the idle time, we are running a stage!
-                self.idle_time = 0
-                self.runningMem += stageMem
-                self.runningProcs += stageProcs
-                # The multiprocessing library must pickle things in order to execute them.
-                # I wanted the following function (runStage) to be a function of the pipelineExecutor
-                # class. That way we can access self.serverURI and self.clientURI from
-                # within the function. However, bound methods are not picklable (a bound method
-                # is a method that has "self" as its first argument, because if I understand 
-                # this correctly, that binds the function to a class instance). There is
-                # a way to make a bound function picklable, but this seems cumbersome. So instead
-                # runStage is now a standalone function.
-                result = self.pool.apply_async(runStage, (self.serverURI, self.clientURI, i))
+            #if self.canRun(stageMem, stageProcs, self.runningMem, self.runningProcs):
+            # reset the idle time, we are running a stage!
+            self.idle_time = 0
+            self.runningMem += stageMem
+            self.runningProcs += stageProcs
+            # The multiprocessing library must pickle things in order to execute them.
+            # I wanted the following function (runStage) to be a function of the pipelineExecutor
+            # class. That way we can access self.serverURI and self.clientURI from
+            # within the function. However, bound methods are not picklable (a bound method
+            # is a method that has "self" as its first argument, because if I understand 
+            # this correctly, that binds the function to a class instance). There is
+            # a way to make a bound function picklable, but this seems cumbersome. So instead
+            # runStage is now a standalone function.
+            result = self.pool.apply_async(runStage, (self.serverURI, self.clientURI, i))
 
-                self.runningChildren.append(ChildProcess(i, result, stageMem, stageProcs))
-                logger.debug("Added stage %i to the running pool.", i)
-            else:
-                logger.debug("Not enough resources to run stage %i. ", i)
-                self.pyro_proxy_for_server.requeue(i)
+            self.runningChildren.append(ChildProcess(i, result, stageMem, stageProcs))
+            logger.debug("Added stage %i to the running pool.", i)
+            #else:
+            #    logger.debug("Not enough resources to run stage %i. ", i)
+            #    self.pyro_proxy_for_server.requeue(i)
             return True
         else:
             raise Exception("Got invalid cmd from server: %s" % cmd)
