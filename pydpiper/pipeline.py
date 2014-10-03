@@ -17,7 +17,6 @@ import logging
 import threading
 import Pyro4
 
-WAIT_TIMEOUT = 5.0
 LOOP_INTERVAL = 5.0
 
 logger = logging.getLogger(__name__)
@@ -109,7 +108,7 @@ class CmdStage(PipelineStage):
     def setLogFile(self, logFileName): 
         self.logFile = str(logFileName)
     def execStage(self):
-        of = open(self.logFile, 'w')
+        of = open(self.logFile, 'a')
         of.write("Running on: " + socket.gethostname() + " at " + datetime.isoformat(datetime.now(), " ") + "\n")
         of.write(repr(self) + "\n")
         of.flush()
@@ -681,8 +680,8 @@ def launchServer(pipeline, options):
         sys.stdio.flush()
     except:
         logger.exception("Failed running server in daemon.requestLoop. Server shutting down.")
-    finally: #TODO should be else? fix `except` clauses
-        time.sleep(WAIT_TIMEOUT + 1)
+    finally:
+        time.sleep(pe.WAIT_TIMEOUT + 1)
         daemon.shutdown()
         t.join()
         pipeline.printShutdownMessage()
