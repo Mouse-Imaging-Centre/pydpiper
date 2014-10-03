@@ -17,7 +17,6 @@ import logging
 import threading
 import Pyro4
 
-WAIT_TIMEOUT = 5.0
 LOOP_INTERVAL = 5.0
 
 logger = logging.getLogger(__name__)
@@ -633,7 +632,7 @@ def launchServer(pipeline, options):
     except:
         logger.exception("Failed running server in daemon.requestLoop. Server shutting down.")
     finally:
-        time.sleep(2 * WAIT_TIMEOUT)
+        time.sleep(2 * pe.WAIT_TIMEOUT)
         daemon.shutdown()
         t.join()
         pipeline.printShutdownMessage()
