@@ -168,6 +168,8 @@ class Pipeline():
         # are actually registered, a whole bunch of them could be waiting in the
         # queue
         self.number_launched_and_waiting_clients = 0
+        # clients we've lost contact with due to crash, etc.
+        self.failed_executors = 0
         # main option hash, needed for the pipeline (server) to launch additional
         # executors during run time
         self.main_options_hash = None
@@ -487,13 +489,14 @@ class Pipeline():
             # change, so using a slightly stale copy shouldn't miss
             # anything interesting
             # FIXME there are potential race conditions here with
-            # requeue, unregisterClient ... wrap this whole section?
+            # requeue, unregisterClient ... take locks for this whole section?
             for client, stages in self.client_running_stages.copy().iteritems():
                 if t - self.clientTimestamps[client] > WAIT_TIMEOUT + 1:
                     logger.warn("Executor at %s has died!", client)
-                    # TODO keep track of the number of dead clients
-                    # and bail if the number is too high, since this
-                    # probably indicates a bug in the executor code
+                    if self.failed_executors >= self.main_options_hash.max_failed_executors:
+                        logger.warn("Too many lost executors to spawn new ones")
+
+                    self.failed_executors += 1
                     for s in stages.copy(): # again, may be mutated => copy
                         self.setStageLost(s,client)
                     self.unregisterClient(client)
@@ -510,8 +513,11 @@ class Pipeline():
         than the number of executors the server is able to launch
     """
     def numberOfExecutorsToLaunch(self):
+        if self.failed_executors >= self.main_options_hash.max_failed_executors:
+            return 0
+
         executors_to_launch = 0
-        if(self.main_options_hash.num_exec != 0):
+        if self.main_options_hash.num_exec != 0:
             # Server should launch executors itself
             # This should happen regardless of whether or not executors
             # can kill themselves, because the server is now responsible 

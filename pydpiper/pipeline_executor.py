@@ -33,6 +33,9 @@ def addExecutorOptionGroup(parser):
     group.add_option("--num-executors", dest="num_exec", 
                       type="int", default=-1, 
                       help="Number of independent executors to launch. [Default = -1. Code will not run without an explicit number specified.]")
+    group.add_option("--max-failed-executors", dest="max_failed_executors",
+                     type="int", default=2,
+                     help="Maximum number of failed executors before we stop relaunching. [Default = 2]")
     group.add_option("--time", dest="time", 
                       type="string", default="2:00:00:00", 
                       help="Wall time to request for each executor in the format dd:hh:mm:ss. Required only if --queue=pbs.")
