@@ -152,7 +152,7 @@ def runStage(serverURI, clientURI, i):
             command_logfile = p.getStageLogfile(i)
             
             # log file for the stage
-            of = open(command_logfile, 'w')
+            of = open(command_logfile, 'a')
             of.write("Running on: " + socket.gethostname() + " at " + datetime.isoformat(datetime.now(), " ") + "\n")
             of.write(command_to_run + "\n")
             of.flush()
@@ -198,13 +198,6 @@ class ChildProcess():
 
 class pipelineExecutor():
     def __init__(self, options):
-        # TODO self.continueRunning is no longer used - since the server doesn't
-        # tell clients to shutdown, we can rely on the 'local' information 
-        # returned by mainFn.  However, executors currently crash
-        # when the server shuts down since it doesn't wait until all clients
-        # have learned of impending shutdown from generalShutdownCall, so 
-        # we might restore it or something ...
-        #self.continueRunning =  True
         # options cannot be null when used to instantiate pipelineExecutor
         self.mem = options.mem
         self.proc = options.proc
@@ -228,7 +221,6 @@ class pipelineExecutor():
         self.time_to_accept_jobs = options.time_to_accept_jobs
         # stores the time of connection with the server
         self.connection_time_with_server = None
-        self.accept_jobs = True
         #initialize runningMem and Procs
         self.runningMem = 0.0
         self.runningProcs = 0   
@@ -365,7 +357,7 @@ class pipelineExecutor():
     def is_time_to_drain(self):
         # check whether there is a limit to how long the executor
         # is allowed to accept jobs for. 
-        if (self.time_to_accept_jobs != None) and self.accept_jobs:
+        if (self.time_to_accept_jobs != None):
             current_time = time.time()
             time_take_so_far = current_time - self.connection_time_with_server
             minutes_so_far, seconds_so_far = divmod(time_take_so_far, 60)
@@ -389,6 +381,9 @@ class pipelineExecutor():
             # a None returncode is also considered a failure
             self.pyro_proxy_for_server.setStageFailed(i)
         self.e.set()  # some work finished and server notified, so wake up
+
+    def idle():
+        return self.runningMem == 0 and self.runningProcs == 0 and self.prev_time
 
     # use an event set/timeout system to run the executor mainLoop -
     # we might want to pass some extra information in addition to waking the system
@@ -414,7 +409,7 @@ class pipelineExecutor():
         # terminate sooner but still be `principled`
         self.free_resources()
 
-        if self.runningMem == 0 and self.runningProcs == 0 and self.prev_time:
+        if self.idle():
             self.idle_time += self.current_time - self.prev_time
             logger.debug("Current idle time: %d, and total seconds allowed: %d", self.idle_time, self.time_to_seppuku * 60)
 
@@ -422,10 +417,6 @@ class pipelineExecutor():
             logger.debug("Exceeded allowed idle time... Seppuku!")
             return False
 
-        if self.is_time_to_drain():
-            logger.debug("Exceeded allowed time to accept jobs... not getting any new ones!")
-            self.accept_jobs = False
-            
         # TODO the purpose of this mainLoop is to get and run new jobs from the server.
         # Therefore, we'd like to exit once it's time for us to shutdown.
         # Currently, we do this if the server notifies that all jobs are done
@@ -438,11 +429,13 @@ class pipelineExecutor():
         # It is possible that the executor does not accept any new jobs
         # anymore. If that is the case, the executor should shut down as
         # soon as all current running jobs (children) have finished
-        if self.accept_jobs == False and len(self.runningChildren) == 0:
+        if self.is_time_to_drain() and len(self.running_children) == 0:
             # that's it, we're done. Nothing is running anymore
             # and no jobs can be accepted anymore.
             logger.debug("Now shutting down because not accepting new jobs and finished running jobs.")
             return False
+        # FIXME if we have some running children, we query server even though
+        # we shouldn't ...
 
         # TODO we get only one stage per loop iteration, so we have to wait for
         # another event/timeout to get another.  In general we might want to 

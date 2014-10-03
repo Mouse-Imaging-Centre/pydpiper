@@ -117,7 +117,7 @@ class CmdStage(PipelineStage):
     def setLogFile(self, logFileName): 
         self.logFile = str(logFileName)
     def execStage(self):
-        of = open(self.logFile, 'w')
+        of = open(self.logFile, 'a')
         of.write("Running on: " + socket.gethostname() + " at " + datetime.isoformat(datetime.now(), " ") + "\n")
         of.write(repr(self) + "\n")
         of.flush()
