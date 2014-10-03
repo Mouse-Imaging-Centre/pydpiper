@@ -16,6 +16,7 @@ import threading
 import Pyro4
 
 WAIT_TIMEOUT = 5.0
+HEARTBEAT_INTERVAL = 5.0
 
 logger = logging.getLogger(__name__)
 
@@ -122,22 +123,25 @@ def launchExecutor(executor):
         t = threading.Thread(target=daemon.requestLoop)
         t.daemon = True
         t.start()
+        h = threading.Thread(target=executor.heartbeat)
+        h.daemon = True
+        h.start()
         executor.mainLoop()
     except KeyboardInterrupt:
         logger.exception("Caught keyboard interrupt. Shutting down executor...")
         executor.generalShutdownCall()
-        daemon.shutdown()
+        #daemon.shutdown()
         sys.exit(0)
     except Exception:
         logger.exception("Error during executor loop. Shutting down executor...")
         executor.generalShutdownCall()
-        daemon.shutdown()
+        #daemon.shutdown()
         sys.exit(0)
     else:
         executor.completeAndExitChildren()
         logger.info("Executor shutting down.")
-        daemon.shutdown()
-        t.join()
+        #daemon.shutdown()
+        #t.join()
 
 def runStage(serverURI, clientURI, i):
     ## Proc needs its own proxy as it's independent of executor
@@ -264,14 +268,12 @@ class pipelineExecutor():
     # TODO rename completeAndExitChildren,generalShutdownCall to something like
     # normalShutdown, dirtyShutdown
     def generalShutdownCall(self):
-        # receive call from server when all stages are processed
-        logger.debug("Executor shutting down ...")
-
         # stop the worker processes (children) immediately without completing outstanding work
         # Initially I wanted to stop the running processes using pool.terminate() and pool.join()
         # but the keyboard interrupt handling proved tricky. Instead, the executor now keeps
         # track of the process IDs (pid) of the current running jobs. Those are targetted by
         # os.kill in order to stop the processes in the Pool
+        logger.debug("Executor shutting down ...")
         for subprocID in self.current_running_job_pids:
             os.kill(subprocID, signal.SIGTERM)
         if self.registered_with_server:
@@ -384,8 +386,16 @@ class pipelineExecutor():
             self.pyro_proxy_for_server.setStageFailed(i, self.clientURI)
         self.e.set()  # some work finished and server notified, so wake up
 
-    def idle():
+    def idle(self):
         return self.runningMem == 0 and self.runningProcs == 0 and self.prev_time
+
+    def heartbeat(self):
+        try:
+            while True:
+                self.pyro_proxy_for_server.updateClientTimestamp(self.clientURI)
+                time.sleep(HEARTBEAT_INTERVAL)
+        except:
+            logger.exception("Heartbeat thread crashed...hopefully after server shutdown")
 
     # use an event set/timeout system to run the executor mainLoop -
     # we might want to pass some extra information in addition to waking the system
@@ -434,7 +444,7 @@ class pipelineExecutor():
         # It is possible that the executor does not accept any new jobs
         # anymore. If that is the case, the executor should shut down as
         # soon as all current running jobs (children) have finished
-        if self.is_time_to_drain() and len(self.running_children) == 0:
+        if self.is_time_to_drain():
             # that's it, we're done. Nothing is running anymore
             # and no jobs can be accepted anymore.
             logger.debug("Now shutting down because not accepting new jobs and finished running jobs.")
@@ -455,10 +465,10 @@ class pipelineExecutor():
             #logger.debug("No additional runnable stages currently available")
             return True
         elif cmd == "run_stage":
-            # Before running stage, check usable mem & procs
-            logger.debug("Considering stage %i", i)
+            logger.debug("Running stage %i", i)
             stageMem, stageProcs = self.pyro_proxy_for_server.getStageMem(i), self.pyro_proxy_for_server.getStageProcs(i)
-            #if self.canRun(stageMem, stageProcs, self.runningMem, self.runningProcs):
+            # we trust that the server has given us a stage
+            # that we have enough memory and processors to run ...
             # reset the idle time, we are running a stage!
             self.idle_time = 0
             self.runningMem += stageMem
@@ -475,9 +485,6 @@ class pipelineExecutor():
 
             self.runningChildren.append(ChildProcess(i, result, stageMem, stageProcs))
             logger.debug("Added stage %i to the running pool.", i)
-            #else:
-            #    logger.debug("Not enough resources to run stage %i. ", i)
-            #    self.pyro_proxy_for_server.requeue(i)
             return True
         else:
             raise Exception("Got invalid cmd from server: %s" % cmd)

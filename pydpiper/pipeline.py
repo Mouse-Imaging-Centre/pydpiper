@@ -321,7 +321,6 @@ class Pipeline():
     This is highly stateful, being a resource-tracking wrapper around
     getRunnableStageIndex and hence a glorified Queue().get()."""
     def getCommand(self, clientURIstr, clientMemFree, clientProcsFree):
-        self.clientTimestamps[clientURIstr] = time.time()
         flag, i = self.getRunnableStageIndex()
         if flag == "run_stage":
             if ((self.getStageMem(i) <= clientMemFree) and (self.getStageProcs(i) <= clientProcsFree)):
@@ -422,7 +421,6 @@ class Pipeline():
     def requeue(self, i):
         """If stage cannot be run due to insufficient mem/procs, executor returns it to the queue"""
         logger.debug("Requeueing stage %d", i)
-        #self.stages[i].setNone() # no longer needed since getCommand/setRSI doesn't set to 'running'
         self.runnable.put(i)
 
     def initialize(self):
@@ -454,6 +452,8 @@ class Pipeline():
             sys.stdout.flush()
             return False
 
+        # TODO return False if all executors have died but not spawning new ones...
+
         if not self.allStagesComplete():
             return True
         #elif len(self.clients) > 0:
@@ -468,8 +468,10 @@ class Pipeline():
             # TODO what if a launched_and_waiting client registers here?
         #    return True
         else:
-            logger.debug("Server daemon shutting down")
             return False
+
+    def updateClientTimestamp(self, clientURI):
+        self.clientTimestamps[clientURI] = time.time() # use server clock for consistency
 
     def mainLoop(self):
         while self.continueLoop():
@@ -490,16 +492,17 @@ class Pipeline():
             # FIXME there are potential race conditions here with
             # requeue, unregisterClient ... take locks for this whole section?
             for client, stages in self.client_running_stages.copy().iteritems():
-                if t - self.clientTimestamps[client] > WAIT_TIMEOUT + 1:
+                if t - self.clientTimestamps[client] > pe.HEARTBEAT_INTERVAL + 1:
                     logger.warn("Executor at %s has died!", client)
                     if self.failed_executors >= self.main_options_hash.max_failed_executors:
-                        logger.warn("Too many lost executors to spawn new ones")
+                        logger.warn("Too many executors lost to spawn new ones")
 
                     self.failed_executors += 1
-                    for s in stages.copy(): # again, may be mutated => copy
+                    for s in stages.copy():
                         self.setStageLost(s,client)
                     self.unregisterClient(client)
             time.sleep(LOOP_INTERVAL)
+        logger.debug("Server loop shutting down")
             
     """
         Returns an integer indicating the number of executors to launch
@@ -681,6 +684,11 @@ def launchServer(pipeline, options):
     except:
         logger.exception("Failed running server in daemon.requestLoop. Server shutting down.")
     finally:
+        # allow time for all clients to contact the server and be told to shut down
+        # (we could instead add a way for the server to notify its registered clients):
+        # also, currently this doesn't happen until all jobs are finished (see getCommand),
+        # but if we instead decided to shut down once the queue is empty, then
+        # various notifyStageTerminated calls could fail
         time.sleep(pe.WAIT_TIMEOUT + 1)
         daemon.shutdown()
         t.join()
