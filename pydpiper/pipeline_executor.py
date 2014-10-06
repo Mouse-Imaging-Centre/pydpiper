@@ -44,7 +44,7 @@ def addExecutorOptionGroup(parser):
                       type="int", default=1,
                       help="Number of processes per executor. If not specified, default is 8. Also sets max value for processor use per executor.")
     group.add_option("--mem", dest="mem", 
-                      type="float", default=6,
+                      type="float", default=16,
                       help="Total amount of requested memory for all processes the executor runs. If not specified, default is 16G.")
     group.add_option("--ppn", dest="ppn", 
                       type="int", default=8,
@@ -140,8 +140,8 @@ def launchExecutor(executor):
     else:
         executor.completeAndExitChildren()
         logger.info("Executor shutting down.")
-        #daemon.shutdown()
-        #t.join()
+        daemon.shutdown()
+        t.join()
 
 def runStage(serverURI, clientURI, i):
     ## Proc needs its own proxy as it's independent of executor
@@ -273,7 +273,7 @@ class pipelineExecutor():
         # but the keyboard interrupt handling proved tricky. Instead, the executor now keeps
         # track of the process IDs (pid) of the current running jobs. Those are targetted by
         # os.kill in order to stop the processes in the Pool
-        logger.debug("Executor shutting down ...")
+        logger.debug("Executor shutting down.  Killing running jobs:")
         for subprocID in self.current_running_job_pids:
             os.kill(subprocID, signal.SIGTERM)
         if self.registered_with_server:
@@ -390,12 +390,9 @@ class pipelineExecutor():
         return self.runningMem == 0 and self.runningProcs == 0 and self.prev_time
 
     def heartbeat(self):
-        try:
-            while True:
-                self.pyro_proxy_for_server.updateClientTimestamp(self.clientURI)
-                time.sleep(HEARTBEAT_INTERVAL)
-        except:
-            logger.exception("Heartbeat thread crashed...hopefully after server shutdown")
+        while True:
+            self.pyro_proxy_for_server.updateClientTimestamp(self.clientURI)
+            time.sleep(HEARTBEAT_INTERVAL)
 
     # use an event set/timeout system to run the executor mainLoop -
     # we might want to pass some extra information in addition to waking the system
@@ -417,9 +414,7 @@ class pipelineExecutor():
         # a bit coarse but we can't call `free_resources` directly in a function
         # such as notifyStageTerminated which is called from _within_ `runStage`
         # since resources won't be freed soon enough, causing a false resource starvation.
-        # we might like to move this outside of the mainFn so that mainFn could 
-        # terminate sooner but still be 'principled', i.e., correctly record current
-        # resources needed
+        # note we will no longer free resources after leaving mainLoop
         self.free_resources()
 
         if self.idle():
@@ -449,8 +444,6 @@ class pipelineExecutor():
             # and no jobs can be accepted anymore.
             logger.debug("Now shutting down because not accepting new jobs and finished running jobs.")
             return False
-        # FIXME if we have some running children, we query server even though
-        # we shouldn't ...
 
         # TODO we get only one stage per loop iteration, so we have to wait for
         # another event/timeout to get another.  In general we might want 

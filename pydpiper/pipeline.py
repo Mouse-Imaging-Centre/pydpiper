@@ -478,11 +478,9 @@ class Pipeline():
             # check to see whether new executors need to be launched
             executors_to_launch = self.numberOfExecutorsToLaunch()
             if executors_to_launch > 0:
-                # launch some executors!
                 self.launchExecutorsFromServer(executors_to_launch)
 
             # look for dead clients and requeue their jobs
-            t = time.time()
             # copy() is used because otherwise client_running_stages may change size
             # during the iteration, throwing an exception,
             # but if we haven't heard from a client in some time,
@@ -491,16 +489,19 @@ class Pipeline():
             # anything interesting
             # FIXME there are potential race conditions here with
             # requeue, unregisterClient ... take locks for this whole section?
+            t = time.time()
             for client, stages in self.client_running_stages.copy().iteritems():
                 if t - self.clientTimestamps[client] > pe.HEARTBEAT_INTERVAL + 1:
                     logger.warn("Executor at %s has died!", client)
-                    if self.failed_executors >= self.main_options_hash.max_failed_executors:
+                    if self.failed_executors > self.main_options_hash.max_failed_executors:
                         logger.warn("Too many executors lost to spawn new ones")
 
                     self.failed_executors += 1
+
                     for s in stages.copy():
                         self.setStageLost(s,client)
                     self.unregisterClient(client)
+
             time.sleep(LOOP_INTERVAL)
         logger.debug("Server loop shutting down")
             
@@ -515,7 +516,7 @@ class Pipeline():
         than the number of executors the server is able to launch
     """
     def numberOfExecutorsToLaunch(self):
-        if self.failed_executors >= self.main_options_hash.max_failed_executors:
+        if self.failed_executors > self.main_options_hash.max_failed_executors:
             return 0
 
         executors_to_launch = 0
@@ -527,8 +528,7 @@ class Pipeline():
             active_executors = self.number_launched_and_waiting_clients + len(self.clients)
             max_num_executors = self.main_options_hash.num_exec
             executor_launch_room = max_num_executors - active_executors
-            if(( self.runnable.qsize() > 0 ) and 
-                ( executor_launch_room > 0 )):
+            if self.runnable.qsize() > 0 and executor_launch_room > 0:
                 # there are runnable stages, and there is room to launch 
                 # additional executors
                 executors_to_launch = min(self.runnable.qsize(), executor_launch_room)
@@ -670,9 +670,6 @@ def launchServer(pipeline, options):
     verboseprint("The pipeline's uri is: %s" % str(pipelineURI))
 
     try:
-        # pipeline.continueLoop returns True unless all stages have finished.
-        # That method also keeps track of the number of active/running executors
-        # and launches new executors if necessary
         t = threading.Thread(target=daemon.requestLoop)
         t.daemon = True
         t.start()
