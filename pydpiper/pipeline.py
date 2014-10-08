@@ -677,7 +677,7 @@ def launchServer(pipeline, options):
     except KeyboardInterrupt:
         logger.exception("Caught keyboard interrupt, killing executors and shutting down server.")
         print("\nKeyboardInterrupt caught: cleaning up, shutting down executors.\n")
-        sys.stdio.flush()
+        sys.stdout.flush()
     except:
         logger.exception("Failed running server in daemon.requestLoop. Server shutting down.")
     finally:
