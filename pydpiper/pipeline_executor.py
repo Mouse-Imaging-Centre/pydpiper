@@ -52,7 +52,7 @@ def addExecutorOptionGroup(parser):
                       type="int", default=1,
                       help="Number of processes per executor. If not specified, default is 8. Also sets max value for processor use per executor.")
     group.add_option("--mem", dest="mem", 
-                      type="float", default=16,
+                      type="float", default=6,
                       help="Total amount of requested memory for all processes the executor runs. If not specified, default is 16G.")
     group.add_option("--ppn", dest="ppn", 
                       type="int", default=8,
