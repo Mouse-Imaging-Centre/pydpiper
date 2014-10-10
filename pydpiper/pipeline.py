@@ -610,10 +610,10 @@ class Pipeline():
 def launchPipelineExecutor(options, programName=None):
     """Launch pipeline executor directly from pipeline"""
     pipelineExecutor = pe.pipelineExecutor(options)
-    if options.queue_type == "sge":
+    if options.queue_type == "sge" or options.queue == "sge":
         pipelineExecutor.submitToQueue(programName) 
     else: 
-        pe.launchExecutor(pipelineExecutor)    
+        pe.launchExecutor(pipelineExecutor)
 
 def skip_completed_stages(pipeline):
     runnable = []
@@ -754,7 +754,7 @@ def pipelineDaemon(pipeline, options=None, programName=None):
         print "Pipeline has no runnable stages. Exiting..."
         sys.exit()
 
-    if options.queue_type == "sge_script":
+    if options.queue_type == "sge_script" or options.queue == "sge_script":
         script = open("sge_script", "w")
         script.write("\n".join(sge_script(pipeline)))
         script.close()

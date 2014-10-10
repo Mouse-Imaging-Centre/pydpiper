@@ -117,7 +117,6 @@ class runOnQueueingSystem():
         self.jobFile.write("#PBS -N %s\n" % name)
         self.jobFile.write("#PBS -q %s\n\n" % self.queue_name)
         self.jobFile.write("module load gcc intel python\n\n")
-        self.jobFile.write("export PYTHONPATH=$TEST_DIR/lib/python2.7/site-packages/:$PYTHONPATH\n")
         self.jobFile.write("cd $PBS_O_WORKDIR\n\n") # jobs start in $HOME; $PBS_O_WORKDIR is the submission directory
         if mainCommand:
             self.jobFile.write(self.buildMainCommand())
