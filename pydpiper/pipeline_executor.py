@@ -42,22 +42,27 @@ def addExecutorOptionGroup(parser):
                       help="Wall time to request for each executor in the format dd:hh:mm:ss. Required only if --queue=pbs.")
     group.add_option("--proc", dest="proc", 
                       type="int", default=1,
-                      help="Number of processes per executor. If not specified, default is 8. Also sets max value for processor use per executor.")
+                      help="Number of processes per executor. If not specified, default is 1. Also sets max value for processor use per executor.")
     group.add_option("--mem", dest="mem", 
-                      type="float", default=16,
-                      help="Total amount of requested memory for all processes the executor runs. If not specified, default is 16G.")
+                      type="float", default=6,
+                      help="Total amount of requested memory for all processes the executor runs. If not specified, default is 6G.")
     group.add_option("--ppn", dest="ppn", 
                       type="int", default=8,
-                      help="Number of processes per node. Default is 8. Used when --queue=pbs")
+                      help="Number of processes per node. Default is 8. Used when --queue-type=pbs")
+    group.add_option("--queue-name", dest="queue_name", type="string", default=None,
+                      help="Name of the queue, e.g., all.q (MICe) or batch (SciNet)")
+    group.add_option("--queue-type", dest="queue_type", type="string", default=None,
+                      help="""Queue type, i.e., "sge" or "pbs".  [Default: None]""")
     group.add_option("--queue", dest="queue", 
                       type="string", default=None,
-                      help="Use specified queueing system to submit jobs. Default is None.")              
+                      help="[DEPRECATED; use --queue-type instead.]  Use specified queueing system to submit jobs. Default is None.")              
     group.add_option("--sge-queue-opts", dest="sge_queue_opts", 
                       type="string", default=None,
-                      help="For --queue=sge, allows you to specify different queues. If not specified, default is used.")
+                      help="[DEPRECATED; use --queue-name instead.]  For --queue=sge, allows you to specify different queues. If not specified, default is used.")
     group.add_option("--time-to-seppuku", dest="time_to_seppuku", 
                       type="int", default=15,
                       help="The number of minutes an executor is allowed to continuously sleep, i.e. wait for an available job, while active on a compute node/farm before it kills itself due to resource hogging. [Default=15 minutes]")
+    group.add_option("--scinet", dest="scinet", action="store_true", help="Set --queue-name, --queue-type, --mem, --ppn for Scinet.  Overridden by these flags.")
     group.add_option("--time-to-accept-jobs", dest="time_to_accept_jobs", 
                       type="int", default=180,
                       help="The number of minutes after which an executor will not accept new jobs anymore. This can be useful when running executors on a batch system where other (competing) jobs run for a limited amount of time. The executors can behave in a similar way by given them a rough end time. [Default=3 hours]")
@@ -68,6 +73,7 @@ def noExecSpecified(numExec):
     #Exit with helpful message if no executors are specified
     if numExec < 0:
         logger.info("You need to specify some executors for this pipeline to run. Please use the --num-executors command line option. Exiting...")
+        print("You need to specify some executors for this pipeline to run. Please use the --num-executors command line option. Exiting...")
         sys.exit()
 
 
@@ -154,7 +160,7 @@ def runStage(serverURI, clientURI, i):
         p.setStageStarted(i, clientURI)
         try:
             # get stage information
-            command_to_run  = p.getStageCommand(i)
+            command_to_run  = str(p.getStageCommand(i))
             logger.info(command_to_run)
             command_logfile = p.getStageLogfile(i)
             
@@ -208,8 +214,13 @@ class pipelineExecutor():
         # options cannot be null when used to instantiate pipelineExecutor
         self.mem = options.mem
         self.procs = options.proc
-        self.queue = options.queue
-        self.sge_queue_opts = options.sge_queue_opts    
+        self.ppn = options.ppn
+        self.queue_type = options.queue_type or options.queue
+        self.queue_name = options.queue_name or options.sge_queue_opts
+        if options.queue:
+            logger.warn("--queue is deprecated; use --queue-type instead")
+        if options.sge_queue_opts:
+            logger.warn("--sge_queue_opts is deprecated; use --queue-name instead")
         self.ns = options.use_ns
         self.uri_file = options.urifile
         if self.uri_file == None:
@@ -301,7 +312,7 @@ class pipelineExecutor():
         
     def submitToQueue(self, programName=None):
         """Submits to sge queueing system using sge_batch script""" 
-        if self.queue == "sge":
+        if self.queue_type == "sge":
             strprocs = str(self.procs) 
             # NOTE: sge_batch multiplies vf value by # of processors. 
             # Since options.mem = total amount of memory needed, divide by self.procs to get value 
@@ -322,8 +333,8 @@ class pipelineExecutor():
             # otherwise we could do something like:
             #os.environ["SGE_BATCH_LOGDIR"] = os.environ.get("SGE_BATCH_LOGDIR") or os.getcwd()
             cmd += [ "-o", os.path.join(os.getcwd(), ident + "-remote.log")]
-            if self.sge_queue_opts:
-                cmd += ["-q", self.sge_queue_opts]
+            if self.queue_name:
+                cmd += ["-q", self.queue_name]
             cmd += ["pipeline_executor.py", "--proc", strprocs, "--mem", str(self.mem)]
             # TODO this is getting ugly ...
             # TODO also, what other opts aren't being passed on here?
@@ -340,8 +351,8 @@ class pipelineExecutor():
             cmd += ["--time-to-accept-jobs", str(self.time_to_accept_jobs)]
             subprocess.call(cmd)   
         else:
-            logger.info("Specified queueing system is: %s" % (self.queue))
-            logger.info("Only queue=sge or queue=None currently supports pipeline launching own executors.")
+            logger.info("Specified queueing system is: %s" % (self.queue_type))
+            logger.info("Only queue_type=sge or queue_type=None currently supports pipeline launching own executors.")
             logger.info("Exiting...")
             sys.exit()
 
@@ -500,15 +511,15 @@ if __name__ == "__main__":
 
     #Check to make sure some executors have been specified. 
     noExecSpecified(options.num_exec)
-    
-    if options.queue=="pbs":
+
+    if options.scinet or options.queue == "pbs" or options.queue_type == "pbs":
         roq = q.runOnQueueingSystem(options)
         for i in range(options.num_exec):
-            roq.createExecutorJobFile(i)
-    elif options.queue=="sge":
+            roq.createAndSubmitExecutorJobFile(i)
+    elif options.queue == "sge" or options.queue_type == "sge":
         for i in range(options.num_exec):
             pe = pipelineExecutor(options)
-            pe.submitToQueue()        
+            pe.submitToQueue()
     else:
         for i in range(options.num_exec):
             pe = pipelineExecutor(options)

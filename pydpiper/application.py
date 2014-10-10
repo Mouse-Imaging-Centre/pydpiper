@@ -120,9 +120,9 @@ class AbstractApplication(object):
         self.appName = self.setup_appName()
         self.setup_logger()
         
-        if self.options.queue=="pbs":
+        if self.options.scinet or self.options.queue == "pbs" or self.options.queue_type == "pbs":
             roq = runOnQueueingSystem(self.options, sys.argv)
-            roq.createPbsScripts()
+            roq.createAndSubmitPbsScripts()
             return 
         
         if self.options.restart:

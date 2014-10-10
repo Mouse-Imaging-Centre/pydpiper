@@ -368,6 +368,7 @@ class Pipeline():
                 s = self.getStage(i)
                 if not s.isFinished():
                     canRun = False
+                    break
         logger.debug("Stage " + str(index) + " Runnable: " + str(canRun))
         return canRun
 
@@ -602,7 +603,7 @@ class Pipeline():
 def launchPipelineExecutor(options, programName=None):
     """Launch pipeline executor directly from pipeline"""
     pipelineExecutor = pe.pipelineExecutor(options)
-    if options.queue == "sge":
+    if options.queue_type == "sge":
         pipelineExecutor.submitToQueue(programName) 
     else: 
         pe.launchExecutor(pipelineExecutor)    
@@ -667,7 +668,9 @@ def launchServer(pipeline, options):
     # set the verbosity of the pipeline before running it
     pipeline.setVerbosity(options.verbose)
     verboseprint("Daemon is running at: %s" % daemon.locationStr)
+    logger.info("Daemon is running at: %s", daemon.locationStr)
     verboseprint("The pipeline's uri is: %s" % str(pipelineURI))
+    logger.info("The pipeline's uri is: %s", str(pipelineURI))
 
     try:
         t = threading.Thread(target=daemon.requestLoop)
@@ -745,7 +748,7 @@ def pipelineDaemon(pipeline, options=None, programName=None):
         print "Pipeline has no runnable stages. Exiting..."
         sys.exit()
 
-    if options.queue == "sge_script":
+    if options.queue_type == "sge_script":
         script = open("sge_script", "w")
         script.write("\n".join(sge_script(pipeline)))
         script.close()
