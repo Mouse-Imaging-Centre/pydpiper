@@ -13,6 +13,14 @@ import logging
 import socket
 import signal
 import threading
+
+# setup the log file for the pipeline_executor prior to importing the Pyro library
+G_prog_name     = os.path.splitext(os.path.basename(__file__))[0]
+G_time_now      = datetime.now().strftime("%Y-%m-%d-at-%H:%M:%S")
+G_proc_id       = str(os.getpid())
+G_log_file_name = G_prog_name + '-' + G_time_now + '-pid-' + G_proc_id + ".log"
+os.environ["PYRO_LOGFILE"] = G_log_file_name
+
 import Pyro4
 
 WAIT_TIMEOUT = 5.0
@@ -225,7 +233,6 @@ class pipelineExecutor():
         self.uri_file = options.urifile
         if self.uri_file == None:
             self.uri_file = os.path.abspath(os.curdir + "/" + "uri")
-        self.setLogger()
         # the next variable is used to keep track of how long the
         # executor has been continuously idle/sleeping for. Measured
         # in seconds
@@ -303,12 +310,6 @@ class pipelineExecutor():
         if self.registered_with_server:
             self.pyro_proxy_for_server.unregisterClient(self.clientURI)
             self.registered_with_server = False
-    
-    def setLogger(self):
-        FORMAT = '%(asctime)-15s %(name)s %(levelname)s %(process)d/%(threadName)s: %(message)s'
-        now = datetime.now()  
-        FILENAME = "pipeline_executor.py-" + now.strftime("%Y%m%d-%H%M%S%f") + ".log"
-        logging.basicConfig(filename=FILENAME, format=FORMAT, level=logging.DEBUG)
         
     def submitToQueue(self, programName=None):
         """Submits to sge queueing system using sge_batch script""" 
@@ -322,8 +323,8 @@ class pipelineExecutor():
             if not programName==None: 
                 executablePath = os.path.abspath(programName)
                 jobname = os.path.basename(executablePath) + "-" 
-            now = datetime.now()
-            ident = "pipeline-executor-" + now.strftime("%Y%m%d-%H%M%S%f")
+            now = datetime.now().strftime("%Y-%m-%d-at-%H-%M-%S-%f")
+            ident = "pipeline-executor-" + now
             jobname += ident
             # Add options for sge_batch command
             cmd = ["sge_batch", "-J", jobname, "-m", strprocs, "-l", strmem, "-k"]

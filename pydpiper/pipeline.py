@@ -372,10 +372,17 @@ class Pipeline():
         logger.debug("Stage " + str(index) + " Runnable: " + str(canRun))
         return canRun
 
-    def setStageFinished(self, index, clientURI, save_state = True):
+    def setStageFinished(self, index, clientURI, save_state = True, checking_pipeline_status = False):
         """given an index, sets corresponding stage to finished and adds successors to the runnable queue"""
         logger.info("Finished Stage " + str(index) + ": " + str(self.stages[index]))
-        self.removeFromRunning(index, clientURI, new_status = "finished")
+        # this function can be called when a pipeline is restarted, and 
+        # we go through all stages and set the finished ones to... finished... :-)
+        # in that case, we can not remove the stage from the list of running
+        # jobs, because there is none.
+        if checking_pipeline_status:
+            self.stages[index].status = "finished"
+        else:
+            self.removeFromRunning(index, clientURI, new_status = "finished")
         self.processedStages.append(index)
         if save_state: 
             self.selfPickle()
@@ -624,8 +631,7 @@ def skip_completed_stages(pipeline):
             runnable.append(i)
             continue
         
-        pipeline.setStageStarted(i, "PYRO://Previous.Run")
-        pipeline.setStageFinished(i, save_state = False)
+        pipeline.setStageFinished(i, "fake_client_URI", save_state = False, checking_pipeline_status = True)
         logger.debug("skipping stage %i", i)
     
     for i in runnable:
@@ -680,7 +686,7 @@ def launchServer(pipeline, options):
     except KeyboardInterrupt:
         logger.exception("Caught keyboard interrupt, killing executors and shutting down server.")
         print("\nKeyboardInterrupt caught: cleaning up, shutting down executors.\n")
-        sys.stdio.flush()
+        sys.stdout.flush()
     except:
         logger.exception("Failed running server in daemon.requestLoop. Server shutting down.")
     finally:

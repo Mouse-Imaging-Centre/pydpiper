@@ -158,8 +158,8 @@ class AbstractApplication(object):
     def setup_logger(self):
         """sets logging info specific to application"""
         FORMAT = '%(asctime)-15s %(name)s %(levelname)s %(process)d/%(threadName)s: %(message)s'
-        now = datetime.now()  
-        FILENAME = str(self.appName) + "-" + now.strftime("%Y%m%d-%H%M%S%f") + ".log"
+        now = datetime.now().strftime("%Y-%m-%d-at-%H:%M:%S")
+        FILENAME = str(self.appName) + "-" + now + '-pid-' + str(os.getpid())  + ".log"
         logging.basicConfig(filename=FILENAME, format=FORMAT, level=logging.DEBUG)
 
     def setup_options(self):
