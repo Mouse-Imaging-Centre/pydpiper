@@ -121,8 +121,10 @@ class runOnQueueingSystem():
         if mainCommand:
             self.jobFile.write(self.buildMainCommand())
             self.jobFile.write(" &\n\n")
+            self.jobFile.write("sleep 10 &\n\n") # local executor only needs to sleep for startup time of server
         if launchExecs:
-            self.jobFile.write("\nsleep %s\n" % SLEEP_TIME) # sleep to ensure that pipeline server has time to start
+            if not mainCommand:
+                self.jobFile.write("sleep %s\n\n" % SLEEP_TIME) # sleep to ensure that pipeline server has time to start
             self.jobFile.write("pipeline_executor.py --num-executors=1 --uri-file=%s --proc=%d --mem=%.2f" % (self.uri_file, execProcs, self.mem))
             if self.ns:
                 self.jobFile.write(" --use-ns")
