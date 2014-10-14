@@ -5,8 +5,9 @@ from os.path import isdir, basename
 from os import mkdir
 import os
 import re
+import subprocess
 
-SLEEP_TIME = 1000
+SLEEP_TIME = 5
 
 class runOnQueueingSystem():
     def __init__(self, options, sysArgs=None):
@@ -61,7 +62,7 @@ class runOnQueueingSystem():
         if self.arguments:
             reconstruct += ' '.join(filter(relevant, self.arguments)) + " --num-executors=0 "
         return reconstruct
-    def constructAndSubmitJobFile(self, identifier, isMainFile):
+    def constructAndSubmitJobFile(self, identifier, isMainFile, depends):
         """Construct the bulk of the pbs script to be submitted via qsub"""
         now = datetime.now()  
         jobName = self.jobName + identifier + now.strftime("%Y%m%d-%H%M%S%f") + ".job"
@@ -69,20 +70,21 @@ class runOnQueueingSystem():
         self.jobFile = open(self.jobFileName, "w")
         self.addHeaderAndCommands(isMainFile)
         self.completeJobFile()
-        self.submitJob()
+        jobId = self.submitJob(depends = depends)
+        return jobId
     def createAndSubmitPbsScripts(self): 
         """Creates pbs script(s) for main program and separate executors, if needed"""       
-        self.createAndSubmitMainJobFile()
+        serverJobId = self.createAndSubmitMainJobFile()
         if self.numexec >= 2:
             for i in range(1, self.numexec):
-                self.createAndSubmitExecutorJobFile(i)
+                self.createAndSubmitExecutorJobFile(i, serverJobId)
     def createAndSubmitMainJobFile(self): 
-        self.constructAndSubmitJobFile("-pipeline-", isMainFile=True)
-    def createAndSubmitExecutorJobFile(self, i):
+        return self.constructAndSubmitJobFile("-pipeline-", isMainFile=True, depends = None)
+    def createAndSubmitExecutorJobFile(self, i, serverJobId):
         # This is called directly from pipeline_executor
         # For multiple executors, this will be called multiple-times.
         execId = "-executor-" + str(i) + "-"
-        self.constructAndSubmitJobFile(execId, isMainFile=False)
+        self.constructAndSubmitJobFile(execId, isMainFile=False, depends=serverJobId)
     def addHeaderAndCommands(self, isMainFile):
         """Constructs header and commands for pbs script, based on options input from calling program"""
         self.jobFile.write("#!/bin/bash" + "\n")
@@ -115,28 +117,30 @@ class runOnQueueingSystem():
             name += "-executor"
         self.jobFile.write("#PBS -l nodes=%d:ppn=%d,walltime=%s\n" % (requestNodes, self.ppn, self.time))
         self.jobFile.write("#PBS -N %s\n" % name)
-        self.jobFile.write("#PBS -q %s\n\n" % self.queue_name)
+        self.jobFile.write("#PBS -q %s\n" % self.queue_name)
         self.jobFile.write("module load gcc intel python\n\n")
         self.jobFile.write("cd $PBS_O_WORKDIR\n\n") # jobs start in $HOME; $PBS_O_WORKDIR is the submission directory
         if mainCommand:
             self.jobFile.write(self.buildMainCommand())
             self.jobFile.write(" &\n\n")
-            self.jobFile.write("sleep 10 \n\n") # local executor only needs to sleep for startup time of server
         if launchExecs:
-            if not mainCommand:
-                self.jobFile.write("sleep %s\n\n" % SLEEP_TIME) # sleep to ensure that pipeline server has time to start
+            # sleep to ensure that pipeline server has time to start
+            self.jobFile.write("sleep %s\n\n" % SLEEP_TIME)
             self.jobFile.write("pipeline_executor.py --num-executors=1 --uri-file=%s --proc=%d --mem=%.2f" % (self.uri_file, execProcs, self.mem))
             if self.ns:
-                self.jobFile.write(" --use-ns")
+                self.jobFile.write(" --use-ns ")
             self.jobFile.write(" &\n\n")
     def completeJobFile(self):
         """Completes pbs script--wait for background jobs to terminate as per scinet wiki"""
         self.jobFile.write("wait" + "\n")
         self.jobFile.close()
-    def submitJob(self): 
+    def submitJob(self, depends=None): 
         """Submit job to batch queueing system"""
-        r = os.system("qsub  " + self.jobFileName)
-        if r == 0:
-            print("Submitted!")
+        if depends is not None:
+            out = subprocess.check_output(['qsub', '-Wafter:' + depends, self.jobFileName])
         else:
-            print("Error submitting job; return code was: %d" % r)
+            out = subprocess.check_output(['qsub', self.jobFileName])
+        jobId = out.strip()
+        print(jobId)
+        print("Submitted!")
+        return jobId
