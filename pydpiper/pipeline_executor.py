@@ -445,7 +445,7 @@ class pipelineExecutor():
         # detect unresponsive clients and restart relevant stages.
 
         if self.is_seppuku_time():
-            logger.debug("Exceeded allowed idle time... Seppuku!")
+            logger.warn("Exceeded allowed idle time... Seppuku!")
             return False
 
         # It is possible that the executor does not accept any new jobs
@@ -454,7 +454,7 @@ class pipelineExecutor():
         if self.is_time_to_drain():
             # that's it, we're done. Nothing is running anymore
             # and no jobs can be accepted anymore.
-            logger.debug("Now shutting down because not accepting new jobs and finished running jobs.")
+            logger.info("Now shutting down because not accepting new jobs and finished running jobs.")
             return False
 
         # TODO we get only one stage per loop iteration, so we have to wait for

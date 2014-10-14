@@ -123,6 +123,7 @@ class AbstractApplication(object):
         if self.options.scinet or self.options.queue == "pbs" or self.options.queue_type == "pbs":
             roq = runOnQueueingSystem(self.options, sys.argv)
             roq.createAndSubmitPbsScripts()
+            logger.info("Finished submitting PBS job scripts...quitting")
             return 
         
         if self.options.restart:

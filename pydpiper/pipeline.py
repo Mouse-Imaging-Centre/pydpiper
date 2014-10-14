@@ -526,7 +526,7 @@ class Pipeline():
                     self.unregisterClient(client)
 
             time.sleep(LOOP_INTERVAL)
-        logger.debug("Server loop shutting down")
+        logger.info("Server loop shutting down")
             
     """
         Returns an integer indicating the number of executors to launch
