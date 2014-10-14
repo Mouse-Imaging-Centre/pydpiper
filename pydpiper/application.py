@@ -120,9 +120,9 @@ class AbstractApplication(object):
         self.appName = self.setup_appName()
         self.setup_logger()
         
-        if self.options.queue=="pbs":
+        if self.options.scinet or self.options.queue == "pbs" or self.options.queue_type == "pbs":
             roq = runOnQueueingSystem(self.options, sys.argv)
-            roq.createPbsScripts()
+            roq.createAndSubmitPbsScripts()
             return 
         
         if self.options.restart:
@@ -158,8 +158,8 @@ class AbstractApplication(object):
     def setup_logger(self):
         """sets logging info specific to application"""
         FORMAT = '%(asctime)-15s %(name)s %(levelname)s %(process)d/%(threadName)s: %(message)s'
-        now = datetime.now()  
-        FILENAME = str(self.appName) + "-" + now.strftime("%Y%m%d-%H%M%S%f") + ".log"
+        now = datetime.now().strftime("%Y-%m-%d-at-%H:%M:%S")
+        FILENAME = str(self.appName) + "-" + now + '-pid-' + str(os.getpid())  + ".log"
         logging.basicConfig(filename=FILENAME, format=FORMAT, level=logging.DEBUG)
 
     def setup_options(self):
