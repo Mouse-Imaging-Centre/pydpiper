@@ -177,9 +177,24 @@ class Pipeline():
         self.skipped_stages = 0
         self.failed_stages = 0
         self.verbose = 0
-        
+
+    def getTotalNumberOfStages(self):
+        return len(self.stages)
+    
+    def getNumberProcessedStages(self):
+        return len(self.processedStages)
+
+    def getNumberOfRunningClients(self):
+        return len(self.clients)
+
+    def getNumberOfQueuedClients(self):
+        return self.number_launched_and_waiting_clients
+
     def setVerbosity(self, verbosity):
         self.verbose = verbosity
+
+    def getCurrentlyRunningStages(self):
+        return (self.currently_running_stages)
         
     def pipelineFullyCompleted(self):
         return (len(self.stages) == len(self.processedStages))
