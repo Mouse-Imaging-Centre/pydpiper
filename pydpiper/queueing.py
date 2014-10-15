@@ -12,22 +12,25 @@ class runOnQueueingSystem():
     def __init__(self, options, sysArgs=None):
         #Note: options are the same as whatever is in calling program
         #Options MUST also include standard pydpiper options
-        # TODO we can't override --scinet mem/procs with --mem/--procs since
-        # we don't know if the values in options.mem/proc are supplied by the 
+        # FIXME when using --scinet, we can't override options values having numerical defaults
+        # (mem/procs/time-to-accept-jobs/time-to-seppuku) with --mem/--procs/... since
+        # we don't know if the values in options are supplied by the 
         # user or are defaults ... to fix this, we could use None as the 
-        # default and set 6G later or use optargs in a more sophisticated way.
+        # default and set non-scinet defaults later or use optargs in a more sophisticated way(?)
         if options.scinet:
             self.mem = 14
             self.procs = 8
             self.ppn = 8
             self.queue_name = options.queue_name or options.queue or "batch"
             self.queue_type = "pbs"
+            self.time_to_accept_jobs = 48 * 60
         else:
             self.mem = options.mem
             self.procs = options.proc
             self.ppn = options.ppn
             self.queue_name = options.queue_name or options.queue
             self.queue_type = options.queue or options.queue_type
+            self.time_to_accept_jobs = options.time_to_accept_jobs
         self.arguments = sysArgs #sys.argv in calling program
         self.numexec = options.num_exec 
         self.time = options.time or "2:00:00:00"      
@@ -125,7 +128,7 @@ class runOnQueueingSystem():
         if launchExecs:
             if not mainCommand:
                 self.jobFile.write("sleep %s\n\n" % SLEEP_TIME) # sleep to ensure that pipeline server has time to start
-            self.jobFile.write("pipeline_executor.py --num-executors=1 --uri-file=%s --proc=%d --mem=%.2f" % (self.uri_file, execProcs, self.mem))
+            self.jobFile.write("pipeline_executor.py --num-executors=1 --uri-file=%s --proc=%d --mem=%.2f --time-to-accept-jobs=%d" % (self.uri_file, execProcs, self.mem, self.time_to_accept_jobs))
             if self.ns:
                 self.jobFile.write(" --use-ns")
             self.jobFile.write(" &\n\n")
