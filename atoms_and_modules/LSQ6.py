@@ -8,6 +8,9 @@ import atoms_and_modules.registration_file_handling as rfh
 import atoms_and_modules.minc_atoms as ma
 import atoms_and_modules.minc_parameters as mp
 from os.path import abspath
+from os.path import dirname
+from os.path import exists
+from os.path import basename
 from optparse import OptionGroup
 import logging
 import sys
@@ -28,6 +31,16 @@ def addLSQ6OptionGroup(parser):
                      help="File in standard space in the initial model. The initial model "
                      "can also have a file in native space and potentially a transformation "
                      "file. See our wiki for detailed information on initial models.")
+    group.add_option("--lsq6-alternate-data-prefix", dest="lsq6_alternate_prefix",
+                     type="string", default=None,
+                     help="Specify a prefix for an augmented data set to use for the 6 parameter "
+                     "alignment. Assumptions: there is a matching alternate file for each regular input "
+                     "file, e.g. input files are: input_1.mnc input_2.mnc ... input_n.mnc. If the "
+                     "string provided for this flag is \"aug_\", then the following files should exists: "
+                     "aug_input_1.mnc aug_input_2.mnc ... aug_input_n.mnc. These files are assumed to be "
+                     "in the same orientation/location as the regular input files.  They will be used for "
+                     "for the 6 parameter alignment. The transformations will then be used to transform "
+                     "the regular input files, with which the pipeline will continue.")
     parser.set_defaults(lsq6_method="lsq6_large_rotations")
     group.add_option("--lsq6-simple", dest="lsq6_method",
                      action="store_const", const="lsq6_simple",
@@ -235,14 +248,40 @@ class LSQ6NUCInorm(object):
                  lsq6Directory,
                  options):
         self.p = Pipeline()
-        self.inputFiles = inputFiles
+        if options.lsq6_alternate_prefix is None:
+            self.inputFiles = inputFiles
+        else:
+            # we should use a separate data set for the 6 parameter alignment
+            self.inputFiles = self.setAlternateInputFiles(inputFiles, options.lsq6_alternate_prefix)
+            exit
         self.target = targetPipeFH
         self.initModel = initModel
         self.lsq6Dir = lsq6Directory
         self.options = options 
         
         self.setupPipeline()
-    
+
+
+    def setAlternateInputFiles(self, mainInputFiles, alternate_prefix):
+        # first make sure we have an alternate file for each of the 
+        # actual input files
+        alternateInputs = []
+        for i in range(len(mainInputFiles)):
+            alternate = dirname(mainInputFiles[i].inputFileName)
+            alternate += '/' + alternate_prefix
+            alternate += basename(mainInputFiles[i].inputFileName)
+            if(exists(alternate)):
+                #MATUTE
+                print "Found alternate: %s!" % alternate
+                alternateInputs.append(alternate)
+            else:
+                print "Error: could not find alternative input file for: %s" % mainInputFiles[i].inputFileName
+                raise
+        # create file handlers for the alternate input files, get the base directory
+        # from the first main input file
+        return rf.initializeInputFiles(alternateInputs, mainInputFiles[0].basedir)
+
+
     def setupPipeline(self):
         lsq6module = getLSQ6Module(self.inputFiles,
                                    self.target,
