@@ -402,8 +402,11 @@ class Pipeline():
         else:
             self.removeFromRunning(index, clientURI, new_status = "finished")
         self.processedStages.append(index)
-        if save_state: 
-            self.selfPickle()
+        # disableing the pickling for now. On larger pipelines this can take
+        # 10-15 seconds after inital stages finished, which increases in duration
+        # later on. 
+        #if save_state: 
+        #    self.selfPickle()
         for i in self.G.successors(index):
             if self.checkIfRunnable(i):
                 self.runnable.put(i)
