@@ -16,7 +16,7 @@ def addApplicationOptionGroup(parser):
     group = OptionGroup(parser,  "General application options", "General options for all pydpiper applications.")
     group.add_option("--restart", dest="restart", 
                                action="store_true",
-                               help="Restart pipeline using backup files.")
+                               help="Restart pipeline using backup files. (Currently deprecated. Simply rerun the command you ran before)")
     group.add_option("--output-dir", dest="output_directory",
                                type="string", default=None,
                                help="Directory where output data and backups will be saved.")
@@ -126,8 +126,11 @@ class AbstractApplication(object):
             return 
         
         if self.options.restart:
-            logger.info("Restarting pipeline from pickled files.")
-            self.pipeline.restart()
+            print "\nThe restart option is deprecated (pipelines are not pickled anymore, because it takes too much time). Will restart based on which files exists already\n"
+            #logger.info("Restarting pipeline from pickled files.")
+            #self.pipeline.restart()
+            self.reconstructCommand()
+            self.run()
             self.pipeline.initialize()
             self.pipeline.printStages(self.appName)
         else:
@@ -158,8 +161,8 @@ class AbstractApplication(object):
     def setup_logger(self):
         """sets logging info specific to application"""
         FORMAT = '%(asctime)-15s %(name)s %(levelname)s %(process)d/%(threadName)s: %(message)s'
-        now = datetime.now()  
-        FILENAME = str(self.appName) + "-" + now.strftime("%Y%m%d-%H%M%S%f") + ".log"
+        now = datetime.now().strftime("%Y-%m-%d-at-%H:%M:%S")
+        FILENAME = str(self.appName) + "-" + now + '-pid-' + str(os.getpid())  + ".log"
         logging.basicConfig(filename=FILENAME, format=FORMAT, level=logging.DEBUG)
 
     def setup_options(self):
