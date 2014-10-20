@@ -7,7 +7,8 @@ import os
 import re
 import subprocess
 
-SLEEP_TIME = 5
+SERVER_START_TIME = 5
+MAX_LIFETIME = 2 * 24 * 3600
 
 class runOnQueueingSystem():
     def __init__(self, options, sysArgs=None):
@@ -18,6 +19,11 @@ class runOnQueueingSystem():
         # we don't know if the values in options are supplied by the 
         # user or are defaults ... to fix this, we could use None as the 
         # default and set non-scinet defaults later or use optargs in a more sophisticated way(?)
+        self.timestr = options.time
+        h,m,s = self.timestr.split(':')
+        self.server_lifetime = 3600 * int(h) + 60 * int(m) + int(s)
+        # TODO use self.time to give better time_to_accept_jobs
+        # and to compute number of generations of scripts to submit
         if options.scinet:
             self.mem = 14
             self.procs = 8
@@ -34,7 +40,6 @@ class runOnQueueingSystem():
             self.time_to_accept_jobs = options.time_to_accept_jobs
         self.arguments = sysArgs #sys.argv in calling program
         self.numexec = options.num_exec 
-        self.time = options.time or "2:00:00:00"      
         self.ns = options.use_ns
         self.uri_file = options.urifile
         if self.uri_file is None:
@@ -47,13 +52,6 @@ class runOnQueueingSystem():
         else:
             executablePath = os.path.abspath(self.arguments[0])
             self.jobName = basename(executablePath)
-    def relevant(arg):
-        if re.search("--queue-name", arg):
-            return True
-        elif re.search("--(num-executors|proc|queue|mem|time|ppn)", arg):
-            return False
-        else:
-            return True
     def buildMainCommand(self):
         """Re-construct main command to be called in pbs script, removing un-necessary arguments"""
         def relevant(arg):
@@ -63,7 +61,9 @@ class runOnQueueingSystem():
                 return True
         reconstruct = ""
         if self.arguments:
-            reconstruct += ' '.join(filter(relevant, self.arguments)) + " --num-executors=0 "
+            reconstruct += ' '.join(filter(relevant, self.arguments))
+        #TODO pass time as an arg to buildMainCmd, decrement by max_scinet_time - 5:00 with each generation
+        reconstruct += " --num-executors=0 " + " --lifetime=%d " % self.server_lifetime
         return reconstruct
     def constructAndSubmitJobFile(self, identifier, isMainFile, depends):
         """Construct the bulk of the pbs script to be submitted via qsub"""
@@ -80,10 +80,10 @@ class runOnQueueingSystem():
         serverJobId = self.createAndSubmitMainJobFile()
         if self.numexec >= 2:
             for i in range(1, self.numexec):
-                self.createAndSubmitExecutorJobFile(i, serverJobId)
+                self.createAndSubmitExecutorJobFile(i, depends=serverJobId)
     def createAndSubmitMainJobFile(self): 
         return self.constructAndSubmitJobFile("-pipeline-", isMainFile=True, depends = None)
-    def createAndSubmitExecutorJobFile(self, i, serverJobId):
+    def createAndSubmitExecutorJobFile(self, i, depends):
         # This is called directly from pipeline_executor
         # For multiple executors, this will be called multiple-times.
         execId = "-executor-" + str(i) + "-"
@@ -118,7 +118,7 @@ class runOnQueueingSystem():
                 execProcs = self.procs
         else:
             name += "-executor"
-        self.jobFile.write("#PBS -l nodes=%d:ppn=%d,walltime=%s\n" % (requestNodes, self.ppn, self.time))
+        self.jobFile.write("#PBS -l nodes=%d:ppn=%d,walltime=%s\n" % (requestNodes, self.ppn, self.timestr))
         self.jobFile.write("#PBS -N %s\n" % name)
         self.jobFile.write("#PBS -q %s\n" % self.queue_name)
         self.jobFile.write("module load gcc intel python\n\n")
@@ -127,8 +127,8 @@ class runOnQueueingSystem():
             self.jobFile.write(self.buildMainCommand())
             self.jobFile.write(" &\n\n")
         if launchExecs:
-            if not mainCommand:
-                self.jobFile.write("sleep %s\n\n" % SLEEP_TIME) # sleep to ensure that pipeline server has time to start
+            if mainCommand:
+                self.jobFile.write("sleep %s\n\n" % SERVER_START_TIME)
             self.jobFile.write("pipeline_executor.py --num-executors=1 --uri-file=%s --proc=%d --mem=%.2f --time-to-accept-jobs=%d" % (self.uri_file, execProcs, self.mem, self.time_to_accept_jobs))
             if self.ns:
                 self.jobFile.write(" --use-ns ")

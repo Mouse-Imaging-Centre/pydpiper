@@ -18,7 +18,8 @@ import threading
 import Pyro4
 
 LOOP_INTERVAL = 5.0
-RESPONSE_LATENCY = 100
+RESPONSE_LATENCY = 10
+SHUTDOWN_INTERVAL = 5 * 60
 
 logger = logging.getLogger(__name__)
 
@@ -129,6 +130,7 @@ class CmdStage(PipelineStage):
             if not os.path.exists(output):
                 return False
         return True
+        
 
     def getHash(self):
         return(hash(" ".join(self.cmd)))
@@ -136,6 +138,10 @@ class CmdStage(PipelineStage):
         return(" ".join(self.cmd))
 
 class Pipeline():
+    # TODO the way we initialize a pipeline is currently a bit gross, e.g.,
+    # setting a bunch of instance variables after __init__ - the presence of a method
+    # called `initialize` should be a hint that things are perhaps not well, but perhaps
+    # there is indeed some information legitimately unavailable when we first construct
     def __init__(self):
         # the core pipeline is stored in a directed graph. The graph is made
         # up of integer indices
@@ -173,6 +179,14 @@ class Pipeline():
         # main option hash, needed for the pipeline (server) to launch additional
         # executors during run time
         self.main_options_hash = None
+        # TODO put this logic into queueing.py:
+        #h,m,s = options.time.split(':')
+        #t = 3600 * int(h) + 60 * int(m) + int(s)
+        #if t <= SHUTDOWN_INTERVAL:
+        #    self.lifetime = t
+        #else:
+        #    self.lifetime = min(t - SHUTDOWN_INTERVAL, MAX_LIFETIME)
+            
         self.programName = None
         # Initially set number of skipped stages to be 0
         self.skipped_stages = 0
@@ -357,10 +371,9 @@ class Pipeline():
     available) and the next runnable stage if the flag is "run_stage", otherwise
     None"""
     def getRunnableStageIndex(self):
-        if self.allStagesComplete():
+        if self.allStagesComplete() or self.runnable.empty():
+            # pipeline may not finish if an executor dies, but don't wait around to find out
             return ("shutdown_normally", None)
-        elif self.runnable.empty():
-            return ("wait", None)
         else:
             index = self.runnable.get()
             return ("run_stage", index)
@@ -523,7 +536,7 @@ class Pipeline():
             for client, stages in self.client_running_stages.copy().iteritems():
                 if t - self.clientTimestamps[client] > pe.HEARTBEAT_INTERVAL + RESPONSE_LATENCY:
                     logger.warn("Executor at %s has died!", client)
-                    print("\nWarning: there has been no contact with %s, for %f seconds. Considering the executor as dead!\n" % (client, 5 + RESPONSE_LATENCY))
+                    print("\nWarning: there has been no contact with %s, for %f seconds. Considering the executor as dead!\n" % (client, pe.HEARTBEAT_INTERVAL + RESPONSE_LATENCY))
                     if self.failed_executors > self.main_options_hash.max_failed_executors:
                         logger.warn("Too many executors lost to spawn new ones")
 
@@ -705,7 +718,10 @@ def launchServer(pipeline, options):
         t = threading.Thread(target=daemon.requestLoop)
         t.daemon = True
         t.start()
-        pipeline.mainLoop()
+        h = threading.Thread(target=pipeline.mainLoop)   #FIXME catch exceptions from here
+        h.daemon = True
+        h.start()
+        sleep(self.main_options_hash.lifetime)
     except KeyboardInterrupt:
         logger.exception("Caught keyboard interrupt, killing executors and shutting down server.")
         print("\nKeyboardInterrupt caught: cleaning up, shutting down executors.\n")
@@ -715,10 +731,8 @@ def launchServer(pipeline, options):
     finally:
         # allow time for all clients to contact the server and be told to shut down
         # (we could instead add a way for the server to notify its registered clients):
-        # also, currently this doesn't happen until all jobs are finished (see getCommand),
-        # but if we instead decided to shut down once the queue is empty, then
-        # various notifyStageTerminated calls could fail
-        time.sleep(pe.WAIT_TIMEOUT + 1)
+        # otherwise they will crash when they try to contact the (shutdown) server
+        time.sleep(pe.WAIT_TIMEOUT + RESPONSE_LATENCY)
         daemon.shutdown()
         t.join()
         pipeline.printShutdownMessage()

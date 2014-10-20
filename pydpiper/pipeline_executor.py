@@ -46,8 +46,8 @@ def addExecutorOptionGroup(parser):
                      type="int", default=2,
                      help="Maximum number of failed executors before we stop relaunching. [Default = 2]")
     group.add_option("--time", dest="time", 
-                      type="string", default="2:00:00:00", 
-                      help="Wall time to request for each executor in the format dd:hh:mm:ss. Required only if --queue=pbs.")
+                      type="string", default="48:00:00", 
+                      help="Wall time to request for each executor in the format hh:mm:ss. Required only if --queue-type=pbs.")
     group.add_option("--proc", dest="proc", 
                       type="int", default=1,
                       help="Number of processes per executor. If not specified, default is 1. Also sets max value for processor use per executor.")
@@ -73,6 +73,9 @@ def addExecutorOptionGroup(parser):
     group.add_option("--time-to-accept-jobs", dest="time_to_accept_jobs", 
                       type="int", default=180,
                       help="The number of minutes after which an executor will not accept new jobs anymore. This can be useful when running executors on a batch system where other (competing) jobs run for a limited amount of time. The executors can behave in a similar way by given them a rough end time. [Default=180 minutes]")
+    group.add_option("--lifetime", dest="lifetime",
+                      type="int", default=None,
+                      help="Maximum lifetime in seconds of the server, or infinite if None. [Default: None]")
     parser.add_option_group(group)
 
 
