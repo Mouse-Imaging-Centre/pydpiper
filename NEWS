@@ -1,3 +1,21 @@
+New in Version 1.8
+==================
+* major code restructuring on the server and executors. The executors now send
+  out a heartbeat signal to the server, which enables the server to notice 
+  an executor having died. Also, all executors now properly die when the server
+  is done (or gets killed).
+* pickling of the pipeline has been disabled, because it turned out to cause
+  huge communication delays (minutes in large pipelines: > 30000 stages)
+* command line tool added to query the server as to what's happening:
+  check_pipeline_status.py
+* logging is separated out again (each executor has its own log file)
+* Pyro4 environment variables should be set as:
+   
+  PYRO_DETAILED_TRACEBACK=True
+  PYRO_SERVERTYPE=multiplex
+  PYRO_LOGLEVEL=INFO
+
+
 New in Version 1.7
 ==================
 * the communication between the server and the executors has been upgraded

@@ -24,7 +24,7 @@ os.environ["PYRO_LOGFILE"] = G_log_file_name
 import Pyro4
 
 WAIT_TIMEOUT = 5.0
-HEARTBEAT_INTERVAL = 5.0
+HEARTBEAT_INTERVAL = 30.0
 
 logger = logging.getLogger(__name__)
 
@@ -68,12 +68,11 @@ def addExecutorOptionGroup(parser):
                       type="string", default=None,
                       help="[DEPRECATED; use --queue-name instead.]  For --queue=sge, allows you to specify different queues. If not specified, default is used.")
     group.add_option("--time-to-seppuku", dest="time_to_seppuku", 
-                      type="int", default=15,
-                      help="The number of minutes an executor is allowed to continuously sleep, i.e. wait for an available job, while active on a compute node/farm before it kills itself due to resource hogging. [Default=15 minutes]")
-    group.add_option("--scinet", dest="scinet", action="store_true", help="Set --queue-name, --queue-type, --mem, --ppn for Scinet.  Overridden by these flags.")
+                      type="int", default=1,
+                      help="The number of minutes an executor is allowed to continuously sleep, i.e. wait for an available job, while active on a compute node/farm before it kills itself due to resource hogging. [Default=1 minute]")
     group.add_option("--time-to-accept-jobs", dest="time_to_accept_jobs", 
                       type="int", default=180,
-                      help="The number of minutes after which an executor will not accept new jobs anymore. This can be useful when running executors on a batch system where other (competing) jobs run for a limited amount of time. The executors can behave in a similar way by given them a rough end time. [Default=3 hours]")
+                      help="The number of minutes after which an executor will not accept new jobs anymore. This can be useful when running executors on a batch system where other (competing) jobs run for a limited amount of time. The executors can behave in a similar way by given them a rough end time. [Default=180 minutes]")
     parser.add_option_group(group)
 
 

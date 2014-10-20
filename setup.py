@@ -3,11 +3,11 @@
 from distutils.core import setup
 
 setup(name='pydpiper',
-      version='1.7',
+      version='1.8',
       license='Modified BSD',
       description='Python code for flexible pipeline control',
       long_description = 'Python code for flexible pipeline control', 
-      author='Miriam Friedel, Matthijs van Eede, Jason Lerch, Jon Pipitone, Fraser MacDonald',
+      author='Miriam Friedel, Matthijs van Eede, Jason Lerch, Jon Pipitone, Fraser MacDonald, Ben Darwin',
       maintainer_email='mfriedel@mouseimaging.ca',
       url='https://github.com/mfriedel/pydpiper',
       platforms="any",
