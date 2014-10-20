@@ -51,6 +51,10 @@ if __name__ == '__main__':
     for stage in runningStagesList:
         print stage, " ", proxyServer.getStageCommand(stage)
 
-    
+    # currently runnable jobs:
+    numberRunnableStages = proxyServer.getNumberRunnableStages()
+    print "\n\nNumber of runnable stages:               ", numberRunnableStages, "\n"
+
+
 
     

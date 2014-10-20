@@ -18,6 +18,7 @@ import threading
 import Pyro4
 
 LOOP_INTERVAL = 5.0
+RESPONSE_LATENCY = 100
 
 logger = logging.getLogger(__name__)
 
@@ -194,7 +195,10 @@ class Pipeline():
         self.verbose = verbosity
 
     def getCurrentlyRunningStages(self):
-        return (self.currently_running_stages)
+        return self.currently_running_stages
+
+    def getNumberRunnableStages(self):
+        return self.runnable.qsize()
         
     def pipelineFullyCompleted(self):
         return (len(self.stages) == len(self.processedStages))
@@ -399,8 +403,11 @@ class Pipeline():
         else:
             self.removeFromRunning(index, clientURI, new_status = "finished")
         self.processedStages.append(index)
-        if save_state: 
-            self.selfPickle()
+        # disableing the pickling for now. On larger pipelines this can take
+        # 10-15 seconds after inital stages finished, which increases in duration
+        # later on. 
+        #if save_state: 
+        #    self.selfPickle()
         for i in self.G.successors(index):
             if self.checkIfRunnable(i):
                 self.runnable.put(i)
@@ -514,8 +521,9 @@ class Pipeline():
             # requeue, unregisterClient ... take locks for this whole section?
             t = time.time()
             for client, stages in self.client_running_stages.copy().iteritems():
-                if t - self.clientTimestamps[client] > pe.HEARTBEAT_INTERVAL + 1:
+                if t - self.clientTimestamps[client] > pe.HEARTBEAT_INTERVAL + RESPONSE_LATENCY:
                     logger.warn("Executor at %s has died!", client)
+                    print("\nWarning: there has been no contact with %s, for %f seconds. Considering the executor as dead!\n" % (client, 5 + RESPONSE_LATENCY))
                     if self.failed_executors > self.main_options_hash.max_failed_executors:
                         logger.warn("Too many executors lost to spawn new ones")
 
@@ -526,7 +534,7 @@ class Pipeline():
                     self.unregisterClient(client)
 
             time.sleep(LOOP_INTERVAL)
-        logger.debug("Server loop shutting down")
+        logger.info("Server loop shutting down")
             
     """
         Returns an integer indicating the number of executors to launch
