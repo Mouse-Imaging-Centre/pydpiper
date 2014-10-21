@@ -1,3 +1,9 @@
+New in Version 1.9
+==================
+* MAGeT uses the originally optimized defaults again. Hardcoded paths to the 
+  linear and non linear protocol for now. With a help message of where to find
+  them when not running the code at MICe.
+
 New in Version 1.8
 ==================
 * major code restructuring on the server and executors. The executors now send
