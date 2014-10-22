@@ -7,8 +7,11 @@ import os
 import re
 import subprocess
 
-SERVER_START_TIME = 5
-MAX_LIFETIME = 2 * 24 * 3600
+SERVER_START_TIME = 10
+# TODO instead of hard-coding SciNet min/max times for debug/batch queues,
+# add extra options/env. vars for these
+SCINET_MIN_LIFETIME = 2 *  1 * 3600
+SCINET_MAX_LIFETIME = 2 * 24 * 3600
 
 class runOnQueueingSystem():
     def __init__(self, options, sysArgs=None):
@@ -19,9 +22,9 @@ class runOnQueueingSystem():
         # we don't know if the values in options are supplied by the 
         # user or are defaults ... to fix this, we could use None as the 
         # default and set non-scinet defaults later or use optargs in a more sophisticated way(?)
-        self.timestr = options.time
+        self.timestr = options.time or '48:00:00'
         h,m,s = self.timestr.split(':')
-        self.server_lifetime = 3600 * int(h) + 60 * int(m) + int(s)
+        self.job_lifetime = 3600 * int(h) + 60 * int(m) + int(s)
         # TODO use self.time to give better time_to_accept_jobs
         # and to compute number of generations of scripts to submit
         if options.scinet:
@@ -30,7 +33,7 @@ class runOnQueueingSystem():
             self.ppn = 8
             self.queue_name = options.queue_name or options.queue or "batch"
             self.queue_type = "pbs"
-            self.time_to_accept_jobs = 48 * 60
+            self.time_to_accept_jobs = 47 * 60 # TODO compute based on lifetime
         else:
             self.mem = options.mem
             self.procs = options.proc
@@ -63,32 +66,39 @@ class runOnQueueingSystem():
         if self.arguments:
             reconstruct += ' '.join(filter(relevant, self.arguments))
         #TODO pass time as an arg to buildMainCmd, decrement by max_scinet_time - 5:00 with each generation
-        reconstruct += " --num-executors=0 " + " --lifetime=%d " % self.server_lifetime
+        reconstruct += " --num-executors=0 " + " --lifetime=%d " % self.job_lifetime
         return reconstruct
-    def constructAndSubmitJobFile(self, identifier, isMainFile, depends):
+    def constructAndSubmitJobFile(self, identifier, time, isMainFile, depends):
         """Construct the bulk of the pbs script to be submitted via qsub"""
         now = datetime.now()  
         jobName = self.jobName + identifier + now.strftime("%Y%m%d-%H%M%S%f") + ".job"
         self.jobFileName = self.jobDir + "/" + jobName
         self.jobFile = open(self.jobFileName, "w")
-        self.addHeaderAndCommands(isMainFile)
+        self.addHeaderAndCommands(time, isMainFile)
         self.completeJobFile()
         jobId = self.submitJob(depends = depends)
         return jobId
     def createAndSubmitPbsScripts(self): 
         """Creates pbs script(s) for main program and separate executors, if needed"""       
-        serverJobId = self.createAndSubmitMainJobFile()
-        if self.numexec >= 2:
-            for i in range(1, self.numexec):
-                self.createAndSubmitExecutorJobFile(i, depends=serverJobId)
-    def createAndSubmitMainJobFile(self): 
-        return self.constructAndSubmitJobFile("-pipeline-", isMainFile=True, depends = None)
-    def createAndSubmitExecutorJobFile(self, i, depends):
+        time_remaining = self.job_lifetime
+        serverJobId = None
+        while time_remaining > 0:
+            t = min(time_remaining, SCINET_MAX_LIFETIME) # TODO min(max(min_t,t),max_t)
+            time_remaining -= t
+            serverJobId = self.createAndSubmitMainJobFile(time=t, depends=serverJobId)
+            if self.numexec >= 2:
+                for i in range(1, self.numexec):
+                    self.createAndSubmitExecutorJobFile(i, time=t,depends=serverJobId)
+            # in principle a server could overlap the previous generation of clients,
+            # but at present the clients just die within seconds
+    def createAndSubmitMainJobFile(self,time,depends=None): 
+        return self.constructAndSubmitJobFile("-pipeline-",time,isMainFile=True,depends=depends)
+    def createAndSubmitExecutorJobFile(self, i, time, depends):
         # This is called directly from pipeline_executor
         # For multiple executors, this will be called multiple-times.
         execId = "-executor-" + str(i) + "-"
-        self.constructAndSubmitJobFile(execId, isMainFile=False, depends=serverJobId)
-    def addHeaderAndCommands(self, isMainFile):
+        self.constructAndSubmitJobFile(execId, time, isMainFile=False, depends=depends)
+    def addHeaderAndCommands(self, time, isMainFile):
         """Constructs header and commands for pbs script, based on options input from calling program"""
         self.jobFile.write("#!/bin/bash" + "\n")
         requestNodes = 1
@@ -118,7 +128,10 @@ class runOnQueueingSystem():
                 execProcs = self.procs
         else:
             name += "-executor"
-        self.jobFile.write("#PBS -l nodes=%d:ppn=%d,walltime=%s\n" % (requestNodes, self.ppn, self.timestr))
+        m,s = divmod(time,60)
+        h,m = divmod(m,60)
+        timestr = "%d:%02d:%02d" % (h,m,s)
+        self.jobFile.write("#PBS -l nodes=%d:ppn=%d,walltime=%s\n" % (requestNodes, self.ppn, timestr))
         self.jobFile.write("#PBS -N %s\n" % name)
         self.jobFile.write("#PBS -q %s\n" % self.queue_name)
         self.jobFile.write("module load gcc intel python\n\n")
@@ -127,8 +140,7 @@ class runOnQueueingSystem():
             self.jobFile.write(self.buildMainCommand())
             self.jobFile.write(" &\n\n")
         if launchExecs:
-            if mainCommand:
-                self.jobFile.write("sleep %s\n\n" % SERVER_START_TIME)
+            self.jobFile.write("sleep %s\n" % SERVER_START_TIME)
             self.jobFile.write("pipeline_executor.py --num-executors=1 --uri-file=%s --proc=%d --mem=%.2f --time-to-accept-jobs=%d" % (self.uri_file, execProcs, self.mem, self.time_to_accept_jobs))
             if self.ns:
                 self.jobFile.write(" --use-ns ")
@@ -137,13 +149,15 @@ class runOnQueueingSystem():
         """Completes pbs script--wait for background jobs to terminate as per scinet wiki"""
         self.jobFile.write("wait" + "\n")
         self.jobFile.close()
-    def submitJob(self, depends=None): 
+    def submitJob(self, depends):
         """Submit job to batch queueing system"""
         if depends is not None:
-            out = subprocess.check_output(['qsub', '-Wafter:' + depends, self.jobFileName])
+            cmd = ['qsub', '-Wafter:' + depends, self.jobFileName]
         else:
-            out = subprocess.check_output(['qsub', self.jobFileName])
+            cmd = ['qsub', self.jobFileName]
+        out = subprocess.check_output(cmd)
         jobId = out.strip()
+        print(cmd)
         print(jobId)
         print("Submitted!")
         return jobId

@@ -130,15 +130,11 @@ class AbstractApplication(object):
             print "\nThe restart option is deprecated (pipelines are not pickled anymore, because it takes too much time). Will restart based on which files exists already\n"
             #logger.info("Restarting pipeline from pickled files.")
             #self.pipeline.restart()
-            self.reconstructCommand()
-            self.run()
-            self.pipeline.initialize()
-            self.pipeline.printStages(self.appName)
-        else:
-            self.reconstructCommand()
-            self.run()
-            self.pipeline.initialize()
-            self.pipeline.printStages(self.appName)
+
+        self.reconstructCommand()
+        self.run()
+        self.pipeline.initialize()
+        self.pipeline.printStages(self.appName)
                             
         if self.options.create_graph:
             logger.debug("Writing dot file...")

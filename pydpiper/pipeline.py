@@ -5,7 +5,9 @@ import Queue
 import cPickle as pickle
 import os
 import sys
+import signal
 import socket
+import threading
 import time
 from datetime import datetime
 from subprocess import call
@@ -14,12 +16,10 @@ from multiprocessing import Process, Event
 import file_handling as fh
 import pipeline_executor as pe
 import logging
-import threading
 import Pyro4
 
 LOOP_INTERVAL = 5.0
-RESPONSE_LATENCY = 10
-SHUTDOWN_INTERVAL = 5 * 60
+#SHUTDOWN_INTERVAL = 5 * 60
 
 logger = logging.getLogger(__name__)
 
@@ -179,6 +179,10 @@ class Pipeline():
         # main option hash, needed for the pipeline (server) to launch additional
         # executors during run time
         self.main_options_hash = None
+        # time to shut down, due to walltime or having given out all stages?
+        # (use an event rather than a simple flag for shutdown notification
+        # so that we can shut down even if the mainLoop is sleeping)
+        self.shutdown_ev = Event() # initially false
         # TODO put this logic into queueing.py:
         #h,m,s = options.time.split(':')
         #t = 3600 * int(h) + 60 * int(m) + int(s)
@@ -215,7 +219,7 @@ class Pipeline():
         return self.runnable.qsize()
         
     def pipelineFullyCompleted(self):
-        return (len(self.stages) == len(self.processedStages))
+        return len(self.stages) == len(self.processedStages)
         
     def addStage(self, stage):
         """adds a stage to the pipeline"""
@@ -349,11 +353,17 @@ class Pipeline():
     def getStageLogfile(self,i):
         return(self.stages[i].logFile)
 
+    def is_time_to_drain(self):
+        return self.shutdown_ev.is_set()
+
     """Given client information, issue commands to the client (along similar
     lines to getRunnableStageIndex) and update server's internal view of client.
     This is highly stateful, being a resource-tracking wrapper around
     getRunnableStageIndex and hence a glorified Queue().get()."""
     def getCommand(self, clientURIstr, clientMemFree, clientProcsFree):
+        if self.is_time_to_drain():
+            return ("shutdown_normally", None)
+
         flag, i = self.getRunnableStageIndex()
         if flag == "run_stage":
             if ((self.getStageMem(i) <= clientMemFree) and (self.getStageProcs(i) <= clientProcsFree)):
@@ -366,14 +376,19 @@ class Pipeline():
         else:
             return (flag, i)
 
+    def allStagesStarted(self):
+        return len(self.stages) == len(self.currently_running_stages) + len(self.processedStages)
+
     """Return a tuple of a command ("shutdown_normally" if all stages are finished,
     "wait" if no stages are currently runnable, or "run_stage" if a stage is
     available) and the next runnable stage if the flag is "run_stage", otherwise
     None"""
     def getRunnableStageIndex(self):
-        if self.allStagesComplete() or self.runnable.empty():
-            # pipeline may not finish if an executor dies, but don't wait around to find out
+        #if self.allStagesComplete():
+        if self.allStagesStarted():
             return ("shutdown_normally", None)
+        elif self.runnable.empty():
+            return ("wait", None)
         else:
             index = self.runnable.get()
             return ("run_stage", index)
@@ -432,6 +447,7 @@ class Pipeline():
 
     def setStageLost(self, index, clientURI):
         """Clean up a stage lost due to unresponsive client"""
+        logger.info("Lost Stage %d: %s: ", index, self.stages[index])
         self.removeFromRunning(index, clientURI, new_status = None)
         self.requeue(index)
 
@@ -494,30 +510,23 @@ class Pipeline():
             print("\nERROR: no more runnable stages, however not all stages have finished. Going to shut down.\n")
             sys.stdout.flush()
             return False
-
         # TODO return False if all executors have died but not spawning new ones...
-
-        if not self.allStagesComplete():
-            return True
-        #elif len(self.clients) > 0:
-            # this branch is to allow clients asking for more jobs to shutdown
-            # gracefully when the server has no more jobs
-            # since it might hang the server if a client has become unresponsive
-            # it's currently commented.  We might turn it back on once the server
-            # has a way to detect unresponsive clients.
-            # (also, before shutting down, we currently sleep for longer
-            # than the interval between client connections in order for
-            # clients to realize they need to shut down)
-            # TODO what if a launched_and_waiting client registers here?
-        #    return True
-        else:
+        elif self.allStagesStarted():
+            logger.debug("All stages started ... done")
             return False
+        elif self.shutdown_ev.is_set():
+            logger.debug("Shutdown event is set ... quitting")
+            return False
+        else:
+            return True
 
     def updateClientTimestamp(self, clientURI):
         self.clientTimestamps[clientURI] = time.time() # use server clock for consistency
 
     def mainLoop(self):
+        """An auxiliary loop function on the server used to manage executors."""
         while self.continueLoop():
+            logger.debug("Looping ...")
             # check to see whether new executors need to be launched
             executors_to_launch = self.numberOfExecutorsToLaunch()
             if executors_to_launch > 0:
@@ -534,7 +543,7 @@ class Pipeline():
             # requeue, unregisterClient ... take locks for this whole section?
             t = time.time()
             for client, stages in self.client_running_stages.copy().iteritems():
-                if t - self.clientTimestamps[client] > pe.HEARTBEAT_INTERVAL + RESPONSE_LATENCY:
+                if t - self.clientTimestamps[client] > pe.HEARTBEAT_INTERVAL + pe.RESPONSE_LATENCY:
                     logger.warn("Executor at %s has died!", client)
                     print("\nWarning: there has been no contact with %s, for %f seconds. Considering the executor as dead!\n" % (client, pe.HEARTBEAT_INTERVAL + RESPONSE_LATENCY))
                     if self.failed_executors > self.main_options_hash.max_failed_executors:
@@ -579,9 +588,8 @@ class Pipeline():
         return executors_to_launch
         
     def launchExecutorsFromServer(self, number_to_launch):
-        # As the function name suggests, here we launch executors!
         try:
-            logger.debug("Launching %i executors", number_to_launch)
+            logger.info("Launching %i executors", number_to_launch)
             processes = [Process(target=launchPipelineExecutor, args=(self.main_options_hash,self.programName,)) for i in range(number_to_launch)]
             for p in processes:
                 p.start()
@@ -715,13 +723,36 @@ def launchServer(pipeline, options):
     logger.info("The pipeline's uri is: %s", str(pipelineURI))
 
     try:
+        # start Pyro server
         t = threading.Thread(target=daemon.requestLoop)
         t.daemon = True
         t.start()
-        h = threading.Thread(target=pipeline.mainLoop)   #FIXME catch exceptions from here
+
+        # handle SIGTERM (send by SciNet 15-30s before hard kill) by setting
+        # the shutdown event (we shouldn't actually see a SIGTERM on PBS
+        # since PBS submission logic gives us a lifetime related to our walltime
+        # request ...)
+        def handler(sig,stack):
+            logger.info("Caught signal %s", sig)
+            pipeline.shutdown_ev.set()
+        signal.signal(signal.SIGTERM, handler)
+
+        # spawn a loop to manage executors in a separate thread:
+        # FIXME handle exceptions from this thread!
+        def loop():
+            pipeline.mainLoop()
+            pipeline.shutdown_ev.set()
+        h = threading.Thread(target=loop)
         h.daemon = True
         h.start()
-        sleep(self.main_options_hash.lifetime)
+
+        pipeline.shutdown_ev.wait(pipeline.main_options_hash.lifetime)
+        # (note wait(None) => no timeout)
+        # note that this timeout doesn't start from walltime 0
+        # so is slightly inaccurate ... we could start a timer earlier
+        # Also, we might want to wait for only some fraction of lifetime
+        # but this is perhaps better left to executor --time-to-accept-jobs
+
     except KeyboardInterrupt:
         logger.exception("Caught keyboard interrupt, killing executors and shutting down server.")
         print("\nKeyboardInterrupt caught: cleaning up, shutting down executors.\n")
@@ -731,8 +762,13 @@ def launchServer(pipeline, options):
     finally:
         # allow time for all clients to contact the server and be told to shut down
         # (we could instead add a way for the server to notify its registered clients):
-        # otherwise they will crash when they try to contact the (shutdown) server
-        time.sleep(pe.WAIT_TIMEOUT + RESPONSE_LATENCY)
+        # otherwise they will crash when they try to contact the (shutdown) server.
+        # It's important that clients shut down properly since otherwise they
+        # will cancel their running jobs
+        logger.debug("Sleeping to allow time for clients to shutdown")
+        # FIXME this only makes sense if we are actually shutting down nicely,
+        # and not because we're out of walltime, in which case this doesn't help
+        time.sleep(pe.SHUTDOWN_TIME)
         daemon.shutdown()
         t.join()
         pipeline.printShutdownMessage()
@@ -786,7 +822,6 @@ def sge_script(p):
 def pipelineDaemon(pipeline, options=None, programName=None):
     """Launches Pyro server and (if specified by options) pipeline executors"""
 
-    #check for valid pipeline 
     if pipeline.runnable.empty():
         print "Pipeline has no runnable stages. Exiting..."
         sys.exit()
@@ -815,11 +850,12 @@ def pipelineDaemon(pipeline, options=None, programName=None):
     pipeline.main_options_hash = options
     pipeline.programName = programName
     logger.debug("Starting server...")
-    process = Process(target=launchServer, args=(pipeline,options))
-    process.start()
-  
-    try:
-        process.join()
-    except KeyboardInterrupt:
-        print "\nCaught KeyboardInterrupt; exiting\n"
-        sys.exit(0)
+    launchServer(pipeline,options)
+    #process = Process(target=launchServer, args=(pipeline,options))
+    #process.start()
+
+    #try:
+    #    process.join()
+    #except KeyboardInterrupt:
+    #    print "\nCaught KeyboardInterrupt; exiting\n"
+    #    sys.exit(0)

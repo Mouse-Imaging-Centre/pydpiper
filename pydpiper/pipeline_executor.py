@@ -25,6 +25,9 @@ import Pyro4
 
 WAIT_TIMEOUT = 5.0
 HEARTBEAT_INTERVAL = 30.0
+RESPONSE_LATENCY = 5.0
+# q.SERVER_START_TIME
+SHUTDOWN_TIME = WAIT_TIMEOUT + RESPONSE_LATENCY
 
 logger = logging.getLogger(__name__)
 
@@ -46,8 +49,8 @@ def addExecutorOptionGroup(parser):
                      type="int", default=2,
                      help="Maximum number of failed executors before we stop relaunching. [Default = 2]")
     group.add_option("--time", dest="time", 
-                      type="string", default="48:00:00", 
-                      help="Wall time to request for each executor in the format hh:mm:ss. Required only if --queue-type=pbs.")
+                      type="string", default=None,
+                      help="Wall time to request for each executor in the format hh:mm:ss. Required only if --queue-type=pbs. Current default on PBS is 48:00:00.")
     group.add_option("--proc", dest="proc", 
                       type="int", default=1,
                       help="Number of processes per executor. If not specified, default is 1. Also sets max value for processor use per executor.")
@@ -70,6 +73,7 @@ def addExecutorOptionGroup(parser):
     group.add_option("--time-to-seppuku", dest="time_to_seppuku", 
                       type="int", default=1,
                       help="The number of minutes an executor is allowed to continuously sleep, i.e. wait for an available job, while active on a compute node/farm before it kills itself due to resource hogging. [Default=1 minute]")
+    group.add_option("--scinet", dest="scinet", action="store_true", help="Set --queue-name, --queue-type, --mem, --ppn for Scinet.  Overridden by these flags.")
     group.add_option("--time-to-accept-jobs", dest="time_to_accept_jobs", 
                       type="int", default=180,
                       help="The number of minutes after which an executor will not accept new jobs anymore. This can be useful when running executors on a batch system where other (competing) jobs run for a limited amount of time. The executors can behave in a similar way by given them a rough end time. [Default=180 minutes]")
@@ -166,7 +170,7 @@ def runStage(serverURI, clientURI, i):
     
     # Retrieve stage information, run stage and set finished or failed accordingly  
     try:
-        logger.info("Running stage %i: ", i)
+        logger.info("Running stage %i", i)
         p.setStageStarted(i, clientURI)
         try:
             # get stage information
@@ -393,12 +397,20 @@ class pipelineExecutor():
                 self.runningChildren.remove(child)
 
     def notifyStageTerminated(self, i, returncode=None):
-        if returncode == 0:
-            self.pyro_proxy_for_server.setStageFinished(i, self.clientURI)
-        else:
-            # a None returncode is also considered a failure
-            self.pyro_proxy_for_server.setStageFailed(i, self.clientURI)
-        self.e.set()  # some work finished and server notified, so wake up
+        #try:
+            if returncode == 0:
+                self.pyro_proxy_for_server.setStageFinished(i, self.clientURI)
+            else:
+                # a None returncode is also considered a failure
+                self.pyro_proxy_for_server.setStageFailed(i, self.clientURI)
+        #except Pyro4.errors.CommunicationError:
+            # the server may have shutdown or otherwise become unavailable
+            # (currently this is expected when a long-running job completes;
+            # we should add a more elegant check for this state of affairs),
+            # but the executor may have running jobs that shouldn't be killed
+            # TODO add similar error handling around certain other Pyro calls)
+        #    logger.info("Error communing with server; couldn't notify it of stage %d's termination", i)
+            self.e.set()  # some work finished and server notified, so wake up
 
     def idle(self):
         return self.runningMem == 0 and self.runningProcs == 0 and self.prev_time
@@ -428,35 +440,25 @@ class pipelineExecutor():
         # a bit coarse but we can't call `free_resources` directly in a function
         # such as notifyStageTerminated which is called from _within_ `runStage`
         # since resources won't be freed soon enough, causing a false resource starvation.
-        # note we will no longer free resources after leaving mainLoop
+        # note we don't do resource accounting after leaving mainLoop, though that
+        # doesn't matter too much as there will never be new jobs
+        # (unless, in the future, we allow clients to connect to switch allegiances
+        # to other servers)
         self.free_resources()
 
         if self.idle():
             self.idle_time += self.current_time - self.prev_time
             logger.debug("Current idle time: %d, and total seconds allowed: %d", self.idle_time, self.time_to_seppuku * 60)
 
-        # TODO the purpose of this mainLoop is to get and run new jobs from the server.
-        # Therefore, we'd like to exit once it's time for us to shutdown.
-        # Currently, we do this if the server notifies that all jobs are done
-        # or if we seppuku, but we continue looping even when is_time_to_drain.
-        # This is because the call to free_resources is here (doesn't matter for
-        # is_seppuku_time as we're already idle in that case; already a "bug" in 
-        # case of a server-initiated shutdown, although that doesn't
-        # matter too much as there will never be new jobs unless a new server is started)
-        # and because getCommand is being used as a heartbeat so the server may
-        # detect unresponsive clients and restart relevant stages.
-
         if self.is_seppuku_time():
             logger.warn("Exceeded allowed idle time... Seppuku!")
             return False
 
         # It is possible that the executor does not accept any new jobs
-        # anymore. If that is the case, the executor should shut down as
-        # soon as all current running jobs (children) have finished
+        # anymore. If that is the case, we can leave this main loop
+        # and just wait until current running jobs (children) have finished
         if self.is_time_to_drain():
-            # that's it, we're done. Nothing is running anymore
-            # and no jobs can be accepted anymore.
-            logger.info("Now shutting down because not accepting new jobs and finished running jobs.")
+            logger.info("Time expired for accepting new jobs...leaving main loop.")
             return False
 
         # TODO we get only one stage per loop iteration, so we have to wait for
@@ -469,10 +471,8 @@ class pipelineExecutor():
         if cmd == "shutdown_normally":
             return False
         elif cmd == "wait":
-            #logger.debug("No additional runnable stages currently available")
             return True
         elif cmd == "run_stage":
-            logger.debug("Running stage %i", i)
             stageMem, stageProcs = self.pyro_proxy_for_server.getStageMem(i), self.pyro_proxy_for_server.getStageProcs(i)
             # we trust that the server has given us a stage
             # that we have enough memory and processors to run ...
