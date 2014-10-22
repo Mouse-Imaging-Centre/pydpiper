@@ -13,6 +13,7 @@ NetworkX - http://networkx.lanl.gov/
 Py.test - http://pytest.org/
 graphviz - http://www.graphviz.org/
 pygraphviz - http://pygraphviz.github.io/
+minc-stuffs - https://github.com/Mouse-Imaging-Centre/minc-stuffs
 
 In Ubuntu (tested on 12.04), run: 
 	apt-get install python-networkx
