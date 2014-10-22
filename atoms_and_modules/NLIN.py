@@ -28,7 +28,7 @@ def addNlinRegOptionGroup(parser):
     group.add_option("--registration-method", dest="reg_method",
                       default="mincANTS", type="string",
                       help="Specify whether to use minctracc or mincANTS for non-linear registrations. "
-                           "Default is mincANTS.")
+                           "Default is mincANTS (and minctracc when running MAGeT.py).")
     group.add_option("--nlin-protocol", dest="nlin_protocol",
                      type="string", default=None,
                      help="Can optionally specify a registration protocol that is different from defaults. "
