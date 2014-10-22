@@ -7,7 +7,7 @@ from atoms_and_modules.registration_functions import initializeInputFiles, addGe
 from atoms_and_modules.MAGeT_modules import MAGeTMask, MAGeTRegister, voxelVote, addMAGeTOptionGroup
 from atoms_and_modules.LSQ12 import addLSQ12OptionGroup
 from atoms_and_modules.NLIN import addNlinRegOptionGroup
-from os.path import abspath, join
+from os.path import abspath, join, exists
 import logging
 import glob
 import fnmatch
@@ -21,6 +21,13 @@ class MAGeTApplication(AbstractApplication):
         addMAGeTOptionGroup(self.parser)
         addLSQ12OptionGroup(self.parser)
         addNlinRegOptionGroup(self.parser)
+        # make sure that the default non linear registration tool for MAGeT is set to minctracc
+        # this is what MAGeT was optimized for, and it's a lot faster than mincANTS
+        self.parser.set_defaults(reg_method="minctracc")
+        # similarly set the default linear and non linear protocols. 
+        # TODO: ugly hard coded path? Yes...
+        self.parser.set_defaults(nlin_protocol="/projects/mice/share/arch/linux-3_2_0-36-generic-x86_64-eglibc-2_15/src/pydpiper/applications_testing/test_data/default_nlin_MAGeT_minctracc_prot.csv")
+        self.parser.set_defaults(lsq12_protocol="/projects/mice/share/arch/linux-3_2_0-36-generic-x86_64-eglibc-2_15/src/pydpiper/applications_testing/test_data/default_linear_MAGeT_prot.csv")
         self.parser.set_usage("%prog [options] input files") 
 
     def setup_appName(self):
@@ -28,11 +35,23 @@ class MAGeTApplication(AbstractApplication):
         return appName
 
     def run(self):
-        
+
         if self.options.reg_method != "minctracc" and self.options.reg_method != "mincANTS":
-            logger.error("Incorrect registration method specified: " + self.options.reg_method)
+            print "Incorrect registration method specified: ", self.options.reg_method
             sys.exit()
-        
+
+        # given that the lsq12 and nlin protocols are hard coded at the moment, exit if we are not at 
+        # MICe, and provide some information as to where to find them
+        if not exists(self.options.lsq12_protocol):
+            print "The lsq12 protocol does not exists: ", self.options.lsq12_protocol
+            print "You can find the default MAGeT protocols in your pydpiper source directory, in: applications_testing/test_data/"
+            sys.exit()
+        if not exists(self.options.nlin_protocol):
+            print "The nlin protocol does not exists: ", self.options.nlin_protocol
+            print "You can find the default MAGeT protocols in your pydpiper source directory, in: applications_testing/test_data/"
+            sys.exit()
+            
+
         atlasDir = fh.createSubDir(self.outputDir, "input_atlases")
         
         """Read in atlases from directory specified in --atlas-library and 
