@@ -542,17 +542,15 @@ class Pipeline():
             # FIXME there are potential race conditions here with
             # requeue, unregisterClient ... take locks for this whole section?
             t = time.time()
-            for client, stages in self.client_running_stages.copy().iteritems():
+            for client in self.clients[:]:
                 if t - self.clientTimestamps[client] > pe.HEARTBEAT_INTERVAL + pe.RESPONSE_LATENCY:
                     logger.warn("Executor at %s has died!", client)
-                    print("\nWarning: there has been no contact with %s, for %f seconds. Considering the executor as dead!\n" % (client, pe.HEARTBEAT_INTERVAL + RESPONSE_LATENCY))
+                    print("\nWarning: there has been no contact with %s, for %f seconds. Considering the executor as dead!\n" % (client, pe.HEARTBEAT_INTERVAL + pe.RESPONSE_LATENCY))
                     if self.failed_executors > self.main_options_hash.max_failed_executors:
                         logger.warn("Too many executors lost to spawn new ones")
 
                     self.failed_executors += 1
-
-                    for s in stages.copy():
-                        self.setStageLost(s,client)
+                    
                     self.unregisterClient(client)
 
             time.sleep(LOOP_INTERVAL)
@@ -611,6 +609,7 @@ class Pipeline():
         self.clientTimestamps[client] = time.time()
         if self.number_launched_and_waiting_clients > 0:
             self.number_launched_and_waiting_clients -= 1
+        logger.debug("Client registered (banzai): %s", client)
         if self.verbose:
             print("Client registered (banzai!): %s" % client)
 
@@ -620,13 +619,18 @@ class Pipeline():
         # and the server may call it when a client is unresponsive
         if client in self.clients:
             self.clients.remove(client)
+            # copy as this may execute concurrently due to mainLoop thread - ugh
+            for s in self.client_running_stages[client].copy():
+                self.setStageLost(s,client)
             del self.client_running_stages[client]
             del self.clientTimestamps[client]
             if self.verbose:
                 print("Client un-registered (seppuku!): " + client)
+            logger.info("Client un-registered (seppuku!): " + client)
         else:
             if self.verbose:
                 print("Unable to un-register client: " + client)
+            logger.info("Unable to un-register client: " + client)
 
     def incrementLaunchedClients(self):
         self.number_launched_and_waiting_clients += 1
@@ -636,19 +640,16 @@ class Pipeline():
         # pipeline is not completed (for instance, when stages failed, and no more stages
         # can be run) so check that in order to provide the correct feedback to the user
         print("\n\n######################################################")
+        print("Shutting down (" + str(len(self.clients)) + " clients remaining) ...")
         if self.pipelineFullyCompleted():
-            print("All pipeline stages have been processed. \nDaemon unregistering " 
-              + str(len(self.clients)) + " client(s) and shutting down...\n\n")
+            print("All pipeline stages have been processed.")
+            print("Pipeline finished successfully!")
         else:
             print("Not all pipeline stages have been processed,")
             print("however there are no more stages that can be run.")
-            print("Daemon unregistering " + str(len(self.clients)) + " client(s) and shutting down...\n\n\n")
-        print("Objects successfully unregistered and daemon shutdown.")
-        if self.pipelineFullyCompleted():
-            print("Pipeline finished successfully!")
-        else:
             print("Pipeline failed...")
         print("######################################################\n")
+        logger.debug("Clients still registered at shutdown: " + str(self.clients))
         sys.stdout.flush()
 
 def launchPipelineExecutor(options, programName=None):

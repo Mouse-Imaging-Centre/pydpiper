@@ -24,7 +24,7 @@ os.environ["PYRO_LOGFILE"] = G_log_file_name
 import Pyro4
 
 WAIT_TIMEOUT = 5.0
-HEARTBEAT_INTERVAL = 30.0
+HEARTBEAT_INTERVAL = 10.0
 RESPONSE_LATENCY = 5.0
 # q.SERVER_START_TIME
 SHUTDOWN_TIME = WAIT_TIMEOUT + RESPONSE_LATENCY
@@ -301,6 +301,7 @@ class pipelineExecutor():
         for subprocID in self.current_running_job_pids:
             os.kill(subprocID, signal.SIGTERM)
         if self.registered_with_server:
+            # FIXME need to set stages lost??? where can genShutdownCall be made?
             self.pyro_proxy_for_server.unregisterClient(self.clientURI)
             self.registered_with_server = False
         
