@@ -11,6 +11,8 @@ Dependencies:
 Pyro4 - http://pythonhosted.org/Pyro4
 NetworkX - http://networkx.lanl.gov/
 Py.test - http://pytest.org/
+graphviz - http://www.graphviz.org/
+pygraphviz - http://pygraphviz.github.io/
 
 In Ubuntu (tested on 12.04), run: 
 	apt-get install python-networkx
