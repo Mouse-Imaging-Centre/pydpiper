@@ -17,6 +17,13 @@ import logging
 import threading
 import Pyro4
 
+os.environ["PYRO_LOGLEVEL"] = os.environ.get("PYRO_LOGLEVEL", "INFO")
+
+import Pyro4
+
+Pyro4.config.SERVERTYPE = pe.Pyro4.config.SERVERTYPE
+Pyro4.config.DETAILED_TRACEBACK = pe.Pyro4.config.DETAILED_TRACEBACK
+
 LOOP_INTERVAL = 5.0
 RESPONSE_LATENCY = 100
 
