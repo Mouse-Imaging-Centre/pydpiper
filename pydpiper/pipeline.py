@@ -17,7 +17,7 @@ import logging
 import threading
 import Pyro4
 
-os.environ["PYRO_LOGLEVEL"] = os.environ.get("PYRO_LOGLEVEL", "INFO")
+os.environ["PYRO_LOGLEVEL"] = os.getenv("PYRO_LOGLEVEL", "INFO")
 
 import Pyro4
 
