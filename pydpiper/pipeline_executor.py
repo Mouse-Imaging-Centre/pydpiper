@@ -44,7 +44,7 @@ def addExecutorOptionGroup(parser):
                       help="Use the Pyro NameServer to store object locations. Currently a Pyro nameserver must be started separately for this to work.")
     group.add_option("--num-executors", dest="num_exec", 
                       type="int", default=-1, 
-                      help="Number of independent executors to launch. [Default = -1. Code will not run without an explicit number specified.]")
+                      help="Maximum number of independent executors to run simultaneously. [Default = -1. Code will not run without an explicit number specified.]")
     group.add_option("--max-failed-executors", dest="max_failed_executors",
                      type="int", default=2,
                      help="Maximum number of failed executors before we stop relaunching. [Default = 2]")

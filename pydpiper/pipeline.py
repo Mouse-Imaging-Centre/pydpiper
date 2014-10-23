@@ -579,11 +579,11 @@ class Pipeline():
             active_executors = self.number_launched_and_waiting_clients + len(self.clients)
             max_num_executors = self.main_options_hash.num_exec
             executor_launch_room = max_num_executors - active_executors
-            if self.runnable.qsize() > 0 and executor_launch_room > 0:
-                # there are runnable stages, and there is room to launch 
-                # additional executors
-                executors_to_launch = min(self.runnable.qsize(), executor_launch_room)
-        return executors_to_launch
+            # there are runnable stages, and there is room to launch 
+            # additional executors
+            return min(self.runnable.qsize(), executor_launch_room)
+        else:
+            return 0
         
     def launchExecutorsFromServer(self, number_to_launch):
         try:
