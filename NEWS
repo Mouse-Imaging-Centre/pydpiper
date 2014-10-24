@@ -1,3 +1,10 @@
+New in Version 1.10
+===================
+* PYRO environment variables are handled inside the code. The SERVERTYPE is 
+  set statically to multiplex (there are potential issues with the thread option)
+  and the LOGLEVEL and DETAILED_TRACEBACK can be overridden by environment 
+  variables (see the README)
+
 New in Version 1.9
 ==================
 * MAGeT uses the originally optimized defaults again. Hardcoded paths to the 
