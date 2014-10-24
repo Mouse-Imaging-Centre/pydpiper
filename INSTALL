@@ -13,6 +13,13 @@ NetworkX - http://networkx.lanl.gov/
 Py.test - http://pytest.org/
 graphviz - http://www.graphviz.org/
 pygraphviz - http://pygraphviz.github.io/
+minc-stuffs - https://github.com/Mouse-Imaging-Centre/minc-stuffs
+
+The following environment variables should be set when running pydpiper code:
+
+PYRO_DETAILED_TRACEBACK=True
+PYRO_SERVERTYPE=multiplex
+PYRO_LOGLEVEL=INFO
 
 In Ubuntu (tested on 12.04), run: 
 	apt-get install python-networkx
