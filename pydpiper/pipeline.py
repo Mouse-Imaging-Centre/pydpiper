@@ -15,7 +15,6 @@ import file_handling as fh
 import pipeline_executor as pe
 import logging
 import threading
-import Pyro4
 
 os.environ["PYRO_LOGLEVEL"] = os.getenv("PYRO_LOGLEVEL", "INFO")
 
