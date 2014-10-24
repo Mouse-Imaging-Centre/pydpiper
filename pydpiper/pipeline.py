@@ -15,7 +15,13 @@ import file_handling as fh
 import pipeline_executor as pe
 import logging
 import threading
+
+os.environ["PYRO_LOGLEVEL"] = os.getenv("PYRO_LOGLEVEL", "INFO")
+
 import Pyro4
+
+Pyro4.config.SERVERTYPE = pe.Pyro4.config.SERVERTYPE
+Pyro4.config.DETAILED_TRACEBACK = pe.Pyro4.config.DETAILED_TRACEBACK
 
 LOOP_INTERVAL = 5.0
 RESPONSE_LATENCY = 100

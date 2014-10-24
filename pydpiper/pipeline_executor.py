@@ -21,7 +21,12 @@ G_proc_id       = str(os.getpid())
 G_log_file_name = G_prog_name + '-' + G_time_now + '-pid-' + G_proc_id + ".log"
 os.environ["PYRO_LOGFILE"] = G_log_file_name
 
+os.environ["PYRO_LOGLEVEL"] = os.getenv("PYRO_LOGLEVEL", "INFO")
+
 import Pyro4
+
+Pyro4.config.SERVERTYPE = "multiplex"
+Pyro4.config.DETAILED_TRACEBACK = os.getenv("PYRO_DETAILED_TRACEBACK", True)
 
 WAIT_TIMEOUT = 5.0
 HEARTBEAT_INTERVAL = 30.0
