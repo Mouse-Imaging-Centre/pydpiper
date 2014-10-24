@@ -13,14 +13,6 @@ import logging
 import socket
 import signal
 import threading
-
-# setup the log file for the pipeline_executor prior to importing the Pyro library
-G_prog_name     = os.path.splitext(os.path.basename(__file__))[0]
-G_time_now      = datetime.now().strftime("%Y-%m-%d-at-%H:%M:%S")
-G_proc_id       = str(os.getpid())
-G_log_file_name = G_prog_name + '-' + G_time_now + '-pid-' + G_proc_id + ".log"
-os.environ["PYRO_LOGFILE"] = G_log_file_name
-
 import Pyro4
 
 WAIT_TIMEOUT = 5.0
@@ -357,7 +349,9 @@ class pipelineExecutor():
             cmd += ["--num-executors", str(1)]  
             cmd += ["--time-to-seppuku", str(self.time_to_seppuku)]
             cmd += ["--time-to-accept-jobs", str(self.time_to_accept_jobs)]
-            subprocess.call(cmd)   
+            env = os.environ.copy()
+            env['PYRO_LOGFILE'] = os.path.join(os.getcwd(), ident + ".log")
+            subprocess.call(cmd, env=env)
         else:
             logger.info("Specified queueing system is: %s" % (self.queue_type))
             logger.info("Only queue_type=sge or queue_type=None currently supports pipeline launching own executors.")

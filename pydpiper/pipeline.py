@@ -14,9 +14,17 @@ from subprocess import call
 from shlex import split
 from multiprocessing import Process, Event
 import file_handling as fh
-import pipeline_executor as pe
 import logging
+import threading
+
+os.environ["PYRO_LOGLEVEL"] = os.getenv("PYRO_LOGLEVEL", "INFO")
+os.environ["PYRO_LOGFILE"]  = os.path.splitext(os.path.basename(__file__))[0] + ".log"
+# TODO name the server logfile more descriptively
+
 import Pyro4
+import pipeline_executor as pe
+
+del os.environ["PYRO_LOGFILE"]
 
 LOOP_INTERVAL = 5.0
 #SHUTDOWN_INTERVAL = 5 * 60
@@ -398,7 +406,7 @@ class Pipeline():
         
     def setStageStarted(self, index, clientURI):
         URIstring = "(" + str(clientURI) + ")"
-        logger.debug("Starting Stage " + str(index) + ": " + str(self.stages[index]) +
+        logger.info("Starting Stage " + str(index) + ": " + str(self.stages[index]) +
                      URIstring)
         self.client_running_stages[clientURI].add(index)
         self.currently_running_stages.append(index)
