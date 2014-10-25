@@ -76,7 +76,7 @@ class runOnQueueingSystem():
         self.jobFile = open(self.jobFileName, "w")
         self.addHeaderAndCommands(time, isMainFile)
         self.completeJobFile()
-        jobId = self.submitJob(depends = depends)
+        jobId = self.submitJob(jobName, depends)
         return jobId
     def createAndSubmitPbsScripts(self): 
         """Creates pbs script(s) for main program and separate executors, if needed"""       
@@ -149,12 +149,13 @@ class runOnQueueingSystem():
         """Completes pbs script--wait for background jobs to terminate as per scinet wiki"""
         self.jobFile.write("wait" + "\n")
         self.jobFile.close()
-    def submitJob(self, depends):
+    def submitJob(self, jobName, depends):
         """Submit job to batch queueing system"""
+        os.environ['PYRO_LOGFILE'] = jobName + '.log'
+        cmd = ['qsub', '-o', jobName + '-remote.log', '-V']
         if depends is not None:
-            cmd = ['qsub', '-Wafter:' + depends, self.jobFileName]
-        else:
-            cmd = ['qsub', self.jobFileName]
+            cmd += ['-Wafter:' + depends]
+        cmd += [self.jobFileName]
         out = subprocess.check_output(cmd)
         jobId = out.strip()
         print(cmd)

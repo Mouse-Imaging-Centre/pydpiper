@@ -24,8 +24,6 @@ os.environ["PYRO_LOGFILE"]  = os.path.splitext(os.path.basename(__file__))[0] + 
 import Pyro4
 import pipeline_executor as pe
 
-del os.environ["PYRO_LOGFILE"]
-
 LOOP_INTERVAL = 5.0
 #SHUTDOWN_INTERVAL = 5 * 60
 
