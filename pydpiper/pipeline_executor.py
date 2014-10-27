@@ -15,6 +15,9 @@ import signal
 import threading
 import Pyro4
 
+Pyro4.config.SERVERTYPE = "multiplex"
+Pyro4.config.DETAILED_TRACEBACK = os.getenv("PYRO_DETAILED_TRACEBACK", True)
+
 WAIT_TIMEOUT = 5.0
 HEARTBEAT_INTERVAL = 10.0
 RESPONSE_LATENCY = 5.0

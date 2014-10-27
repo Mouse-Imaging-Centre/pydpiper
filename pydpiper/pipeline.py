@@ -24,6 +24,9 @@ os.environ["PYRO_LOGFILE"]  = os.path.splitext(os.path.basename(__file__))[0] + 
 import Pyro4
 import pipeline_executor as pe
 
+Pyro4.config.SERVERTYPE = pe.Pyro4.config.SERVERTYPE
+Pyro4.config.DETAILED_TRACEBACK = pe.Pyro4.config.DETAILED_TRACEBACK
+
 LOOP_INTERVAL = 5.0
 #SHUTDOWN_INTERVAL = 5 * 60
 
