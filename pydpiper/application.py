@@ -126,9 +126,8 @@ class AbstractApplication(object):
             return 
         
         if self.options.restart:
-            print "\nThe restart option is deprecated (pipelines are not pickled anymore, because it takes too much time). Will restart based on which files exists already\n"
-            #logger.info("Restarting pipeline from pickled files.")
-            #self.pipeline.restart()
+            logger.info("Restarting pipeline from files.")
+            self.pipeline.restart()
             self.reconstructCommand()
             self.run()
             self.pipeline.initialize()

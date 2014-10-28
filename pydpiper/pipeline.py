@@ -129,13 +129,6 @@ class CmdStage(PipelineStage):
         of.close()
         return(returncode)
     
-    def is_effectively_complete(self):
-        """check if this stage is effectively complete (if output files already exist)"""
-        for output in self.outputFiles + self.inputFiles:
-            if not os.path.exists(output):
-                return False
-        return True
-
     def getHash(self):
         return(hash(" ".join(self.cmd)))
     def __repr__(self):
@@ -184,6 +177,8 @@ class Pipeline():
         self.skipped_stages = 0
         self.failed_stages = 0
         self.verbose = 0
+        # Handle to write out processed stages to
+        self.finished_stages_fh = None
 
     def getTotalNumberOfStages(self):
         return len(self.stages)
@@ -234,19 +229,21 @@ class Pipeline():
             # increment the counter for the next stage
             self.counter += 1
     def selfPickle(self):
-        """Pickles pipeline in case future restart is needed"""
+        """Pickles static information about pipeline in case future restart is needed.  Note that since we currently pickle only when starting, self.stages will eventually contain stale information about stage states."""
         if (self.backupFileLocation == None):
             self.setBackupFileLocation()
+        logger.debug("Backups in: %s", self.backupFileLocation)
         pickle.dump(self.G, open(str(self.backupFileLocation) + '/G.pkl', 'wb'))
         pickle.dump(self.stages, open(str(self.backupFileLocation) + '/stages.pkl', 'wb'))
         pickle.dump(self.nameArray, open(str(self.backupFileLocation) + '/nameArray.pkl', 'wb'))
-        pickle.dump(self.counter, open(str(self.backupFileLocation) + '/counter.pkl', 'wb'))
+        #pickle.dump(self.counter, open(str(self.backupFileLocation) + '/counter.pkl', 'wb'))
+        #open(str(self.backupFileLocation) + '/counter').write(str(counter))
         pickle.dump(self.outputhash, open(str(self.backupFileLocation) + '/outputhash.pkl', 'wb'))
         pickle.dump(self.stagehash, open(str(self.backupFileLocation) + '/stagehash.pkl', 'wb'))
-        pickle.dump(self.processedStages, open(str(self.backupFileLocation) + '/processedStages.pkl', 'wb'))
+        #pickle.dump(self.processedStages, open(str(self.backupFileLocation) + '/processedStages.pkl', 'wb'))
         logger.info("Pipeline pickled")
     def restart(self):
-        """Restarts the pipeline from previously pickled backup files."""
+        """Restarts the pipeline from previously written backup files."""
         if (self.backupFileLocation == None):
             self.setBackupFileLocation()
             logger.info("Backup location not specified. Looking in the current directory.")
@@ -254,23 +251,17 @@ class Pipeline():
             self.G = pickle.load(open(str(self.backupFileLocation) + '/G.pkl', 'rb'))
             self.stages = pickle.load(open(str(self.backupFileLocation) + '/stages.pkl', 'rb'))
             self.nameArray = pickle.load(open(str(self.backupFileLocation) + '/nameArray.pkl', 'rb'))
-            self.counter = pickle.load(open(str(self.backupFileLocation) + '/counter.pkl', 'rb'))
+            self.counter = int(open(str(self.backupFileLocation) + '/counter').read())
             self.outputhash = pickle.load(open(str(self.backupFileLocation) + '/outputhash.pkl', 'rb'))
             self.stagehash = pickle.load(open(str(self.backupFileLocation) + '/stagehash.pkl', 'rb'))
-            self.processedStages = pickle.load(open(str(self.backupFileLocation) + '/processedStages.pkl', 'rb'))
+
             logger.info('Successfully reimported old data from backups.')
         except:
             logger.exception("Backup files are not recoverable.  Pipeline restart required.")
+            print("Backup files are not recoverable.  Pipeline restart required.")
             sys.exit()
 
-        done = []
-        for i in self.G.nodes_iter():
-            if self.stages[i].isFinished():
-                done.append(i)
-            else:
-                if i in self.processedStages:
-                    self.processedStages.remove(i)
-        logger.info('Previously completed stages (of ' + str(len(self.stages)) + ' total): ' + str(len(done)))
+
 
     def setBackupFileLocation(self, outputDir=None):
         """Sets location of backup files."""
@@ -336,8 +327,6 @@ class Pipeline():
         return(self.stages[i].procs)
     def getStageCommand(self,i):
         return(repr(self.stages[i]))
-    def getStage_is_effectively_complete(self,i):
-        return(self.stages[i].is_effectively_complete())
     def getStageLogfile(self,i):
         return(self.stages[i].logFile)
 
@@ -408,11 +397,8 @@ class Pipeline():
         else:
             self.removeFromRunning(index, clientURI, new_status = "finished")
         self.processedStages.append(index)
-        # disableing the pickling for now. On larger pipelines this can take
-        # 10-15 seconds after inital stages finished, which increases in duration
-        # later on. 
-        #if save_state: 
-        #    self.selfPickle()
+        self.finished_stages_fh.write("%d\n" % index)
+        self.finished_stages_fh.flush()
         for i in self.G.successors(index):
             if self.checkIfRunnable(i):
                 self.runnable.put(i)
@@ -615,6 +601,43 @@ class Pipeline():
     def incrementLaunchedClients(self):
         self.number_launched_and_waiting_clients += 1
 
+    def skip_completed_stages(self):
+        try:
+            with open(str(self.backupFileLocation) + '/finished_stages', 'r') as fh:
+                processed_stages = [int(x) for x in fh.read().split()]
+            self.counter = len(processed_stages)
+        except:
+            logger.exception("Backup files aren't recoverable.  Continuing anyway...")
+            return
+        # processedStages was read from finished_stages_fh, so:
+        self.finished_stages_fh = open(str(self.backupFileLocation) + '/finished_stages', 'w')
+        runnable = []
+        while True:
+            flag,i = self.getRunnableStageIndex()
+            if i == None:
+                break
+
+            s = self.getStage(i)
+
+            if not isinstance(s, CmdStage):
+                runnable.append(i)
+                continue
+
+            if not i in processed_stages:
+                runnable.append(i)
+                continue
+
+            self.setStageFinished(i, clientURI = "fake_client_URI", checking_pipeline_status = True)
+
+        logger.debug("Runnable: %s", str(self.runnable))
+        for i in runnable:
+            self.requeue(i)
+
+        #for i in processed_stages:
+        #    self.setStageFinished(i, clientURI = "bogus", checking_pipeline_status = True)    
+        self.finished_stages_fh.close()
+        logger.info('Previously completed stages (of ' + str(len(self.stages)) + ' total): ' + str(len(self.processedStages)))
+
     def printShutdownMessage(self):
         # it is possible that pipeline.continueLoop returns false, even though the
         # pipeline is not completed (for instance, when stages failed, and no more stages
@@ -641,29 +664,7 @@ def launchPipelineExecutor(options, programName=None):
     if options.queue == "sge":
         pipelineExecutor.submitToQueue(programName) 
     else: 
-        pe.launchExecutor(pipelineExecutor)    
-
-def skip_completed_stages(pipeline):
-    runnable = []
-    while True:
-        flag,i = pipeline.getRunnableStageIndex()
-        if i == None:
-            break
-        
-        s = pipeline.getStage(i)
-        if not isinstance(s, CmdStage):
-            runnable.append(i)
-            continue
-        
-        if not s.is_effectively_complete():
-            runnable.append(i)
-            continue
-        
-        pipeline.setStageFinished(i, "fake_client_URI", save_state = False, checking_pipeline_status = True)
-        logger.debug("skipping stage %i", i)
-    
-    for i in runnable:
-        pipeline.requeue(i)
+        pe.launchExecutor(pipelineExecutor)
         
 def launchServer(pipeline, options):
     # first follow up on the previously reported total number of 
@@ -741,74 +742,39 @@ def flatten_pipeline(p):
                 
     return sorted([(i, str(p.stages[i]), p.G.predecessors(i)) for i in p.G.nodes_iter()],cmp=post)
 
-def sge_script(p):
-    qsub = "sge_batch_hold -l vf=2G"
-    flat = flatten_pipeline(p)
-
-    subs   = []
-    alter  = []
-    unhold = []
-    f = lambda x: "MAGeT_%i" % x
-
-    script = []
-    skipped_stages = 0
-    for i in flat:
-        job_id,cmd,depends = i
-        stage  = p.getStage(job_id)
-        if isinstance(stage, CmdStage): 
-            if stage.is_effectively_complete():
-                skipped_stages += 1
-                continue
-        name = f(job_id)
-        deps = ",".join(map(f,depends))
-        job_cmd="%s -J %s %s" % (qsub, name, cmd)
-        script.append(job_cmd)
-        if depends:
-            depend_cmd="qalter -hold_jid %s %s" % (deps,name)
-            script.append(depend_cmd)
-        unhold_cmd = "qalter -h U %s" % name
-        script.append(unhold_cmd)
-    
-    print skipped_stages, "stages skipped (outputs exist).", len(subs), "stages to run."
-    return script #subs + alter + unhold
-
 def pipelineDaemon(pipeline, options=None, programName=None):
     """Launches Pyro server and (if specified by options) pipeline executors"""
+
+    if options.urifile==None:
+        options.urifile = os.path.abspath(os.curdir + "/" + "uri")
+
+    logger.debug("Examining filesystem to determine skippable stages...")
+    #skip_completed_stages(pipeline)
+    pipeline.skip_completed_stages()
 
     #check for valid pipeline 
     if pipeline.runnable.empty():
         print "Pipeline has no runnable stages. Exiting..."
         sys.exit()
-
-    if options.queue == "sge_script":
-        script = open("sge_script", "w")
-        script.write("\n".join(sge_script(pipeline)))
-        script.close()
-        print "SGE job submission script for this pipeline written to sge_script"
-        sys.exit()
-
-    if options.urifile==None:
-        options.urifile = os.path.abspath(os.curdir + "/" + "uri")
-        
-    logger.debug("Examining filesystem to determine skippable stages...")
-    skip_completed_stages(pipeline)
     
     logger.debug("Prior to starting server, total stages %i. Number processed: %i.", 
                  len(pipeline.stages), len(pipeline.processedStages))
     logger.debug("Number of stages in runnable index (size of queue): %i",
                  pipeline.runnable.qsize())
-                 
+    
     # provide the pipeline with the main option hash. The server when started 
     # needs access to information in there in order to (re)launch executors
     # during run time
     pipeline.main_options_hash = options
     pipeline.programName = programName
-    logger.debug("Starting server...")
-    process = Process(target=launchServer, args=(pipeline,options))
-    process.start()
-  
-    try:
-        process.join()
-    except KeyboardInterrupt:
-        print "\nCaught KeyboardInterrupt; exiting\n"
-        sys.exit(0)
+    pipeline.selfPickle()
+    # we are now appending to the stages file since we've already written
+    # previously completed stages to it in skip_completed_stages
+    with open(str(pipeline.backupFileLocation) + '/finished_stages', 'a') as fh:
+        pipeline.finished_stages_fh = fh
+        logger.debug("Starting server...")
+        try:
+            launchServer(pipeline, options)
+        finally:
+            sys.exit(0)
+        # ???
