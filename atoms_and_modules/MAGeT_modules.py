@@ -54,7 +54,14 @@ def maskFiles(FH, isAtlas, numAtlases=1):
     mincMathOutput += "_masked.mnc"   
     logFile = fh.logFromFile(FH.logDir, mincMathOutput)
     cmd = ["mincmath"] + ["-clobber"] + ["-mult"]
-    cmd += [InputFile(mincMathInput)] + [InputFile(FH.getLastBasevol())] 
+    # In response to issue #135
+    # the order of the input files to mincmath matters. By default the
+    # first input files is used as a "like file" for the output file. 
+    # We should make sure that the mask is not used for that, because
+    # it has an image range from 0 to 1; not something we want to be
+    # set for the masked output file
+    #            average                              mask
+    cmd += [InputFile(FH.getLastBasevol())] + [InputFile(mincMathInput)]
     cmd += [OutputFile(mincMathOutput)]
     mincMath = CmdStage(cmd)
     mincMath.setLogFile(LogFile(logFile))
@@ -151,7 +158,11 @@ def MAGeTMask(atlases, inputs, numAtlases, regMethod, lsq12_protocol=None, nlin_
         maskDirectoryStructure(inputFH, masking=False)
         mp = maskFiles(inputFH, False, numAtlases)
         p.addPipeline(mp)
+        # this will remove the "inputLabels"; labels that
+        # come directly from the atlas library
         inputFH.clearLabels(True)
+        # this will remove the "labels"; second generation
+        # labels. I.e. labels from labels from the atlas library
         inputFH.clearLabels(False) 
         inputFH.newGroup()  
     return(p)    
