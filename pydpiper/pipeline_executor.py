@@ -177,17 +177,12 @@ def runStage(serverURI, clientURI, i):
             of.write(command_to_run + "\n")
             of.flush()
             
-            # check whether the stage is completed already. If not, run stage command
-            if p.getStage_is_effectively_complete(i):
-                of.write("All output files exist. Skipping stage.\n")
-                ret = 0
-            else:
-                args = split(command_to_run) 
-                process = subprocess.Popen(args, stdout=of, stderr=of, shell=False)
-                client.addPIDtoRunningList(process.pid)
-                process.communicate()
-                client.removePIDfromRunningList(process.pid)
-                ret = process.returncode 
+            args = split(command_to_run) 
+            process = subprocess.Popen(args, stdout=of, stderr=of, shell=False)
+            client.addPIDtoRunningList(process.pid)
+            process.communicate()
+            client.removePIDfromRunningList(process.pid)
+            ret = process.returncode 
             of.close()
         except:
             logger.exception("Exception whilst running stage: %i ", i)   

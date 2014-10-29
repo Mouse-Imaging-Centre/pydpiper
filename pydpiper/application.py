@@ -14,9 +14,9 @@ logger = logging.getLogger(__name__)
 
 def addApplicationOptionGroup(parser):
     group = OptionGroup(parser,  "General application options", "General options for all pydpiper applications.")
-    group.add_option("--restart", dest="restart", 
-                               action="store_true",
-                               help="Restart pipeline using backup files. (Currently deprecated. Simply rerun the command you ran before)")
+    group.add_option("--no-restart", dest="restart", 
+                               action="store_false", default=True,
+                               help="Restart pipeline using backup files. [default = %default]")
     group.add_option("--output-dir", dest="output_directory",
                                type="string", default=None,
                                help="Directory where output data and backups will be saved.")
@@ -124,20 +124,11 @@ class AbstractApplication(object):
             roq = runOnQueueingSystem(self.options, sys.argv)
             roq.createPbsScripts()
             return 
-        
-        if self.options.restart:
-            print "\nThe restart option is deprecated (pipelines are not pickled anymore, because it takes too much time). Will restart based on which files exists already\n"
-            #logger.info("Restarting pipeline from pickled files.")
-            #self.pipeline.restart()
-            self.reconstructCommand()
-            self.run()
-            self.pipeline.initialize()
-            self.pipeline.printStages(self.appName)
-        else:
-            self.reconstructCommand()
-            self.run()
-            self.pipeline.initialize()
-            self.pipeline.printStages(self.appName)
+
+        self.reconstructCommand()
+        self.run()
+        self.pipeline.initialize()
+        self.pipeline.printStages(self.appName)
                             
         if self.options.create_graph:
             logger.debug("Writing dot file...")
