@@ -25,6 +25,7 @@ Pyro4.config.DETAILED_TRACEBACK = pe.Pyro4.config.DETAILED_TRACEBACK
 
 LOOP_INTERVAL = 5.0
 RESPONSE_LATENCY = 100
+RETRYING_LATENCY = 1
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +51,22 @@ class OutputFile(PipelineFile):
 class LogFile(PipelineFile):
     def setType(self):
         self.fileType = "log"
+
+    """
+    The executor client class:
+    client:    URI string to represent the executor
+    maxmemory: the total amount of memory the executor has at its disposal
+
+    will be used to keep track of the stages it's running and whether
+    it's still alive (based on a periodic heartbeat)
+    """
+class ExecClient():
+    def __init__(self, client, maxmemory):
+        self.clientURI = client
+        self.maxmemory = maxmemory
+        self.running_stages = set([])
+        self.timestamp = time.time()
+        
 
 class PipelineStage():
     def __init__(self):
@@ -151,6 +168,8 @@ class Pipeline():
         self.nameArray = []
         # a queue of the stages ready to be run - contains indices
         self.runnable = Queue.Queue()
+        # an array to keep track of stage memory requirements
+        self.mem_req_for_runnable = []
         # a list of currently running stages
         self.currently_running_stages = []
         # the current stage counter
@@ -163,12 +182,8 @@ class Pipeline():
         self.processedStages = []
         # location of backup files for restart if needed
         self.backupFileLocation = None
-        # list of registered clients
+        # list of registered clients (using ExecClient class instances)
         self.clients = []
-        # map from clients to jobs running on each client
-        # TODO in principle this subsumes self.clients[] ...
-        self.client_running_stages = {}
-        self.clientTimestamps = {}
         # number of clients (executors) that have been launched by the server
         # we need to keep track of this because even though no (or few) clients
         # are actually registered, a whole bunch of them could be waiting in the
@@ -205,7 +220,16 @@ class Pipeline():
 
     def getNumberRunnableStages(self):
         return self.runnable.qsize()
-        
+
+    def getMemoryRequirementsRunnable(self):
+        return self.mem_req_for_runnable
+
+    def getMemoryAvailableInClients(self):
+        availMem = []
+        for client in self.clients:
+            availMem.append(client.maxmemory)
+        return availMem
+
     def pipelineFullyCompleted(self):
         return (len(self.stages) == len(self.processedStages))
         
@@ -315,6 +339,8 @@ class Pipeline():
                 """ either it has 0 predecessors """
                 if len(self.G.predecessors(i)) == 0:
                     self.runnable.put(i)
+                    # keep track of the memory requirements of the runnable jobs
+                    self.mem_req_for_runnable.append(self.stages[i].mem)
                     graphHeads.append(i)
                 """ or all of its predecessors are finished """
                 if len(self.G.predecessors(i)) != 0:
@@ -324,6 +350,8 @@ class Pipeline():
                             predfinished = False
                     if predfinished == True:
                         self.runnable.put(i) 
+                        # keep track of the memory requirements of the runnable jobs
+                        self.mem_req_for_runnable.append(self.stages[i].mem)
                         graphHeads.append(i)
         logger.info("Graph heads: " + str(graphHeads))
     def getStage(self, i):
@@ -351,7 +379,10 @@ class Pipeline():
             if ((self.getStageMem(i) <= clientMemFree) and (self.getStageProcs(i) <= clientProcsFree)):
                 return (flag, i)
             else:
-                logger.debug("Not enough resources for %s to run stage %d.", clientURIstr, i)
+                if self.getStageMem(i) > clientMemFree:
+                    logger.debug("The executor does not have enough free memory (free: %f, required: %f) to run stage %d. (Executor: %s)", clientMemFree, self.getStageMem(i), i, clientURIstr)
+                if self.getStageProcs(i) > clientProcsFree:
+                    logger.debug("The executor does not have enough free processors (free: %f, required: %f) to run stage %d. (Executor: %s)", clientProcsFree, self.getStageProcs(i), i, clientURIstr)
                 self.requeue(i)
                 # TODO search the queue for something this client can run?
                 return ("wait", None)
@@ -369,16 +400,42 @@ class Pipeline():
             return ("wait", None)
         else:
             index = self.runnable.get()
+            # remove an instance of currently required memory
+            self.mem_req_for_runnable.remove(self.stages[index].mem)
             return ("run_stage", index)
 
     def allStagesComplete(self):
         return len(self.processedStages) == len(self.stages)
-        
+
+    def addRunningStageToClient(self, clientURI, index):
+        for client in self.clients:
+            if client.clientURI == clientURI:
+                client.running_stages.add(index)
+                return
+        # if we get to this point, we were unable to find the
+        # corresponding client...
+        print "Error: could not find client %s while trying to add running stage" % clientURI
+        raise 
+
+    def removeRunningStageFromClient(self, clientURI, index):
+        for client in self.clients:
+            if client.clientURI == clientURI:
+                try:
+                    client.running_stages.remove(index)
+                except:
+                    print "Error: unable to remove stage index from registered client: %s" % clientURI
+                    raise
+                return
+        # if we get to this point, we were unable to find the
+        # corresponding client...
+        print "Error: could not find client %s while trying to remove running stage" % clientURI
+        raise
+
     def setStageStarted(self, index, clientURI):
         URIstring = "(" + str(clientURI) + ")"
         logger.debug("Starting Stage " + str(index) + ": " + str(self.stages[index]) +
                      URIstring)
-        self.client_running_stages[clientURI].add(index)
+        self.addRunningStageToClient(clientURI, index)
         self.currently_running_stages.append(index)
         self.stages[index].setRunning()
 
@@ -416,10 +473,12 @@ class Pipeline():
         for i in self.G.successors(index):
             if self.checkIfRunnable(i):
                 self.runnable.put(i)
+                # keep track of the memory requirements of the runnable jobs
+                self.mem_req_for_runnable.append(self.stages[i].mem)
 
     def removeFromRunning(self, index, clientURI, new_status):
         self.currently_running_stages.remove(index)
-        self.client_running_stages[clientURI].remove(index)
+        self.removeRunningStageFromClient(clientURI, index)
         self.stages[index].status = new_status
 
     def setStageLost(self, index, clientURI):
@@ -435,6 +494,11 @@ class Pipeline():
         # happening, so trying this to see whether it solves the issue.
         num_retries = self.stages[index].getNumberOfRetries()
         if num_retries < 2:
+            # without a sleep statement, the stage will be retried within 
+            # a handful of milliseconds, that won't solve anything...
+            # this sleep command will block the server for a small amount 
+            # of time, but should happen only sporadically
+            time.sleep(RETRYING_LATENCY)
             self.removeFromRunning(index, clientURI, new_status = None)
             self.stages[index].incrementNumberOfRetries()
             logger.debug("RETRYING: ERROR in Stage " + str(index) + ": " + str(self.stages[index]))
@@ -457,6 +521,9 @@ class Pipeline():
         """If stage cannot be run due to insufficient mem/procs, executor returns it to the queue"""
         logger.debug("Requeueing stage %d", i)
         self.runnable.put(i)
+        # keep track of the memory requirements of the runnable jobs
+        self.mem_req_for_runnable.append(self.stages[i].mem)
+        
 
     def initialize(self):
         """called once all stages have been added - computes dependencies and adds graph heads to runnable queue"""
@@ -506,7 +573,14 @@ class Pipeline():
             return False
 
     def updateClientTimestamp(self, clientURI):
-        self.clientTimestamps[clientURI] = time.time() # use server clock for consistency
+        for client in self.clients:
+            if client.clientURI == clientURI:
+                client.timestamp = time.time() # use server clock for consistency
+                return
+        # if we get to this point, we were unable to find the
+        # corresponding client...
+        print "Error: could not find client %s while updating the time stamp" % clientURI
+        raise
 
     def mainLoop(self):
         while self.continueLoop():
@@ -514,6 +588,17 @@ class Pipeline():
             executors_to_launch = self.numberOfExecutorsToLaunch()
             if executors_to_launch > 0:
                 self.launchExecutorsFromServer(executors_to_launch)
+
+            # check memory availability and requirements. If there are no
+            # jobs available that can be run with the registered executors, 
+            # currently we should exit (potentially later on, we can submit
+            # executors that have enough memory available)
+            if self.runnable.qsize() > 0 and len(self.clients) > 0:
+                minMemRequired = min(self.mem_req_for_runnable)
+                memAvailable = self.getMemoryAvailableInClients()
+                if max(memAvailable) < minMemRequired:
+                    print "\n\nError: the maximum amount of memory available in any executor is %f. The minimum amount of memory required to run any of the runnable stages is: %f. Quitting...\n\n" % (max(memAvailable),minMemRequired)
+                    raise
 
             # look for dead clients and requeue their jobs
             # copy() is used because otherwise client_running_stages may change size
@@ -525,18 +610,18 @@ class Pipeline():
             # FIXME there are potential race conditions here with
             # requeue, unregisterClient ... take locks for this whole section?
             t = time.time()
-            for client, stages in self.client_running_stages.copy().iteritems():
-                if t - self.clientTimestamps[client] > pe.HEARTBEAT_INTERVAL + RESPONSE_LATENCY:
-                    logger.warn("Executor at %s has died!", client)
-                    print("\nWarning: there has been no contact with %s, for %f seconds. Considering the executor as dead!\n" % (client, 5 + RESPONSE_LATENCY))
+            for client in self.clients:
+                if t - client.timestamp > pe.HEARTBEAT_INTERVAL + RESPONSE_LATENCY:
+                    logger.warn("Executor at %s has died!", client.clientURI)
+                    print("\nWarning: there has been no contact with %s, for %f seconds. Considering the executor as dead!\n" % (client.clientURI, 5 + RESPONSE_LATENCY))
                     if self.failed_executors > self.main_options_hash.max_failed_executors:
                         logger.warn("Too many executors lost to spawn new ones")
 
                     self.failed_executors += 1
 
-                    for s in stages.copy():
-                        self.setStageLost(s,client)
-                    self.unregisterClient(client)
+                    # the unregisterClient function will automatically requeue the
+                    # stages that were associated with the lost client
+                    self.unregisterClient(client.clientURI)
 
             time.sleep(LOOP_INTERVAL)
         logger.debug("Server loop shutting down")
@@ -584,28 +669,43 @@ class Pipeline():
     def getProcessedStageCount(self):
         return len(self.processedStages)
 
-    def registerClient(self, client):
+    def registerClient(self, client, maxmemory):
         # Adds new client (represented by a URI string)
         # to array of registered clients. If the server launched
         # its own clients, we should remove 1 from the number of launched and waiting
         # clients (It's possible though that users launch clients themselves. In that 
         # case we should not decrease this variable)
-        self.clients.append(client)
-        self.client_running_stages[client] = set([])
-        self.clientTimestamps[client] = time.time()
+        self.clients.append(ExecClient(client, maxmemory))
         if self.number_launched_and_waiting_clients > 0:
             self.number_launched_and_waiting_clients -= 1
         if self.verbose:
             print("Client registered (banzai!): %s" % client)
+            
+    def removeRunningStagesAndGetIndexClient(self, client):
+        clientIndex = -1
+        for i in range(len(self.clients)):
+            if client == self.clients[i].clientURI:
+                clientIndex = i
+                # if the client has become unresponsive, add the stages that 
+                # were running in this client back to the runnable stages
+                numRunningStage = len(self.clients[i].running_stages)
+                for j in range(numRunningStage):
+                    rerunIndex = self.clients[j].running_stages.pop()
+                    self.currently_running_stages.remove(rerunIndex)
+                    self.requeue(rerunIndex)
+                # return the index of the found client
+                return clientIndex
+        # return -1 (i.e, client was not found)
+        return clientIndex
 
     def unregisterClient(self, client):
         # removes a client URI string from the array of registered clients. An executor 
         # calls this method when it decides on its own to shut down,
         # and the server may call it when a client is unresponsive
-        if client in self.clients:
-            self.clients.remove(client)
-            del self.client_running_stages[client]
-            del self.clientTimestamps[client]
+        clientIndex = self.removeRunningStagesAndGetIndexClient(client)
+        if not clientIndex == -1:
+            # remove the client, by popping its index
+            self.clients.pop(clientIndex)
             if self.verbose:
                 print("Client un-registered (seppuku!): " + client)
         else:

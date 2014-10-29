@@ -55,10 +55,10 @@ def addExecutorOptionGroup(parser):
                       help="Wall time to request for each executor in the format dd:hh:mm:ss. Required only if --queue=pbs.")
     group.add_option("--proc", dest="proc", 
                       type="int", default=1,
-                      help="Number of processes per executor. If not specified, default is 8. Also sets max value for processor use per executor.")
+                      help="Number of processes per executor. If not specified, default is 8. Also sets max value for processor use per executor. Default is 1")
     group.add_option("--mem", dest="mem", 
                       type="float", default=6,
-                      help="Total amount of requested memory for all processes the executor runs. If not specified, default is 16G.")
+                      help="Total amount of requested memory for all processes the executor runs. If not specified, default is 6G.")
     group.add_option("--ppn", dest="ppn", 
                       type="int", default=8,
                       help="Number of processes per node. Default is 8. Used when --queue=pbs")
@@ -113,7 +113,7 @@ def launchExecutor(executor):
     # the following command only works if the server is alive. Currently if that's
     # not the case, the executor will die which is okay, but this should be
     # more properly handled: a more elegant check to verify the server is running
-    p.registerClient(clientURI.asString())
+    p.registerClient(clientURI.asString(), executor.mem)
 
     executor.registeredWithServer()
     executor.setClientURI(clientURI.asString())
@@ -396,7 +396,7 @@ class pipelineExecutor():
         return self.runningMem == 0 and self.runningProcs == 0 and self.prev_time
 
     def heartbeat(self):
-        while True:
+        while self.registered_with_server:
             self.pyro_proxy_for_server.updateClientTimestamp(self.clientURI)
             time.sleep(HEARTBEAT_INTERVAL)
 
