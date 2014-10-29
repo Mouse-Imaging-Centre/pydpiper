@@ -415,7 +415,7 @@ class Pipeline():
         # if we get to this point, we were unable to find the
         # corresponding client...
         print "Error: could not find client %s while trying to add running stage" % clientURI
-        raise 
+        raise Exception("clientURI not found in server client list")
 
     def removeRunningStageFromClient(self, clientURI, index):
         for client in self.clients:
@@ -424,12 +424,12 @@ class Pipeline():
                     client.running_stages.remove(index)
                 except:
                     print "Error: unable to remove stage index from registered client: %s" % clientURI
-                    raise
+                    raise Exception("Could not remove stage index from running stages list")
                 return
         # if we get to this point, we were unable to find the
         # corresponding client...
         print "Error: could not find client %s while trying to remove running stage" % clientURI
-        raise
+        raise Exception("clientURI not found in server client list")
 
     def setStageStarted(self, index, clientURI):
         URIstring = "(" + str(clientURI) + ")"
@@ -554,6 +554,17 @@ class Pipeline():
             sys.stdout.flush()
             return False
 
+        # check memory availability and requirements. If there are no
+        # jobs available that can be run with the registered executors, 
+        # currently we should exit (potentially later on, we can submit
+        # executors that have enough memory available)
+        if self.runnable.qsize() > 0 and len(self.clients) > 0:
+            minMemRequired = min(self.mem_req_for_runnable)
+            memAvailable = self.getMemoryAvailableInClients()
+            if max(memAvailable) < minMemRequired:
+                print "\n\nError: the maximum amount of memory available in any executor is %f. The minimum amount of memory required to run any of the runnable stages is: %f. Quitting...\n\n" % (max(memAvailable),minMemRequired)
+                return False
+
         # TODO return False if all executors have died but not spawning new ones...
 
         if not self.allStagesComplete():
@@ -580,7 +591,7 @@ class Pipeline():
         # if we get to this point, we were unable to find the
         # corresponding client...
         print "Error: could not find client %s while updating the time stamp" % clientURI
-        raise
+        raise Exception("clientURI not found in server client list")
 
     def mainLoop(self):
         while self.continueLoop():
@@ -588,17 +599,6 @@ class Pipeline():
             executors_to_launch = self.numberOfExecutorsToLaunch()
             if executors_to_launch > 0:
                 self.launchExecutorsFromServer(executors_to_launch)
-
-            # check memory availability and requirements. If there are no
-            # jobs available that can be run with the registered executors, 
-            # currently we should exit (potentially later on, we can submit
-            # executors that have enough memory available)
-            if self.runnable.qsize() > 0 and len(self.clients) > 0:
-                minMemRequired = min(self.mem_req_for_runnable)
-                memAvailable = self.getMemoryAvailableInClients()
-                if max(memAvailable) < minMemRequired:
-                    print "\n\nError: the maximum amount of memory available in any executor is %f. The minimum amount of memory required to run any of the runnable stages is: %f. Quitting...\n\n" % (max(memAvailable),minMemRequired)
-                    raise
 
             # look for dead clients and requeue their jobs
             # copy() is used because otherwise client_running_stages may change size
