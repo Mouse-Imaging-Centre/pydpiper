@@ -228,40 +228,6 @@ class Pipeline():
             self.G.add_node(self.counter, label=stage.name,color=stage.colour)
             # increment the counter for the next stage
             self.counter += 1
-    def selfPickle(self):
-        """Pickles static information about pipeline in case future restart is needed.  Note that since we currently pickle only when starting, self.stages will eventually contain stale information about stage states."""
-        if (self.backupFileLocation == None):
-            self.setBackupFileLocation()
-        logger.debug("Backups in: %s", self.backupFileLocation)
-        pickle.dump(self.G, open(str(self.backupFileLocation) + '/G.pkl', 'wb'))
-        pickle.dump(self.stages, open(str(self.backupFileLocation) + '/stages.pkl', 'wb'))
-        pickle.dump(self.nameArray, open(str(self.backupFileLocation) + '/nameArray.pkl', 'wb'))
-        #pickle.dump(self.counter, open(str(self.backupFileLocation) + '/counter.pkl', 'wb'))
-        #open(str(self.backupFileLocation) + '/counter').write(str(counter))
-        pickle.dump(self.outputhash, open(str(self.backupFileLocation) + '/outputhash.pkl', 'wb'))
-        pickle.dump(self.stagehash, open(str(self.backupFileLocation) + '/stagehash.pkl', 'wb'))
-        #pickle.dump(self.processedStages, open(str(self.backupFileLocation) + '/processedStages.pkl', 'wb'))
-        logger.info("Pipeline pickled")
-    def restart(self):
-        """Restarts the pipeline from previously written backup files."""
-        if (self.backupFileLocation == None):
-            self.setBackupFileLocation()
-            logger.info("Backup location not specified. Looking in the current directory.")
-        try:
-            self.G = pickle.load(open(str(self.backupFileLocation) + '/G.pkl', 'rb'))
-            self.stages = pickle.load(open(str(self.backupFileLocation) + '/stages.pkl', 'rb'))
-            self.nameArray = pickle.load(open(str(self.backupFileLocation) + '/nameArray.pkl', 'rb'))
-            self.counter = int(open(str(self.backupFileLocation) + '/counter').read())
-            self.outputhash = pickle.load(open(str(self.backupFileLocation) + '/outputhash.pkl', 'rb'))
-            self.stagehash = pickle.load(open(str(self.backupFileLocation) + '/stagehash.pkl', 'rb'))
-
-            logger.info('Successfully reimported old data from backups.')
-        except:
-            logger.exception("Backup files are not recoverable.  Pipeline restart required.")
-            print("Backup files are not recoverable.  Pipeline restart required.")
-            sys.exit()
-
-
 
     def setBackupFileLocation(self, outputDir=None):
         """Sets location of backup files."""
@@ -604,7 +570,7 @@ class Pipeline():
     def skip_completed_stages(self):
         try:
             with open(str(self.backupFileLocation) + '/finished_stages', 'r') as fh:
-                processed_stages = [int(x) for x in fh.read().split()]
+                processed_stages = frozenset([int(x) for x in fh.read().split()])
             self.counter = len(processed_stages)
         except:
             logger.exception("Backup files aren't recoverable.  Continuing anyway...")
@@ -633,8 +599,6 @@ class Pipeline():
         for i in runnable:
             self.requeue(i)
 
-        #for i in processed_stages:
-        #    self.setStageFinished(i, clientURI = "bogus", checking_pipeline_status = True)    
         self.finished_stages_fh.close()
         logger.info('Previously completed stages (of ' + str(len(self.stages)) + ' total): ' + str(len(self.processedStages)))
 
@@ -748,9 +712,9 @@ def pipelineDaemon(pipeline, options=None, programName=None):
     if options.urifile==None:
         options.urifile = os.path.abspath(os.curdir + "/" + "uri")
 
-    logger.debug("Examining filesystem to determine skippable stages...")
-    #skip_completed_stages(pipeline)
-    pipeline.skip_completed_stages()
+    if options.restart:
+        logger.debug("Examining filesystem to determine skippable stages...")
+        pipeline.skip_completed_stages()
 
     #check for valid pipeline 
     if pipeline.runnable.empty():
@@ -767,7 +731,7 @@ def pipelineDaemon(pipeline, options=None, programName=None):
     # during run time
     pipeline.main_options_hash = options
     pipeline.programName = programName
-    pipeline.selfPickle()
+
     # we are now appending to the stages file since we've already written
     # previously completed stages to it in skip_completed_stages
     with open(str(pipeline.backupFileLocation) + '/finished_stages', 'a') as fh:
@@ -777,4 +741,3 @@ def pipelineDaemon(pipeline, options=None, programName=None):
             launchServer(pipeline, options)
         finally:
             sys.exit(0)
-        # ???
