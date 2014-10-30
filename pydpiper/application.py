@@ -104,6 +104,7 @@ class AbstractApplication(object):
         for i in range(len(sys.argv)):
             reconstruct += sys.argv[i] + " "
         logger.info("Command is: " + reconstruct)
+        logger.info("Command version : " + self.__version__)
         
     def start(self):
         self._setup_options()
