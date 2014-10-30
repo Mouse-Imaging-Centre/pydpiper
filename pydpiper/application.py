@@ -105,6 +105,13 @@ class AbstractApplication(object):
             reconstruct += sys.argv[i] + " "
         logger.info("Command is: " + reconstruct)
         logger.info("Command version : " + self.__version__)
+        # also, because this is probably a better file for it (also has similar
+        # naming conventions as the pipeline-stages.txt file:
+        fileForCommandAndVersion = os.path.abspath(os.curdir + "/" + self.appName + "-pipeline-command-and-version.txt")
+        pf = open(fileForCommandAndVersion, "w")
+        pf.write("Command is: " + reconstruct + "\n")
+        pf.write("Command version is: " + self.__version__ + "\n")
+        pf.close()
         
     def start(self):
         self._setup_options()
