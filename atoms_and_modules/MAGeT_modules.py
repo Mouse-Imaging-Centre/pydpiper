@@ -17,19 +17,19 @@ def addMAGeTOptionGroup(parser):
                       help="Directory of existing atlas/label pairs")
     group.add_option("--no-pairwise", dest="pairwise",
                       action="store_false", default=True,
-                      help="""Pairwise crossing of templates. Default is true. If specified, only register inputs to atlases in library""")
+                      help="""Pairwise crossing of templates. [Default = %default]. If specified, only register inputs to atlases in library""")
     group.add_option("--mask", dest="mask",
                       action="store_true", default=False,
-                      help="Create a mask for all images prior to handling labels")
+                      help="Create a mask for all images prior to handling labels. [Default = %default]")
     group.add_option("--mask-only", dest="mask_only",
                       action="store_true", default=False,
-                      help="Create a mask for all images only, do not run full algorithm")
+                      help="Create a mask for all images only, do not run full algorithm. [Default = %default]")
     group.add_option("--max-templates", dest="max_templates",
                       default=25, type="int",
-                      help="Maximum number of templates to generate")
+                      help="Maximum number of templates to generate. [Default = %default]")
     group.add_option("--masking-method", dest="mask_method",
                       default="minctracc", type="string",
-                      help="Specify whether to use minctracc or mincANTS for masking. Default is minctracc.")
+                      help="Specify whether to use minctracc or mincANTS for masking. [Default = %default].")
     parser.add_option_group(group)
 
 def maskFiles(FH, isAtlas, numAtlases=1):

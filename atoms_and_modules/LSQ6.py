@@ -22,27 +22,29 @@ def addLSQ6OptionGroup(parser):
                         "Options for performing a 6 parameter (rigid) registration.")
     group.add_option("--lsq6-target", dest="lsq6_target",
                      type="string", default=None,
-                     help="File to be used as the target for the 6 parameter alignment.")
+                     help="File to be used as the target for the 6 parameter alignment. [Default = %default]")
     group.add_option("--init-model", dest="init_model",
                      type="string", default=None,
                      help="File in standard space in the initial model. The initial model "
                      "can also have a file in native space and potentially a transformation "
-                     "file. See our wiki for detailed information on initial models.")
+                     "file. See our wiki for detailed information on initial models. [Default = %default]")
     parser.set_defaults(lsq6_method="lsq6_large_rotations")
+    parser.set_defaults(nuc=True)
+    parser.set_defaults(inormalize=True)
     group.add_option("--lsq6-simple", dest="lsq6_method",
                      action="store_const", const="lsq6_simple",
                      help="Run a 6 parameter alignment assuming that the input files are roughly "
-                     "aligned: same space, similar orientation. [default: --lsq6-large-rotations]")
+                     "aligned: same space, similar orientation. [Default = %default]")
     group.add_option("--lsq6-centre-estimation", dest="lsq6_method",
                      action="store_const", const="lsq6_centre_estimation",
                      help="Run a 6 parameter alignment assuming that the input files have a "
-                     "similar orientation, but are scanned in different coils/spaces. [default: --lsq6-large-rotations]")
+                     "similar orientation, but are scanned in different coils/spaces. [Default = %default]")
     group.add_option("--lsq6-large-rotations", dest="lsq6_method",
                      action="store_const", const="lsq6_large_rotations",
                      help="Run a 6 parameter alignment assuming that the input files have a random "
                      "orientation and are scanned in different coils/spaces. A brute force search over "
                      "the x,y,z rotation space is performed to find the best 6 parameter alignment. "
-                     "[default: --lsq6-large-rotations]")
+                     "[Default = %default]")
     group.add_option("--lsq6-large-rotations-parameters", dest="large_rotation_parameters",
                      type="string", default="10,4,10,8",
                      help="Settings for the large rotation alignment. factor=factor based on smallest file "
@@ -50,24 +52,24 @@ def addLSQ6OptionGroup(parser):
                      "factor, 4) w_translations factor  ***** if you are working with mouse brain data "
                      " the defaults do not have to be based on the file resolution; a default set of "
                      " settings works for all mouse brain. In order to use those setting, specify: \"mousebrain\""
-                     " as the argument for this option. ***** [default: %default]")
+                     " as the argument for this option. ***** [default = %default]")
     group.add_option("--lsq6-rotational-range", dest="large_rotation_range",
                      type="int", default=50,
                      help="Settings for the rotational range in degrees when running the large rotation alignment."
-                     " [default: %default]")
+                     " [Default = %default]")
     group.add_option("--lsq6-rotational-interval", dest="large_rotation_interval",
                      type="int", default=10,
                      help="Settings for the rotational interval in degrees when running the large rotation alignment."
-                     " [default: %default]")
+                     " [Default = %default]")
     group.add_option("--nuc", dest="nuc",
                       action="store_true", 
-                      help="Perform non-uniformity correction. [Default]")
+                      help="Perform non-uniformity correction. [Default = %default]")
     group.add_option("--no-nuc", dest="nuc",
                       action="store_false", 
                       help="If specified, do not perform non-uniformity correction. Opposite of --nuc.")
     group.add_option("--inormalize", dest="inormalize",
                       action="store_true", 
-                      help="Normalize the intensities after lsq6 alignment and nuc, if done. [Default] ")
+                      help="Normalize the intensities after lsq6 alignment and nuc, if done. [Default = %default] ")
     group.add_option("--no-inormalize", dest="inormalize",
                       action="store_false", 
                       help="If specified, do not perform intensity normalization. Opposite of --inormalize.")
@@ -76,9 +78,7 @@ def addLSQ6OptionGroup(parser):
                       help="Specify an lsq6 protocol that overrides the default setting for stages in "
                       "the 6 parameter minctracc call. Parameters must be specified as in the following \n"
                       "example: applications_testing/test_data/minctracc_example_linear_protocol.csv \n"
-                      "Default is None.")
-    parser.set_defaults(nuc=True)
-    parser.set_defaults(inormalize=True)
+                      "[Default = %default].")
     parser.add_option_group(group)
 
 class LSQ6Registration(AbstractApplication):

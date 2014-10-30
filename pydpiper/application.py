@@ -14,9 +14,11 @@ logger = logging.getLogger(__name__)
 
 def addApplicationOptionGroup(parser):
     group = OptionGroup(parser,  "General application options", "General options for all pydpiper applications.")
-    group.add_option("--no-restart", dest="restart", 
+    group.add_option("--restart", dest="restart", 
                                action="store_false", default=True,
                                help="Restart pipeline using backup files. [default = %default]")
+    group.add_option("--no-restart", dest="restart", 
+                               action="store_false", help="Opposite of --restart")
     group.add_option("--output-dir", dest="output_directory",
                                type="string", default=None,
                                help="Directory where output data and backups will be saved.")
@@ -27,7 +29,7 @@ def addApplicationOptionGroup(parser):
     parser.set_defaults(verbose=False)
     group.add_option("--execute", dest="execute",
                                action="store_true",
-                               help="Actually execute the planned commands [default]")
+                               help="Actually execute the planned commands [default = %default]")
     group.add_option("--no-execute", dest="execute",
                                action="store_false",
                                help="Opposite of --execute")
@@ -36,7 +38,7 @@ def addApplicationOptionGroup(parser):
                                help="Print the version number and exit.")
     group.add_option("--verbose", dest="verbose",
                                action="store_true",
-                               help="Be verbose in what is printed to the screen")
+                               help="Be verbose in what is printed to the screen [default = %default]")
     group.add_option("--no-verbose", dest="verbose",
                                action="store_false",
                                help="Opposite of --verbose [default]")

@@ -28,14 +28,14 @@ def addNlinRegOptionGroup(parser):
     group.add_option("--registration-method", dest="reg_method",
                       default="mincANTS", type="string",
                       help="Specify whether to use minctracc or mincANTS for non-linear registrations. "
-                           "Default is mincANTS (and minctracc when running MAGeT.py).")
+                           "[Default = %default]")
     group.add_option("--nlin-protocol", dest="nlin_protocol",
                      type="string", default=None,
                      help="Can optionally specify a registration protocol that is different from defaults. "
                      "Parameters must be specified as in either or the following examples: \n"
                      "applications_testing/test_data/minctracc_example_nlin_protocol.csv \n"
                      "applications_testing/test_data/mincANTS_example_nlin_protocol.csv \n"
-                     "Default is None.")
+                     "[Default = %default]")
     parser.add_option_group(group)
     
 def finalGenerationFileNames(inputFH):
