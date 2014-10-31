@@ -55,6 +55,11 @@ if __name__ == '__main__':
     numberRunnableStages = proxyServer.getNumberRunnableStages()
     print "\n\nNumber of runnable stages:               ", numberRunnableStages, "\n"
 
+    # memory requirements for runnable stages:
+    memArray = proxyServer.getMemoryRequirementsRunnable()
+    print "\n\nMemory requirement of runnable stages:   ", memArray
 
-
+    # memory available in registered executors:
+    memAvailable = proxyServer.getMemoryAvailableInClients()
+    print "Memory available in registered clients:  ", memAvailable, "\n"
     

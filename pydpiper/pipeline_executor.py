@@ -39,42 +39,42 @@ def addExecutorOptionGroup(parser):
                       help="Use the Pyro NameServer to store object locations. Currently a Pyro nameserver must be started separately for this to work.")
     group.add_option("--num-executors", dest="num_exec", 
                       type="int", default=-1, 
-                      help="Maximum number of independent executors to run simultaneously. [Default = -1. Code will not run without an explicit number specified.]")
+                      help="Number of independent executors to launch. [Default = %default. Code will not run without an explicit number specified.]")
     group.add_option("--max-failed-executors", dest="max_failed_executors",
                      type="int", default=2,
-                     help="Maximum number of failed executors before we stop relaunching. [Default = 2]")
+                     help="Maximum number of failed executors before we stop relaunching. [Default = %default]")
     group.add_option("--time", dest="time", 
                       type="string", default=None,
                       help="Wall time to request for each executor in the format hh:mm:ss. Required only if --queue-type=pbs. Current default on PBS is 48:00:00.")
     group.add_option("--proc", dest="proc", 
                       type="int", default=1,
-                      help="Number of processes per executor. If not specified, default is 1. Also sets max value for processor use per executor.")
+                      help="Number of processes per executor. Also sets max value for processor use per executor. [Default = %default]")
     group.add_option("--mem", dest="mem", 
                       type="float", default=6,
-                      help="Total amount of requested memory for all processes the executor runs. If not specified, default is 6G.")
+                      help="Total amount of requested memory (in GB) for all processes the executor runs. [Default = %default].")
     group.add_option("--ppn", dest="ppn", 
                       type="int", default=8,
-                      help="Number of processes per node. Default is 8. Used when --queue-type=pbs")
+                      help="Number of processes per node. Used when --queue-type=pbs. [Default = %default].")
     group.add_option("--queue-name", dest="queue_name", type="string", default=None,
                       help="Name of the queue, e.g., all.q (MICe) or batch (SciNet)")
     group.add_option("--queue-type", dest="queue_type", type="string", default=None,
-                      help="""Queue type, i.e., "sge" or "pbs".  [Default: None]""")
+                      help="""Queue type to submit jobs, i.e., "sge" or "pbs".  [Default = %default]""")
     group.add_option("--queue", dest="queue", 
                       type="string", default=None,
                       help="[DEPRECATED; use --queue-type instead.]  Use specified queueing system to submit jobs. Default is None.")              
     group.add_option("--sge-queue-opts", dest="sge_queue_opts", 
                       type="string", default=None,
-                      help="[DEPRECATED; use --queue-name instead.]  For --queue=sge, allows you to specify different queues. If not specified, default is used.")
+                      help="[DEPRECATED; use --queue-name instead.]  For --queue=sge, allows you to specify different queues. [Default = %default]")
     group.add_option("--time-to-seppuku", dest="time_to_seppuku", 
                       type="int", default=1,
-                      help="The number of minutes an executor is allowed to continuously sleep, i.e. wait for an available job, while active on a compute node/farm before it kills itself due to resource hogging. [Default=1 minute]")
+                      help="The number of minutes an executor is allowed to continuously sleep, i.e. wait for an available job, while active on a compute node/farm before it kills itself due to resource hogging. [Default = %default]")
     group.add_option("--scinet", dest="scinet", action="store_true", help="Set --queue-name, --queue-type, --mem, --ppn for Scinet.  Overridden by these flags.")
     group.add_option("--time-to-accept-jobs", dest="time_to_accept_jobs", 
                       type="int", default=180,
-                      help="The number of minutes after which an executor will not accept new jobs anymore. This can be useful when running executors on a batch system where other (competing) jobs run for a limited amount of time. The executors can behave in a similar way by given them a rough end time. [Default=180 minutes]")
+                      help="The number of minutes after which an executor will not accept new jobs anymore. This can be useful when running executors on a batch system where other (competing) jobs run for a limited amount of time. The executors can behave in a similar way by given them a rough end time. [Default = %default]")
     group.add_option("--lifetime", dest="lifetime",
                       type="int", default=None,
-                      help="Maximum lifetime in seconds of the server, or infinite if None. [Default: None]")
+                      help="Maximum lifetime in seconds of the server, or infinite if None. [Default = %default ]")
     parser.add_option_group(group)
 
 
@@ -115,7 +115,7 @@ def launchExecutor(executor):
     # the following command only works if the server is alive. Currently if that's
     # not the case, the executor will die which is okay, but this should be
     # more properly handled: a more elegant check to verify the server is running
-    p.registerClient(clientURI.asString())
+    p.registerClient(clientURI.asString(), executor.mem)
 
     executor.registeredWithServer()
     executor.setClientURI(clientURI.asString())
@@ -179,17 +179,12 @@ def runStage(serverURI, clientURI, i):
             of.write(command_to_run + "\n")
             of.flush()
             
-            # check whether the stage is completed already. If not, run stage command
-            if p.getStage_is_effectively_complete(i):
-                of.write("All output files exist. Skipping stage.\n")
-                ret = 0
-            else:
-                args = split(command_to_run) 
-                process = subprocess.Popen(args, stdout=of, stderr=of, shell=False)
-                client.addPIDtoRunningList(process.pid)
-                process.communicate()
-                client.removePIDfromRunningList(process.pid)
-                ret = process.returncode 
+            args = split(command_to_run) 
+            process = subprocess.Popen(args, stdout=of, stderr=of, shell=False)
+            client.addPIDtoRunningList(process.pid)
+            process.communicate()
+            client.removePIDfromRunningList(process.pid)
+            ret = process.returncode 
             of.close()
         except:
             logger.exception("Exception whilst running stage: %i ", i)   
@@ -414,7 +409,7 @@ class pipelineExecutor():
         return self.runningMem == 0 and self.runningProcs == 0 and self.prev_time
 
     def heartbeat(self):
-        while True:
+        while self.registered_with_server:
             self.pyro_proxy_for_server.updateClientTimestamp(self.clientURI)
             time.sleep(HEARTBEAT_INTERVAL)
 

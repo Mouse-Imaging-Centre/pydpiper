@@ -17,19 +17,19 @@ def addMAGeTOptionGroup(parser):
                       help="Directory of existing atlas/label pairs")
     group.add_option("--no-pairwise", dest="pairwise",
                       action="store_false", default=True,
-                      help="""Pairwise crossing of templates. Default is true. If specified, only register inputs to atlases in library""")
+                      help="""Pairwise crossing of templates. [Default = %default]. If specified, only register inputs to atlases in library""")
     group.add_option("--mask", dest="mask",
                       action="store_true", default=False,
-                      help="Create a mask for all images prior to handling labels")
+                      help="Create a mask for all images prior to handling labels. [Default = %default]")
     group.add_option("--mask-only", dest="mask_only",
                       action="store_true", default=False,
-                      help="Create a mask for all images only, do not run full algorithm")
+                      help="Create a mask for all images only, do not run full algorithm. [Default = %default]")
     group.add_option("--max-templates", dest="max_templates",
                       default=25, type="int",
-                      help="Maximum number of templates to generate")
+                      help="Maximum number of templates to generate. [Default = %default]")
     group.add_option("--masking-method", dest="mask_method",
                       default="minctracc", type="string",
-                      help="Specify whether to use minctracc or mincANTS for masking. Default is minctracc.")
+                      help="Specify whether to use minctracc or mincANTS for masking. [Default = %default].")
     parser.add_option_group(group)
 
 def maskFiles(FH, isAtlas, numAtlases=1):
@@ -54,7 +54,14 @@ def maskFiles(FH, isAtlas, numAtlases=1):
     mincMathOutput += "_masked.mnc"   
     logFile = fh.logFromFile(FH.logDir, mincMathOutput)
     cmd = ["mincmath"] + ["-clobber"] + ["-mult"]
-    cmd += [InputFile(mincMathInput)] + [InputFile(FH.getLastBasevol())] 
+    # In response to issue #135
+    # the order of the input files to mincmath matters. By default the
+    # first input files is used as a "like file" for the output file. 
+    # We should make sure that the mask is not used for that, because
+    # it has an image range from 0 to 1; not something we want to be
+    # set for the masked output file
+    #            average                              mask
+    cmd += [InputFile(FH.getLastBasevol())] + [InputFile(mincMathInput)]
     cmd += [OutputFile(mincMathOutput)]
     mincMath = CmdStage(cmd)
     mincMath.setLogFile(LogFile(logFile))
@@ -151,7 +158,11 @@ def MAGeTMask(atlases, inputs, numAtlases, regMethod, lsq12_protocol=None, nlin_
         maskDirectoryStructure(inputFH, masking=False)
         mp = maskFiles(inputFH, False, numAtlases)
         p.addPipeline(mp)
+        # this will remove the "inputLabels"; labels that
+        # come directly from the atlas library
         inputFH.clearLabels(True)
+        # this will remove the "labels"; second generation
+        # labels. I.e. labels from labels from the atlas library
         inputFH.clearLabels(False) 
         inputFH.newGroup()  
     return(p)    

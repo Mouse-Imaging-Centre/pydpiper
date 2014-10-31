@@ -15,8 +15,10 @@ logger = logging.getLogger(__name__)
 def addApplicationOptionGroup(parser):
     group = OptionGroup(parser,  "General application options", "General options for all pydpiper applications.")
     group.add_option("--restart", dest="restart", 
-                               action="store_true",
-                               help="Restart pipeline using backup files. (Currently deprecated. Simply rerun the command you ran before)")
+                               action="store_false", default=True,
+                               help="Restart pipeline using backup files. [default = %default]")
+    group.add_option("--no-restart", dest="restart", 
+                               action="store_false", help="Opposite of --restart")
     group.add_option("--output-dir", dest="output_directory",
                                type="string", default=None,
                                help="Directory where output data and backups will be saved.")
@@ -27,7 +29,7 @@ def addApplicationOptionGroup(parser):
     parser.set_defaults(verbose=False)
     group.add_option("--execute", dest="execute",
                                action="store_true",
-                               help="Actually execute the planned commands [default]")
+                               help="Actually execute the planned commands [default = %default]")
     group.add_option("--no-execute", dest="execute",
                                action="store_false",
                                help="Opposite of --execute")
@@ -36,7 +38,7 @@ def addApplicationOptionGroup(parser):
                                help="Print the version number and exit.")
     group.add_option("--verbose", dest="verbose",
                                action="store_true",
-                               help="Be verbose in what is printed to the screen")
+                               help="Be verbose in what is printed to the screen [default = %default]")
     group.add_option("--no-verbose", dest="verbose",
                                action="store_false",
                                help="Opposite of --verbose [default]")
@@ -102,6 +104,14 @@ class AbstractApplication(object):
         for i in range(len(sys.argv)):
             reconstruct += sys.argv[i] + " "
         logger.info("Command is: " + reconstruct)
+        logger.info("Command version : " + self.__version__)
+        # also, because this is probably a better file for it (also has similar
+        # naming conventions as the pipeline-stages.txt file:
+        fileForCommandAndVersion = os.path.abspath(os.curdir + "/" + self.appName + "-pipeline-command-and-version.txt")
+        pf = open(fileForCommandAndVersion, "w")
+        pf.write("Command is: " + reconstruct + "\n")
+        pf.write("Command version is: " + self.__version__ + "\n")
+        pf.close()
         
     def start(self):
         self._setup_options()
@@ -125,11 +135,6 @@ class AbstractApplication(object):
             roq.createAndSubmitPbsScripts()
             logger.info("Finished submitting PBS job scripts...quitting")
             return 
-        
-        if self.options.restart:
-            print "\nThe restart option is deprecated (pipelines are not pickled anymore, because it takes too much time). Will restart based on which files exists already\n"
-            #logger.info("Restarting pipeline from pickled files.")
-            #self.pipeline.restart()
 
         self.reconstructCommand()
         self.run()
