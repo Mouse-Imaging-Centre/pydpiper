@@ -330,7 +330,7 @@ class pipelineExecutor():
             # and we want to rename the log files to get rid of extra generated extensions,
             # otherwise we could do something like:
             #os.environ["SGE_BATCH_LOGDIR"] = os.environ.get("SGE_BATCH_LOGDIR") or os.getcwd()
-            cmd += [ "-o", os.path.join(os.getcwd(), ident + "-remote.log")]
+            cmd += [ "-o", os.path.join(os.getcwd(), ident + "-eo.log")]
             if self.queue_name:
                 cmd += ["-q", self.queue_name]
             cmd += ["pipeline_executor.py", "--proc", strprocs, "--mem", str(self.mem)]
@@ -462,6 +462,7 @@ class pipelineExecutor():
                                                        clientMemFree = self.mem - self.runningMem,
                                                        clientProcsFree = self.procs - self.runningProcs)
         if cmd == "shutdown_normally":
+            logger.debug('Saw shutdown command from server')
             return False
         elif cmd == "wait":
             return True

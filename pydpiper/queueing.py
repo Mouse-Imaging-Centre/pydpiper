@@ -7,7 +7,7 @@ import os
 import re
 import subprocess
 
-SERVER_START_TIME = 10
+SERVER_START_TIME = 30
 # TODO instead of hard-coding SciNet min/max times for debug/batch queues,
 # add extra options/env. vars for these
 SCINET_MIN_LIFETIME = 2 *  1 * 3600
@@ -83,7 +83,7 @@ class runOnQueueingSystem():
         time_remaining = self.job_lifetime
         serverJobId = None
         while time_remaining > 0:
-            t = min(time_remaining, SCINET_MAX_LIFETIME) # TODO min(max(min_t,t),max_t)
+            t = min(max(SCINET_MIN_LIFETIME, time_remaining), SCINET_MAX_LIFETIME)
             time_remaining -= t
             serverJobId = self.createAndSubmitMainJobFile(time=t, depends=serverJobId)
             if self.numexec >= 2:
@@ -134,7 +134,8 @@ class runOnQueueingSystem():
         self.jobFile.write("#PBS -l nodes=%d:ppn=%d,walltime=%s\n" % (requestNodes, self.ppn, timestr))
         self.jobFile.write("#PBS -N %s\n" % name)
         self.jobFile.write("#PBS -q %s\n" % self.queue_name)
-        self.jobFile.write("module load gcc intel python\n\n")
+        # TODO modules (or even calls to module) shouldn't be hard-coded
+        self.jobFile.write("module load gcc intel python gotoblas hdf5 gnuplot octave\n\n")
         self.jobFile.write("cd $PBS_O_WORKDIR\n\n") # jobs start in $HOME; $PBS_O_WORKDIR is the submission directory
         if mainCommand:
             self.jobFile.write(self.buildMainCommand())
@@ -152,7 +153,8 @@ class runOnQueueingSystem():
     def submitJob(self, jobName, depends):
         """Submit job to batch queueing system"""
         os.environ['PYRO_LOGFILE'] = jobName + '.log'
-        cmd = ['qsub', '-o', jobName + '-remote.log', '-V']
+        # use -V to get all (Pyro) variables, incl. PYRO_LOGFILE
+        cmd = ['qsub', '-o', jobName + '-eo.log', '-V']
         if depends is not None:
             cmd += ['-Wafter:' + depends]
         cmd += [self.jobFileName]

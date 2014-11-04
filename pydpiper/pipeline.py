@@ -7,15 +7,14 @@ import os
 import sys
 import signal
 import socket
-import threading
 import time
 from datetime import datetime
 from subprocess import call
 from shlex import split
+import multiprocessing
 from multiprocessing import Process, Event
 import file_handling as fh
 import logging
-import threading
 
 os.environ["PYRO_LOGLEVEL"] = os.getenv("PYRO_LOGLEVEL", "INFO")
 os.environ["PYRO_LOGFILE"]  = os.path.splitext(os.path.basename(__file__))[0] + ".log"
@@ -28,7 +27,7 @@ Pyro4.config.SERVERTYPE = pe.Pyro4.config.SERVERTYPE
 Pyro4.config.DETAILED_TRACEBACK = pe.Pyro4.config.DETAILED_TRACEBACK
 
 LOOP_INTERVAL = 5.0
-RESPONSE_LATENCY = 100
+RESPONSE_LATENCY = 10
 RETRYING_LATENCY = 1
 
 logger = logging.getLogger(__name__)
@@ -199,16 +198,7 @@ class Pipeline():
         # (use an event rather than a simple flag for shutdown notification
         # so that we can shut down even if the mainLoop is sleeping)
         self.shutdown_ev = Event() # initially false
-        # TODO put this logic into queueing.py:
-        #h,m,s = options.time.split(':')
-        #t = 3600 * int(h) + 60 * int(m) + int(s)
-        #if t <= SHUTDOWN_INTERVAL:
-        #    self.lifetime = t
-        #else:
-        #    self.lifetime = min(t - SHUTDOWN_INTERVAL, MAX_LIFETIME)
-            
         self.programName = None
-        # Initially set number of skipped stages to be 0
         self.skipped_stages = 0
         self.failed_stages = 0
         self.verbose = 0
@@ -361,9 +351,9 @@ class Pipeline():
                 return (flag, i)
             else:
                 if self.getStageMem(i) > clientMemFree:
-                    logger.debug("The executor does not have enough free memory (free: %f, required: %f) to run stage %d. (Executor: %s)", clientMemFree, self.getStageMem(i), i, clientURIstr)
+                    logger.debug("The executor does not have enough free memory (free: %.2fG, required: %.2fG) to run stage %d. (Executor: %s)", clientMemFree, self.getStageMem(i), i, clientURIstr)
                 if self.getStageProcs(i) > clientProcsFree:
-                    logger.debug("The executor does not have enough free processors (free: %f, required: %f) to run stage %d. (Executor: %s)", clientProcsFree, self.getStageProcs(i), i, clientURIstr)
+                    logger.debug("The executor does not have enough free processors (free: %.1f, required: %.1f) to run stage %d. (Executor: %s)", clientProcsFree, self.getStageProcs(i), i, clientURIstr)
                 self.requeue(i)
                 # TODO search the queue for something this client can run?
                 return ("wait", None)
@@ -371,6 +361,8 @@ class Pipeline():
             return (flag, i)
 
     def allStagesStarted(self):
+        logger.debug("allStagesStarted: total: %d, current: %d, processed: %d" % 
+                        (len(self.stages), len(self.currently_running_stages), len(self.processedStages)))
         return len(self.stages) == len(self.currently_running_stages) + len(self.processedStages)
 
     """Return a tuple of a command ("shutdown_normally" if all stages are finished,
@@ -389,6 +381,7 @@ class Pipeline():
             self.mem_req_for_runnable.remove(self.stages[index].mem)
             return ("run_stage", index)
 
+    # FIXME this is pipelineFullyCompleted
     def allStagesComplete(self):
         return len(self.processedStages) == len(self.stages)
 
@@ -420,6 +413,11 @@ class Pipeline():
         URIstring = "(" + str(clientURI) + ")"
         logger.info("Starting Stage " + str(index) + ": " + str(self.stages[index]) +
                      URIstring)
+        # There may be a bug in which a stage is added to the runnable queue multiple times.
+        # It would be better to catch that earlier (by using a different/additional data structure)
+        # but for now look for the case when a stage is run twice at the same time, which may
+        # produce bizarre results as both processes write files
+        assert self.stages[index].status != 'running', 'stage %d is already running' % index
         self.addRunningStageToClient(clientURI, index)
         self.currently_running_stages.append(index)
         self.stages[index].setRunning()
@@ -550,7 +548,7 @@ class Pipeline():
                 return False
 
         # TODO return False if all executors have died but not spawning new ones...
-        elif self.allStagesStarted():
+        if self.allStagesStarted():
             logger.debug("All stages started ... done")
             return False
         elif self.shutdown_ev.is_set():
@@ -571,38 +569,54 @@ class Pipeline():
 
     def mainLoop(self):
         """An auxiliary loop function on the server used to manage executors."""
-        while self.continueLoop():
-            logger.debug("Looping ...")
-            # check to see whether new executors need to be launched
-            executors_to_launch = self.numberOfExecutorsToLaunch()
-            if executors_to_launch > 0:
-                self.launchExecutorsFromServer(executors_to_launch)
+        if self.main_options_hash.ns:
+            ns = Pyro4.locateNS()
+            serverURI = ns.lookup("pipeline")
+        else:
+            try:
+                uf = open(executor.uri_file)
+                serverURI = Pyro4.URI(uf.readline())
+                uf.close()
+            except:
+                logger.exception("Problem opening the specified uri file:")
+                raise
+        p = Pyro4.Proxy(serverURI)
+        try:
+            while self.continueLoop():
+                logger.debug("Looping ...")
+                # check to see whether new executors need to be launched
+                executors_to_launch = self.numberOfExecutorsToLaunch()
+                if executors_to_launch > 0:
+                    self.launchExecutorsFromServer(executors_to_launch)
 
-            # look for dead clients and requeue their jobs
-            # copy() is used because otherwise client_running_stages may change size
-            # during the iteration, throwing an exception,
-            # but if we haven't heard from a client in some time,
-            # that particular client isn't likely to be the source of the
-            # change, so using a slightly stale copy shouldn't miss
-            # anything interesting
-            # FIXME there are potential race conditions here with
-            # requeue, unregisterClient ... take locks for this whole section?
-            t = time.time()
-            for client in self.clients[:]:
-                if t - self.clientTimestamps[client] > pe.HEARTBEAT_INTERVAL + pe.RESPONSE_LATENCY:
-                    logger.warn("Executor at %s has died!", client)
-                    print("\nWarning: there has been no contact with %s, for %f seconds. Considering the executor as dead!\n" % (client, pe.HEARTBEAT_INTERVAL + pe.RESPONSE_LATENCY))
-                    if self.failed_executors > self.main_options_hash.max_failed_executors:
-                        logger.warn("Too many executors lost to spawn new ones")
+                # look for dead clients and requeue their jobs
+                # copy() is used because otherwise client_running_stages may change size
+                # during the iteration, throwing an exception,
+                # but if we haven't heard from a client in some time,
+                # that particular client isn't likely to be the source of the
+                # change, so using a slightly stale copy shouldn't miss
+                # anything interesting
+                # FIXME there are potential race conditions here with
+                # requeue, unregisterClient ... take locks for this whole section?
+                t = time.time()
+                for client in self.clients:
+                    if t - client.timestamp > pe.HEARTBEAT_INTERVAL + pe.RESPONSE_LATENCY:
+                        logger.warn("Executor at %s has died!", client.clientURI)
+                        print("\nWarning: there has been no contact with %s, for %d seconds. Considering the executor as dead!\n" % (client.clientURI, pe.HEARTBEAT_INTERVAL + pe.RESPONSE_LATENCY))
+                        if self.failed_executors > self.main_options_hash.max_failed_executors:
+                            logger.warn("Too many executors lost to spawn new ones")
 
-                    self.failed_executors += 1
+                        self.failed_executors += 1
 
-                    # the unregisterClient function will automatically requeue the
-                    # stages that were associated with the lost client
-                    self.unregisterClient(client.clientURI)
+                        # the unregisterClient function will automatically requeue the
+                        # stages that were associated with the lost client
+                        self.unregisterClient(client.clientURI)
 
-            time.sleep(LOOP_INTERVAL)
-        logger.info("Server loop shutting down")
+                self.shutdown_ev.wait(LOOP_INTERVAL)
+        except:
+            logger.exception("Server loop encountered error:")
+        finally:
+            logger.info("Server loop shutting down")
             
     """
         Returns an integer indicating the number of executors to launch
@@ -636,8 +650,8 @@ class Pipeline():
     def launchExecutorsFromServer(self, number_to_launch):
         try:
             logger.info("Launching %i executors", number_to_launch)
-            processes = [Process(target=launchPipelineExecutor, args=(self.main_options_hash,self.programName,)) for i in range(number_to_launch)]
-            for p in processes:
+            for i in range(number_to_launch):
+                p = Process(target=launchPipelineExecutor, args=(self.main_options_hash,self.programName))
                 p.start()
                 self.incrementLaunchedClients()
         except:
@@ -701,7 +715,7 @@ class Pipeline():
                 processed_stages = frozenset([int(x) for x in fh.read().split()])
             self.counter = len(processed_stages)
         except:
-            logger.exception("Backup files aren't recoverable.  Continuing anyway...")
+            logger.warn("Backup files aren't recoverable.  Continuing anyway...")
             return
         # processedStages was read from finished_stages_fh, so:
         self.finished_stages_fh = open(str(self.backupFileLocation) + '/finished_stages', 'w')
@@ -798,7 +812,7 @@ def launchServer(pipeline, options):
 
     try:
         # start Pyro server
-        t = threading.Thread(target=daemon.requestLoop)
+        t = Process(target=daemon.requestLoop)
         t.daemon = True
         t.start()
 
@@ -811,28 +825,30 @@ def launchServer(pipeline, options):
             pipeline.shutdown_ev.set()
         signal.signal(signal.SIGTERM, handler)
 
-        # spawn a loop to manage executors in a separate thread:
-        # FIXME handle exceptions from this thread!
+        # spawn a loop to manage executors in a separate process:
         def loop():
             pipeline.mainLoop()
             pipeline.shutdown_ev.set()
-        h = threading.Thread(target=loop)
-        h.daemon = True
+        h = Process(target=loop)
         h.start()
-
+    
+        # wait for at most `lifetime`, then signal to other processes which may not have
+        # been the source of the event:
         pipeline.shutdown_ev.wait(pipeline.main_options_hash.lifetime)
+        pipeline.shutdown_ev.set()
         # (note wait(None) => no timeout)
         # note that this timeout doesn't start from walltime 0
         # so is slightly inaccurate ... we could start a timer earlier
         # Also, we might want to wait for only some fraction of lifetime
         # but this is perhaps better left to executor --time-to-accept-jobs
 
+    # FIXME if we terminate abnormally, we should _actually_ kill other processes rather than sleep/join
     except KeyboardInterrupt:
         logger.exception("Caught keyboard interrupt, killing executors and shutting down server.")
         print("\nKeyboardInterrupt caught: cleaning up, shutting down executors.\n")
         sys.stdout.flush()
     except:
-        logger.exception("Failed running server in daemon.requestLoop. Server shutting down.")
+        logger.exception("Exception running server in daemon.requestLoop. Server shutting down.")
     finally:
         # allow time for all clients to contact the server and be told to shut down
         # (we could instead add a way for the server to notify its registered clients):
@@ -844,7 +860,7 @@ def launchServer(pipeline, options):
         # and not because we're out of walltime, in which case this doesn't help
         time.sleep(pe.SHUTDOWN_TIME)
         daemon.shutdown()
-        t.join()
+        h.join()
         pipeline.printShutdownMessage()
 
 def flatten_pipeline(p):
