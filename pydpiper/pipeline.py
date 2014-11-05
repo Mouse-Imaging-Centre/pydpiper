@@ -12,7 +12,7 @@ from datetime import datetime
 from subprocess import call
 from shlex import split
 import multiprocessing
-from multiprocessing import Process, Event
+from multiprocessing import Process, Event, Pipe
 import file_handling as fh
 import logging
 
@@ -196,14 +196,18 @@ class Pipeline():
         self.main_options_hash = None
         # time to shut down, due to walltime or having given out all stages?
         # (use an event rather than a simple flag for shutdown notification
-        # so that we can shut down even if the mainLoop is sleeping)
-        self.shutdown_ev = Event() # initially false
+        # so that we can shut down even if a process is currently sleeping)
+        self.shutdown_ev = Event()
         self.programName = None
         self.skipped_stages = 0
         self.failed_stages = 0
         self.verbose = 0
         # Handle to write out processed stages to
         self.finished_stages_fh = None
+
+    # expose method to set shutdown_ev via Pyro:
+    def set_shutdown_ev(self):
+        self.shutdown_ev.set()
 
     def getTotalNumberOfStages(self):
         return len(self.stages)
@@ -505,7 +509,6 @@ class Pipeline():
         self.runnable.put(i)
         # keep track of the memory requirements of the runnable jobs
         self.mem_req_for_runnable.append(self.stages[i].mem)
-        
 
     def initialize(self):
         """called once all stages have been added - computes dependencies and adds graph heads to runnable queue"""
@@ -523,6 +526,12 @@ class Pipeline():
         the max number of executors it can launch
     """
     def continueLoop(self):
+        # We may be called just as the parent thread is exiting (e.g., if it wakes us with a signal).
+        # In this case, don't do anything
+        if self.shutdown_ev.is_set():
+            logger.debug("Shutdown event is set ... quitting")
+            return False
+
         # exit if there are still stages that need to be run, 
         # but when there are no runnable nor any running stages left
         if (self.runnable.empty() and
@@ -548,11 +557,11 @@ class Pipeline():
                 return False
 
         # TODO return False if all executors have died but not spawning new ones...
+
+        # if all stages have started running on executors, assume they'll complete
+        # without further management from the server
         if self.allStagesStarted():
             logger.debug("All stages started ... done")
-            return False
-        elif self.shutdown_ev.is_set():
-            logger.debug("Shutdown event is set ... quitting")
             return False
         else:
             return True
@@ -567,57 +576,29 @@ class Pipeline():
         print "Error: could not find client %s while updating the time stamp" % clientURI
         raise Exception("clientURI not found in server client list")
 
-    def mainLoop(self):
-        """An auxiliary loop function on the server used to manage executors."""
-        if self.main_options_hash.ns:
-            ns = Pyro4.locateNS()
-            serverURI = ns.lookup("pipeline")
-        else:
-            try:
-                uf = open(executor.uri_file)
-                serverURI = Pyro4.URI(uf.readline())
-                uf.close()
-            except:
-                logger.exception("Problem opening the specified uri file:")
-                raise
-        p = Pyro4.Proxy(serverURI)
-        try:
-            while self.continueLoop():
-                logger.debug("Looping ...")
-                # check to see whether new executors need to be launched
-                executors_to_launch = self.numberOfExecutorsToLaunch()
-                if executors_to_launch > 0:
-                    self.launchExecutorsFromServer(executors_to_launch)
+    # TODO rename to something more descriptive like manageExecutors
+    # this can't be a loop since we call it via sockets and don't want to block the socket forever
+    def manageExecutors(self):
+        logger.debug("Looping ...")
+        executors_to_launch = self.numberOfExecutorsToLaunch()
+        if executors_to_launch > 0:
+            self.launchExecutorsFromServer(executors_to_launch)
 
-                # look for dead clients and requeue their jobs
-                # copy() is used because otherwise client_running_stages may change size
-                # during the iteration, throwing an exception,
-                # but if we haven't heard from a client in some time,
-                # that particular client isn't likely to be the source of the
-                # change, so using a slightly stale copy shouldn't miss
-                # anything interesting
-                # FIXME there are potential race conditions here with
-                # requeue, unregisterClient ... take locks for this whole section?
-                t = time.time()
-                for client in self.clients:
-                    if t - client.timestamp > pe.HEARTBEAT_INTERVAL + pe.RESPONSE_LATENCY:
-                        logger.warn("Executor at %s has died!", client.clientURI)
-                        print("\nWarning: there has been no contact with %s, for %d seconds. Considering the executor as dead!\n" % (client.clientURI, pe.HEARTBEAT_INTERVAL + pe.RESPONSE_LATENCY))
-                        if self.failed_executors > self.main_options_hash.max_failed_executors:
-                            logger.warn("Too many executors lost to spawn new ones")
+        # look for dead clients and requeue their jobs
+        t = time.time()
+        for client in self.clients:
+            if t - client.timestamp > pe.HEARTBEAT_INTERVAL + pe.RESPONSE_LATENCY:
+                logger.warn("Executor at %s has died!", client.clientURI)
+                print("\nWarning: there has been no contact with %s, for %d seconds. Considering the executor as dead!\n" % (client.clientURI, pe.HEARTBEAT_INTERVAL + pe.RESPONSE_LATENCY))
+                if self.failed_executors > self.main_options_hash.max_failed_executors:
+                    logger.warn("Too many executors lost to spawn new ones")
 
-                        self.failed_executors += 1
+                self.failed_executors += 1
 
-                        # the unregisterClient function will automatically requeue the
-                        # stages that were associated with the lost client
-                        self.unregisterClient(client.clientURI)
+                # the unregisterClient function will automatically requeue the
+                # stages that were associated with the lost client
+                self.unregisterClient(client.clientURI)
 
-                self.shutdown_ev.wait(LOOP_INTERVAL)
-        except:
-            logger.exception("Server loop encountered error:")
-        finally:
-            logger.info("Server loop shutting down")
-            
     """
         Returns an integer indicating the number of executors to launch
         
@@ -654,6 +635,8 @@ class Pipeline():
                 p = Process(target=launchPipelineExecutor, args=(self.main_options_hash,self.programName))
                 p.start()
                 self.incrementLaunchedClients()
+            # FIXME shouldn't we `join` these processes? No, local executors may outlive the server
+            # however, this results in zombies ...
         except:
             logger.exception("Failed launching executors from the server.")
         
@@ -812,8 +795,10 @@ def launchServer(pipeline, options):
 
     try:
         # start Pyro server
+        # FIXME probably some daemon state isn't being mutated correctly
+        # but in a process-local way ... create and run the daemon in this thread?
         t = Process(target=daemon.requestLoop)
-        t.daemon = True
+        #t.daemon = True # this isn't allowed
         t.start()
 
         # handle SIGTERM (send by SciNet 15-30s before hard kill) by setting
@@ -825,13 +810,23 @@ def launchServer(pipeline, options):
             pipeline.shutdown_ev.set()
         signal.signal(signal.SIGTERM, handler)
 
-        # spawn a loop to manage executors in a separate process:
+        # spawn a loop to manage executors in a separate process
+        # (here we use a proxy to make calls to manageExecutors so that its logic is
+        # not interleaved with calls from executors.  We could instead use a `select`
+        # for both Pyro and non-Pyro socket events; see the Pyro documentation)
+        p = Pyro4.Proxy(pipelineURI)
         def loop():
-            pipeline.mainLoop()
-            pipeline.shutdown_ev.set()
+            try:
+                while p.continueLoop():
+                    p.manageExecutors()
+                    time.sleep(LOOP_INTERVAL)
+                p.set_shutdown_ev()
+            except:
+                logger.exception("Server loop encountered a problem.  Shutting down.")
         h = Process(target=loop)
+        h.daemon = True
         h.start()
-    
+
         # wait for at most `lifetime`, then signal to other processes which may not have
         # been the source of the event:
         pipeline.shutdown_ev.wait(pipeline.main_options_hash.lifetime)
@@ -849,17 +844,22 @@ def launchServer(pipeline, options):
         sys.stdout.flush()
     except:
         logger.exception("Exception running server in daemon.requestLoop. Server shutting down.")
+    else:
+        # TODO this only makes sense if we are actually shutting down nicely,
+        # and not because we're out of walltime, in which case this doesn't help
+        # (client jobs will die anyway)
+        print("Sleeping %d s to allow time for clients to shutdown..." % pe.SHUTDOWN_TIME)
+        time.sleep(pe.SHUTDOWN_TIME)
     finally:
         # allow time for all clients to contact the server and be told to shut down
         # (we could instead add a way for the server to notify its registered clients):
         # otherwise they will crash when they try to contact the (shutdown) server.
-        # It's important that clients shut down properly since otherwise they
+        # It's important that clients shut down properly - if they see a server crash, they
         # will cancel their running jobs
-        logger.debug("Sleeping to allow time for clients to shutdown")
-        # FIXME this only makes sense if we are actually shutting down nicely,
-        # and not because we're out of walltime, in which case this doesn't help
-        time.sleep(pe.SHUTDOWN_TIME)
-        daemon.shutdown()
+
+        # brutal, but awkward to do with our system of `Event`s
+        # could send a signal to `t` instead:
+        t.terminate()
         h.join()
         pipeline.printShutdownMessage()
 
