@@ -182,8 +182,8 @@ class Pipeline():
         self.processedStages = []
         # location of backup files for restart if needed
         self.backupFileLocation = None
-        # list of registered clients (using ExecClient class instances)
-        self.clients = []
+        # table of registered clients (using ExecClient class instances) indexed by URI
+        self.clients = {}
         # number of clients (executors) that have been launched by the server
         # we need to keep track of this because even though no (or few) clients
         # are actually registered, a whole bunch of them could be waiting in the
@@ -234,10 +234,7 @@ class Pipeline():
         return self.mem_req_for_runnable
 
     def getMemoryAvailableInClients(self):
-        availMem = []
-        for client in self.clients:
-            availMem.append(client.maxmemory)
-        return availMem
+        return [c.maxmemory for c in self.clients]
 
     def addStage(self, stage):
         """adds a stage to the pipeline"""
@@ -383,28 +380,25 @@ class Pipeline():
         return len(self.processedStages) == len(self.stages)
 
     def addRunningStageToClient(self, clientURI, index):
-        for client in self.clients:
-            if client.clientURI == clientURI:
-                client.running_stages.add(index)
-                return
-        # if we get to this point, we were unable to find the
-        # corresponding client...
-        print "Error: could not find client %s while trying to add running stage" % clientURI
-        raise Exception("clientURI not found in server client list")
+        try:
+            self.clients[clientURI].running_stages.add(index)
+        except:
+            print "Error: could not find client %s while trying to add running stage" % clientURI
+            raise Exception("clientURI not found in server client list")
 
     def removeRunningStageFromClient(self, clientURI, index):
-        for client in self.clients:
-            if client.clientURI == clientURI:
-                try:
-                    client.running_stages.remove(index)
-                except:
-                    print "Error: unable to remove stage index from registered client: %s" % clientURI
-                    raise Exception("Could not remove stage index from running stages list")
-                return
-        # if we get to this point, we were unable to find the
-        # corresponding client...
-        print "Error: could not find client %s while trying to remove running stage" % clientURI
-        raise Exception("clientURI not found in server client list")
+        try:
+            c = self.clients[clientURI]
+        except:
+            print "Error: could not find client %s while trying to remove running stage" % clientURI
+            raise Exception("clientURI not found in server client list")
+        else:
+            try:
+                c.running_stages.remove(index)
+            except:
+                print "Error: unable to remove stage index from registered client: %s" % clientURI
+                logger.exception("Could not remove stage index from running stages list")
+                raise
 
     def setStageStarted(self, index, clientURI):
         URIstring = "(" + str(clientURI) + ")"
@@ -560,14 +554,13 @@ class Pipeline():
             return True
 
     def updateClientTimestamp(self, clientURI):
-        for client in self.clients:
-            if client.clientURI == clientURI:
-                client.timestamp = time.time() # use server clock for consistency
-                return
-        # if we get to this point, we were unable to find the
-        # corresponding client...
-        print "Error: could not find client %s while updating the time stamp" % clientURI
-        raise Exception("clientURI not found in server client list")
+        t = time.time() # use server clock for consistency
+        try:
+            self.clients[clientURI].timestamp = t
+        except:
+            print("Error: could not find client %s while updating the time stamp" % clientURI)
+            logger.exception("clientURI not found in server client list:")
+            raise
 
     # TODO rename to something more descriptive like manageExecutors
     # this can't be a loop since we call it via sockets and don't want to block the socket forever
@@ -579,7 +572,7 @@ class Pipeline():
 
         # look for dead clients and requeue their jobs
         t = time.time()
-        for client in self.clients:
+        for uri,client in self.clients.iteritems():
             if t - client.timestamp > pe.HEARTBEAT_INTERVAL + pe.RESPONSE_LATENCY:
                 logger.warn("Executor at %s has died!", client.clientURI)
                 print("\nWarning: there has been no contact with %s, for %d seconds. Considering the executor as dead!\n" % (client.clientURI, pe.HEARTBEAT_INTERVAL + pe.RESPONSE_LATENCY))
@@ -634,51 +627,33 @@ class Pipeline():
     def getProcessedStageCount(self):
         return len(self.processedStages)
 
-    def registerClient(self, client, maxmemory):
+    def registerClient(self, clientURI, maxmemory):
         # Adds new client (represented by a URI string)
         # to array of registered clients. If the server launched
         # its own clients, we should remove 1 from the number of launched and waiting
         # clients (It's possible though that users launch clients themselves. In that 
         # case we should not decrease this variable)
-        self.clients.append(ExecClient(client, maxmemory))
+        self.clients[clientURI] = ExecClient(clientURI, maxmemory)
         if self.number_launched_and_waiting_clients > 0:
             self.number_launched_and_waiting_clients -= 1
-        logger.debug("Client registered (banzai): %s", client)
+        logger.debug("Client registered (banzai): %s", clientURI)
         if self.verbose:
-            print("Client registered (banzai!): %s" % client)
+            print("Client registered (banzai!): %s" % clientURI)
             
-    def removeRunningStagesAndGetIndexClient(self, client):
-        clientIndex = -1
-        for i in range(len(self.clients)):
-            if client == self.clients[i].clientURI:
-                clientIndex = i
-                # if the client has become unresponsive, add the stages that 
-                # were running in this client back to the runnable stages
-                numRunningStage = len(self.clients[i].running_stages)
-                for j in range(numRunningStage):
-                    rerunIndex = self.clients[j].running_stages.pop()
-                    self.currently_running_stages.remove(rerunIndex)
-                    self.requeue(rerunIndex)
-                # return the index of the found client
-                return clientIndex
-        # return -1 (i.e, client was not found)
-        return clientIndex
-
-    def unregisterClient(self, client):
-        # removes a client URI string from the array of registered clients. An executor 
+    def unregisterClient(self, clientURI):
+        # removes a client URI string from the table of registered clients. An executor 
         # calls this method when it decides on its own to shut down,
         # and the server may call it when a client is unresponsive
-        clientIndex = self.removeRunningStagesAndGetIndexClient(client)
-        if not clientIndex == -1:
-            # remove the client, by popping its index
-            self.clients.pop(clientIndex)
+        try:
+            del self.clients[clientURI]
+        except:
             if self.verbose:
-                print("Client un-registered (seppuku!): " + client)
-            logger.info("Client un-registered (seppuku!): " + client)
+                print("Unable to un-register client: " + clientURI)
+            logger.info("Unable to un-register client: " + clientURI)
         else:
             if self.verbose:
-                print("Unable to un-register client: " + client)
-            logger.info("Unable to un-register client: " + client)
+                print("Client un-registered (seppuku!): " + clientURI)
+            logger.info("Client un-registered (seppuku!): " + clientURI)
 
     def incrementLaunchedClients(self):
         self.number_launched_and_waiting_clients += 1
@@ -819,7 +794,12 @@ def launchServer(pipeline, options):
 
         # wait for at most `lifetime`, then signal to other processes which may not have
         # been the source of the event (note wait(None) => no timeout):
-        pipeline.shutdown_ev.wait(pipeline.main_options_hash.lifetime)
+        flag = pipeline.shutdown_ev.wait(pipeline.main_options_hash.lifetime)
+        if flag:
+            logger.info("Shutdown event was set before maximum lifetime")
+        else:
+            logger.info("Time's up! (%d)" % pipeline.main_options_hash.lifetime)
+        # FIXME log whether we timed out or what
         pipeline.shutdown_ev.set()
         # note that this timeout doesn't start from walltime 0
         # so is slightly inaccurate ... we could start a timer earlier
