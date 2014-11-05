@@ -239,9 +239,6 @@ class Pipeline():
             availMem.append(client.maxmemory)
         return availMem
 
-    def pipelineFullyCompleted(self):
-        return len(self.stages) == len(self.processedStages)
-        
     def addStage(self, stage):
         """adds a stage to the pipeline"""
         # check if stage already exists in pipeline - if so, don't bother
@@ -365,8 +362,6 @@ class Pipeline():
             return (flag, i)
 
     def allStagesStarted(self):
-        logger.debug("allStagesStarted: total: %d, current: %d, processed: %d" % 
-                        (len(self.stages), len(self.currently_running_stages), len(self.processedStages)))
         return len(self.stages) == len(self.currently_running_stages) + len(self.processedStages)
 
     """Return a tuple of a command ("shutdown_normally" if all stages are finished,
@@ -374,7 +369,6 @@ class Pipeline():
     available) and the next runnable stage if the flag is "run_stage", otherwise
     None"""
     def getRunnableStageIndex(self):
-        #if self.allStagesComplete():
         if self.allStagesStarted():
             return ("shutdown_normally", None)
         elif self.runnable.empty():
@@ -385,8 +379,7 @@ class Pipeline():
             self.mem_req_for_runnable.remove(self.stages[index].mem)
             return ("run_stage", index)
 
-    # FIXME this is pipelineFullyCompleted
-    def allStagesComplete(self):
+    def allStagesCompleted(self):
         return len(self.processedStages) == len(self.stages)
 
     def addRunningStageToClient(self, clientURI, index):
@@ -635,8 +628,6 @@ class Pipeline():
                 p = Process(target=launchPipelineExecutor, args=(self.main_options_hash,self.programName))
                 p.start()
                 self.incrementLaunchedClients()
-            # FIXME shouldn't we `join` these processes? No, local executors may outlive the server
-            # however, this results in zombies ...
         except:
             logger.exception("Failed launching executors from the server.")
         
@@ -733,7 +724,7 @@ class Pipeline():
         # can be run) so check that in order to provide the correct feedback to the user
         print("\n\n######################################################")
         print("Shutting down (" + str(len(self.clients)) + " clients remaining) ...")
-        if self.pipelineFullyCompleted():
+        if self.allStagesCompleted():
             print("All pipeline stages have been processed.")
             print("Pipeline finished successfully!")
         else:
@@ -795,8 +786,6 @@ def launchServer(pipeline, options):
 
     try:
         # start Pyro server
-        # FIXME probably some daemon state isn't being mutated correctly
-        # but in a process-local way ... create and run the daemon in this thread?
         t = Process(target=daemon.requestLoop)
         #t.daemon = True # this isn't allowed
         t.start()
@@ -820,6 +809,7 @@ def launchServer(pipeline, options):
                 while p.continueLoop():
                     p.manageExecutors()
                     time.sleep(LOOP_INTERVAL)
+                # TODO move this call into a `finally` since something weird may have happened?
                 p.set_shutdown_ev()
             except:
                 logger.exception("Server loop encountered a problem.  Shutting down.")
@@ -828,16 +818,15 @@ def launchServer(pipeline, options):
         h.start()
 
         # wait for at most `lifetime`, then signal to other processes which may not have
-        # been the source of the event:
+        # been the source of the event (note wait(None) => no timeout):
         pipeline.shutdown_ev.wait(pipeline.main_options_hash.lifetime)
         pipeline.shutdown_ev.set()
-        # (note wait(None) => no timeout)
         # note that this timeout doesn't start from walltime 0
         # so is slightly inaccurate ... we could start a timer earlier
         # Also, we might want to wait for only some fraction of lifetime
         # but this is perhaps better left to executor --time-to-accept-jobs
 
-    # FIXME if we terminate abnormally, we should _actually_ kill other processes rather than sleep/join
+    # FIXME if we terminate abnormally, we should _actually_ kill child executors (if running locally)
     except KeyboardInterrupt:
         logger.exception("Caught keyboard interrupt, killing executors and shutting down server.")
         print("\nKeyboardInterrupt caught: cleaning up, shutting down executors.\n")
@@ -845,22 +834,20 @@ def launchServer(pipeline, options):
     except:
         logger.exception("Exception running server in daemon.requestLoop. Server shutting down.")
     else:
+        # allow time for all clients to contact the server and be told to shut down
+        # (we could instead add a way for the server to notify its registered clients):
+        # otherwise they will crash when they try to contact the (shutdown) server.
+        # It's important that clients shut down properly - if they see a server crash, they
+        # will cancel their running jobs
         # TODO this only makes sense if we are actually shutting down nicely,
         # and not because we're out of walltime, in which case this doesn't help
         # (client jobs will die anyway)
         print("Sleeping %d s to allow time for clients to shutdown..." % pe.SHUTDOWN_TIME)
         time.sleep(pe.SHUTDOWN_TIME)
     finally:
-        # allow time for all clients to contact the server and be told to shut down
-        # (we could instead add a way for the server to notify its registered clients):
-        # otherwise they will crash when they try to contact the (shutdown) server.
-        # It's important that clients shut down properly - if they see a server crash, they
-        # will cancel their running jobs
-
         # brutal, but awkward to do with our system of `Event`s
         # could send a signal to `t` instead:
         t.terminate()
-        h.join()
         pipeline.printShutdownMessage()
 
 def flatten_pipeline(p):
