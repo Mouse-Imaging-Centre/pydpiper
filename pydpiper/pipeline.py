@@ -12,7 +12,7 @@ from datetime import datetime
 from subprocess import call
 from shlex import split
 import multiprocessing
-from multiprocessing import Process, Event, Pipe
+from multiprocessing import Process, Event
 import file_handling as fh
 import logging
 
@@ -26,9 +26,9 @@ import pipeline_executor as pe
 Pyro4.config.SERVERTYPE = pe.Pyro4.config.SERVERTYPE
 Pyro4.config.DETAILED_TRACEBACK = pe.Pyro4.config.DETAILED_TRACEBACK
 
-LOOP_INTERVAL = 5.0
+LOOP_INTERVAL = 5
 RESPONSE_LATENCY = 10
-RETRYING_LATENCY = 1
+STAGE_RETRY_INTERVAL = 1
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +69,6 @@ class ExecClient():
         self.maxmemory = maxmemory
         self.running_stages = set([])
         self.timestamp = time.time()
-        
 
 class PipelineStage():
     def __init__(self):
@@ -205,9 +204,11 @@ class Pipeline():
         # Handle to write out processed stages to
         self.finished_stages_fh = None
 
-    # expose method to set shutdown_ev via Pyro:
+    # expose methods to get/set shutdown_ev via Pyro (setter not needed):
     def set_shutdown_ev(self):
         self.shutdown_ev.set()
+    def get_shutdown_ev(self):
+        return self.shutdown_ev
 
     def getTotalNumberOfStages(self):
         return len(self.stages)
@@ -234,7 +235,7 @@ class Pipeline():
         return self.mem_req_for_runnable
 
     def getMemoryAvailableInClients(self):
-        return [c.maxmemory for c in self.clients]
+        return [c.maxmemory for _, c in self.clients.iteritems()]
 
     def addStage(self, stage):
         """adds a stage to the pipeline"""
@@ -358,15 +359,12 @@ class Pipeline():
         else:
             return (flag, i)
 
-    def allStagesStarted(self):
-        return len(self.stages) == len(self.currently_running_stages) + len(self.processedStages)
-
     """Return a tuple of a command ("shutdown_normally" if all stages are finished,
     "wait" if no stages are currently runnable, or "run_stage" if a stage is
     available) and the next runnable stage if the flag is "run_stage", otherwise
     None"""
     def getRunnableStageIndex(self):
-        if self.allStagesStarted():
+        if self.allStagesCompleted():
             return ("shutdown_normally", None)
         elif self.runnable.empty():
             return ("wait", None)
@@ -430,14 +428,15 @@ class Pipeline():
 
     def setStageFinished(self, index, clientURI, save_state = True, checking_pipeline_status = False):
         """given an index, sets corresponding stage to finished and adds successors to the runnable queue"""
-        logger.info("Finished Stage " + str(index) + ": " + str(self.stages[index]))
         # this function can be called when a pipeline is restarted, and 
         # we go through all stages and set the finished ones to... finished... :-)
         # in that case, we can not remove the stage from the list of running
         # jobs, because there is none.
         if checking_pipeline_status:
+            logger.debug("Already finished stage " + str(index))
             self.stages[index].status = "finished"
         else:
+            logger.info("Finished Stage " + str(index) + ": " + str(self.stages[index]))
             self.removeFromRunning(index, clientURI, new_status = "finished")
         self.processedStages.append(index)
         self.finished_stages_fh.write("%d\n" % index)
@@ -471,12 +470,12 @@ class Pipeline():
             # a handful of milliseconds, that won't solve anything...
             # this sleep command will block the server for a small amount 
             # of time, but should happen only sporadically
-            time.sleep(RETRYING_LATENCY)
+            time.sleep(STAGE_RETRY_INTERVAL)
             self.removeFromRunning(index, clientURI, new_status = None)
             self.stages[index].incrementNumberOfRetries()
-            logger.debug("RETRYING: ERROR in Stage " + str(index) + ": " + str(self.stages[index]))
-            logger.debug("RETRYING: adding this stage back to the runnable queue.")
-            logger.debug("RETRYING: Logfile for Stage " + str(self.stages[index].logFile))
+            logger.info("RETRYING: ERROR in Stage " + str(index) + ": " + str(self.stages[index]))
+            logger.info("RETRYING: adding this stage back to the runnable queue.")
+            logger.info("RETRYING: Logfile for Stage " + str(self.stages[index].logFile))
             self.requeue(index)
         else:
             self.removeFromRunning(index, clientURI, new_status = "failed")
@@ -513,8 +512,8 @@ class Pipeline():
         the max number of executors it can launch
     """
     def continueLoop(self):
-        # We may be called just as the parent thread is exiting (e.g., if it wakes us with a signal).
-        # In this case, don't do anything
+        # We may be have been called one last time just as the parent thread is exiting
+        # (if it wakes us with a signal).  In this case, don't do anything:
         if self.shutdown_ev.is_set():
             logger.debug("Shutdown event is set ... quitting")
             return False
@@ -545,10 +544,8 @@ class Pipeline():
 
         # TODO return False if all executors have died but not spawning new ones...
 
-        # if all stages have started running on executors, assume they'll complete
-        # without further management from the server
-        if self.allStagesStarted():
-            logger.debug("All stages started ... done")
+        if self.allStagesCompleted():
+            logger.debug("All stages complete ... done")
             return False
         else:
             return True
@@ -562,7 +559,6 @@ class Pipeline():
             logger.exception("clientURI not found in server client list:")
             raise
 
-    # TODO rename to something more descriptive like manageExecutors
     # this can't be a loop since we call it via sockets and don't want to block the socket forever
     def manageExecutors(self):
         logger.debug("Looping ...")
@@ -572,7 +568,8 @@ class Pipeline():
 
         # look for dead clients and requeue their jobs
         t = time.time()
-        for uri,client in self.clients.iteritems():
+        # copy() as unregisterClient mutates self.clients during iteration over the latter
+        for uri,client in self.clients.copy().iteritems():
             if t - client.timestamp > pe.HEARTBEAT_INTERVAL + pe.RESPONSE_LATENCY:
                 logger.warn("Executor at %s has died!", client.clientURI)
                 print("\nWarning: there has been no contact with %s, for %d seconds. Considering the executor as dead!\n" % (client.clientURI, pe.HEARTBEAT_INTERVAL + pe.RESPONSE_LATENCY))
@@ -645,6 +642,8 @@ class Pipeline():
         # calls this method when it decides on its own to shut down,
         # and the server may call it when a client is unresponsive
         try:
+            for s in self.clients[clientURI].running_stages:
+                self.setStageLost(s, clientURI)
             del self.clients[clientURI]
         except:
             if self.verbose:
@@ -661,7 +660,7 @@ class Pipeline():
     def skip_completed_stages(self):
         try:
             with open(str(self.backupFileLocation) + '/finished_stages', 'r') as fh:
-                processed_stages = frozenset([int(x) for x in fh.read().split()])
+                processed_stages = frozenset((int(x) for x in fh.read().split()))
             self.counter = len(processed_stages)
         except:
             logger.warn("Backup files aren't recoverable.  Continuing anyway...")
@@ -747,17 +746,12 @@ def launchServer(pipeline, options):
         ns = Pyro4.locateNS()
         ns.register("pipeline", pipelineURI)
     else:
-    # If not using Pyro NameServer, must write uri to file for reading by client.
+        # If not using Pyro NameServer, must write uri to file for reading by client.
         uf = open(options.urifile, 'w')
         uf.write(pipelineURI.asString())
         uf.close()
     
-    # set the verbosity of the pipeline before running it
     pipeline.setVerbosity(options.verbose)
-    verboseprint("Daemon is running at: %s" % daemon.locationStr)
-    logger.info("Daemon is running at: %s", daemon.locationStr)
-    verboseprint("The pipeline's uri is: %s" % str(pipelineURI))
-    logger.info("The pipeline's uri is: %s", str(pipelineURI))
 
     try:
         # start Pyro server
@@ -765,26 +759,39 @@ def launchServer(pipeline, options):
         #t.daemon = True # this isn't allowed
         t.start()
 
+        # at this point requests made to the Pyro daemon will touch process `t`'s copy
+        # of the pipeline, so modifiying `pipeline` won't have any effect.  The exception is
+        # communication through its multiprocessing.Event, which we use below to wait
+        # for termination.
+
+        verboseprint("Daemon is running at: %s" % daemon.locationStr)
+        logger.info("Daemon is running at: %s", daemon.locationStr)
+        verboseprint("The pipeline's uri is: %s" % str(pipelineURI))
+        logger.info("The pipeline's uri is: %s", str(pipelineURI))
+
         # handle SIGTERM (send by SciNet 15-30s before hard kill) by setting
         # the shutdown event (we shouldn't actually see a SIGTERM on PBS
         # since PBS submission logic gives us a lifetime related to our walltime
         # request ...)
-        def handler(sig,stack):
-            logger.info("Caught signal %s", sig)
-            pipeline.shutdown_ev.set()
-        signal.signal(signal.SIGTERM, handler)
+        #def handler(sig,_stack):
+        #    logger.info("Caught signal %s", sig)
+        #    pipeline.shutdown_ev.set()
+        #signal.signal(signal.SIGTERM, handler)
 
         # spawn a loop to manage executors in a separate process
-        # (here we use a proxy to make calls to manageExecutors so that its logic is
+        # (here we use a proxy to make calls to manageExecutors because (a) 
+        # processes don't share memory, (b) so that its logic is
         # not interleaved with calls from executors.  We could instead use a `select`
         # for both Pyro and non-Pyro socket events; see the Pyro documentation)
         p = Pyro4.Proxy(pipelineURI)
         def loop():
             try:
+                logger.debug("Auxiliary loop started")
                 while p.continueLoop():
                     p.manageExecutors()
                     time.sleep(LOOP_INTERVAL)
                 # TODO move this call into a `finally` since something weird may have happened?
+                # if this loop crashes, should the main program continue?
                 p.set_shutdown_ev()
             except:
                 logger.exception("Server loop encountered a problem.  Shutting down.")
@@ -795,40 +802,39 @@ def launchServer(pipeline, options):
         # wait for at most `lifetime`, then signal to other processes which may not have
         # been the source of the event (note wait(None) => no timeout):
         flag = pipeline.shutdown_ev.wait(pipeline.main_options_hash.lifetime)
-        if flag:
-            logger.info("Shutdown event was set before maximum lifetime")
-        else:
+        if not flag:
             logger.info("Time's up! (%d)" % pipeline.main_options_hash.lifetime)
-        # FIXME log whether we timed out or what
         pipeline.shutdown_ev.set()
         # note that this timeout doesn't start from walltime 0
         # so is slightly inaccurate ... we could start a timer earlier
         # Also, we might want to wait for only some fraction of lifetime
         # but this is perhaps better left to executor --time-to-accept-jobs
+        # or time estimates for each stage
 
     # FIXME if we terminate abnormally, we should _actually_ kill child executors (if running locally)
     except KeyboardInterrupt:
         logger.exception("Caught keyboard interrupt, killing executors and shutting down server.")
         print("\nKeyboardInterrupt caught: cleaning up, shutting down executors.\n")
         sys.stdout.flush()
+        
     except:
         logger.exception("Exception running server in daemon.requestLoop. Server shutting down.")
     else:
         # allow time for all clients to contact the server and be told to shut down
         # (we could instead add a way for the server to notify its registered clients):
         # otherwise they will crash when they try to contact the (shutdown) server.
-        # It's important that clients shut down properly - if they see a server crash, they
-        # will cancel their running jobs
+        # It's not important that clients shut down properly (if they see a server crash, they
+        # will cancel their running jobs, but they're done by the time the server exits)
         # TODO this only makes sense if we are actually shutting down nicely,
         # and not because we're out of walltime, in which case this doesn't help
         # (client jobs will die anyway)
         print("Sleeping %d s to allow time for clients to shutdown..." % pe.SHUTDOWN_TIME)
         time.sleep(pe.SHUTDOWN_TIME)
     finally:
+        p.printShutdownMessage()
         # brutal, but awkward to do with our system of `Event`s
         # could send a signal to `t` instead:
         t.terminate()
-        pipeline.printShutdownMessage()
 
 def flatten_pipeline(p):
     """return a list of tuples for each stage.

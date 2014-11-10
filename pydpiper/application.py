@@ -137,7 +137,9 @@ class AbstractApplication(object):
             return 
 
         self.reconstructCommand()
+        logger.debug("Calling `run`")
         self.run()
+        logger.debug("Calling `initialize`")
         self.pipeline.initialize()
         self.pipeline.printStages(self.appName)
                             

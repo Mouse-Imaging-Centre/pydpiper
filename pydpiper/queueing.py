@@ -7,7 +7,8 @@ import os
 import re
 import subprocess
 
-SERVER_START_TIME = 30
+# FIXME
+SERVER_START_TIME = 50
 # TODO instead of hard-coding SciNet min/max times for debug/batch queues,
 # add extra options/env. vars for these
 SCINET_MIN_LIFETIME = 2 *  1 * 3600
@@ -23,7 +24,10 @@ class runOnQueueingSystem():
         # user or are defaults ... to fix this, we could use None as the 
         # default and set non-scinet defaults later or use optargs in a more sophisticated way(?)
         self.timestr = options.time or '48:00:00'
-        h,m,s = self.timestr.split(':')
+        try:
+            h,m,s = self.timestr.split(':')
+        except:
+            raise Exception("invalid (H)HH:MM:SS timestring: %s" % self.timestr)
         self.job_lifetime = 3600 * int(h) + 60 * int(m) + int(s)
         # TODO use self.time to give better time_to_accept_jobs
         # and to compute number of generations of scripts to submit
@@ -100,7 +104,7 @@ class runOnQueueingSystem():
         self.constructAndSubmitJobFile(execId, time, isMainFile=False, depends=depends)
     def addHeaderAndCommands(self, time, isMainFile):
         """Constructs header and commands for pbs script, based on options input from calling program"""
-        self.jobFile.write("#!/bin/bash" + "\n")
+        self.jobFile.write("#!/bin/bash\n")
         requestNodes = 1
         execProcs = self.procs
         mainCommand = ""
@@ -134,8 +138,12 @@ class runOnQueueingSystem():
         self.jobFile.write("#PBS -l nodes=%d:ppn=%d,walltime=%s\n" % (requestNodes, self.ppn, timestr))
         self.jobFile.write("#PBS -N %s\n" % name)
         self.jobFile.write("#PBS -q %s\n" % self.queue_name)
+        # the `module` shell procedure likes to return 0 when it shouldn't (and fails when `|`ed for some reason), so redirect to a file and grep for an error message:
         # TODO modules (or even calls to module) shouldn't be hard-coded
-        self.jobFile.write("module load gcc intel python gotoblas hdf5 gnuplot octave\n\n")
+        self.jobFile.write("export fh=$(mktemp)\n")
+        self.jobFile.write("module load gcc intel/15.0 python/2.7.8 gotoblas hdf5 gnuplot Xlibraries octave 2> $fh \n")
+        self.jobFile.write("cat $fh | tee /dev/stderr | grep 'ERROR' && exit 13\n")
+        self.jobFile.write("rm $fh \n")
         self.jobFile.write("cd $PBS_O_WORKDIR\n\n") # jobs start in $HOME; $PBS_O_WORKDIR is the submission directory
         if mainCommand:
             self.jobFile.write(self.buildMainCommand())
