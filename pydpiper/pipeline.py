@@ -441,7 +441,9 @@ class Pipeline():
         self.processedStages.append(index)
         # TODO in fact, we need only write out the hash, not the index, here.
         # We could then form a set of hashes and query this to see whether a stage has run
-        # (the index is actually irrelevant).
+        # (the index is actually irrelevant).  However, it seems that being resilient against
+        # renumbering isn't that important, as the cause of the renumbering would probably
+        # also make most 'downstream' stages need to be re-run.
         self.finished_stages_fh.write("%d,%s\n" % (index, self.stages[index].getHash()))
         self.finished_stages_fh.flush()
         for i in self.G.successors(index):
@@ -669,12 +671,10 @@ class Pipeline():
                         if self.stages[ix].getHash() == hash:
                             yield ix
                         else:
-                            print("Stage %d has changed" % ix)
+                            logger.debug("Stage %d has changed" % ix)
                 processed_stages = frozenset(valid_processed_stages())
-            #self.counter = len(processed_stages)
         except:
             logger.exception("Backup files aren't recoverable.  Continuing anyway...")
-            #logger.warn("Backup files aren't recoverable.  Continuing anyway...")
             return
         # processedStages was read from finished_stages_fh, so:
         self.finished_stages_fh = open(str(self.backupFileLocation) + '/finished_stages', 'w')
