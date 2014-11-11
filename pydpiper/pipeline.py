@@ -156,7 +156,7 @@ class CmdStage(PipelineStage):
 class Pipeline():
     # TODO the way we initialize a pipeline is currently a bit gross, e.g.,
     # setting a bunch of instance variables after __init__ - the presence of a method
-    # called `initialize` should be a hint that things are perhaps not well, but perhaps
+    # called `initialize` should be a hint that all is perhaps not well, but perhaps
     # there is indeed some information legitimately unavailable when we first construct
     def __init__(self):
         # the core pipeline is stored in a directed graph. The graph is made
@@ -439,7 +439,10 @@ class Pipeline():
             logger.info("Finished Stage " + str(index) + ": " + str(self.stages[index]))
             self.removeFromRunning(index, clientURI, new_status = "finished")
         self.processedStages.append(index)
-        self.finished_stages_fh.write("%d\n" % index)
+        # TODO in fact, we need only write out the hash, not the index, here.
+        # We could then form a set of hashes and query this to see whether a stage has run
+        # (the index is actually irrelevant).
+        self.finished_stages_fh.write("%d,%s\n" % (index, self.stages[index].getHash()))
         self.finished_stages_fh.flush()
         for i in self.G.successors(index):
             if self.checkIfRunnable(i):
@@ -660,14 +663,27 @@ class Pipeline():
     def skip_completed_stages(self):
         try:
             with open(str(self.backupFileLocation) + '/finished_stages', 'r') as fh:
-                processed_stages = frozenset((int(x) for x in fh.read().split()))
-            self.counter = len(processed_stages)
+                def valid_processed_stages():
+                    for e in fh.read().split():
+                        ix,hash = map(int, e.split(','))
+                        if self.stages[ix].getHash() == hash:
+                            yield ix
+                        else:
+                            print("Stage %d has changed" % ix)
+                processed_stages = frozenset(valid_processed_stages())
+            #self.counter = len(processed_stages)
         except:
-            logger.warn("Backup files aren't recoverable.  Continuing anyway...")
+            logger.exception("Backup files aren't recoverable.  Continuing anyway...")
+            #logger.warn("Backup files aren't recoverable.  Continuing anyway...")
             return
         # processedStages was read from finished_stages_fh, so:
         self.finished_stages_fh = open(str(self.backupFileLocation) + '/finished_stages', 'w')
-        runnable = []
+        runnable  = []
+        completed = 0
+        # Even if a stage's input files/output files/code haven't changed,
+        # the stage may have to be re-run (if a dependency has changed).
+        # Hence, walk the graph using a queue, marking for restart
+        # all children of commands which have changed.
         while True:
             flag,i = self.getRunnableStageIndex()
             if i == None:
@@ -684,13 +700,14 @@ class Pipeline():
                 continue
 
             self.setStageFinished(i, clientURI = "fake_client_URI", checking_pipeline_status = True)
+            completed += 1
 
-        logger.debug("Runnable: %s", str(self.runnable))
+        logger.debug("Runnable: %s", runnable)
         for i in runnable:
             self.requeue(i)
 
         self.finished_stages_fh.close()
-        logger.info('Previously completed stages (of ' + str(len(self.stages)) + ' total): ' + str(len(self.processedStages)))
+        logger.info('Previously completed stages (of %d total): %d', len(self.stages), completed)
 
     def printShutdownMessage(self):
         # it is possible that pipeline.continueLoop returns false, even though the
