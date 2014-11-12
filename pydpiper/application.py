@@ -130,13 +130,16 @@ class AbstractApplication(object):
         self.appName = self.setup_appName()
         self.setup_logger()
         
-        if self.options.queue=="pbs":
+        if self.options.scinet or self.options.queue == "pbs" or self.options.queue_type == "pbs":
             roq = runOnQueueingSystem(self.options, sys.argv)
-            roq.createPbsScripts()
+            roq.createAndSubmitPbsScripts()
+            logger.info("Finished submitting PBS job scripts...quitting")
             return 
 
         self.reconstructCommand()
+        logger.debug("Calling `run`")
         self.run()
+        logger.debug("Calling `initialize`")
         self.pipeline.initialize()
         self.pipeline.printStages(self.appName)
                             
