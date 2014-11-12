@@ -175,7 +175,7 @@ class FullLSQ12(object):
                         xfmsToAvg[inputFH].append(inputFH.getLastXfm(targetFH))
                 
                 """Create average xfm for inputFH using xfmsToAvg array"""
-                cmd = ["xfmavg"]
+                cmd = ["xfmavg", "-verbose"]
                 for i in range(len(xfmsToAvg[inputFH])):
                     cmd.append(InputFile(xfmsToAvg[inputFH][i]))
                 avgXfmOutput = createBaseName(inputFH.transformsDir, inputFH.basename + "-avg-lsq12.xfm")
