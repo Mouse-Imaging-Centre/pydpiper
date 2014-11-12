@@ -665,14 +665,9 @@ class Pipeline():
     def skip_completed_stages(self):
         try:
             with open(str(self.backupFileLocation) + '/finished_stages', 'r') as fh:
-                def valid_processed_stages():
-                    for e in fh.read().split():
-                        ix,hash = map(int, e.split(','))
-                        if self.stages[ix].getHash() == hash:
-                            yield ix
-                        else:
-                            logger.debug("Stage %d has changed" % ix)
-                processed_stages = frozenset(valid_processed_stages())
+                # a stage's index is just an artifact of the graph construction,
+                # so load only the hashes of finished stages
+                previous_hashes = frozenset((int(e.split(',')[1]) for e in fh.read().split()))
         except:
             logger.exception("Backup files aren't recoverable.  Continuing anyway...")
             return
@@ -680,11 +675,14 @@ class Pipeline():
         self.finished_stages_fh = open(str(self.backupFileLocation) + '/finished_stages', 'w')
         runnable  = []
         completed = 0
-        # Even if a stage's input files/output files/code haven't changed,
-        # the stage may have to be re-run (if a dependency has changed).
-        # Hence, walk the graph using a queue, marking for restart
-        # all children of commands which have changed.
         while True:
+            # self.runnable should be populated initially by the graph heads.
+            # Traverse the graph by removing stages from the runnable queue and,
+            # if they don't need to be re-run, adding their dependencies to the queue
+            # (via setStageFinished); if they do, accumulate them.  In this way we
+            # populate the runnable queue with a set of stages which must and can be run
+            # (either because the inputs/outputs/code has changed or because an ancestor
+            # has re-run) but whose ancestors have all completed
             flag,i = self.getRunnableStageIndex()
             if i == None:
                 break
@@ -695,7 +693,8 @@ class Pipeline():
                 runnable.append(i)
                 continue
 
-            if not i in processed_stages:
+            # we've never run this command before
+            if not s.getHash() in previous_hashes:
                 runnable.append(i)
                 continue
 
