@@ -41,11 +41,11 @@ with each scan per subject listed on the same line and separated by a comma.
 """
         
         # own options go here
-        lsq6.addLSQ6OptionGroup(self.parser)
-        lsq12.addLSQ12OptionGroup(self.parser)
-        nl.addNlinRegOptionGroup(self.parser)
-        rf.addGenRegOptionGroup(self.parser)
-        st.addStatsOptions(self.parser)
+        lsq6.addLSQ6ArgumentGroup(self.parser)
+        lsq12.addLSQ12ArgumentGroup(self.parser)
+        nl.addNlinRegArgumentGroup(self.parser)
+        rf.addGenRegArgumentGroup(self.parser)
+        st.addStatsArguments(self.parser)
         
         # TODO: better usage description (once I've figured out what the usage will be ...)
         self.parser.set_usage("%prog [options] input.csv")

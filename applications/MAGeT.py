@@ -3,10 +3,10 @@
 from pydpiper.application import AbstractApplication
 import pydpiper.file_handling as fh
 from atoms_and_modules.registration_file_handling import RegistrationPipeFH
-from atoms_and_modules.registration_functions import initializeInputFiles, addGenRegOptionGroup
-from atoms_and_modules.MAGeT_modules import MAGeTMask, MAGeTRegister, voxelVote, addMAGeTOptionGroup
-from atoms_and_modules.LSQ12 import addLSQ12OptionGroup
-from atoms_and_modules.NLIN import addNlinRegOptionGroup
+from atoms_and_modules.registration_functions import initializeInputFiles, addGenRegArgumentGroup
+from atoms_and_modules.MAGeT_modules import MAGeTMask, MAGeTRegister, voxelVote, addMAGeTArgumentGroup
+from atoms_and_modules.LSQ12 import addLSQ12ArgumentGroup
+from atoms_and_modules.NLIN import addNlinRegArgumentGroup
 from os.path import abspath, join, exists
 import logging
 import glob
@@ -17,10 +17,10 @@ logger = logging.getLogger(__name__)
 
 class MAGeTApplication(AbstractApplication):
     def setup_options(self):
-        addGenRegOptionGroup(self.parser)
-        addMAGeTOptionGroup(self.parser)
-        addLSQ12OptionGroup(self.parser)
-        addNlinRegOptionGroup(self.parser)
+        addGenRegArgumentGroup(self.parser)
+        addMAGeTArgumentGroup(self.parser)
+        addLSQ12ArgumentGroup(self.parser)
+        addNlinRegArgumentGroup(self.parser)
         # make sure that the default non linear registration tool for MAGeT is set to minctracc
         # this is what MAGeT was optimized for, and it's a lot faster than mincANTS
         self.parser.set_defaults(reg_method="minctracc")

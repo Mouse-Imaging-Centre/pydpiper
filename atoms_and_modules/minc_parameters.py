@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 
 from os.path import abspath
-from optparse import OptionGroup, Option
 import csv
 import sys
 
@@ -49,14 +48,14 @@ import sys
         5. setLSQ6MinctraccParams -- inherits setLSQ12MinctraccParams. Uses parameters and defaults
            for either an identity or centre estimation alignment. Not appropriate for large rotations. 
     
-    Several functions have been created for adding protocol options to the OptionParser of various
-    modules. The paramsOptions() class creates options for lsq6, lsq12 and nlin protocols. The 
+    Several functions have been created for adding protocol options to the ArgumentParser of various
+    modules. The paramsArguments() class creates options for lsq6, lsq12 and nlin protocols. The 
     following functions have been created:
-    1. addLSQ6OptionGroup: adds --lsq6-protocol option
-    2. addLSQ12OptionGroup: adds --lsq12-protocol option
-    3. addNLINOptionGroup: adds --nlin-protocol option
-    4. addRegParamsOptionGroup: adds options for all protocols
-    5. addLSQ12NLINParamsOptionGroup: adds --lsq12-protocol and --nlin-protocol options
+    1. addLSQ6ArgumentGroup: adds --lsq6-protocol option
+    2. addLSQ12ArgumentGroup: adds --lsq12-protocol option
+    3. addNLINArgumentGroup: adds --nlin-protocol option
+    4. addRegParamsArgumentGroup: adds options for all protocols
+    5. addLSQ12NLINParamsArgumentGroup: adds --lsq12-protocol and --nlin-protocol options
 """
 
 class setMincANTSParams(object):

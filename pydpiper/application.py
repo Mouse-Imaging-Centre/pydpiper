@@ -1,8 +1,8 @@
-from optparse import OptionParser,OptionGroup
+from argparse import ArgumentParser
 from pydpiper.pipeline import Pipeline, pipelineDaemon
 from pydpiper.queueing import runOnQueueingSystem
 from pydpiper.file_handling import makedirsIgnoreExisting
-from pydpiper.pipeline_executor import addExecutorOptionGroup, noExecSpecified
+from pydpiper.pipeline_executor import addExecutorArgumentGroup, noExecSpecified
 from datetime import datetime
 from pkg_resources import get_distribution
 import logging
@@ -12,43 +12,42 @@ import os
 
 logger = logging.getLogger(__name__)
 
-def addApplicationOptionGroup(parser):
-    group = OptionGroup(parser,  "General application options", "General options for all pydpiper applications.")
-    group.add_option("--restart", dest="restart", 
+def addApplicationArgumentGroup(parser):
+    group = parser.add_argument_group("General application options", "General options for all pydpiper applications.")
+    group.add_argument("--restart", dest="restart", 
                                action="store_false", default=True,
                                help="Restart pipeline using backup files. [default = %default]")
-    group.add_option("--no-restart", dest="restart", 
+    group.add_argument("--no-restart", dest="restart", 
                                action="store_false", help="Opposite of --restart")
-    group.add_option("--output-dir", dest="output_directory",
-                               type="string", default=None,
+    group.add_argument("--output-dir", dest="output_directory",
+                               type=str, default=None,
                                help="Directory where output data and backups will be saved.")
-    group.add_option("--create-graph", dest="create_graph",
+    group.add_argument("--create-graph", dest="create_graph",
                                action="store_true", default=False,
                                help="Create a .dot file with graphical representation of pipeline relationships [default = %default]")
     parser.set_defaults(execute=True)
     parser.set_defaults(verbose=False)
-    group.add_option("--execute", dest="execute",
+    group.add_argument("--execute", dest="execute",
                                action="store_true",
                                help="Actually execute the planned commands [default = %default]")
-    group.add_option("--no-execute", dest="execute",
+    group.add_argument("--no-execute", dest="execute",
                                action="store_false",
                                help="Opposite of --execute")
-    group.add_option("--version", dest="show_version",
+    group.add_argument("--version", dest="show_version",
                                action="store_true",
                                help="Print the version number and exit.")
-    group.add_option("--verbose", dest="verbose",
+    group.add_argument("--verbose", dest="verbose",
                                action="store_true",
                                help="Be verbose in what is printed to the screen [default = %default]")
-    group.add_option("--no-verbose", dest="verbose",
+    group.add_argument("--no-verbose", dest="verbose",
                                action="store_false",
                                help="Opposite of --verbose [default]")
-    parser.add_option_group(group)
 
 # Some sneakiness... Using the following lines, it's possible
 # to add an epilog to the parser that is written to screen
 # verbatim. That way in the help file you can show an example
 # of what an lsq6/nlin protocol should look like.
-class MyParser(OptionParser):
+class MyParser(ArgumentParser):
     def format_epilog(self, formatter):
         if not self.epilog:
             self.epilog = ""
@@ -80,8 +79,8 @@ class AbstractApplication(object):
     
     def _setup_options(self):
             # PydPiper options
-        addExecutorOptionGroup(self.parser)
-        addApplicationOptionGroup(self.parser)
+        addExecutorArgumentGroup(self.parser)
+        addApplicationArgumentGroup(self.parser)
     
     def _print_version(self):
         if self.options.show_version:
@@ -117,7 +116,7 @@ class AbstractApplication(object):
         self._setup_options()
         self.setup_options()
         
-        self.options, self.args = self.parser.parse_args()
+        self.options = self.parser.parse_args()
         
         self._print_version()   
         

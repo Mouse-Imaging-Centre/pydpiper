@@ -342,7 +342,7 @@ class Pipeline():
     getRunnableStageIndex and hence a glorified Queue().get()."""
     def getCommand(self, clientURIstr, clientMemFree, clientProcsFree):
         if self.is_time_to_drain():
-            return ("shutdown_normally", None)
+            return ("shutdown_abnormally", None)
 
         flag, i = self.getRunnableStageIndex()
         if flag == "run_stage":
@@ -785,7 +785,7 @@ def launchServer(pipeline, options):
         verboseprint("The pipeline's uri is: %s" % str(pipelineURI))
         logger.info("The pipeline's uri is: %s", str(pipelineURI))
 
-        # handle SIGTERM (send by SciNet 15-30s before hard kill) by setting
+        # handle SIGTERM (sent by SciNet 15-30s before hard kill) by setting
         # the shutdown event (we shouldn't actually see a SIGTERM on PBS
         # since PBS submission logic gives us a lifetime related to our walltime
         # request ...)

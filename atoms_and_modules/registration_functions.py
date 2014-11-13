@@ -2,7 +2,6 @@
 
 import atoms_and_modules.registration_file_handling as rfh
 import pydpiper.file_handling as fh
-from optparse import OptionGroup
 from os.path import abspath, exists, dirname, splitext, isfile, basename
 from os import curdir, walk
 from datetime import date
@@ -15,19 +14,18 @@ from pyminc.volumes.factory import volumeFromFile
 
 logger = logging.getLogger(__name__)
 
-def addGenRegOptionGroup(parser):
-    group = OptionGroup(parser, "General registration options",
-                        "General options for running various types of registrations.")
-    group.add_option("--pipeline-name", dest="pipeline_name",
-                      type="string", default=None,
-                      help="Name of pipeline and prefix for models.")
-    group.add_option("--input-space", dest="input_space",
-                      type="string", default="native", 
-                      help="Option to specify space of input-files. Can be native (default), lsq6, lsq12.")
-    group.add_option("--mask-dir", dest="mask_dir",
-                      type="string", default=None, 
-                      help="Directory of masks. If not specified, no masks are used. If only one mask in directory, same mask used for all inputs.")
-    parser.add_option_group(group)
+def addGenRegArgumentGroup(parser):
+    group = parser.add_argument_group("General registration options",
+                         "General options for running various types of registrations.")
+    group.add_argument("--pipeline-name", dest="pipeline_name",
+                       type=str, default=None,
+                       help="Name of pipeline and prefix for models.")
+    group.add_argument("--input-space", dest="input_space",
+                       type=str, default="native", 
+                       help="Option to specify space of input-files. Can be native (default), lsq6, lsq12.")
+    group.add_argument("--mask-dir", dest="mask_dir",
+                       type=str, default=None, 
+                       help="Directory of masks. If not specified, no masks are used. If only one mask in directory, same mask used for all inputs.")
 
 class StandardMBMDirectories(object):
     def __init__(self):

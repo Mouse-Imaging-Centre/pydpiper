@@ -9,26 +9,23 @@ import atoms_and_modules.NLIN as nlin
 import atoms_and_modules.minc_parameters as mp
 import atoms_and_modules.stats_tools as st
 import os
-from optparse import OptionGroup
 import logging
 
 
 logger = logging.getLogger(__name__)
 
 def addMBMGroup(parser):
-    group = OptionGroup(parser, "MBM options", 
-                        "Options for MICe-build-model.")
-    parser.add_option_group(group)
+    group = parser.add_argument_group("MBM options", "Options for MICe-build-model.")
 
 class MBMApplication(AbstractApplication):
     def setup_options(self):
         """Add option groups from specific modules"""
         addMBMGroup(self.parser)
-        rf.addGenRegOptionGroup(self.parser)
-        lsq6.addLSQ6OptionGroup(self.parser)
-        lsq12.addLSQ12OptionGroup(self.parser)
-        nlin.addNlinRegOptionGroup(self.parser)
-        st.addStatsOptions(self.parser)
+        rf.addGenRegArgumentGroup(self.parser)
+        lsq6.addLSQ6ArgumentGroup(self.parser)
+        lsq12.addLSQ12ArgumentGroup(self.parser)
+        nlin.addNlinRegArgumentGroup(self.parser)
+        st.addStatsArgumentss(self.parser)
         
         self.parser.set_usage("%prog [options] input files") 
 

@@ -11,7 +11,7 @@ import subprocess
 SERVER_START_TIME = 50
 # TODO instead of hard-coding SciNet min/max times for debug/batch queues,
 # add extra options/env. vars for these
-SCINET_MIN_LIFETIME = 2 *  1 * 3600
+SCINET_MIN_LIFETIME = 15 * 60
 SCINET_MAX_LIFETIME = 2 * 24 * 3600
 
 class runOnQueueingSystem():

@@ -3,7 +3,6 @@
 import time
 import sys
 import os
-from optparse import OptionGroup, OptionParser
 from datetime import datetime
 from multiprocessing import Process, Pool
 import subprocess as subprocess
@@ -28,54 +27,53 @@ logger = logging.getLogger(__name__)
 
 sys.excepthook = Pyro4.util.excepthook
 
-def addExecutorOptionGroup(parser):
-    group = OptionGroup(parser, "Executor options",
+def addExecutorArgumentGroup(parser):
+    group = parser.add_argument_group("Executor options",
                         "Options controlling how and where the code is run.")
-    group.add_option("--uri-file", dest="urifile",
-                      type="string", default=None,
-                      help="Location for uri file if NameServer is not used. If not specified, default is current working directory.")
-    group.add_option("--use-ns", dest="use_ns",
-                      action="store_true",
-                      help="Use the Pyro NameServer to store object locations. Currently a Pyro nameserver must be started separately for this to work.")
-    group.add_option("--num-executors", dest="num_exec", 
-                      type="int", default=-1, 
-                      help="Number of independent executors to launch. [Default = %default. Code will not run without an explicit number specified.]")
-    group.add_option("--max-failed-executors", dest="max_failed_executors",
-                     type="int", default=2,
-                     help="Maximum number of failed executors before we stop relaunching. [Default = %default]")
-    group.add_option("--time", dest="time", 
-                      type="string", default=None,
-                      help="Wall time to request for each executor in the format hh:mm:ss. Required only if --queue-type=pbs. Current default on PBS is 48:00:00.")
-    group.add_option("--proc", dest="proc", 
-                      type="int", default=1,
-                      help="Number of processes per executor. Also sets max value for processor use per executor. [Default = %default]")
-    group.add_option("--mem", dest="mem", 
-                      type="float", default=6,
-                      help="Total amount of requested memory (in GB) for all processes the executor runs. [Default = %default].")
-    group.add_option("--ppn", dest="ppn", 
-                      type="int", default=8,
-                      help="Number of processes per node. Used when --queue-type=pbs. [Default = %default].")
-    group.add_option("--queue-name", dest="queue_name", type="string", default=None,
-                      help="Name of the queue, e.g., all.q (MICe) or batch (SciNet)")
-    group.add_option("--queue-type", dest="queue_type", type="string", default=None,
-                      help="""Queue type to submit jobs, i.e., "sge" or "pbs".  [Default = %default]""")
-    group.add_option("--queue", dest="queue", 
-                      type="string", default=None,
-                      help="[DEPRECATED; use --queue-type instead.]  Use specified queueing system to submit jobs. Default is None.")              
-    group.add_option("--sge-queue-opts", dest="sge_queue_opts", 
-                      type="string", default=None,
-                      help="[DEPRECATED; use --queue-name instead.]  For --queue=sge, allows you to specify different queues. [Default = %default]")
-    group.add_option("--time-to-seppuku", dest="time_to_seppuku", 
-                      type="int", default=1,
-                      help="The number of minutes an executor is allowed to continuously sleep, i.e. wait for an available job, while active on a compute node/farm before it kills itself due to resource hogging. [Default = %default]")
-    group.add_option("--scinet", dest="scinet", action="store_true", help="Set --queue-name, --queue-type, --mem, --ppn for Scinet.  Overridden by these flags.")
-    group.add_option("--time-to-accept-jobs", dest="time_to_accept_jobs", 
-                      type="int", default=180,
-                      help="The number of minutes after which an executor will not accept new jobs anymore. This can be useful when running executors on a batch system where other (competing) jobs run for a limited amount of time. The executors can behave in a similar way by given them a rough end time. [Default = %default]")
-    group.add_option("--lifetime", dest="lifetime",
-                      type="int", default=None,
-                      help="Maximum lifetime in seconds of the server, or infinite if None. [Default = %default ]")
-    parser.add_option_group(group)
+    group.add_argument("--uri-file", dest="urifile",
+                       type=str, default=None,
+                       help="Location for uri file if NameServer is not used. If not specified, default is current working directory.")
+    group.add_argument("--use-ns", dest="use_ns",
+                       action="store_true",
+                       help="Use the Pyro NameServer to store object locations. Currently a Pyro nameserver must be started separately for this to work.")
+    group.add_argument("--num-executors", dest="num_exec", 
+                       type=int, default=-1, 
+                       help="Number of independent executors to launch. [Default = %default. Code will not run without an explicit number specified.]")
+    group.add_argument("--max-failed-executors", dest="max_failed_executors",
+                      type=int, default=2,
+                      help="Maximum number of failed executors before we stop relaunching. [Default = %default]")
+    group.add_argument("--time", dest="time", 
+                       type=str, default=None,
+                       help="Wall time to request for each executor in the format hh:mm:ss. Required only if --queue-type=pbs. Current default on PBS is 48:00:00.")
+    group.add_argument("--proc", dest="proc", 
+                       type=int, default=1,
+                       help="Number of processes per executor. Also sets max value for processor use per executor. [Default = %default]")
+    group.add_argument("--mem", dest="mem", 
+                       type=float, default=6,
+                       help="Total amount of requested memory (in GB) for all processes the executor runs. [Default = %default].")
+    group.add_argument("--ppn", dest="ppn", 
+                       type=int, default=8,
+                       help="Number of processes per node. Used when --queue-type=pbs. [Default = %default].")
+    group.add_argument("--queue-name", dest="queue_name", type=str, default=None,
+                       help="Name of the queue, e.g., all.q (MICe) or batch (SciNet)")
+    group.add_argument("--queue-type", dest="queue_type", type=str, default=None,
+                       help="""Queue type to submit jobs, i.e., "sge" or "pbs".  [Default = %default]""")
+    group.add_argument("--queue", dest="queue", 
+                       type=str, default=None,
+                       help="[DEPRECATED; use --queue-type instead.]  Use specified queueing system to submit jobs. Default is None.")              
+    group.add_argument("--sge-queue-opts", dest="sge_queue_opts", 
+                       type=str, default=None,
+                       help="[DEPRECATED; use --queue-name instead.]  For --queue=sge, allows you to specify different queues. [Default = %default]")
+    group.add_argument("--time-to-seppuku", dest="time_to_seppuku", 
+                       type=int, default=1,
+                       help="The number of minutes an executor is allowed to continuously sleep, i.e. wait for an available job, while active on a compute node/farm before it kills itself due to resource hogging. [Default = %default]")
+    group.add_argument("--scinet", dest="scinet", action="store_true", help="Set --queue-name, --queue-type, --mem, --ppn for Scinet.  Overridden by these flags.")
+    group.add_argument("--time-to-accept-jobs", dest="time_to_accept_jobs", 
+                       type=int, default=180,
+                       help="The number of minutes after which an executor will not accept new jobs anymore. This can be useful when running executors on a batch system where other (competing) jobs run for a limited amount of time. The executors can behave in a similar way by given them a rough end time. [Default = %default]")
+    group.add_argument("--lifetime", dest="lifetime",
+                       type=int, default=None,
+                       help="Maximum lifetime in seconds of the server, or infinite if None. [Default = %default ]")
 
 
 def noExecSpecified(numExec):
@@ -291,7 +289,6 @@ class pipelineExecutor():
         for subprocID in self.current_running_job_pids:
             os.kill(subprocID, signal.SIGTERM)
         if self.registered_with_server:
-            # FIXME need to set stages lost??? where can genShutdownCall be made?
             self.pyro_proxy_for_server.unregisterClient(self.clientURI)
             self.registered_with_server = False
         
@@ -500,11 +497,11 @@ if __name__ == "__main__":
     description = "pipeline executor"
 
     # command line option handling    
-    parser = OptionParser(usage=usage, description=description)
+    parser = ArgumentParser(usage=usage, description=description)
     
-    addExecutorOptionGroup(parser)
+    addExecutorArgumentGroup(parser)
                       
-    (options,args) = parser.parse_args()
+    options = parser.parse_args()
 
     #Check to make sure some executors have been specified. 
     noExecSpecified(options.num_exec)
