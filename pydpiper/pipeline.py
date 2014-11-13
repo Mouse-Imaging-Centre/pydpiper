@@ -342,7 +342,7 @@ class Pipeline():
     getRunnableStageIndex and hence a glorified Queue().get()."""
     def getCommand(self, clientURIstr, clientMemFree, clientProcsFree):
         if self.is_time_to_drain():
-            return ("shutdown_normally", None)
+            return ("shutdown_abnormally", None)
 
         flag, i = self.getRunnableStageIndex()
         if flag == "run_stage":
