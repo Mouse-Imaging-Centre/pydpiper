@@ -42,6 +42,8 @@ def addApplicationArgumentGroup(parser):
     group.add_argument("--no-verbose", dest="verbose",
                                action="store_false",
                                help="Opposite of --verbose [default]")
+    group.add_argument("files", type=str, nargs='+', metavar='file',
+                        help='Files to process')
 
 # Some sneakiness... Using the following lines, it's possible
 # to add an epilog to the parser that is written to screen
@@ -117,6 +119,7 @@ class AbstractApplication(object):
         self.setup_options()
         
         self.options = self.parser.parse_args()
+        self.args = self.options.files
         
         self._print_version()   
         

@@ -77,7 +77,8 @@ def addLSQ6ArgumentGroup(parser):
                       "the 6 parameter minctracc call. Parameters must be specified as in the following \n"
                       "example: applications_testing/test_data/minctracc_example_linear_protocol.csv \n"
                       "[Default = %default].")
-    group.add_argument("TODO") # this is the filename positional arg
+    #group.add_argument("TODO") # this is the filename positional arg
+    #group.add_argument("files", nargs='+', type=str, help="Files to process")
 
 class LSQ6Registration(AbstractApplication):
     """ 
@@ -122,7 +123,6 @@ class LSQ6Registration(AbstractApplication):
         """Add option groups from specific modules"""
         rf.addGenRegArgumentGroup(self.parser)
         addLSQ6ArgumentGroup(self.parser)
-        #self.parser.set_usage("%prog [options] [--target target.mnc or --init-model /init/model/file.mnc] input file(s)")
 
     def setup_appName(self):
         appName = "LSQ6-registration"
@@ -130,13 +130,13 @@ class LSQ6Registration(AbstractApplication):
     
     def run(self):
         options = self.options
-        args = self.args
+        #args = self.args
 
         # Setup output directories for LSQ6 registration.        
         dirs = rf.setupDirectories(self.outputDir, options.pipeline_name, module="LSQ6")
         
         # create file handles for the input file(s) 
-        inputFiles = rf.initializeInputFiles(args, dirs.processedDir, maskDir=options.mask_dir)
+        inputFiles = rf.initializeInputFiles(options.files, dirs.processedDir, maskDir=options.mask_dir)
 
         #Setup init model and inital target. Function also exists if no target was specified.
         initModel, targetPipeFH = rf.setInitialTarget(options.init_model, 

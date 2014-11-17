@@ -22,10 +22,10 @@ def addRegChainArgumentGroup(parser):
     group = parser.add_argument_group("Registration-chain options",
                        "Options for registering consecutive timepoints of longitudinal data.")
     group.add_argument("--avg-time-point", dest="avg_time_point",
-                       type="int", default=1,
+                       type=int, default=1,
                        help="Time point averaged prior to this registration to get common nlin space.")
     group.add_argument("--common-space-name", dest="common_name",
-                       type="string", default="common", 
+                       type=str, default="common", 
                        help="Option to specify a name for the common space. This is useful for the "
                             "creation of more readable output file names. Default is common. Note "
                             "that the common space is the one created by an iterative group-wise " 
@@ -42,10 +42,10 @@ def addRegChainArgumentGroup(parser):
                             "from that registration can be accessed using the --MBM-directory and "
                             "--nlin-average options. (See below.)")
     group.add_argument("--MBM-directory", dest="mbm_dir",
-                       type="string", default=None, 
+                       type=str, default=None, 
                        help="_processed directory from MBM used to average specified time point ")
     group.add_argument("--nlin-average", dest="nlin_avg",
-                       type="string", default=None, 
+                       type=str, default=None, 
                        help="Final nlin average from MBM run.")
     parser.set_defaults(run_groupwise=True)
 
@@ -59,8 +59,6 @@ class RegistrationChain(AbstractApplication):
         nlin.addNlinRegArgumentGroup(self.parser)
         st.addStatsArguments(self.parser)
         
-        self.parser.set_usage("%prog [options] input.csv") 
-
     def setup_appName(self):
         appName = "Registration-chain"
         return appName

@@ -5,7 +5,7 @@ def pytest_funcarg__setupopts(request):
 
 def pytest_addoption(parser):
     parser.addoption("--uri-file", dest="urifile",
-                     type="string", default=None,
+                     type=str, default=None,
                      help="Location for uri file if NameServer is not used. If not specified, default is current working directory.")
     parser.addoption("--use-ns", dest="use_ns",
                      action="store_true",
@@ -14,28 +14,28 @@ def pytest_addoption(parser):
                      action="store_true",
                      help="Create a .dot file with graphical representation of pipeline relationships")
     parser.addoption("--num-executors", dest="num_exec", 
-                     type="int", default=0, 
+                     type=int, default=0, 
                      help="Launch executors automatically without having to run pipeline_excutor.py independently.")
     parser.addoption("--time", dest="time", 
-                     type="string", default="2:00:00:00", 
+                     type=str, default="2:00:00:00", 
                      help="Wall time to request for each executor in the format dd:hh:mm:ss")
     parser.addoption("--proc", dest="proc", 
-                     type="int", default=8,
+                     type=int, default=8,
                      help="Number of processes per executor. Default is 8. Also sets max value for processor use per executor. Overridden if --num-executors not specified.")
     parser.addoption("--mem", dest="mem", 
-                     type="float", default=16,
+                     type=float, default=16,
                      help="Total amount of requested memory. Default is 8G. Overridden if --num-executors not specified.")
     parser.addoption("--ppn", dest="ppn", 
-                      type="int", default=8,
+                      type=int, default=8,
                       help="Number of processes per node. Default is 8. Used when --queue=pbs")
     parser.addoption("--queue", dest="queue", 
-                     type="string", default=None,
+                     type=str, default=None,
                      help="Use specified queueing system to submit jobs. Default is None.")
     parser.addoption("--restart", dest="restart", 
                      action="store_true",
                      help="Restart pipeline using backup files.")
     parser.addoption("--backup-dir", dest="backup_directory",
-                     type="string", default=".pipeline-backup",
+                     type=str, default=".pipeline-backup",
                      help="Directory where this pipeline backup should be stored.")   
     
 class OptsSetup():

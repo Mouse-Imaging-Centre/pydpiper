@@ -4,16 +4,15 @@ from pydpiper.pipeline import CmdStage, Pipeline, InputFile, OutputFile, LogFile
 import pydpiper.file_handling as fh
 from atoms_and_modules.minc_modules import LSQ12ANTSNlin, HierarchicalMinctracc
 import atoms_and_modules.minc_atoms as ma
-from argparse import ArgumentGroup
 import logging
 
 logger = logging.getLogger(__name__)
 
 def addMAGeTArgumentGroup(parser):
-    group = ArgumentGroup(parser, "MAGeT options",
+    group = parser.add_argument_group("MAGeT options",
                           "Options for running MAGeT.")
     group.add_argument("--atlas-library", dest="atlas_lib",
-                       type="string", default="atlas_label_pairs",
+                       type=str, default="atlas_label_pairs",
                        help="Directory of existing atlas/label pairs")
     group.add_argument("--no-pairwise", dest="pairwise",
                        action="store_false", default=True,
@@ -25,10 +24,10 @@ def addMAGeTArgumentGroup(parser):
                        action="store_true", default=False,
                        help="Create a mask for all images only, do not run full algorithm. [Default = %default]")
     group.add_argument("--max-templates", dest="max_templates",
-                       default=25, type="int",
+                       default=25, type=int,
                        help="Maximum number of templates to generate. [Default = %default]")
     group.add_argument("--masking-method", dest="mask_method",
-                       default="minctracc", type="string",
+                       default="minctracc", type=str,
                        help="Specify whether to use minctracc or mincANTS for masking. [Default = %default].")
     parser.add_argument_group(group)
 

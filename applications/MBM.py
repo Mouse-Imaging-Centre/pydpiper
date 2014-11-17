@@ -25,10 +25,8 @@ class MBMApplication(AbstractApplication):
         lsq6.addLSQ6ArgumentGroup(self.parser)
         lsq12.addLSQ12ArgumentGroup(self.parser)
         nlin.addNlinRegArgumentGroup(self.parser)
-        st.addStatsArgumentss(self.parser)
+        st.addStatsArguments(self.parser)
         
-        self.parser.set_usage("%prog [options] input files") 
-
     def setup_appName(self):
         appName = "MICe-build-model"
         return appName

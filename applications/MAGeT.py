@@ -28,7 +28,6 @@ class MAGeTApplication(AbstractApplication):
         # TODO: ugly hard coded path? Yes...
         self.parser.set_defaults(nlin_protocol="/projects/mice/share/arch/linux-3_2_0-36-generic-x86_64-eglibc-2_15/src/pydpiper/applications_testing/test_data/default_nlin_MAGeT_minctracc_prot.csv")
         self.parser.set_defaults(lsq12_protocol="/projects/mice/share/arch/linux-3_2_0-36-generic-x86_64-eglibc-2_15/src/pydpiper/applications_testing/test_data/default_linear_MAGeT_prot.csv")
-        self.parser.set_usage("%prog [options] input files") 
 
     def setup_appName(self):
         appName = "MAGeT"

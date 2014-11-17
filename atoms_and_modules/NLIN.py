@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 
 from os.path import abspath, isfile
-from argparse import ArgumentGroup
 from pydpiper.pipeline import Pipeline
 from pydpiper.file_handling import createBaseName, createLogFile, removeBaseAndExtension
 from pydpiper.application import AbstractApplication
@@ -17,20 +16,20 @@ logger = logging.getLogger(__name__)
 
 def addNlinRegArgumentGroup(parser):
     """option group for the command line argument parser"""
-    group = ArgumentGroup(parser, "Nonlinear registration options",
+    group = parser.add_argument_group("Nonlinear registration options",
                         "Options for performing a non-linear registration")
     group.add_argument("--target-avg", dest="target_avg",
-                     type="string", default=None,
+                     type=str, default=None,
                      help="Starting target for non-linear alignment. (Often in lsq12 space)")
     group.add_argument("--target-mask", dest="target_mask",
-                     type="string", default=None,
+                     type=str, default=None,
                      help="Optional mask for target.")
     group.add_argument("--registration-method", dest="reg_method",
-                      default="mincANTS", type="string",
+                      default="mincANTS", type=str,
                       help="Specify whether to use minctracc or mincANTS for non-linear registrations. "
                            "[Default = %default]")
     group.add_argument("--nlin-protocol", dest="nlin_protocol",
-                     type="string", default=None,
+                     type=str, default=None,
                      help="Can optionally specify a registration protocol that is different from defaults. "
                      "Parameters must be specified as in either or the following examples: \n"
                      "applications_testing/test_data/minctracc_example_nlin_protocol.csv \n"
@@ -77,8 +76,6 @@ class NonlinearRegistration(AbstractApplication):
         addNlinRegArgumentGroup(self.parser)
         addStatsArguments(self.parser)
         
-        self.parser.set_usage("%prog [options] input files") 
-
     def setup_appName(self):
         appName = "Nonlinear-registration"
         return appName

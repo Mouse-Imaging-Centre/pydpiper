@@ -47,8 +47,6 @@ with each scan per subject listed on the same line and separated by a comma.
         rf.addGenRegArgumentGroup(self.parser)
         st.addStatsArguments(self.parser)
         
-        # TODO: better usage description (once I've figured out what the usage will be ...)
-        self.parser.set_usage("%prog [options] input.csv")
         # set help - note that the format is messed up, something that can be fixed if we upgrade
         # from optparse to argparse.
         self.parser.set_description(helpString) 

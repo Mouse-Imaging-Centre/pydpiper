@@ -2,11 +2,10 @@ from pydpiper.pipeline import Pipeline, CmdStage, InputFile, OutputFile, LogFile
 from atoms_and_modules.registration_functions import isFileHandler
 from atoms_and_modules.minc_atoms import xfmConcat, xfmInvert
 import pydpiper.file_handling as fh
-from argparse import ArgumentGroup
 import sys
 
 def addStatsArguments(parser):
-    group = ArgumentGroup(parser, "Statistics options", 
+    group = parser.add_argument_group("Statistics options", 
                           "Options for calculating statistics.")
     group.add_argument("--calc-stats", dest="calc_stats",
                        action="store_true",
@@ -15,7 +14,7 @@ def addStatsArguments(parser):
                        action="store_false", 
                        help="If specified, statistics are not calculated. Opposite of --calc-stats.")
     group.add_argument("--stats-kernels", dest="stats_kernels",
-                       type="string", default="1.0,0.5,0.2,0.1", 
+                       type=str, default="1.0,0.5,0.2,0.1", 
                        help="comma separated list of blurring kernels for analysis. Default is: 1.0,0.5,0.2,0.1")
     parser.set_defaults(calc_stats=True)
     parser.add_argument_group(group)
