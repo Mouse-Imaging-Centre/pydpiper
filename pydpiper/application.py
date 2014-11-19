@@ -129,10 +129,6 @@ class AbstractApplication(object):
         self.options = self.parser.parse_args()
         self.args = self.options.files
 
-        #FIXME delete
-        print(self.options)
-        print(self.args)
-        
         self._print_version()
         
         #Check to make sure some executors have been specified. 
@@ -144,7 +140,7 @@ class AbstractApplication(object):
         self.appName = self.setup_appName()
         self.setup_logger()
         
-        if self.options.queue == "pbs" or self.options.queue_type == "pbs":
+        if not self.options.local and (self.options.queue == "pbs" or self.options.queue_type == "pbs"):
             roq = runOnQueueingSystem(self.options, sys.argv)
             roq.createAndSubmitPbsScripts()
             logger.info("Finished submitting PBS job scripts...quitting")

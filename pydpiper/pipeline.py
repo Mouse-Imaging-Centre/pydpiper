@@ -808,6 +808,7 @@ def launchServer(pipeline, options):
                     time.sleep(LOOP_INTERVAL)
                 # TODO move this call into a `finally` since something weird may have happened?
                 # if this loop crashes, should the main program continue?
+                logger.info("Server loop going to shut down ... setting event")
                 p.set_shutdown_ev()
             except:
                 logger.exception("Server loop encountered a problem.  Shutting down.")

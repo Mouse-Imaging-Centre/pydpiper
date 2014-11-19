@@ -11,13 +11,14 @@ import subprocess
 SERVER_START_TIME = 50
 # TODO instead of hard-coding SciNet min/max times for debug/batch queues,
 # add extra options/env. vars for these
-SCINET_MIN_LIFETIME = 15 * 60
 SCINET_MAX_LIFETIME = 2 * 24 * 3600
 
 class runOnQueueingSystem():
     def __init__(self, options, sysArgs=None):
         #Note: options are the same as whatever is in calling program
         #Options MUST also include standard pydpiper options
+        # TODO maybe self.options = options would be easier than this manual unpacking
+        # for vars that don't have much 'logic' associated with them ...
         self.timestr = options.time or '48:00:00'
         try:
             h,m,s = self.timestr.split(':')
@@ -25,6 +26,7 @@ class runOnQueueingSystem():
             raise Exception("invalid (H)HH:MM:SS timestring: %s" % self.timestr)
         self.job_lifetime = 3600 * int(h) + 60 * int(m) + int(s)
         self.mem = options.mem
+        self.min_walltime = options.min_walltime
         self.procs = options.proc
         self.ppn = options.ppn
         self.queue_name = options.queue_name or options.queue
@@ -50,7 +52,7 @@ class runOnQueueingSystem():
     def buildMainCommand(self):
         """Re-construct main command to be called in pbs script, adding --local flag"""
         def relevant(arg):
-            return bool(re.search("--num-executors", arg))
+            return not(bool(re.search("--num-executors", arg)))
         reconstruct = ""
         if self.arguments:
             reconstruct += ' '.join(filter(relevant, self.arguments))
@@ -72,7 +74,7 @@ class runOnQueueingSystem():
         time_remaining = self.job_lifetime
         serverJobId = None
         while time_remaining > 0:
-            t = min(max(SCINET_MIN_LIFETIME, time_remaining), SCINET_MAX_LIFETIME)
+            t = min(max(self.min_walltime, time_remaining), SCINET_MAX_LIFETIME)
             time_remaining -= t
             serverJobId = self.createAndSubmitMainJobFile(time=t, depends=serverJobId)
             if self.numexec >= 2:
@@ -124,7 +126,8 @@ class runOnQueueingSystem():
         self.jobFile.write("#PBS -N %s\n" % name)
         self.jobFile.write("#PBS -q %s\n" % self.queue_name)
         # the `module` shell procedure likes to return 0 when it shouldn't (and fails when `|`ed for some reason), so redirect to a file and grep for an error message:
-        # TODO modules (or even calls to module) shouldn't be hard-coded
+        # TODO modules (or even calls to module) shouldn't be hard-coded-call an init script
+        self.jobFile.write("module purge\n")
         self.jobFile.write("export fh=$(mktemp)\n")
         self.jobFile.write("module load gcc intel/14.0.1 python/2.7.8 gotoblas hdf5 gnuplot Xlibraries octave 2> $fh \n")
         self.jobFile.write("cat $fh | tee /dev/stderr | grep 'ERROR' && exit 13\n")
@@ -135,12 +138,10 @@ class runOnQueueingSystem():
             self.jobFile.write(" &\n\n")
         if launchExecs:
             self.jobFile.write("sleep %s\n" % SERVER_START_TIME)
-            # FIXME actually write out all options here except num-executors
             def relevant(arg):
-                return bool(re.search("--num-executors", arg))
-            cmd = "%s --local --num-executors=1 " % self.arguments[0]
-                  + ' '.join(filter(relevant, self.arguments[1:])) + ' &\n\n')
-            # self.jobFile.write("pipeline_executor.py --local --num-executors=1 --uri-file=%s --proc=%d --mem=%.2f --time-to-accept-jobs=%d" % (self.uri_file, execProcs, self.mem, self.time_to_accept_jobs))
+                return not(bool(re.search("--num-executors", arg)))
+            cmd = "pipeline_executor.py --local --num-executors=1 "
+            cmd += ' '.join(filter(relevant, self.arguments[1:])) + ' &\n\n'
             self.jobFile.write(cmd)
     def completeJobFile(self):
         """Completes pbs script--wait for background jobs to terminate as per scinet wiki"""

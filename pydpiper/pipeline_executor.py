@@ -45,7 +45,7 @@ def addExecutorArgumentGroup(parser):
                       help="Maximum number of failed executors before we stop relaunching. [Default = %default]")
     group.add_argument("--time", dest="time", 
                        type=str, default=None,
-                       help="Wall time to request for each executor in the format hh:mm:ss. Required only if --queue-type=pbs. Current default on PBS is 48:00:00.")
+                       help="Wall time to request for each server/executor in the format hh:mm:ss. Required only if --queue-type=pbs. Current default on PBS is 48:00:00.")
     group.add_argument("--proc", dest="proc", 
                        type=int, default=1,
                        help="Number of processes per executor. Also sets max value for processor use per executor. [Default = %default]")
@@ -73,11 +73,14 @@ def addExecutorArgumentGroup(parser):
                        help="The number of minutes after which an executor will not accept new jobs anymore. This can be useful when running executors on a batch system where other (competing) jobs run for a limited amount of time. The executors can behave in a similar way by given them a rough end time. [Default = %default]")
     group.add_argument("--lifetime", dest="lifetime",
                        type=int, default=None,
-                       help="Maximum lifetime in seconds of the server, or infinite if None. [Default = %default ]")
+                       help="Maximum lifetime in seconds of the server, or infinite if None. [Default = %default]")
     group.add_argument('--local', dest="local", action='store_true', help="Don't submit anything to any specified queueing system but instead run as an executor")
-    # this is duplicated in the application group:
     group.add_argument("-c", type=str, metavar='config_file', is_config_file=True,
-                        help='Config file location')
+                       required=False, help='Config file location')
+    group.add_argument("--min-walltime", dest="min_walltime", type=int, default = 0,
+            help="Min walltime (s) allowed by the queuing system [Default = %default]")
+    group.add_argument("--max-walltime", dest="max_walltime", type=int, default = None,
+            help="Max walltime (s) allowed for jobs on the queuing system, or infinite if None [Default = %default]")
 
 def noExecSpecified(numExec):
     #Exit with helpful message if no executors are specified
@@ -338,13 +341,13 @@ class pipelineExecutor():
             # TODO this is getting ugly ...
             # FIXME also, what other opts aren't being passed on here?
             # we don't pass on queue-name, queue-type, OR config-file (as we
-            # don't addApplicationOptionGroup) ... OTOH, this saves the spawned
-            # executors from trying to submit/quit
+            # don't addApplicationOptionGroup) ... this doesn't cause a fork bomb
+            # due to new --local flag
             # NOTE one issue is that passing application options to the executor
             # will cause an error unless we're permissive in receiving
             # FIXME hack -- shouldn't we just iterate over the whole options,
             # possibly checking for membership in the executor option group?
-            # FIXME options INCLUDING config_file won't be noticed here
+            # FIXME options won't be noticed here
             if self.ns:
                 cmd += ["--use-ns"]
             # TODO this is/was breaking silently -
@@ -523,9 +526,11 @@ if __name__ == "__main__":
     parser = ArgParser(default_config_files=files)    
     
     addExecutorArgumentGroup(parser)
-                      
-    options = parser.parse_args()
-    print(options)
+
+    # using parse_args instead of parse_known_args is a hack since we
+    # currently send ALL arguments from the main program to the executor
+    # on PBS queues (FIXME not yet true on OGS queues)
+    options = parser.parse_known_args()[0]
 
     #Check to make sure some executors have been specified. 
     noExecSpecified(options.num_exec)
