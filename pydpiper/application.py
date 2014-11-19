@@ -1,4 +1,4 @@
-from argparse import ArgumentParser
+from configargparse import ArgParser
 from pydpiper.pipeline import Pipeline, pipelineDaemon
 from pydpiper.queueing import runOnQueueingSystem
 from pydpiper.file_handling import makedirsIgnoreExisting
@@ -49,7 +49,7 @@ def addApplicationArgumentGroup(parser):
 # to add an epilog to the parser that is written to screen
 # verbatim. That way in the help file you can show an example
 # of what an lsq6/nlin protocol should look like.
-class MyParser(ArgumentParser):
+class MyParser(ArgParser):
     def format_epilog(self, formatter):
         if not self.epilog:
             self.epilog = ""
@@ -76,7 +76,15 @@ class AbstractApplication(object):
               application.start()
     """
     def __init__(self):
-        self.parser = MyParser()
+        # use an environment variable to look for a default config file
+        # Alternately, we could use a default location for the file
+        # (say `files = ['/etc/pydpiper.cfg', '~/pydpiper.cfg', './pydpiper.cfg']`)
+        default_config_file = os.getenv("PYDPIPER_CONFIG_FILE")
+        if default_config_file is not None:
+            files = [default_config_file]
+        else:
+            files = []
+        self.parser = MyParser(default_config_files=files)
         self.__version__ = get_distribution("pydpiper").version
     
     def _setup_options(self):
@@ -120,8 +128,12 @@ class AbstractApplication(object):
         
         self.options = self.parser.parse_args()
         self.args = self.options.files
+
+        #FIXME delete
+        print(self.options)
+        print(self.args)
         
-        self._print_version()   
+        self._print_version()
         
         #Check to make sure some executors have been specified. 
         noExecSpecified(self.options.num_exec)
@@ -132,7 +144,7 @@ class AbstractApplication(object):
         self.appName = self.setup_appName()
         self.setup_logger()
         
-        if self.options.scinet or self.options.queue == "pbs" or self.options.queue_type == "pbs":
+        if self.options.queue == "pbs" or self.options.queue_type == "pbs":
             roq = runOnQueueingSystem(self.options, sys.argv)
             roq.createAndSubmitPbsScripts()
             logger.info("Finished submitting PBS job scripts...quitting")

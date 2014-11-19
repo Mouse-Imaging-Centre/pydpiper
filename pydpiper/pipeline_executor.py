@@ -3,6 +3,7 @@
 import time
 import sys
 import os
+from configargparse import ArgParser
 from datetime import datetime
 from multiprocessing import Process, Pool
 import subprocess as subprocess
@@ -67,14 +68,16 @@ def addExecutorArgumentGroup(parser):
     group.add_argument("--time-to-seppuku", dest="time_to_seppuku", 
                        type=int, default=1,
                        help="The number of minutes an executor is allowed to continuously sleep, i.e. wait for an available job, while active on a compute node/farm before it kills itself due to resource hogging. [Default = %default]")
-    group.add_argument("--scinet", dest="scinet", action="store_true", help="Set --queue-name, --queue-type, --mem, --ppn for Scinet.  Overridden by these flags.")
     group.add_argument("--time-to-accept-jobs", dest="time_to_accept_jobs", 
                        type=int, default=180,
                        help="The number of minutes after which an executor will not accept new jobs anymore. This can be useful when running executors on a batch system where other (competing) jobs run for a limited amount of time. The executors can behave in a similar way by given them a rough end time. [Default = %default]")
     group.add_argument("--lifetime", dest="lifetime",
                        type=int, default=None,
                        help="Maximum lifetime in seconds of the server, or infinite if None. [Default = %default ]")
-
+    group.add_argument('--local', dest="local", action='store_true', help="Don't submit anything to any specified queueing system but instead run as an executor")
+    # this is duplicated in the application group:
+    group.add_argument("-c", type=str, metavar='config_file', is_config_file=True,
+                        help='Config file location')
 
 def noExecSpecified(numExec):
     #Exit with helpful message if no executors are specified
@@ -330,9 +333,18 @@ class pipelineExecutor():
             cmd += [ "-o", os.path.join(os.getcwd(), ident + "-eo.log")]
             if self.queue_name:
                 cmd += ["-q", self.queue_name]
-            cmd += ["pipeline_executor.py", "--proc", strprocs, "--mem", str(self.mem)]
+            cmd += ["pipeline_executor.py", "--local",
+                    "--proc", strprocs, "--mem", str(self.mem)]
             # TODO this is getting ugly ...
-            # TODO also, what other opts aren't being passed on here?
+            # FIXME also, what other opts aren't being passed on here?
+            # we don't pass on queue-name, queue-type, OR config-file (as we
+            # don't addApplicationOptionGroup) ... OTOH, this saves the spawned
+            # executors from trying to submit/quit
+            # NOTE one issue is that passing application options to the executor
+            # will cause an error unless we're permissive in receiving
+            # FIXME hack -- shouldn't we just iterate over the whole options,
+            # possibly checking for membership in the executor option group?
+            # FIXME options INCLUDING config_file won't be noticed here
             if self.ns:
                 cmd += ["--use-ns"]
             # TODO this is/was breaking silently -
@@ -461,6 +473,11 @@ class pipelineExecutor():
         if cmd == "shutdown_normally":
             logger.debug('Saw shutdown command from server')
             return False
+        #elif cmd == "shutdown_immediately":
+        #    logger.debug('Saw immediate shutdown command - killing jobs ...')
+        #    return False
+        # FIXME this won't work yet since we'll just go to shutdown normally
+        # and wait for jobs to finish instead of killing them
         elif cmd == "wait":
             return True
         elif cmd == "run_stage":
@@ -493,20 +510,39 @@ class pipelineExecutor():
 
 if __name__ == "__main__":
 
-    usage = "%prog [options]"
-    description = "pipeline executor"
-
-    # command line option handling    
-    parser = ArgumentParser(usage=usage, description=description)
+    # command line option handling
+    # use an environment variable to look for a default config file
+    # Alternately, we could use a default location for the file
+    # (say `files = ['/etc/pydpiper.cfg', '~/pydpiper.cfg', './pydpiper.cfg']`)
+    # TODO this logic is duplicated in application.py
+    default_config_file = os.getenv("PYDPIPER_CONFIG_FILE")
+    if default_config_file is not None:
+        files = [default_config_file]
+    else:
+        files = []
+    parser = ArgParser(default_config_files=files)    
     
     addExecutorArgumentGroup(parser)
                       
     options = parser.parse_args()
+    print(options)
 
     #Check to make sure some executors have been specified. 
     noExecSpecified(options.num_exec)
 
-    if options.scinet or options.queue == "pbs" or options.queue_type == "pbs":
+    def local_launch(options):
+        pe = pipelineExecutor(options)
+        # executors don't use any shared-memory constructs, so OK to copy
+        ps = [Process(target=launchExecutor, args=(pe,))
+              for _ in range(options.num_exec)]
+        for p in ps:
+            p.start()
+        for p in ps:
+            p.join()
+
+    if options.local:
+        local_launch(options)
+    elif options.queue == "pbs" or options.queue_type == "pbs":
         roq = q.runOnQueueingSystem(options)
         for i in range(options.num_exec):
             roq.createAndSubmitExecutorJobFile(i)
@@ -515,8 +551,4 @@ if __name__ == "__main__":
             pe = pipelineExecutor(options)
             pe.submitToQueue()
     else:
-        for i in range(options.num_exec):
-            pe = pipelineExecutor(options)
-            process = Process(target=launchExecutor, args=(pe,))
-            process.start()
-            process.join()
+        local_launch(options)
