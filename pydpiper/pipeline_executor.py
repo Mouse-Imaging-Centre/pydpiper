@@ -14,6 +14,7 @@ import socket
 import signal
 import threading
 import Pyro4
+import re
 
 Pyro4.config.SERVERTYPE = "multiplex"
 Pyro4.config.DETAILED_TRACEBACK = os.getenv("PYRO_DETAILED_TRACEBACK", True)
@@ -219,7 +220,7 @@ class ChildProcess():
 
 class pipelineExecutor():
     def __init__(self, options):
-        # options cannot be null when used to instantiate pipelineExecutor
+        # better: self.options = options ... ?
         self.mem = options.mem
         self.procs = options.proc
         self.ppn = options.ppn
@@ -260,7 +261,6 @@ class pipelineExecutor():
         # in the future it might also be set by the server, and we might have more
         # than one event (for reclaiming, server messages, ...)
         self.e = threading.Event()
-
         
     def registeredWithServer(self):
         self.registered_with_server = True
@@ -336,29 +336,21 @@ class pipelineExecutor():
             cmd += [ "-o", os.path.join(os.getcwd(), ident + "-eo.log")]
             if self.queue_name:
                 cmd += ["-q", self.queue_name]
-            cmd += ["pipeline_executor.py", "--local",
-                    "--proc", strprocs, "--mem", str(self.mem)]
-            # TODO this is getting ugly ...
-            # FIXME also, what other opts aren't being passed on here?
-            # we don't pass on queue-name, queue-type, OR config-file (as we
-            # don't addApplicationOptionGroup) ... this doesn't cause a fork bomb
-            # due to new --local flag
-            # NOTE one issue is that passing application options to the executor
-            # will cause an error unless we're permissive in receiving
-            # FIXME hack -- shouldn't we just iterate over the whole options,
+            cmd += ["pipeline_executor.py", "--local"]
+            cmd += ['--uri-file', self.uri_file]
+            # Only one exec is launched at a time in this manner, so:
+            cmd += ["--num-executors", str(1)]
+            # send ALL args except --num-executors to the executor
+            cmd += q.remove_num_exec(sys.argv)
+            # FIXME huge hack -- shouldn't we just iterate over options,
             # possibly checking for membership in the executor option group?
-            # FIXME options won't be noticed here
-            if self.ns:
-                cmd += ["--use-ns"]
-            # TODO this is/was breaking silently -
-            # is something using this even in ns mode? (resolved?)
-            #if self.uri_file:
-            #    cmd += ["--uri-file", self.uri_file]
-            cmd += ["--uri-file", self.uri_file]
-            #Only one exec is launched at a time in this manner, so we assume --num-executors=1
-            cmd += ["--num-executors", str(1)]  
-            cmd += ["--time-to-seppuku", str(self.time_to_seppuku)]
-            cmd += ["--time-to-accept-jobs", str(self.time_to_accept_jobs)]
+            # The problem is that we can't easily check if an option is
+            # available from a parser (but what about calling get_defaults and
+            # looking at exceptions?).  However, one possibility is to
+            # create a list of tuples consisting of the data with which to 
+            # call parser.add_arguments and use this to check.
+            # NOTE there's a problem with argparse's prefix matching which
+            # also affects removal of --num-executors
             env = os.environ.copy()
             env['PYRO_LOGFILE'] = os.path.join(os.getcwd(), ident + ".log")
             subprocess.call(cmd, env=env)
@@ -529,7 +521,9 @@ if __name__ == "__main__":
 
     # using parse_args instead of parse_known_args is a hack since we
     # currently send ALL arguments from the main program to the executor
-    # on PBS queues (FIXME not yet true on OGS queues)
+    # on PBS queues (FIXME not yet true on OGS queues).
+    # Alternately, we could keep a copy of the executor parser around
+    # when constructing the executor shell command
     options = parser.parse_known_args()[0]
 
     #Check to make sure some executors have been specified. 

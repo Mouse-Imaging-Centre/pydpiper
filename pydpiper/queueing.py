@@ -9,15 +9,29 @@ import subprocess
 
 # FIXME
 SERVER_START_TIME = 50
-# TODO instead of hard-coding SciNet min/max times for debug/batch queues,
-# add extra options/env. vars for these
-SCINET_MAX_LIFETIME = 2 * 24 * 3600
+
+# FIXME huge hack - fix: form the parser from an iterable data structure of args
+# and consult this
+def remove_num_exec(args):
+    args = args[:] # copy for politeness
+    for ix, arg in enumerate(args):
+        if re.search('--num', arg):
+            # matches? (argparse uses prefix matching...try to catch -
+            # ideally we'd actually consult a table of legal arguments)
+            if re.search('=', arg):
+                # sys.argv has form [..., '--num-executors=3', ...]
+                args.pop(ix)
+            else:
+                # sys.argv has form [..., '--num-executors', '3', ...]
+                args.pop(ix)
+                args.pop(ix)
+    return args
 
 class runOnQueueingSystem():
     def __init__(self, options, sysArgs=None):
         #Note: options are the same as whatever is in calling program
         #Options MUST also include standard pydpiper options
-        # TODO maybe self.options = options would be easier than this manual unpacking
+        # self.options = options would be easier than this manual unpacking
         # for vars that don't have much 'logic' associated with them ...
         self.timestr = options.time or '48:00:00'
         try:
@@ -51,11 +65,9 @@ class runOnQueueingSystem():
             self.jobName = basename(executablePath)
     def buildMainCommand(self):
         """Re-construct main command to be called in pbs script, adding --local flag"""
-        def relevant(arg):
-            return not(bool(re.search("--num-executors", arg)))
         reconstruct = ""
         if self.arguments:
-            reconstruct += ' '.join(filter(relevant, self.arguments))
+            reconstruct += ' '.join(remove_num_exec(self.arguments))
         #TODO pass time as an arg to buildMainCmd, decrement by max_scinet_time - 5:00 with each generation
         reconstruct += " --local --num-executors=0 " + " --lifetime=%d " % self.job_lifetime
         return reconstruct
@@ -74,7 +86,9 @@ class runOnQueueingSystem():
         time_remaining = self.job_lifetime
         serverJobId = None
         while time_remaining > 0:
-            t = min(max(self.min_walltime, time_remaining), SCINET_MAX_LIFETIME)
+            t = max(self.min_walltime, time_remaining)
+            if self.max_walltime is not None:
+                t = min(t, self.max_walltime)
             time_remaining -= t
             serverJobId = self.createAndSubmitMainJobFile(time=t, depends=serverJobId)
             if self.numexec >= 2:
@@ -138,10 +152,8 @@ class runOnQueueingSystem():
             self.jobFile.write(" &\n\n")
         if launchExecs:
             self.jobFile.write("sleep %s\n" % SERVER_START_TIME)
-            def relevant(arg):
-                return not(bool(re.search("--num-executors", arg)))
             cmd = "pipeline_executor.py --local --num-executors=1 "
-            cmd += ' '.join(filter(relevant, self.arguments[1:])) + ' &\n\n'
+            cmd += ' '.join(remove_num_exec(self.arguments[1:])) + ' &\n\n'
             self.jobFile.write(cmd)
     def completeJobFile(self):
         """Completes pbs script--wait for background jobs to terminate as per scinet wiki"""

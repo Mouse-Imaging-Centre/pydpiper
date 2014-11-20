@@ -193,7 +193,7 @@ class Pipeline():
         # main option hash, needed for the pipeline (server) to launch additional
         # executors during run time
         self.main_options_hash = None
-        # time to shut down, due to walltime or having given out all stages?
+        # time to shut down, due to walltime or having completed all stages?
         # (use an event rather than a simple flag for shutdown notification
         # so that we can shut down even if a process is currently sleeping)
         self.shutdown_ev = Event()
@@ -248,10 +248,8 @@ class Pipeline():
             self.skipped_stages += 1 
             #stage already exists - nothing to be done
         else: #stage doesn't exist - add it
-            # add hash to the dict
             self.stagehash[h] = self.counter
             #self.statusArray[self.counter] = 'notstarted'
-            # add the stage itself to the array of stages
             self.stages.append(stage)
             self.nameArray.append(stage.name)
             # add all outputs to the output dictionary
@@ -259,7 +257,6 @@ class Pipeline():
                 self.outputhash[o] = self.counter
             # add the stage's index to the graph
             self.G.add_node(self.counter, label=stage.name,color=stage.colour)
-            # increment the counter for the next stage
             self.counter += 1
 
     def setBackupFileLocation(self, outputDir=None):
@@ -868,11 +865,11 @@ def flatten_pipeline(p):
                 
     return sorted([(i, str(p.stages[i]), p.G.predecessors(i)) for i in p.G.nodes_iter()],cmp=post)
 
-def pipelineDaemon(pipeline, options=None, programName=None):
+def pipelineDaemon(pipeline, options, programName=None):
     """Launches Pyro server and (if specified by options) pipeline executors"""
 
-    if options.urifile==None:
-        options.urifile = os.path.abspath(os.curdir + "/" + "uri")
+    if options.urifile is None:
+        options.urifile = os.path.abspath(os.path.join(os.curdir, "uri"))
 
     if options.restart:
         logger.debug("Examining filesystem to determine skippable stages...")

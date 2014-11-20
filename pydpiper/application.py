@@ -146,6 +146,8 @@ class AbstractApplication(object):
             logger.info("Finished submitting PBS job scripts...quitting")
             return 
 
+        # NB this doesn't capture environment variables
+        # or contents of any config file so isn't really complete
         self.reconstructCommand()
         logger.debug("Calling `run`")
         self.run()
