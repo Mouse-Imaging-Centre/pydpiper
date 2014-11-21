@@ -11,58 +11,54 @@ import atoms_and_modules.LSQ12 as lsq12
 import atoms_and_modules.NLIN as nlin
 import atoms_and_modules.stats_tools as st
 import atoms_and_modules.minc_parameters as mp
-from optparse import OptionGroup
 from os.path import abspath, isdir, isfile
 import logging
 import sys
 
 logger = logging.getLogger(__name__)
 
-def addRegChainOptionGroup(parser):
+def addRegChainArgumentGroup(parser):
     """option group for the command line argument parser"""
-    group = OptionGroup(parser, "Registration-chain options", 
-                        "Options for registering consecutive timepoints of longitudinal data.")
-    group.add_option("--avg-time-point", dest="avg_time_point",
-                      type="int", default=1,
-                      help="Time point averaged prior to this registration to get common nlin space.")
-    group.add_option("--common-space-name", dest="common_name",
-                      type="string", default="common", 
-                      help="Option to specify a name for the common space. This is useful for the "
+    group = parser.add_argument_group("Registration-chain options",
+                       "Options for registering consecutive timepoints of longitudinal data.")
+    group.add_argument("--avg-time-point", dest="avg_time_point",
+                       type=int, default=1,
+                       help="Time point averaged prior to this registration to get common nlin space.")
+    group.add_argument("--common-space-name", dest="common_name",
+                       type=str, default="common", 
+                       help="Option to specify a name for the common space. This is useful for the "
                             "creation of more readable output file names. Default is common. Note "
                             "that the common space is the one created by an iterative group-wise " 
                             "registration, either within this code or one that was run previously.")
-    group.add_option("--run-groupwise", dest="run_groupwise",
-                      action="store_true",
-                      help="Run an iterative, groupwise registration (MBM) on the specified average "
-                           " time point. [Default]")
-    group.add_option("--no-run-groupwise", dest="run_groupwise",
-                      action="store_false", 
-                      help="If specified, do not run a groupwise registration on the specified "
+    group.add_argument("--run-groupwise", dest="run_groupwise",
+                       action="store_true",
+                       help="Run an iterative, groupwise registration (MBM) on the specified average "
+                            " time point. [Default]")
+    group.add_argument("--no-run-groupwise", dest="run_groupwise",
+                       action="store_false", 
+                       help="If specified, do not run a groupwise registration on the specified "
                             "average time point [Opposite of --run-groupwise.]. If an iterative "
                             "group-wise registration was run previously, the average and transforms "
                             "from that registration can be accessed using the --MBM-directory and "
                             "--nlin-average options. (See below.)")
-    group.add_option("--MBM-directory", dest="mbm_dir",
-                      type="string", default=None, 
-                      help="_processed directory from MBM used to average specified time point ")
-    group.add_option("--nlin-average", dest="nlin_avg",
-                      type="string", default=None, 
-                      help="Final nlin average from MBM run.")
+    group.add_argument("--MBM-directory", dest="mbm_dir",
+                       type=str, default=None, 
+                       help="_processed directory from MBM used to average specified time point ")
+    group.add_argument("--nlin-average", dest="nlin_avg",
+                       type=str, default=None, 
+                       help="Final nlin average from MBM run.")
     parser.set_defaults(run_groupwise=True)
-    parser.add_option_group(group)
 
 class RegistrationChain(AbstractApplication):
     def setup_options(self):
         """Add option groups from specific modules"""
-        addRegChainOptionGroup(self.parser)
-        rf.addGenRegOptionGroup(self.parser)
-        lsq6.addLSQ6OptionGroup(self.parser)
-        lsq12.addLSQ12OptionGroup(self.parser)
-        nlin.addNlinRegOptionGroup(self.parser)
-        st.addStatsOptions(self.parser)
+        addRegChainArgumentGroup(self.parser)
+        rf.addGenRegArgumentGroup(self.parser)
+        lsq6.addLSQ6ArgumentGroup(self.parser)
+        lsq12.addLSQ12ArgumentGroup(self.parser)
+        nlin.addNlinRegArgumentGroup(self.parser)
+        st.addStatsArguments(self.parser)
         
-        self.parser.set_usage("%prog [options] input.csv") 
-
     def setup_appName(self):
         appName = "Registration-chain"
         return appName

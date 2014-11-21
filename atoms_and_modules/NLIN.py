@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 
 from os.path import abspath, isfile
-from optparse import OptionGroup
 from pydpiper.pipeline import Pipeline
 from pydpiper.file_handling import createBaseName, createLogFile, removeBaseAndExtension
 from pydpiper.application import AbstractApplication
@@ -9,34 +8,34 @@ from atoms_and_modules.registration_file_handling import RegistrationPipeFH
 import atoms_and_modules.registration_functions as rf
 import atoms_and_modules.minc_parameters as mp
 from atoms_and_modules.minc_atoms import blur, mincresample, mincANTS, mincAverage, minctracc
-from atoms_and_modules.stats_tools import addStatsOptions, CalcStats
+from atoms_and_modules.stats_tools import addStatsArguments, CalcStats
 import sys
 import logging
 
 logger = logging.getLogger(__name__)
 
-def addNlinRegOptionGroup(parser):
+def addNlinRegArgumentGroup(parser):
     """option group for the command line argument parser"""
-    group = OptionGroup(parser, "Nonlinear registration options",
+    group = parser.add_argument_group("Nonlinear registration options",
                         "Options for performing a non-linear registration")
-    group.add_option("--target-avg", dest="target_avg",
-                     type="string", default=None,
+    group.add_argument("--target-avg", dest="target_avg",
+                     type=str, default=None,
                      help="Starting target for non-linear alignment. (Often in lsq12 space)")
-    group.add_option("--target-mask", dest="target_mask",
-                     type="string", default=None,
+    group.add_argument("--target-mask", dest="target_mask",
+                     type=str, default=None,
                      help="Optional mask for target.")
-    group.add_option("--registration-method", dest="reg_method",
-                      default="mincANTS", type="string",
+    group.add_argument("--registration-method", dest="reg_method",
+                      default="mincANTS", type=str,
                       help="Specify whether to use minctracc or mincANTS for non-linear registrations. "
                            "[Default = %default]")
-    group.add_option("--nlin-protocol", dest="nlin_protocol",
-                     type="string", default=None,
+    group.add_argument("--nlin-protocol", dest="nlin_protocol",
+                     type=str, default=None,
                      help="Can optionally specify a registration protocol that is different from defaults. "
                      "Parameters must be specified as in either or the following examples: \n"
                      "applications_testing/test_data/minctracc_example_nlin_protocol.csv \n"
                      "applications_testing/test_data/mincANTS_example_nlin_protocol.csv \n"
                      "[Default = %default]")
-    parser.add_option_group(group)
+    parser.add_argument_group(group)
     
 def finalGenerationFileNames(inputFH):
     """Set up and return filenames for final nlin generation, since we don't want to use defaults here.
@@ -73,12 +72,10 @@ class NonlinearRegistration(AbstractApplication):
     """
     def setup_options(self):
         """Add option groups from specific modules"""
-        rf.addGenRegOptionGroup(self.parser)
-        addNlinRegOptionGroup(self.parser)
-        addStatsOptions(self.parser)
+        rf.addGenRegArgumentGroup(self.parser)
+        addNlinRegArgumentGroup(self.parser)
+        addStatsArguments(self.parser)
         
-        self.parser.set_usage("%prog [options] input files") 
-
     def setup_appName(self):
         appName = "Nonlinear-registration"
         return appName

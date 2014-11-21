@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 import os
-from optparse import OptionParser
+from argparse import ArgumentParser
 
 # setup the log file name before importing the Pyro4 library
 
@@ -10,17 +10,14 @@ import Pyro4
 """ check the status of a pydpiper pipeline by querying the server using its uri"""
 
 if __name__ == '__main__':
-    usage = "Usage: " + __file__ + " uri\n" + \
-            "   or: " + __file__ + "--help"
 
-    parser = OptionParser(usage)
+    parser = ArgumentParser()
+    parser.add_argument(name='uri_file', action="store", type=str,
+        help="file containing server's URI")
 
-    options, args = parser.parse_args()
+    options = parser.parse_args()
 
-    if len(args) != 1:
-        parser.error("please specify the uri file")
-        
-    uri_file = args[0]
+    uri_file = options['uri_file']
 
     # find the server
     try:
