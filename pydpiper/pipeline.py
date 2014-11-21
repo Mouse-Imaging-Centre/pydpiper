@@ -659,7 +659,7 @@ class Pipeline():
         except:
             if self.verbose:
                 print("Unable to un-register client: " + clientURI)
-            logger.info("Unable to un-register client: " + clientURI)
+            logger.exception("Unable to un-register client: " + clientURI)
         else:
             if self.verbose:
                 print("Client un-registered (seppuku!): " + clientURI)
