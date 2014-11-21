@@ -7,36 +7,35 @@ import atoms_and_modules.minc_atoms as ma
 import atoms_and_modules.registration_functions as rf
 import atoms_and_modules.minc_parameters as mp
 from atoms_and_modules.registration_file_handling import RegistrationPipeFH, RegistrationFHBase
-from optparse import OptionGroup
 from os.path import basename, abspath
 import sys
 import logging
 
 logger = logging.getLogger(__name__)
 
-def addLSQ12OptionGroup(parser):
+def addLSQ12ArgumentGroup(parser):
     """option group for the command line argument parser"""
-    group = OptionGroup(parser, "LSQ12 registration options",
+    group = parser.add_argument_group("LSQ12 registration options",
                         "Options for performing a pairwise, affine registration")
-    group.add_option("--lsq12-max-pairs", dest="lsq12_max_pairs",
-                     type="string", default=None,
-                     help="Maximum number of pairs to register together. NOTE: Not yet implemented!! [Default = %default]")
-    group.add_option("--lsq12-likefile", dest="lsq12_likeFile",
-                     type="string", default=None,
-                     help="Can optionally specify a like file for resampling at the end of pairwise "
-                     "alignment. Default is None, which means that the input file will be used. [Default = %default]")
-    group.add_option("--lsq12-subject-matter", dest="lsq12_subject_matter",
-                     type="string", default=None,
-                     help="Can specify the subject matter for the pipeline. This will set the parameters "
-                     "for the 12 parameter alignment based on the subject matter rather than the file "
-                     "resolution. Currently supported option is: \"mousebrain\". [Default = %default].")
-    group.add_option("--lsq12-protocol", dest="lsq12_protocol",
-                     type="string", default=None,
-                     help="Can optionally specify a registration protocol that is different from defaults. "
-                     "Parameters must be specified as in the following example: \n"
-                     "applications_testing/test_data/minctracc_example_linear_protocol.csv \n"
-                     "[Default = %default].")
-    parser.add_option_group(group)
+    group.add_argument("--lsq12-max-pairs", dest="lsq12_max_pairs",
+                       type=str, default=None,
+                       help="Maximum number of pairs to register together. NOTE: Not yet implemented!! [Default = %default]")
+    group.add_argument("--lsq12-likefile", dest="lsq12_likeFile",
+                       type=str, default=None,
+                       help="Can optionally specify a like file for resampling at the end of pairwise "
+                       "alignment. Default is None, which means that the input file will be used. [Default = %default]")
+    group.add_argument("--lsq12-subject-matter", dest="lsq12_subject_matter",
+                       type=str, default=None,
+                       help="Can specify the subject matter for the pipeline. This will set the parameters "
+                       "for the 12 parameter alignment based on the subject matter rather than the file "
+                       "resolution. Currently supported option is: \"mousebrain\". [Default = %default].")
+    group.add_argument("--lsq12-protocol", dest="lsq12_protocol",
+                       type=str, default=None,
+                       help="Can optionally specify a registration protocol that is different from defaults. "
+                       "Parameters must be specified as in the following example: \n"
+                       "applications_testing/test_data/minctracc_example_linear_protocol.csv \n"
+                       "[Default = %default].")
+    parser.add_argument_group(group)
 
 class LSQ12Registration(AbstractApplication):
     """
@@ -51,11 +50,9 @@ class LSQ12Registration(AbstractApplication):
     """
     def setup_options(self):
         """Add option groups from specific modules"""
-        rf.addGenRegOptionGroup(self.parser)
-        addLSQ12OptionGroup(self.parser)
+        rf.addGenRegArgumentGroup(self.parser)
+        addLSQ12ArgumentGroup(self.parser)
          
-        self.parser.set_usage("%prog [options] input files") 
-
     def setup_appName(self):
         appName = "LSQ12-registration"
         return appName

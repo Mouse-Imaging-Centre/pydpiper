@@ -9,49 +9,52 @@ import subprocess
 
 # FIXME
 SERVER_START_TIME = 50
-# TODO instead of hard-coding SciNet min/max times for debug/batch queues,
-# add extra options/env. vars for these
-SCINET_MIN_LIFETIME = 2 *  1 * 3600
-SCINET_MAX_LIFETIME = 2 * 24 * 3600
+
+# FIXME huge hack - fix: form the parser from an iterable data structure of args
+# and consult this
+def remove_num_exec(args):
+    args = args[:] # copy for politeness
+    for ix, arg in enumerate(args):
+        if re.search('--num', arg):
+            # matches? (argparse uses prefix matching...try to catch -
+            # ideally we'd actually consult a table of legal arguments)
+            if re.search('=', arg):
+                # sys.argv has form [..., '--num-executors=3', ...]
+                args.pop(ix)
+            else:
+                # sys.argv has form [..., '--num-executors', '3', ...]
+                args.pop(ix)
+                args.pop(ix)
+    return args
 
 class runOnQueueingSystem():
     def __init__(self, options, sysArgs=None):
         #Note: options are the same as whatever is in calling program
         #Options MUST also include standard pydpiper options
-        # FIXME when using --scinet, we can't override options values having numerical defaults
-        # (mem/procs/time-to-accept-jobs/time-to-seppuku) with --mem/--procs/... since
-        # we don't know if the values in options are supplied by the 
-        # user or are defaults ... to fix this, we could use None as the 
-        # default and set non-scinet defaults later or use optargs in a more sophisticated way(?)
+        # self.options = options would be easier than this manual unpacking
+        # for vars that don't have much 'logic' associated with them ...
         self.timestr = options.time or '48:00:00'
         try:
             h,m,s = self.timestr.split(':')
         except:
             raise Exception("invalid (H)HH:MM:SS timestring: %s" % self.timestr)
         self.job_lifetime = 3600 * int(h) + 60 * int(m) + int(s)
-        # TODO use self.time to give better time_to_accept_jobs
-        # and to compute number of generations of scripts to submit
-        if options.scinet:
-            self.mem = 14
-            self.procs = 8
-            self.ppn = 8
-            self.queue_name = options.queue_name or options.queue or "batch"
-            self.queue_type = "pbs"
-            self.time_to_accept_jobs = 47 * 60 # TODO compute based on lifetime
-        else:
-            self.mem = options.mem
-            self.procs = options.proc
-            self.ppn = options.ppn
-            self.queue_name = options.queue_name or options.queue
-            self.queue_type = options.queue or options.queue_type
-            self.time_to_accept_jobs = options.time_to_accept_jobs
+        self.mem = options.mem
+        self.max_walltime = options.max_walltime
+        self.min_walltime = options.min_walltime
+        self.procs = options.proc
+        self.ppn = options.ppn
+        self.queue_name = options.queue_name or options.queue
+        self.queue_type = options.queue or options.queue_type
+        # TODO use self.time to compute better time_to_accept_jobs?
+        self.time_to_accept_jobs = options.time_to_accept_jobs
         self.arguments = sysArgs #sys.argv in calling program
         self.numexec = options.num_exec 
         self.ns = options.use_ns
         self.uri_file = options.urifile
         if self.uri_file is None:
-            self.uri_file = os.path.abspath(os.curdir + "/" + "uri")
-        self.jobDir = os.environ["HOME"] + "/pbs-jobs"
+            self.uri_file = os.path.abspath(os.path.join(os.curdir, "uri"))
+        self.jobDir = os.path.join(os.environ["HOME"], "pbs-jobs")
         if not isdir(self.jobDir):
             mkdir(self.jobDir) 
         if self.arguments is None:
@@ -59,24 +62,19 @@ class runOnQueueingSystem():
         else:
             executablePath = os.path.abspath(self.arguments[0])
             self.jobName = basename(executablePath)
-    def buildMainCommand(self):
-        """Re-construct main command to be called in pbs script, removing un-necessary arguments"""
-        def relevant(arg):
-            if re.search("--(num-executors|proc|queue|mem|time|ppn|scinet)", arg):
-                return False
-            else:
-                return True
+    def buildMainCommand(self, t):
+        """Re-construct main command to be called in pbs script, adding --local flag"""
         reconstruct = ""
         if self.arguments:
-            reconstruct += ' '.join(filter(relevant, self.arguments))
+            reconstruct += ' '.join(remove_num_exec(self.arguments))
         #TODO pass time as an arg to buildMainCmd, decrement by max_scinet_time - 5:00 with each generation
-        reconstruct += " --num-executors=0 " + " --lifetime=%d " % self.job_lifetime
+        reconstruct += " --local --num-executors=0 " + " --lifetime=%d " % t
         return reconstruct
     def constructAndSubmitJobFile(self, identifier, time, isMainFile, depends):
         """Construct the bulk of the pbs script to be submitted via qsub"""
         now = datetime.now()  
         jobName = self.jobName + identifier + now.strftime("%Y%m%d-%H%M%S%f") + ".job"
-        self.jobFileName = self.jobDir + "/" + jobName
+        self.jobFileName = os.path.join(self.jobDir, jobName)
         self.jobFile = open(self.jobFileName, "w")
         self.addHeaderAndCommands(time, isMainFile)
         self.completeJobFile()
@@ -87,7 +85,9 @@ class runOnQueueingSystem():
         time_remaining = self.job_lifetime
         serverJobId = None
         while time_remaining > 0:
-            t = min(max(SCINET_MIN_LIFETIME, time_remaining), SCINET_MAX_LIFETIME)
+            t = max(self.min_walltime, time_remaining)
+            if self.max_walltime is not None:
+                t = min(t, self.max_walltime)
             time_remaining -= t
             serverJobId = self.createAndSubmitMainJobFile(time=t, depends=serverJobId)
             if self.numexec >= 2:
@@ -107,7 +107,7 @@ class runOnQueueingSystem():
         self.jobFile.write("#!/bin/bash\n")
         requestNodes = 1
         execProcs = self.procs
-        mainCommand = ""
+        #mainCommand = ""
         name = self.jobName
         launchExecs = True   
         if isMainFile:
@@ -115,7 +115,7 @@ class runOnQueueingSystem():
             # 1) number of available processors per node
             # 2) number of processes per executor
             nodes = divmod(self.procs, self.ppn)
-            mainCommand = self.buildMainCommand()
+            #mainCommand = self.buildMainCommand()
             if self.numexec == 0:
                 launchExecs = False
                 name += "-no-executors"
@@ -139,21 +139,21 @@ class runOnQueueingSystem():
         self.jobFile.write("#PBS -N %s\n" % name)
         self.jobFile.write("#PBS -q %s\n" % self.queue_name)
         # the `module` shell procedure likes to return 0 when it shouldn't (and fails when `|`ed for some reason), so redirect to a file and grep for an error message:
-        # TODO modules (or even calls to module) shouldn't be hard-coded
+        # TODO modules (or even calls to module) shouldn't be hard-coded-call an init script
+        self.jobFile.write("module purge\n")
         self.jobFile.write("export fh=$(mktemp)\n")
-        self.jobFile.write("module load gcc intel/15.0 python/2.7.8 gotoblas hdf5 gnuplot Xlibraries octave 2> $fh \n")
+        self.jobFile.write("module load gcc intel/14.0.1 python/2.7.8 gotoblas hdf5 gnuplot Xlibraries octave 2> $fh \n")
         self.jobFile.write("cat $fh | tee /dev/stderr | grep 'ERROR' && exit 13\n")
         self.jobFile.write("rm $fh \n")
         self.jobFile.write("cd $PBS_O_WORKDIR\n\n") # jobs start in $HOME; $PBS_O_WORKDIR is the submission directory
-        if mainCommand:
-            self.jobFile.write(self.buildMainCommand())
+        if isMainFile: #mainCommand:
+            self.jobFile.write(self.buildMainCommand(time))
             self.jobFile.write(" &\n\n")
         if launchExecs:
             self.jobFile.write("sleep %s\n" % SERVER_START_TIME)
-            self.jobFile.write("pipeline_executor.py --num-executors=1 --uri-file=%s --proc=%d --mem=%.2f --time-to-accept-jobs=%d" % (self.uri_file, execProcs, self.mem, self.time_to_accept_jobs))
-            if self.ns:
-                self.jobFile.write(" --use-ns ")
-            self.jobFile.write(" &\n\n")
+            cmd = "pipeline_executor.py --local --num-executors=1 "
+            cmd += ' '.join(remove_num_exec(self.arguments[1:])) + ' &\n\n'
+            self.jobFile.write(cmd)
     def completeJobFile(self):
         """Completes pbs script--wait for background jobs to terminate as per scinet wiki"""
         self.jobFile.write("wait" + "\n")

@@ -8,7 +8,6 @@ import atoms_and_modules.minc_modules as mm
 import atoms_and_modules.minc_atoms as ma
 import atoms_and_modules.stats_tools as st
 import atoms_and_modules.option_groups as og
-from optparse import OptionGroup
 from datetime import date
 from os.path import abspath, isdir
 import logging
@@ -21,19 +20,17 @@ logger = logging.getLogger(__name__)
 
 class PairwiseNonlinear(AbstractApplication):
     def setup_options(self):
-        group = OptionGroup(self.parser, "Pairwise non-linear options", 
-                        "Options for pairwise non-linear registration of lsq6 or lsq12 aligned brains.")
-        group.add_option("--input-space", dest="input_space",
-                      type="string", default="lsq6", 
+        group = self.parser.add_argument_group("Pairwise non-linear options", 
+                              "Options for pairwise non-linear registration of lsq6 or lsq12 aligned brains.")
+        group.add_argument("--input-space", dest="input_space",
+                      type=str, default="lsq6", 
                       help="Option to specify space of input-files. Can be lsq6 (default), lsq12 or native.")
-        self.parser.add_option_group(group)
+        self.parser.add_argument_group(group)
         """Add option groups from specific modules"""
-        rf.addGenRegOptionGroup(self.parser)
-        og.tmpLongitudinalOptionGroup(self.parser)
-        st.addStatsOptions(self.parser)
+        rf.addGenRegArgumentGroup(self.parser)
+        og.tmpLongitudinalArgumentGroup(self.parser)
+        st.addStatsArguments(self.parser)
         
-        self.parser.set_usage("%prog [options] input files") 
-
     def setup_appName(self):
         appName = "Pairwise-nonlinear"
         return appName

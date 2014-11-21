@@ -10,6 +10,7 @@ Dependencies:
 
 Pyro4 - http://pythonhosted.org/Pyro4
 NetworkX - http://networkx.lanl.gov/
+ConfigArgParse - https://pypi.python.org/pypi/ConfigArgParse
 Py.test - http://pytest.org/
 graphviz - http://www.graphviz.org/
 pygraphviz - http://pygraphviz.github.io/
