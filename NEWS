@@ -1,3 +1,21 @@
+New in Version 1.11-alpha
+=========================
+* Moved from optparse to ConfigArgParse, which must be installed.
+  See README for usage details.
+* Improve server logic for handling failed executors and cases where
+  executors have insufficient resources to run available jobs.
+* Improved logic for handling walltime restrictions on PBS queues.
+  New flags are available to set some PBS-related variables.
+* Load correct modules on SciNet, with better error reporting
+  from module load failures and xfmavg stages.
+* To replace the old pickling of the current system state, there's
+  a new mechanism for logging completed stages to disk
+  (in pydpiper-backups/finished-stages) and correctly restarting the pipeline.
+* Fixed a bug where executor threads spawned from the server could hang.
+* Various small bugfixes, internal improvements, changes to logging and
+  usage messages, and updates to comments.
+* Added a .gitignore.
+
 New in Version 1.10
 ===================
 * PYRO environment variables are handled inside the code. The SERVERTYPE is 
