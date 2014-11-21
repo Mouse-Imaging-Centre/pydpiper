@@ -547,7 +547,15 @@ class Pipeline():
                 print "\n\nError: the maximum amount of memory available in any executor is %f. The minimum amount of memory required to run any of the runnable stages is: %f. Quitting...\n\n" % (max(memAvailable),minMemRequired)
                 return False
 
-        # TODO return False if all executors have died but not spawning new ones...
+        # return False if all executors have died but not spawning new ones:
+        # 1) there are stages that can be run, and
+        # 2) there are no running nor waiting executors, and
+        # 3) the number of lost executors has exceeded the number of allowed failed execturs
+        if( not self.runnable.empty() and
+            (self.number_launched_and_waiting_clients + len(self.clients)) == 0 and
+            self.failed_executors > self.main_options_hash.max_failed_executors ):
+          print("Error: %d executors have died. This is more than the number of allowed failed executors as set by the flag: --max-failed-executors. Can not spawn new ones. Exiting..." % self.failed_executors)
+          return False
 
         if self.allStagesCompleted():
             logger.debug("All stages complete ... done")
@@ -579,7 +587,7 @@ class Pipeline():
                 logger.warn("Executor at %s has died!", client.clientURI)
                 print("\nWarning: there has been no contact with %s, for %d seconds. Considering the executor as dead!\n" % (client.clientURI, pe.HEARTBEAT_INTERVAL + pe.RESPONSE_LATENCY))
                 if self.failed_executors > self.main_options_hash.max_failed_executors:
-                    logger.warn("Too many executors lost to spawn new ones")
+                    logger.warn("Currently %d executors have died. This is more than the number of allowed failed executors as set by the flag: --max-failed-executors. Too many executors lost to spawn new ones" % self.failed_executors)
 
                 self.failed_executors += 1
 

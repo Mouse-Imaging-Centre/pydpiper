@@ -17,3 +17,9 @@ the verbosity of some of the application's own logging.  See [the Pyro4 document
 
 Application modules that utilize the pipeline class definitions are currently in applications folder. These applications may be moved to a separate repository at a later date. 
  
+*** *** ***
+When your pipeline is running, you can verify the state of your pipeline using the following tool (as of version 1.8):
+
+check_pipeline_status.py uri
+
+
