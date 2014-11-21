@@ -653,7 +653,7 @@ class Pipeline():
         # calls this method when it decides on its own to shut down,
         # and the server may call it when a client is unresponsive
         try:
-            for s in self.clients[clientURI].running_stages:
+            for s in self.clients[clientURI].running_stages.copy():
                 self.setStageLost(s, clientURI)
             del self.clients[clientURI]
         except:
