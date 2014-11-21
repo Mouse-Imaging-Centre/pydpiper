@@ -471,8 +471,9 @@ class pipelineExecutor():
         #elif cmd == "shutdown_immediately":
         #    logger.debug('Saw immediate shutdown command - killing jobs ...')
         #    return False
-        # FIXME this won't work yet since we'll just go to shutdown normally
-        # and wait for jobs to finish instead of killing them
+        # TODO this won't work yet since we'll just go to shutdown normally
+        # and wait for jobs to finish instead of killing them -
+        # maybe throwing an exception is better?
         elif cmd == "wait":
             return True
         elif cmd == "run_stage":

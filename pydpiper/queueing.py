@@ -40,14 +40,13 @@ class runOnQueueingSystem():
             raise Exception("invalid (H)HH:MM:SS timestring: %s" % self.timestr)
         self.job_lifetime = 3600 * int(h) + 60 * int(m) + int(s)
         self.mem = options.mem
+        self.max_walltime = options.max_walltime
         self.min_walltime = options.min_walltime
         self.procs = options.proc
         self.ppn = options.ppn
         self.queue_name = options.queue_name or options.queue
         self.queue_type = options.queue or options.queue_type
-        # TODO use self.time to give better time_to_accept_jobs?
-        # and to compute number of generations of scripts to submit
-        # self.time_to_accept_jobs = 47 * 60 # TODO compute based on lifetime
+        # TODO use self.time to compute better time_to_accept_jobs?
         self.time_to_accept_jobs = options.time_to_accept_jobs
         self.arguments = sysArgs #sys.argv in calling program
         self.numexec = options.num_exec 
@@ -63,13 +62,13 @@ class runOnQueueingSystem():
         else:
             executablePath = os.path.abspath(self.arguments[0])
             self.jobName = basename(executablePath)
-    def buildMainCommand(self):
+    def buildMainCommand(self, t):
         """Re-construct main command to be called in pbs script, adding --local flag"""
         reconstruct = ""
         if self.arguments:
             reconstruct += ' '.join(remove_num_exec(self.arguments))
         #TODO pass time as an arg to buildMainCmd, decrement by max_scinet_time - 5:00 with each generation
-        reconstruct += " --local --num-executors=0 " + " --lifetime=%d " % self.job_lifetime
+        reconstruct += " --local --num-executors=0 " + " --lifetime=%d " % t
         return reconstruct
     def constructAndSubmitJobFile(self, identifier, time, isMainFile, depends):
         """Construct the bulk of the pbs script to be submitted via qsub"""
@@ -108,7 +107,7 @@ class runOnQueueingSystem():
         self.jobFile.write("#!/bin/bash\n")
         requestNodes = 1
         execProcs = self.procs
-        mainCommand = ""
+        #mainCommand = ""
         name = self.jobName
         launchExecs = True   
         if isMainFile:
@@ -116,7 +115,7 @@ class runOnQueueingSystem():
             # 1) number of available processors per node
             # 2) number of processes per executor
             nodes = divmod(self.procs, self.ppn)
-            mainCommand = self.buildMainCommand()
+            #mainCommand = self.buildMainCommand()
             if self.numexec == 0:
                 launchExecs = False
                 name += "-no-executors"
@@ -147,8 +146,8 @@ class runOnQueueingSystem():
         self.jobFile.write("cat $fh | tee /dev/stderr | grep 'ERROR' && exit 13\n")
         self.jobFile.write("rm $fh \n")
         self.jobFile.write("cd $PBS_O_WORKDIR\n\n") # jobs start in $HOME; $PBS_O_WORKDIR is the submission directory
-        if mainCommand:
-            self.jobFile.write(self.buildMainCommand())
+        if isMainFile: #mainCommand:
+            self.jobFile.write(self.buildMainCommand(time))
             self.jobFile.write(" &\n\n")
         if launchExecs:
             self.jobFile.write("sleep %s\n" % SERVER_START_TIME)

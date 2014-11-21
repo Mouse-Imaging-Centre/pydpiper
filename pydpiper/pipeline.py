@@ -332,6 +332,9 @@ class Pipeline():
 
     def is_time_to_drain(self):
         return self.shutdown_ev.is_set()
+        # FIXME this isn't quite right ... once this is set, clients connecting
+        # normally over the next few seconds will crash (note they have no jobs, 
+        # so this is sort of OK)
 
     """Given client information, issue commands to the client (along similar
     lines to getRunnableStageIndex) and update server's internal view of client.
