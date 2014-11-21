@@ -439,11 +439,9 @@ class Pipeline():
             logger.info("Finished Stage " + str(index) + ": " + str(self.stages[index]))
             self.removeFromRunning(index, clientURI, new_status = "finished")
         self.processedStages.append(index)
-        # TODO in fact, we need only write out the hash, not the index, here.
-        # We could then form a set of hashes and query this to see whether a stage has run
-        # (the index is actually irrelevant).  However, it seems that being resilient against
-        # renumbering isn't that important, as the cause of the renumbering would probably
-        # also make most 'downstream' stages need to be re-run.
+        # write out the (index, hash) pairs to disk.  We don't actually need the indices
+        # for anything (in fact, the restart code in skip_completed_stages is resilient 
+        # against an arbitrary renumbering of stages), but a human-readable log is somewhat useful.
         self.finished_stages_fh.write("%d,%s\n" % (index, self.stages[index].getHash()))
         self.finished_stages_fh.flush()
         for i in self.G.successors(index):
