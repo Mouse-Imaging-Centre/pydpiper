@@ -70,7 +70,7 @@ class runOnQueueingSystem():
         #TODO pass time as an arg to buildMainCmd, decrement by max_scinet_time - 5:00 with each generation
         reconstruct += " --local --num-executors=0 " + " --lifetime=%d " % t
         return reconstruct
-    def constructAndSubmitJobFile(self, identifier, time, isMainFile, depends):
+    def constructAndSubmitJobFile(self, identifier, time, isMainFile, after=None, afterok=None):
         """Construct the bulk of the pbs script to be submitted via qsub"""
         now = datetime.now()  
         jobName = self.jobName + identifier + now.strftime("%Y%m%d-%H%M%S%f") + ".job"
@@ -78,7 +78,7 @@ class runOnQueueingSystem():
         self.jobFile = open(self.jobFileName, "w")
         self.addHeaderAndCommands(time, isMainFile)
         self.completeJobFile()
-        jobId = self.submitJob(jobName, depends)
+        jobId = self.submitJob(jobName, after, afterok)
         return jobId
     def createAndSubmitPbsScripts(self): 
         """Creates pbs script(s) for main program and separate executors, if needed"""       
@@ -89,19 +89,19 @@ class runOnQueueingSystem():
             if self.max_walltime is not None:
                 t = min(t, self.max_walltime)
             time_remaining -= t
-            serverJobId = self.createAndSubmitMainJobFile(time=t, depends=serverJobId)
+            serverJobId = self.createAndSubmitMainJobFile(time=t, afterok=serverJobId)
             if self.numexec >= 2:
                 for i in range(1, self.numexec):
-                    self.createAndSubmitExecutorJobFile(i, time=t,depends=serverJobId)
+                    self.createAndSubmitExecutorJobFile(i, time=t, after=serverJobId)
             # in principle a server could overlap the previous generation of clients,
             # but at present the clients just die within seconds
-    def createAndSubmitMainJobFile(self,time,depends=None): 
-        return self.constructAndSubmitJobFile("-pipeline-",time,isMainFile=True,depends=depends)
-    def createAndSubmitExecutorJobFile(self, i, time, depends):
+    def createAndSubmitMainJobFile(self,time, afterok=None):
+        return self.constructAndSubmitJobFile("-pipeline-",time, isMainFile=True, afterok=afterok)
+    def createAndSubmitExecutorJobFile(self, i, time, after):
         # This is called directly from pipeline_executor
         # For multiple executors, this will be called multiple-times.
         execId = "-executor-" + str(i) + "-"
-        self.constructAndSubmitJobFile(execId, time, isMainFile=False, depends=depends)
+        self.constructAndSubmitJobFile(execId, time, isMainFile=False, after=after)
     def addHeaderAndCommands(self, time, isMainFile):
         """Constructs header and commands for pbs script, based on options input from calling program"""
         self.jobFile.write("#!/bin/bash\n")
@@ -158,13 +158,15 @@ class runOnQueueingSystem():
         """Completes pbs script--wait for background jobs to terminate as per scinet wiki"""
         self.jobFile.write("wait" + "\n")
         self.jobFile.close()
-    def submitJob(self, jobName, depends):
+    def submitJob(self, jobName, after=None, afterok=None):
         """Submit job to batch queueing system"""
         os.environ['PYRO_LOGFILE'] = jobName + '.log'
         # use -V to get all (Pyro) variables, incl. PYRO_LOGFILE
         cmd = ['qsub', '-o', jobName + '-eo.log', '-V']
-        if depends is not None:
-            cmd += ['-Wafter:' + depends]
+        if after is not None:
+            cmd += ['-Wdepend=after:' + after]
+        if afterok is not None:
+            cmd += ['-Wdepend=afterok:' + afterok]
         cmd += [self.jobFileName]
         out = subprocess.check_output(cmd)
         jobId = out.strip()
