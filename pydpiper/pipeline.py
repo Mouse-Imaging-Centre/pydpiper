@@ -795,10 +795,10 @@ def launchServer(pipeline, options):
         # the shutdown event (we shouldn't actually see a SIGTERM on PBS
         # since PBS submission logic gives us a lifetime related to our walltime
         # request ...)
-        #def handler(sig,_stack):
-        #    logger.info("Caught signal %s", sig)
-        #    pipeline.shutdown_ev.set()
-        #signal.signal(signal.SIGTERM, handler)
+        def handler(sig,_stack):
+            #logger.info("Caught signal %s", sig) # this probably isn't safe!!
+            pipeline.shutdown_ev.set()
+        signal.signal(signal.SIGTERM, handler)
 
         # spawn a loop to manage executors in a separate process
         # (here we use a proxy to make calls to manageExecutors because (a) 
@@ -811,13 +811,13 @@ def launchServer(pipeline, options):
                 logger.debug("Auxiliary loop started")
                 while p.continueLoop():
                     p.manageExecutors()
-                    time.sleep(LOOP_INTERVAL)
-                # TODO move this call into a `finally` since something weird may have happened?
-                # if this loop crashes, should the main program continue?
-                logger.info("Server loop going to shut down ... setting event")
-                p.set_shutdown_ev()
+                    pipeline.shutdown_ev.wait(LOOP_INTERVAL)
             except:
                 logger.exception("Server loop encountered a problem.  Shutting down.")
+            finally:
+                logger.info("Server loop going to shut down ... setting event")
+                p.set_shutdown_ev()
+
         h = Process(target=loop)
         h.daemon = True
         h.start()
