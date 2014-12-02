@@ -62,12 +62,12 @@ class runOnQueueingSystem():
         else:
             executablePath = os.path.abspath(self.arguments[0])
             self.jobName = basename(executablePath)
+        self.prologue_file = options.prologue_file
     def buildMainCommand(self, t):
         """Re-construct main command to be called in pbs script, adding --local flag"""
         reconstruct = ""
         if self.arguments:
             reconstruct += ' '.join(remove_num_exec(self.arguments))
-        #TODO pass time as an arg to buildMainCmd, decrement by max_scinet_time - 5:00 with each generation
         reconstruct += " --local --num-executors=0 " + " --lifetime=%d " % t
         return reconstruct
     def constructAndSubmitJobFile(self, identifier, time, isMainFile, after=None, afterok=None):
@@ -107,7 +107,6 @@ class runOnQueueingSystem():
         self.jobFile.write("#!/bin/bash\n")
         requestNodes = 1
         execProcs = self.procs
-        #mainCommand = ""
         name = self.jobName
         launchExecs = True   
         if isMainFile:
@@ -115,7 +114,6 @@ class runOnQueueingSystem():
             # 1) number of available processors per node
             # 2) number of processes per executor
             nodes = divmod(self.procs, self.ppn)
-            #mainCommand = self.buildMainCommand()
             if self.numexec == 0:
                 launchExecs = False
                 name += "-no-executors"
@@ -140,13 +138,23 @@ class runOnQueueingSystem():
         self.jobFile.write("#PBS -q %s\n" % self.queue_name)
         # the `module` shell procedure likes to return 0 when it shouldn't (and fails when `|`ed for some reason), so redirect to a file and grep for an error message:
         # TODO modules (or even calls to module) shouldn't be hard-coded-call an init script
-        self.jobFile.write("module purge\n")
-        self.jobFile.write("export fh=$(mktemp)\n")
-        self.jobFile.write("module load gcc intel/14.0.1 python/2.7.8 gotoblas hdf5 gnuplot Xlibraries octave 2> $fh \n")
-        self.jobFile.write("cat $fh | tee /dev/stderr | grep 'ERROR' && exit 13\n")
-        self.jobFile.write("rm $fh \n")
+        #self.jobFile.write("module purge\n")
+        #self.jobFile.write("export fh=$(mktemp)\n")
+        # TODO don't load pydpiper-dev for normal users
+        #self.jobFile.write("module load use.own gcc intel/14.0.1 python/2.7.8 gotoblas hdf5 gnuplot Xlibraries octave quarantine_tigger pydpiper-dev 2> $fh \n")
+        #self.jobFile.write("cat $fh | tee /dev/stderr | grep 'ERROR' && exit 13\n")
+        #self.jobFile.write("rm $fh \n")
+        if self.prologue_file is not None:
+            try:
+                with open(self.prologue_file, 'r') as fh:
+                    for l in fh:
+                        self.jobFile.write(l)
+                self.jobFile.write('\n')
+            except:
+                logger.exception("Failed copying prologue script into submit script")
+                raise
         self.jobFile.write("cd $PBS_O_WORKDIR\n\n") # jobs start in $HOME; $PBS_O_WORKDIR is the submission directory
-        if isMainFile: #mainCommand:
+        if isMainFile:
             self.jobFile.write(self.buildMainCommand(time))
             self.jobFile.write(" &\n\n")
         if launchExecs:
@@ -166,11 +174,11 @@ class runOnQueueingSystem():
         if after is not None:
             cmd += ['-Wdepend=after:' + after]
         if afterok is not None:
-            cmd += ['-Wdepend=afterok:' + afterok]
+            cmd += ['-Wdepend=afterany:' + afterok] # FIXME `afterok` -> `afterany`
         cmd += [self.jobFileName]
         out = subprocess.check_output(cmd)
         jobId = out.strip()
-        print(cmd)
+        print(' '.join(cmd))
         print(jobId)
         print("Submitted!")
         return jobId

@@ -21,9 +21,9 @@ Pyro4.config.DETAILED_TRACEBACK = os.getenv("PYRO_DETAILED_TRACEBACK", True)
 
 WAIT_TIMEOUT = 5.0
 HEARTBEAT_INTERVAL = 10.0
-RESPONSE_LATENCY = 5.0
+LATENCY_TOLERANCE = 5.0
 # q.SERVER_START_TIME
-SHUTDOWN_TIME = WAIT_TIMEOUT + RESPONSE_LATENCY
+SHUTDOWN_TIME = WAIT_TIMEOUT + LATENCY_TOLERANCE
 
 logger = logging.getLogger(__name__)
 
@@ -76,8 +76,10 @@ def addExecutorArgumentGroup(parser):
                        type=int, default=None,
                        help="Maximum lifetime in seconds of the server, or infinite if None. [Default = %default]")
     group.add_argument('--local', dest="local", action='store_true', help="Don't submit anything to any specified queueing system but instead run as an executor")
-    group.add_argument("-c", type=str, metavar='config_file', is_config_file=True,
+    group.add_argument("--config-file", type=str, metavar='config_file', is_config_file=True,
                        required=False, help='Config file location')
+    group.add_argument("--prologue-file", type=str, metavar='file',
+                       help="Location of a shell script to inline into PBS submit script to set paths, load modules, etc.")
     group.add_argument("--min-walltime", dest="min_walltime", type=int, default = 0,
             help="Min walltime (s) allowed by the queuing system [Default = %default]")
     group.add_argument("--max-walltime", dest="max_walltime", type=int, default = None,
@@ -294,6 +296,10 @@ class pipelineExecutor():
         logger.debug("Executor shutting down.  Killing running jobs:")
         for subprocID in self.current_running_job_pids:
             os.kill(subprocID, signal.SIGTERM)
+        # FIXME the death of the child process causes runStage
+        # to notify the server of the job's destruction
+        # so the job is no longer in the client's set of stages
+        # when unregisterClient is called
         if self.registered_with_server:
             self.pyro_proxy_for_server.unregisterClient(self.clientURI)
             self.registered_with_server = False

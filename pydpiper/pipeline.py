@@ -27,7 +27,6 @@ Pyro4.config.SERVERTYPE = pe.Pyro4.config.SERVERTYPE
 Pyro4.config.DETAILED_TRACEBACK = pe.Pyro4.config.DETAILED_TRACEBACK
 
 LOOP_INTERVAL = 5
-RESPONSE_LATENCY = 10
 STAGE_RETRY_INTERVAL = 1
 
 logger = logging.getLogger(__name__)
@@ -371,7 +370,11 @@ class Pipeline():
         else:
             index = self.runnable.get()
             # remove an instance of currently required memory
-            self.mem_req_for_runnable.remove(self.stages[index].mem)
+            try:
+                self.mem_req_for_runnable.remove(self.stages[index].mem)
+            except:
+                logger.debug("mem_req_for_runnable: %s; mem: %s", self.mem_req_for_runnable, self.stages[index].mem)
+                logger.exception("It wasn't here!")
             return ("run_stage", index)
 
     def allStagesCompleted(self):
@@ -400,8 +403,7 @@ class Pipeline():
 
     def setStageStarted(self, index, clientURI):
         URIstring = "(" + str(clientURI) + ")"
-        logger.info("Starting Stage " + str(index) + ": " + str(self.stages[index]) +
-                     URIstring)
+        logger.info("Starting Stage " + str(index) + ": " + str(self.stages[index]) + URIstring)
         # There may be a bug in which a stage is added to the runnable queue multiple times.
         # It would be better to catch that earlier (by using a different/additional data structure)
         # but for now look for the case when a stage is run twice at the same time, which may
@@ -451,7 +453,10 @@ class Pipeline():
                 self.mem_req_for_runnable.append(self.stages[i].mem)
 
     def removeFromRunning(self, index, clientURI, new_status):
-        self.currently_running_stages.remove(index)
+        try:
+            self.currently_running_stages.remove(index)
+        except:
+            logger.exception("Unable to remove stage %d from client %s's stages: %s", index, clientURI, self.clients[clientURI].running_stages)
         self.removeRunningStageFromClient(clientURI, index)
         self.stages[index].status = new_status
 
@@ -581,9 +586,9 @@ class Pipeline():
         t = time.time()
         # copy() as unregisterClient mutates self.clients during iteration over the latter
         for uri,client in self.clients.copy().iteritems():
-            if t - client.timestamp > pe.HEARTBEAT_INTERVAL + pe.RESPONSE_LATENCY:
+            if t - client.timestamp > pe.HEARTBEAT_INTERVAL + pe.LATENCY_TOLERANCE:
                 logger.warn("Executor at %s has died!", client.clientURI)
-                print("\nWarning: there has been no contact with %s, for %d seconds. Considering the executor as dead!\n" % (client.clientURI, pe.HEARTBEAT_INTERVAL + pe.RESPONSE_LATENCY))
+                print("\nWarning: there has been no contact with %s, for %d seconds. Considering the executor as dead!\n" % (client.clientURI, pe.HEARTBEAT_INTERVAL + pe.LATENCY_TOLERANCE))
                 if self.failed_executors > self.main_options_hash.max_failed_executors:
                     logger.warn("Currently %d executors have died. This is more than the number of allowed failed executors as set by the flag: --max-failed-executors. Too many executors lost to spawn new ones" % self.failed_executors)
 
@@ -652,6 +657,7 @@ class Pipeline():
         # removes a client URI string from the table of registered clients. An executor 
         # calls this method when it decides on its own to shut down,
         # and the server may call it when a client is unresponsive
+        logger.debug("Client %s calling unregisterClient", clientURI)
         try:
             for s in self.clients[clientURI].running_stages.copy():
                 self.setStageLost(s, clientURI)
@@ -824,11 +830,15 @@ def launchServer(pipeline, options):
 
         # wait for at most `lifetime`, then signal to other processes which may not have
         # been the source of the event (note wait(None) => no timeout):
-        flag = pipeline.shutdown_ev.wait(pipeline.main_options_hash.lifetime)
+        l = pipeline.main_options_hash.lifetime
+        if l is not None:
+            l = l - pe.SHUTDOWN_TIME - pe.q.SERVER_START_TIME
+        flag = pipeline.shutdown_ev.wait(l)
         if not flag:
-            logger.info("Time's up! (%d)" % pipeline.main_options_hash.lifetime)
+            logger.info("Time's up! (%d)" % pipeline.main_options_hash.lifetime) # TODO inaccurate
         pipeline.shutdown_ev.set()
-        # note that this timeout doesn't start from walltime 0
+        # FIXME use of SERVER_START_TIME is very inaccurate -
+        # this timeout doesn't start from walltime 0
         # so is slightly inaccurate ... we could start a timer earlier
         # Also, we might want to wait for only some fraction of lifetime
         # but this is perhaps better left to executor --time-to-accept-jobs

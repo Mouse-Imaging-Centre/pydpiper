@@ -4,6 +4,7 @@ from pydpiper.queueing import runOnQueueingSystem
 from pydpiper.file_handling import makedirsIgnoreExisting
 from pydpiper.pipeline_executor import addExecutorArgumentGroup, noExecSpecified
 from datetime import datetime
+import time # TODO why both datetime and time?
 from pkg_resources import get_distribution
 import logging
 import networkx as nx
@@ -99,7 +100,8 @@ class AbstractApplication(object):
     
     def _setup_pipeline(self):
         self.pipeline = Pipeline()
-        
+
+    # FIXME check that only one server is running with a given output directory
     def _setup_directories(self):
         """Output and backup directories setup here."""
         if not self.options.output_directory:
@@ -107,22 +109,23 @@ class AbstractApplication(object):
         else:
             self.outputDir = makedirsIgnoreExisting(self.options.output_directory)
         self.pipeline.setBackupFileLocation(self.outputDir)
-    
+
     def reconstructCommand(self):    
-        reconstruct = ""
-        for i in range(len(sys.argv)):
-            reconstruct += sys.argv[i] + " "
+        reconstruct = ' '.join(sys.argv)
         logger.info("Command is: " + reconstruct)
         logger.info("Command version : " + self.__version__)
         # also, because this is probably a better file for it (also has similar
         # naming conventions as the pipeline-stages.txt file:
-        fileForCommandAndVersion = os.path.abspath(os.curdir + "/" + self.appName + "-pipeline-command-and-version.txt")
+        fileForCommandAndVersion = os.path.abspath(os.curdir + "/" + self.appName + "-pipeline-command-and-version-" + time.strftime("%d-%m-%Y-at-%H-%m-%S") + ".sh")
         pf = open(fileForCommandAndVersion, "w")
-        pf.write("Command is: " + reconstruct + "\n")
-        pf.write("Command version is: " + self.__version__ + "\n")
+        pf.write("#!/usr/bin/env bash\n")
+        pf.write("# Command version is: " + self.__version__ + "\n")
+        pf.write("# Command was: \n")
+        pf.write(reconstruct + '\n')
         pf.close()
         
     def start(self):
+        logger.info("Calling `start`")
         self._setup_options()
         self.setup_options()
         
@@ -139,6 +142,10 @@ class AbstractApplication(object):
         
         self.appName = self.setup_appName()
         self.setup_logger()
+
+        # NB this doesn't capture environment variables
+        # or contents of any config file so isn't really complete
+        self.reconstructCommand()
         
         if not self.options.local and (self.options.queue == "pbs" or self.options.queue_type == "pbs"):
             roq = runOnQueueingSystem(self.options, sys.argv)
@@ -146,9 +153,6 @@ class AbstractApplication(object):
             logger.info("Finished submitting PBS job scripts...quitting")
             return 
 
-        # NB this doesn't capture environment variables
-        # or contents of any config file so isn't really complete
-        self.reconstructCommand()
         logger.debug("Calling `run`")
         self.run()
         logger.debug("Calling `initialize`")
