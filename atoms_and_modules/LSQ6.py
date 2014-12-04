@@ -13,6 +13,28 @@ import sys
 
 logger = logging.getLogger(__name__)
 
+def verifyCorrectLSQ6TargetOptions(bootstrap, init_model, lsq6_target):
+    """
+    This function can be called using the parameters that are set using 
+    the flags:
+    --bootstrap
+    --init-model
+    --lsq6-target
+    
+    it will check that exactly one of the options is provided and exits 
+    otherwise. 
+    """
+    # check how many options have been specified that can be used as the initial target
+    number_of_target_options = sum((bootstrap   != False,
+                                    init_model  != None,
+                                    lsq6_target != None))
+    if(number_of_target_options == 0):
+        print "\nError: please specify a target for the 6 parameter alignmnet. Options are: --lsq6-target, --init-model, --bootstrap.\n"
+        sys.exit()
+    if(number_of_target_options > 1):
+        print "\nError: please specify only one of the following options: --lsq6-target, --init-model, --bootstrap. Don't know which target to use...\n"
+        sys.exit()
+
 def addLSQ6ArgumentGroup(parser):
     """
         standard options for the LSQ6 module
@@ -26,6 +48,9 @@ def addLSQ6ArgumentGroup(parser):
                      help="File in standard space in the initial model. The initial model "
                      "can also have a file in native space and potentially a transformation "
                      "file. See our wiki for detailed information on initial models. [Default = %default]")
+    group.add_argument("--bootstrap", dest="bootstrap",
+                     action="store_true", default=False,
+                     help="Use the first inputfile to the pipeline as the target for the 6 parameter alignment. [Default = %(default)]")
     parser.set_defaults(lsq6_method="lsq6_large_rotations")
     parser.set_defaults(nuc=True)
     parser.set_defaults(inormalize=True)
@@ -132,16 +157,30 @@ class LSQ6Registration(AbstractApplication):
         options = self.options
         #args = self.args
 
+        verifyCorrectLSQ6TargetOptions(options.bootstrap,
+                                       options.init_model,
+                                       options.lsq6_target)
+
         # Setup output directories for LSQ6 registration.        
         dirs = rf.setupDirectories(self.outputDir, options.pipeline_name, module="LSQ6")
         
         # create file handles for the input file(s) 
         inputFiles = rf.initializeInputFiles(options.files, dirs.processedDir, maskDir=options.mask_dir)
 
+        # if we are running a bootstrap or lsq6_target option, pass in the correct target
+        target_file_for_lsq6 = None
+        target_file_directory = None
+        if(options.bootstrap):
+            target_file_for_lsq6 = inputFiles[0].inputFileName
+            target_file_directory = fh.createSubDir(self.outputDir,options.pipeline_name + "_bootstrap_file")
+        if(options.lsq6_target):
+            target_file_for_lsq6 = options.lsq6_target
+            target_file_directory = fh.createSubDir(self.outputDir,options.pipeline_name + "_target_file")
+
         #Setup init model and inital target. Function also exists if no target was specified.
         initModel, targetPipeFH = rf.setInitialTarget(options.init_model, 
-                                                      options.lsq6_target, 
-                                                      dirs.lsq6Dir,
+                                                      target_file_for_lsq6, 
+                                                      target_file_directory,
                                                       self.outputDir)
         
         # Initialize LSQ6, NonUniformityCorrection and IntensityNormalization classes and

@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 from pydpiper.application import AbstractApplication
+import pydpiper.file_handling as fh
 import atoms_and_modules.registration_functions as rf
 import atoms_and_modules.registration_file_handling as rfh
 import atoms_and_modules.LSQ6 as lsq6
@@ -34,15 +35,30 @@ class MBMApplication(AbstractApplication):
     def run(self):
         options = self.options
         args = self.args
-        
+
+        # make sure only one of the lsq6 target options is provided
+        lsq6.verifyCorrectLSQ6TargetOptions(options.bootstrap,
+                                            options.init_model,
+                                            options.lsq6_target)
+
         # Setup output directories for different registration modules.        
         dirs = rf.setupDirectories(self.outputDir, options.pipeline_name, module="ALL")
         inputFiles = rf.initializeInputFiles(args, dirs.processedDir, maskDir=options.mask_dir)
-        
+
+        # if we are running a bootstrap or lsq6_target option, pass in the correct target
+        target_file_for_lsq6 = None
+        target_file_directory = None
+        if(options.bootstrap):
+            target_file_for_lsq6 = inputFiles[0].inputFileName
+            target_file_directory = fh.createSubDir(self.outputDir,options.pipeline_name + "_bootstrap_file")
+        if(options.lsq6_target):
+            target_file_for_lsq6 = options.lsq6_target
+            target_file_directory = fh.createSubDir(self.outputDir,options.pipeline_name + "_target_file")
+
         #Setup init model and inital target. Function also exists if no target was specified.
         initModel, targetPipeFH = rf.setInitialTarget(options.init_model, 
-                                                      options.lsq6_target, 
-                                                      dirs.lsq6Dir,
+                                                      target_file_for_lsq6, 
+                                                      target_file_directory,
                                                       self.outputDir)
             
         #LSQ6 MODULE, NUC and INORM
@@ -56,8 +72,12 @@ class MBMApplication(AbstractApplication):
         # LSQ12 MODULE
         # We need to specify a likeFile/space when all files are resampled
         # at the end of LSQ12. If one is not specified, use standard space. 
+        # However, only change this when either an initial model is specified
+        # or when an lsq12_likefile is given. If we are running a bootstrap
+        # or lsq6_target pipeline, we do not have to change anything
         if options.lsq12_likeFile == None:
-            targetPipeFH = initModel[0]
+            if initModel:
+                targetPipeFH = initModel[0]
         else:
             targetPipeFH = rfh.RegistrationFHBase(os.path.abspath(options.lsq12_likeFile), 
                                                   basedir=dirs.lsq12Dir)
@@ -76,7 +96,8 @@ class MBMApplication(AbstractApplication):
         #Target mask for registration--I HATE this hack, as is noted in check-in and
         #as a github issue. 
         if lsq12module.lsq12AvgFH.getMask()== None:
-            if initModel[0]:
+            if initModel:
+                # if we are using an initial model, we can get that mask
                 lsq12module.lsq12AvgFH.setMask(initModel[0].getMask())
         
         #NLIN MODULE - Register with minctracc or mincANTS based on options.reg_method
