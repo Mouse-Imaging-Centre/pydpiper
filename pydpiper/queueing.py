@@ -70,7 +70,7 @@ class runOnQueueingSystem():
             reconstruct += ' '.join(remove_num_exec(self.arguments))
         reconstruct += " --local --num-executors=0 " + " --lifetime=%d " % t
         return reconstruct
-    def constructAndSubmitJobFile(self, identifier, time, isMainFile, after=None, afterok=None):
+    def constructAndSubmitJobFile(self, identifier, time, isMainFile, after=None, afterany=None):
         """Construct the bulk of the pbs script to be submitted via qsub"""
         now = datetime.now()  
         jobName = self.jobName + identifier + now.strftime("%Y%m%d-%H%M%S%f") + ".job"
@@ -78,7 +78,7 @@ class runOnQueueingSystem():
         self.jobFile = open(self.jobFileName, "w")
         self.addHeaderAndCommands(time, isMainFile)
         self.completeJobFile()
-        jobId = self.submitJob(jobName, after, afterok)
+        jobId = self.submitJob(jobName, after, afterany)
         return jobId
     def createAndSubmitPbsScripts(self): 
         """Creates pbs script(s) for main program and separate executors, if needed"""       
@@ -89,14 +89,14 @@ class runOnQueueingSystem():
             if self.max_walltime is not None:
                 t = min(t, self.max_walltime)
             time_remaining -= t
-            serverJobId = self.createAndSubmitMainJobFile(time=t, afterok=serverJobId)
+            serverJobId = self.createAndSubmitMainJobFile(time=t, afterany=serverJobId)
             if self.numexec >= 2:
                 for i in range(1, self.numexec):
                     self.createAndSubmitExecutorJobFile(i, time=t, after=serverJobId)
             # in principle a server could overlap the previous generation of clients,
             # but at present the clients just die within seconds
-    def createAndSubmitMainJobFile(self,time, afterok=None):
-        return self.constructAndSubmitJobFile("-pipeline-",time, isMainFile=True, afterok=afterok)
+    def createAndSubmitMainJobFile(self,time, afterany=None):
+        return self.constructAndSubmitJobFile("-pipeline-",time, isMainFile=True, afterany=afterany)
     def createAndSubmitExecutorJobFile(self, i, time, after):
         # This is called directly from pipeline_executor
         # For multiple executors, this will be called multiple-times.
@@ -136,14 +136,6 @@ class runOnQueueingSystem():
         self.jobFile.write("#PBS -l nodes=%d:ppn=%d,walltime=%s\n" % (requestNodes, self.ppn, timestr))
         self.jobFile.write("#PBS -N %s\n" % name)
         self.jobFile.write("#PBS -q %s\n" % self.queue_name)
-        # the `module` shell procedure likes to return 0 when it shouldn't (and fails when `|`ed for some reason), so redirect to a file and grep for an error message:
-        # TODO modules (or even calls to module) shouldn't be hard-coded-call an init script
-        #self.jobFile.write("module purge\n")
-        #self.jobFile.write("export fh=$(mktemp)\n")
-        # TODO don't load pydpiper-dev for normal users
-        #self.jobFile.write("module load use.own gcc intel/14.0.1 python/2.7.8 gotoblas hdf5 gnuplot Xlibraries octave quarantine_tigger pydpiper-dev 2> $fh \n")
-        #self.jobFile.write("cat $fh | tee /dev/stderr | grep 'ERROR' && exit 13\n")
-        #self.jobFile.write("rm $fh \n")
         if self.prologue_file is not None:
             try:
                 with open(self.prologue_file, 'r') as fh:
@@ -151,7 +143,7 @@ class runOnQueueingSystem():
                         self.jobFile.write(l)
                 self.jobFile.write('\n')
             except:
-                logger.exception("Failed copying prologue script into submit script")
+                print("Failed copying prologue script into submit script")
                 raise
         self.jobFile.write("cd $PBS_O_WORKDIR\n\n") # jobs start in $HOME; $PBS_O_WORKDIR is the submission directory
         if isMainFile:
@@ -166,15 +158,15 @@ class runOnQueueingSystem():
         """Completes pbs script--wait for background jobs to terminate as per scinet wiki"""
         self.jobFile.write("wait" + "\n")
         self.jobFile.close()
-    def submitJob(self, jobName, after=None, afterok=None):
+    def submitJob(self, jobName, after=None, afterany=None):
         """Submit job to batch queueing system"""
         os.environ['PYRO_LOGFILE'] = jobName + '.log'
         # use -V to get all (Pyro) variables, incl. PYRO_LOGFILE
-        cmd = ['qsub', '-o', jobName + '-eo.log', '-V']
+        cmd = ['qsub', '-o', jobName + '-o.log', '-e', jobName + '-e.log', '-V']
         if after is not None:
             cmd += ['-Wdepend=after:' + after]
-        if afterok is not None:
-            cmd += ['-Wdepend=afterany:' + afterok] # FIXME `afterok` -> `afterany`
+        if afterany is not None:
+            cmd += ['-Wdepend=afterany:' + afterany]
         cmd += [self.jobFileName]
         out = subprocess.check_output(cmd)
         jobId = out.strip()

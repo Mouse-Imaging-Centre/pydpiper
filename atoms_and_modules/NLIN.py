@@ -27,14 +27,14 @@ def addNlinRegArgumentGroup(parser):
     group.add_argument("--registration-method", dest="reg_method",
                       default="mincANTS", type=str,
                       help="Specify whether to use minctracc or mincANTS for non-linear registrations. "
-                           "[Default = %default]")
+                           "[Default = %(default)s]")
     group.add_argument("--nlin-protocol", dest="nlin_protocol",
                      type=str, default=None,
                      help="Can optionally specify a registration protocol that is different from defaults. "
                      "Parameters must be specified as in either or the following examples: \n"
                      "applications_testing/test_data/minctracc_example_nlin_protocol.csv \n"
                      "applications_testing/test_data/mincANTS_example_nlin_protocol.csv \n"
-                     "[Default = %default]")
+                     "[Default = %(default)s]")
     parser.add_argument_group(group)
     
 def finalGenerationFileNames(inputFH):

@@ -168,8 +168,7 @@ class Pipeline():
         self.runnable = Queue.Queue()
         # an array to keep track of stage memory requirements
         self.mem_req_for_runnable = []
-        # a list of currently running stages
-        self.currently_running_stages = []
+        self.currently_running_stages = set([])
         # the current stage counter
         self.counter = 0
         # hash to keep the output to stage association
@@ -410,7 +409,7 @@ class Pipeline():
         # produce bizarre results as both processes write files
         assert self.stages[index].status != 'running', 'stage %d is already running' % index
         self.addRunningStageToClient(clientURI, index)
-        self.currently_running_stages.append(index)
+        self.currently_running_stages.add(index)
         self.stages[index].setRunning()
 
     def checkIfRunnable(self, index):
@@ -454,7 +453,7 @@ class Pipeline():
 
     def removeFromRunning(self, index, clientURI, new_status):
         try:
-            self.currently_running_stages.remove(index)
+            self.currently_running_stages.discard(index)
         except:
             logger.exception("Unable to remove stage %d from client %s's stages: %s", index, clientURI, self.clients[clientURI].running_stages)
         self.removeRunningStageFromClient(clientURI, index)
@@ -821,7 +820,7 @@ def launchServer(pipeline, options):
             except:
                 logger.exception("Server loop encountered a problem.  Shutting down.")
             finally:
-                logger.info("Server loop going to shut down ... setting event")
+                logger.debug("Server loop going to shut down ...")
                 p.set_shutdown_ev()
 
         h = Process(target=loop)

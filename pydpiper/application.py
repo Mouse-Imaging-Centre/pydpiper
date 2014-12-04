@@ -17,7 +17,7 @@ def addApplicationArgumentGroup(parser):
     group = parser.add_argument_group("General application options", "General options for all pydpiper applications.")
     group.add_argument("--restart", dest="restart", 
                                action="store_false", default=True,
-                               help="Restart pipeline using backup files. [default = %default]")
+                               help="Restart pipeline using backup files. [default = %(default)s]")
     group.add_argument("--no-restart", dest="restart", 
                                action="store_false", help="Opposite of --restart")
     group.add_argument("--output-dir", dest="output_directory",
@@ -25,12 +25,12 @@ def addApplicationArgumentGroup(parser):
                                help="Directory where output data and backups will be saved.")
     group.add_argument("--create-graph", dest="create_graph",
                                action="store_true", default=False,
-                               help="Create a .dot file with graphical representation of pipeline relationships [default = %default]")
+                               help="Create a .dot file with graphical representation of pipeline relationships [default = %(default)s]")
     parser.set_defaults(execute=True)
     parser.set_defaults(verbose=False)
     group.add_argument("--execute", dest="execute",
                                action="store_true",
-                               help="Actually execute the planned commands [default = %default]")
+                               help="Actually execute the planned commands [default = %(default)s]")
     group.add_argument("--no-execute", dest="execute",
                                action="store_false",
                                help="Opposite of --execute")
@@ -39,7 +39,7 @@ def addApplicationArgumentGroup(parser):
                                help="Print the version number and exit.")
     group.add_argument("--verbose", dest="verbose",
                                action="store_true",
-                               help="Be verbose in what is printed to the screen [default = %default]")
+                               help="Be verbose in what is printed to the screen [default = %(default)s]")
     group.add_argument("--no-verbose", dest="verbose",
                                action="store_false",
                                help="Opposite of --verbose [default]")
@@ -128,7 +128,6 @@ class AbstractApplication(object):
         logger.info("Calling `start`")
         self._setup_options()
         self.setup_options()
-        
         self.options = self.parser.parse_args()
         self.args = self.options.files
 

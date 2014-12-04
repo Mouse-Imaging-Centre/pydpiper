@@ -16,19 +16,19 @@ def addMAGeTArgumentGroup(parser):
                        help="Directory of existing atlas/label pairs")
     group.add_argument("--no-pairwise", dest="pairwise",
                        action="store_false", default=True,
-                       help="""Pairwise crossing of templates. [Default = %default]. If specified, only register inputs to atlases in library""")
+                       help="""Pairwise crossing of templates. [Default = %(default)s]. If specified, only register inputs to atlases in library""")
     group.add_argument("--mask", dest="mask",
                        action="store_true", default=False,
-                       help="Create a mask for all images prior to handling labels. [Default = %default]")
+                       help="Create a mask for all images prior to handling labels. [Default = %(default)s]")
     group.add_argument("--mask-only", dest="mask_only",
                        action="store_true", default=False,
-                       help="Create a mask for all images only, do not run full algorithm. [Default = %default]")
+                       help="Create a mask for all images only, do not run full algorithm. [Default = %(default)s]")
     group.add_argument("--max-templates", dest="max_templates",
                        default=25, type=int,
-                       help="Maximum number of templates to generate. [Default = %default]")
+                       help="Maximum number of templates to generate. [Default = %(default)s]")
     group.add_argument("--masking-method", dest="mask_method",
                        default="minctracc", type=str,
-                       help="Specify whether to use minctracc or mincANTS for masking. [Default = %default].")
+                       help="Specify whether to use minctracc or mincANTS for masking. [Default = %(default)s].")
     parser.add_argument_group(group)
 
 def maskFiles(FH, isAtlas, numAtlases=1):

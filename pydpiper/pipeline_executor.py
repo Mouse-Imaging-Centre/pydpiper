@@ -40,50 +40,50 @@ def addExecutorArgumentGroup(parser):
                        help="Use the Pyro NameServer to store object locations. Currently a Pyro nameserver must be started separately for this to work.")
     group.add_argument("--num-executors", dest="num_exec", 
                        type=int, default=-1, 
-                       help="Number of independent executors to launch. [Default = %default. Code will not run without an explicit number specified.]")
+                       help="Number of independent executors to launch. [Default = %(default)s. Code will not run without an explicit number specified.]")
     group.add_argument("--max-failed-executors", dest="max_failed_executors",
                       type=int, default=2,
-                      help="Maximum number of failed executors before we stop relaunching. [Default = %default]")
+                      help="Maximum number of failed executors before we stop relaunching. [Default = %(default)s]")
     group.add_argument("--time", dest="time", 
                        type=str, default=None,
                        help="Wall time to request for each server/executor in the format hh:mm:ss. Required only if --queue-type=pbs. Current default on PBS is 48:00:00.")
     group.add_argument("--proc", dest="proc", 
                        type=int, default=1,
-                       help="Number of processes per executor. Also sets max value for processor use per executor. [Default = %default]")
+                       help="Number of processes per executor. Also sets max value for processor use per executor. [Default = %(default)s]")
     group.add_argument("--mem", dest="mem", 
                        type=float, default=6,
-                       help="Total amount of requested memory (in GB) for all processes the executor runs. [Default = %default].")
+                       help="Total amount of requested memory (in GB) for all processes the executor runs. [Default = %(default)s].")
     group.add_argument("--ppn", dest="ppn", 
                        type=int, default=8,
-                       help="Number of processes per node. Used when --queue-type=pbs. [Default = %default].")
+                       help="Number of processes per node. Used when --queue-type=pbs. [Default = %(default)s].")
     group.add_argument("--queue-name", dest="queue_name", type=str, default=None,
                        help="Name of the queue, e.g., all.q (MICe) or batch (SciNet)")
     group.add_argument("--queue-type", dest="queue_type", type=str, default=None,
-                       help="""Queue type to submit jobs, i.e., "sge" or "pbs".  [Default = %default]""")
+                       help="""Queue type to submit jobs, i.e., "sge" or "pbs".  [Default = %(default)s]""")
     group.add_argument("--queue", dest="queue", 
                        type=str, default=None,
                        help="[DEPRECATED; use --queue-type instead.]  Use specified queueing system to submit jobs. Default is None.")              
     group.add_argument("--sge-queue-opts", dest="sge_queue_opts", 
                        type=str, default=None,
-                       help="[DEPRECATED; use --queue-name instead.]  For --queue=sge, allows you to specify different queues. [Default = %default]")
+                       help="[DEPRECATED; use --queue-name instead.]  For --queue=sge, allows you to specify different queues. [Default = %(default)s]")
     group.add_argument("--time-to-seppuku", dest="time_to_seppuku", 
                        type=int, default=1,
-                       help="The number of minutes an executor is allowed to continuously sleep, i.e. wait for an available job, while active on a compute node/farm before it kills itself due to resource hogging. [Default = %default]")
+                       help="The number of minutes an executor is allowed to continuously sleep, i.e. wait for an available job, while active on a compute node/farm before it kills itself due to resource hogging. [Default = %(default)s]")
     group.add_argument("--time-to-accept-jobs", dest="time_to_accept_jobs", 
                        type=int, default=180,
-                       help="The number of minutes after which an executor will not accept new jobs anymore. This can be useful when running executors on a batch system where other (competing) jobs run for a limited amount of time. The executors can behave in a similar way by given them a rough end time. [Default = %default]")
+                       help="The number of minutes after which an executor will not accept new jobs anymore. This can be useful when running executors on a batch system where other (competing) jobs run for a limited amount of time. The executors can behave in a similar way by given them a rough end time. [Default = %(default)s]")
     group.add_argument("--lifetime", dest="lifetime",
                        type=int, default=None,
-                       help="Maximum lifetime in seconds of the server, or infinite if None. [Default = %default]")
+                       help="Maximum lifetime in seconds of the server, or infinite if None. [Default = %(default)s]")
     group.add_argument('--local', dest="local", action='store_true', help="Don't submit anything to any specified queueing system but instead run as an executor")
     group.add_argument("--config-file", type=str, metavar='config_file', is_config_file=True,
                        required=False, help='Config file location')
     group.add_argument("--prologue-file", type=str, metavar='file',
                        help="Location of a shell script to inline into PBS submit script to set paths, load modules, etc.")
     group.add_argument("--min-walltime", dest="min_walltime", type=int, default = 0,
-            help="Min walltime (s) allowed by the queuing system [Default = %default]")
+            help="Min walltime (s) allowed by the queuing system [Default = %(default)s]")
     group.add_argument("--max-walltime", dest="max_walltime", type=int, default = None,
-            help="Max walltime (s) allowed for jobs on the queuing system, or infinite if None [Default = %default]")
+            help="Max walltime (s) allowed for jobs on the queuing system, or infinite if None [Default = %(default)s]")
 
 def noExecSpecified(numExec):
     #Exit with helpful message if no executors are specified

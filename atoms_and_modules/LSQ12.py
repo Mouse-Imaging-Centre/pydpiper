@@ -19,22 +19,22 @@ def addLSQ12ArgumentGroup(parser):
                         "Options for performing a pairwise, affine registration")
     group.add_argument("--lsq12-max-pairs", dest="lsq12_max_pairs",
                        type=str, default=None,
-                       help="Maximum number of pairs to register together. NOTE: Not yet implemented!! [Default = %default]")
+                       help="Maximum number of pairs to register together. NOTE: Not yet implemented!! [Default = %(default)s]")
     group.add_argument("--lsq12-likefile", dest="lsq12_likeFile",
                        type=str, default=None,
                        help="Can optionally specify a like file for resampling at the end of pairwise "
-                       "alignment. Default is None, which means that the input file will be used. [Default = %default]")
+                       "alignment. Default is None, which means that the input file will be used. [Default = %(default)s]")
     group.add_argument("--lsq12-subject-matter", dest="lsq12_subject_matter",
                        type=str, default=None,
                        help="Can specify the subject matter for the pipeline. This will set the parameters "
                        "for the 12 parameter alignment based on the subject matter rather than the file "
-                       "resolution. Currently supported option is: \"mousebrain\". [Default = %default].")
+                       "resolution. Currently supported option is: \"mousebrain\". [Default = %(default)s].")
     group.add_argument("--lsq12-protocol", dest="lsq12_protocol",
                        type=str, default=None,
                        help="Can optionally specify a registration protocol that is different from defaults. "
                        "Parameters must be specified as in the following example: \n"
                        "applications_testing/test_data/minctracc_example_linear_protocol.csv \n"
-                       "[Default = %default].")
+                       "[Default = %(default)s].")
     parser.add_argument_group(group)
 
 class LSQ12Registration(AbstractApplication):
