@@ -13,6 +13,28 @@ import sys
 
 logger = logging.getLogger(__name__)
 
+def verifyCorrectLSQ6TargetOptions(bootstrap, init_model, lsq6_target):
+    """
+    This function can be called using the parameters that are set using 
+    the flags:
+    --bootstrap
+    --init-model
+    --lsq6-target
+    
+    it will check that exactly one of the options is provided and exits 
+    otherwise. 
+    """
+    # check how many options have been specified that can be used as the initial target
+    number_of_target_options = sum((bootstrap   != False,
+                                    init_model  != None,
+                                    lsq6_target != None))
+    if(number_of_target_options == 0):
+        print "\nError: please specify a target for the 6 parameter alignmnet. Options are: --lsq6-target, --init-model, --bootstrap.\n"
+        sys.exit()
+    if(number_of_target_options > 1):
+        print "\nError: please specify only one of the following options: --lsq6-target, --init-model, --bootstrap. Don't know which target to use...\n"
+        sys.exit()
+
 def addLSQ6ArgumentGroup(parser):
     """
         standard options for the LSQ6 module
@@ -26,6 +48,9 @@ def addLSQ6ArgumentGroup(parser):
                      help="File in standard space in the initial model. The initial model "
                      "can also have a file in native space and potentially a transformation "
                      "file. See our wiki for detailed information on initial models. [Default = %default]")
+    group.add_argument("--bootstrap", dest="bootstrap",
+                     action="store_true", default=False,
+                     help="Use the first inputfile to the pipeline as the target for the 6 parameter alignment. [Default = %(default)]")
     parser.set_defaults(lsq6_method="lsq6_large_rotations")
     parser.set_defaults(nuc=True)
     parser.set_defaults(inormalize=True)
@@ -132,16 +157,30 @@ class LSQ6Registration(AbstractApplication):
         options = self.options
         #args = self.args
 
+        verifyCorrectLSQ6TargetOptions(options.bootstrap,
+                                       options.init_model,
+                                       options.lsq6_target)
+
         # Setup output directories for LSQ6 registration.        
         dirs = rf.setupDirectories(self.outputDir, options.pipeline_name, module="LSQ6")
         
         # create file handles for the input file(s) 
         inputFiles = rf.initializeInputFiles(options.files, dirs.processedDir, maskDir=options.mask_dir)
 
+        # if we are running a bootstrap or lsq6_target option, pass in the correct target
+        target_file_for_lsq6 = None
+        target_file_directory = None
+        if(options.bootstrap):
+            target_file_for_lsq6 = inputFiles[0].inputFileName
+            target_file_directory = fh.createSubDir(self.outputDir,options.pipeline_name + "_bootstrap_file")
+        if(options.lsq6_target):
+            target_file_for_lsq6 = options.lsq6_target
+            target_file_directory = fh.createSubDir(self.outputDir,options.pipeline_name + "_target_file")
+
         #Setup init model and inital target. Function also exists if no target was specified.
         initModel, targetPipeFH = rf.setInitialTarget(options.init_model, 
-                                                      options.lsq6_target, 
-                                                      dirs.lsq6Dir,
+                                                      target_file_for_lsq6, 
+                                                      target_file_directory,
                                                       self.outputDir)
         
         # Initialize LSQ6, NonUniformityCorrection and IntensityNormalization classes and
@@ -258,16 +297,25 @@ class LSQ6NUCInorm(object):
         self.p.addPipeline(lsq6module.p)
         
         if self.options.nuc:
+            already_resample_to_LSQ6 = False
+            if not self.options.inormalize:
+                # the non uniformity correction is performed in native space 
+                # by default (useOriginalInput=True). If we are not also 
+                # performing intensity normalization, we need to already
+                # resample the non uniformity corrected file into LSQ6 space
+                already_resample_to_LSQ6 = True
             nucorrection = NonUniformityCorrection(self.inputFiles, 
                                                    initial_model=self.initModel,
-                                                   resampleNUCtoLSQ6=False)
+                                                   resampleNUCtoLSQ6=already_resample_to_LSQ6,
+                                                   targetForLSQ6=self.target)
             nucorrection.finalize()
             self.p.addPipeline(nucorrection.p)
         
         if self.options.inormalize:
             intensity_normalization = IntensityNormalization(self.inputFiles,
                                                              initial_model=self.initModel,
-                                                             resampleINORMtoLSQ6=True)
+                                                             resampleINORMtoLSQ6=True,
+                                                             targetForLSQ6=self.target)
             self.p.addPipeline(intensity_normalization.p)
 
 class NonUniformityCorrection(object):
@@ -286,6 +334,10 @@ class NonUniformityCorrection(object):
         * initial model can be given in order to use its mask 
             - assumption: if an initial model is provided, the input files are assumed
             to be registered towards the standard space file
+            
+        * targetForLSQ6: if no initial model is used, but there is a target file (either specified
+        through --lsq6-target or --bootstrap), we can get the lsq6 transformation based on that
+        file in case we want to resample to LSQ6 space
         
         #TODO: you should use the following boolean only if the file is not in its original
         space anymore 
@@ -316,11 +368,13 @@ class NonUniformityCorrection(object):
                  singlemask = None,
                  useOriginalInput = True,
                  resampleNUCtoLSQ6 = False,
-                 initial_model = None):
+                 initial_model = None,
+                 targetForLSQ6 = None):
         # TODO: allow for a single single target instead of using an initial model??
         self.p                 = Pipeline()
         self.inputs            = inputFiles
         self.initial_model     = initial_model
+        self.targetForLSQ6     = targetForLSQ6
         self.useOriginalInput  = useOriginalInput
         self.resampleNUCtoLSQ6 = resampleNUCtoLSQ6
         self.singlemask        = singlemask
@@ -520,10 +574,10 @@ class NonUniformityCorrection(object):
         """
         if(not(rf.isFileHandler(self.inputs[0]))):
             print "Error: resampleNUCtoLSQ6Space can only be called on file handlers. Goodbye.\n"
-            sys.exit()
-        
-        if(self.initial_model == None):
-            print "Error: resampleNUCtoLSQ6Space does not know what to do without an initial model at this moment. Sorry. Goodbye.\n"
+            sys.exit()        
+
+        if(self.initial_model == None and self.targetForLSQ6 == None):
+            print "Error: resampleNUCtoLSQ6Space does not know what to do without an initial model and without a target file for the LSQ6 stage. Sorry. Goodbye.\n"
             sys.exit()
             
         # create a new group for these files
@@ -531,7 +585,11 @@ class NonUniformityCorrection(object):
             
         nuCorrectedLSQ6 = []
         nuCorrectedLSQ6Masks = []
-        standardModelFile = self.initial_model[0]
+        lsq6SpaceTarget = None
+        if self.initial_model:
+            lsq6SpaceTarget = self.initial_model[0]
+        else:
+            lsq6SpaceTarget = self.targetForLSQ6
         for inputFH in self.inputs:
                 # find the lsq6 group again
                 indexLsq6 = None 
@@ -540,30 +598,29 @@ class NonUniformityCorrection(object):
                         indexLsq6 = index
                 if(indexLsq6 != None):
                     # find the last transform that is associated with the standard space model
-                    if(inputFH.groupedFiles[indexLsq6].transforms.has_key(standardModelFile)):
-                        transformToStandardModel = inputFH.getLastXfm(standardModelFile, groupIndex=indexLsq6)
+                    if(inputFH.groupedFiles[indexLsq6].transforms.has_key(lsq6SpaceTarget)):
+                        transformToLSQ6 = inputFH.getLastXfm(lsq6SpaceTarget, groupIndex=indexLsq6)
                         outFileBase = fh.removeBaseAndExtension(inputFH.getLastBasevol()) + "_lsq6.mnc"
                         outFileDir  = inputFH.resampledDir
                         outFile     = fh.createBaseName(outFileDir, outFileBase)
                         nuCorrectedLSQ6.append(outFile)
-#                         rs = ma.mincresample(inputFH, 
-#                                              standardModelFile, 
-#                                              likeFile=standardModelFile,  
-#                                              transform=transformToStandardModel,
-#                                              output=outFile,
-#                                              argArray=["-sinc"])
-#                         rs.name = "mincresample NUC to LSQ6"
-#                         print rs.cmd 
-#                         self.p.addStage(rs)
                         resamplings = ma.mincresampleFileAndMask(inputFH,
-                                                                 standardModelFile,
+                                                                 lsq6SpaceTarget,
                                                                  nameForStage="mincresample NUC to LSQ6",
-                                                                 likeFile=standardModelFile,  
-                                                                 transform=transformToStandardModel,
+                                                                 likeFile=lsq6SpaceTarget,  
+                                                                 transform=transformToLSQ6,
                                                                  output=outFile,
                                                                  argArray=["-sinc"])
                         nuCorrectedLSQ6Masks.append(resamplings.outputFilesMask[0])
                         self.p.addPipeline(resamplings.p)
+                    else:
+                        # not good either...
+                        print "\nError: can not find the 6 parameter transformation between: %s and %s (in the function: resampleNUCtoLSQ6Space). Exiting now...\n" % (inputFH.inputFileName, lsq6SpaceTarget.inputFileName)
+                        sys.exit()
+                else:
+                    #oops...
+                    print "\nError: we were not able to find the \"lsq6\" class of files during the non uniformity correction stage. Were trying to determine the transformation that resamples the non uniformity corrected file in native space to LSQ6 space. Exiting now...\n\n"
+                    sys.exit()
         self.NUCorrectedLSQ6 = nuCorrectedLSQ6
         self.NUCorrectedLSQ6Masks = nuCorrectedLSQ6Masks
 
@@ -605,10 +662,13 @@ class IntensityNormalization(object):
             - "-meanOfLogRatios"
             - "-medianOfRatios"
 
+        * similarly to what is done in the non uniformity correction class, a target file for 
+        the LSQ6 stage can be specified. That way we still know which transformation to use 
+        when resampleINORMtoLSQ6 is provided. 
+
         * resampleINORMtoLSQ6 - 
         
          === can only be called on file handlers ===
-         === needs an initial model in order to work ===
           
         In a way this is a special option for the class.  The intensity normalization
         class can be used on any kind of input at any stage in a pipeline.  But when running an
@@ -636,7 +696,8 @@ class IntensityNormalization(object):
                  inorm_const = 1000,
                  method = "-ratioOfMedians",
                  resampleINORMtoLSQ6 = False,
-                 initial_model = None):
+                 initial_model = None,
+                 targetForLSQ6 = None):
         self.p                   = Pipeline()
         self.inputs              = inputFiles
         self.masks               = None
@@ -644,6 +705,7 @@ class IntensityNormalization(object):
         self.method              = method
         self.resampleINORMtoLSQ6 = resampleINORMtoLSQ6
         self.initial_model       = initial_model
+        self.targetForLSQ6       = targetForLSQ6
         self.INORM               = []
         self.INORMLSQ6           = []
         self.INORMLSQ6Masks      = []
@@ -732,14 +794,15 @@ class IntensityNormalization(object):
             
             The assumption is that an lsq6 registration has been performed, and that there
             is a transformation from the native input file to the standard space in the 
-            initial model.  
+            initial model /// or that we have the 6 parameter transform from native to
+            the pipeline target (possibly given by --lsq6-target or --bootstrap)
         """
         if(not(rf.isFileHandler(self.inputs[0]))):
             print "Error: resampleINORMtoLSQ6Space can only be called on file handlers. Goodbye.\n"
             sys.exit()
         
-        if(self.initial_model == None):
-            print "Error: resampleINORMtoLSQ6Space does not know what to do without an initial model at this moment. Sorry. Goodbye.\n"
+        if(self.initial_model == None and self.targetForLSQ6 == None):
+            print "Error: resampleINORMtoLSQ6Space does not know what to do without an initial model and without a target file for the LSQ6 stage. Sorry. Goodbye.\n"
             sys.exit()
             
         # create a new group for these files
@@ -747,7 +810,10 @@ class IntensityNormalization(object):
             
         INORMLSQ6 = []
         INORMLSQ6Masks = []
-        standardModelFile = self.initial_model[0]
+        if self.initial_model:
+            lsq6SpaceTarget = self.initial_model[0]
+        else:
+            lsq6SpaceTarget = self.targetForLSQ6
         for inputFH in self.inputs:
                 # find the lsq6 group again
                 indexLsq6 = None 
@@ -756,30 +822,29 @@ class IntensityNormalization(object):
                         indexLsq6 = index
                 if(indexLsq6 != None):
                     # find the last transform that is associated with the standard space model
-                    if(inputFH.groupedFiles[indexLsq6].transforms.has_key(standardModelFile)):
-                        transformToStandardModel = inputFH.getLastXfm(standardModelFile, groupIndex=indexLsq6)
+                    if(inputFH.groupedFiles[indexLsq6].transforms.has_key(lsq6SpaceTarget)):
+                        transformToLSQ6 = inputFH.getLastXfm(lsq6SpaceTarget, groupIndex=indexLsq6)
                         outFileBase = fh.removeBaseAndExtension(inputFH.getLastBasevol()) + "_lsq6.mnc"
                         outFileDir  = inputFH.resampledDir
                         outFile     = fh.createBaseName(outFileDir, outFileBase)
                         INORMLSQ6.append(outFile)
-#                         rs = ma.mincresample(inputFH, 
-#                                              standardModelFile, 
-#                                              likeFile=standardModelFile,  
-#                                              transform=transformToStandardModel,
-#                                              output=outFile,
-#                                              argArray=["-sinc"])
-#                         rs.name = "mincresample INORM to LSQ6"
-#                         print rs.cmd 
-#                         self.p.addStage(rs)
                         resamplings = ma.mincresampleFileAndMask(inputFH, 
-                                                                 standardModelFile, 
+                                                                 lsq6SpaceTarget, 
                                                                  nameForStage = "mincresample INORM to LSQ6",
-                                                                 likeFile=standardModelFile,  
-                                                                 transform=transformToStandardModel,
+                                                                 likeFile=lsq6SpaceTarget,  
+                                                                 transform=transformToLSQ6,
                                                                  output=outFile,
                                                                  argArray=["-sinc"])
                         INORMLSQ6Masks.append(resamplings.outputFilesMask[0])
                         self.p.addPipeline(resamplings.p)
+                    else:
+                        # not good either...
+                        print "\nError: can not find the 6 parameter transformation between: %s and %s (in the function: resampleINORMtoLSQ6Space). Exiting now...\n" % (inputFH.inputFileName, lsq6SpaceTarget.inputFileName)
+                        sys.exit()
+                else:
+                    # oops...
+                    print "\nError: we were not able to find the \"lsq6\" class of files during the inormalize stage. Were trying to determine the transformation that resamples the intensity normalized file in native space to LSQ6 space. Exiting now...\n\n"
+                    sys.exit()
         self.INORMLSQ6 = INORMLSQ6
         self.INORMLSQ6Masks = INORMLSQ6Masks
 
