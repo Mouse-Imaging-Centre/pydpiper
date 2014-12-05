@@ -314,7 +314,8 @@ class LSQ6NUCInorm(object):
         if self.options.inormalize:
             intensity_normalization = IntensityNormalization(self.inputFiles,
                                                              initial_model=self.initModel,
-                                                             resampleINORMtoLSQ6=True)
+                                                             resampleINORMtoLSQ6=True,
+                                                             targetForLSQ6=self.target)
             self.p.addPipeline(intensity_normalization.p)
 
 class NonUniformityCorrection(object):
@@ -612,6 +613,10 @@ class NonUniformityCorrection(object):
                                                                  argArray=["-sinc"])
                         nuCorrectedLSQ6Masks.append(resamplings.outputFilesMask[0])
                         self.p.addPipeline(resamplings.p)
+                    else:
+                        # not good either...
+                        print "\nError: can not find the 6 parameter transformation between: %s and %s (in the function: resampleNUCtoLSQ6Space). Exiting now...\n" % (inputFH.inputFileName, lsq6SpaceTarget.inputFileName)
+                        sys.exit()
                 else:
                     #oops...
                     print "\nError: we were not able to find the \"lsq6\" class of files during the non uniformity correction stage. Were trying to determine the transformation that resamples the non uniformity corrected file in native space to LSQ6 space. Exiting now...\n\n"
@@ -657,10 +662,13 @@ class IntensityNormalization(object):
             - "-meanOfLogRatios"
             - "-medianOfRatios"
 
+        * similarly to what is done in the non uniformity correction class, a target file for 
+        the LSQ6 stage can be specified. That way we still know which transformation to use 
+        when resampleINORMtoLSQ6 is provided. 
+
         * resampleINORMtoLSQ6 - 
         
          === can only be called on file handlers ===
-         === needs an initial model in order to work ===
           
         In a way this is a special option for the class.  The intensity normalization
         class can be used on any kind of input at any stage in a pipeline.  But when running an
@@ -688,7 +696,8 @@ class IntensityNormalization(object):
                  inorm_const = 1000,
                  method = "-ratioOfMedians",
                  resampleINORMtoLSQ6 = False,
-                 initial_model = None):
+                 initial_model = None,
+                 targetForLSQ6 = None):
         self.p                   = Pipeline()
         self.inputs              = inputFiles
         self.masks               = None
@@ -696,6 +705,7 @@ class IntensityNormalization(object):
         self.method              = method
         self.resampleINORMtoLSQ6 = resampleINORMtoLSQ6
         self.initial_model       = initial_model
+        self.targetForLSQ6       = targetForLSQ6
         self.INORM               = []
         self.INORMLSQ6           = []
         self.INORMLSQ6Masks      = []
@@ -784,14 +794,15 @@ class IntensityNormalization(object):
             
             The assumption is that an lsq6 registration has been performed, and that there
             is a transformation from the native input file to the standard space in the 
-            initial model.  
+            initial model /// or that we have the 6 parameter transform from native to
+            the pipeline target (possibly given by --lsq6-target or --bootstrap)
         """
         if(not(rf.isFileHandler(self.inputs[0]))):
             print "Error: resampleINORMtoLSQ6Space can only be called on file handlers. Goodbye.\n"
             sys.exit()
         
-        if(self.initial_model == None):
-            print "Error: resampleINORMtoLSQ6Space does not know what to do without an initial model at this moment. Sorry. Goodbye.\n"
+        if(self.initial_model == None and self.targetForLSQ6 == None):
+            print "Error: resampleINORMtoLSQ6Space does not know what to do without an initial model and without a target file for the LSQ6 stage. Sorry. Goodbye.\n"
             sys.exit()
             
         # create a new group for these files
@@ -799,7 +810,10 @@ class IntensityNormalization(object):
             
         INORMLSQ6 = []
         INORMLSQ6Masks = []
-        standardModelFile = self.initial_model[0]
+        if self.initial_model:
+            lsq6SpaceTarget = self.initial_model[0]
+        else:
+            lsq6SpaceTarget = self.targetForLSQ6
         for inputFH in self.inputs:
                 # find the lsq6 group again
                 indexLsq6 = None 
@@ -808,30 +822,29 @@ class IntensityNormalization(object):
                         indexLsq6 = index
                 if(indexLsq6 != None):
                     # find the last transform that is associated with the standard space model
-                    if(inputFH.groupedFiles[indexLsq6].transforms.has_key(standardModelFile)):
-                        transformToStandardModel = inputFH.getLastXfm(standardModelFile, groupIndex=indexLsq6)
+                    if(inputFH.groupedFiles[indexLsq6].transforms.has_key(lsq6SpaceTarget)):
+                        transformToLSQ6 = inputFH.getLastXfm(lsq6SpaceTarget, groupIndex=indexLsq6)
                         outFileBase = fh.removeBaseAndExtension(inputFH.getLastBasevol()) + "_lsq6.mnc"
                         outFileDir  = inputFH.resampledDir
                         outFile     = fh.createBaseName(outFileDir, outFileBase)
                         INORMLSQ6.append(outFile)
-#                         rs = ma.mincresample(inputFH, 
-#                                              standardModelFile, 
-#                                              likeFile=standardModelFile,  
-#                                              transform=transformToStandardModel,
-#                                              output=outFile,
-#                                              argArray=["-sinc"])
-#                         rs.name = "mincresample INORM to LSQ6"
-#                         print rs.cmd 
-#                         self.p.addStage(rs)
                         resamplings = ma.mincresampleFileAndMask(inputFH, 
-                                                                 standardModelFile, 
+                                                                 lsq6SpaceTarget, 
                                                                  nameForStage = "mincresample INORM to LSQ6",
-                                                                 likeFile=standardModelFile,  
-                                                                 transform=transformToStandardModel,
+                                                                 likeFile=lsq6SpaceTarget,  
+                                                                 transform=transformToLSQ6,
                                                                  output=outFile,
                                                                  argArray=["-sinc"])
                         INORMLSQ6Masks.append(resamplings.outputFilesMask[0])
                         self.p.addPipeline(resamplings.p)
+                    else:
+                        # not good either...
+                        print "\nError: can not find the 6 parameter transformation between: %s and %s (in the function: resampleINORMtoLSQ6Space). Exiting now...\n" % (inputFH.inputFileName, lsq6SpaceTarget.inputFileName)
+                        sys.exit()
+                else:
+                    # oops...
+                    print "\nError: we were not able to find the \"lsq6\" class of files during the inormalize stage. Were trying to determine the transformation that resamples the intensity normalized file in native space to LSQ6 space. Exiting now...\n\n"
+                    sys.exit()
         self.INORMLSQ6 = INORMLSQ6
         self.INORMLSQ6Masks = INORMLSQ6Masks
 
