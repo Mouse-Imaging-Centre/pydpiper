@@ -11,6 +11,7 @@ import atoms_and_modules.minc_parameters as mp
 import atoms_and_modules.stats_tools as st
 import os
 import logging
+from datetime import date
 
 
 logger = logging.getLogger(__name__)
@@ -40,6 +41,12 @@ class MBMApplication(AbstractApplication):
         lsq6.verifyCorrectLSQ6TargetOptions(options.bootstrap,
                                             options.init_model,
                                             options.lsq6_target)
+
+        # if no pipeline name was provided, initialize it here with the current date
+        # setupDirectories deals with a missing pipeline name well, but we use this variable
+        # in some more places
+        if not options.pipeline_name:
+            options.pipeline_name = str(date.today()) + "_pipeline"
 
         # Setup output directories for different registration modules.        
         dirs = rf.setupDirectories(self.outputDir, options.pipeline_name, module="ALL")
