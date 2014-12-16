@@ -17,11 +17,10 @@ import Pyro4
 import re
 
 Pyro4.config.SERVERTYPE = "multiplex"
-Pyro4.config.DETAILED_TRACEBACK = os.getenv("PYRO_DETAILED_TRACEBACK", True)
 
 WAIT_TIMEOUT = 5.0
 HEARTBEAT_INTERVAL = 10.0
-LATENCY_TOLERANCE = 5.0
+LATENCY_TOLERANCE = 15.0
 # q.SERVER_START_TIME
 SHUTDOWN_TIME = WAIT_TIMEOUT + LATENCY_TOLERANCE
 
@@ -419,9 +418,12 @@ class pipelineExecutor():
         return self.runningMem == 0 and self.runningProcs == 0 and self.prev_time
 
     def heartbeat(self):
-        while self.registered_with_server:
-            self.pyro_proxy_for_server.updateClientTimestamp(self.clientURI)
-            time.sleep(HEARTBEAT_INTERVAL)
+        try:
+            while self.registered_with_server:
+                self.pyro_proxy_for_server.updateClientTimestamp(self.clientURI)
+                time.sleep(HEARTBEAT_INTERVAL)
+        except:
+            logger.info("Heartbeat thread crashed: ")
 
     # use an event set/timeout system to run the executor mainLoop -
     # we might want to pass some extra information in addition to waking the system

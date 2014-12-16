@@ -152,6 +152,7 @@ class runOnQueueingSystem():
         if launchExecs:
             self.jobFile.write("sleep %s\n" % SERVER_START_TIME)
             cmd = "pipeline_executor.py --local --num-executors=1 "
+            # FIXME bad things happen if --time-to-accept-jobs isn't specified
             cmd += ' '.join(remove_num_exec(self.arguments[1:])) + ' &\n\n'
             self.jobFile.write(cmd)
     def completeJobFile(self):

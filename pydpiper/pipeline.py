@@ -2,7 +2,6 @@
 
 import networkx as nx
 import Queue
-import cPickle as pickle
 import os
 import sys
 import signal
@@ -24,7 +23,6 @@ import Pyro4
 import pipeline_executor as pe
 
 Pyro4.config.SERVERTYPE = pe.Pyro4.config.SERVERTYPE
-Pyro4.config.DETAILED_TRACEBACK = pe.Pyro4.config.DETAILED_TRACEBACK
 
 LOOP_INTERVAL = 5
 STAGE_RETRY_INTERVAL = 1
@@ -834,7 +832,7 @@ def launchServer(pipeline, options):
             l = l - pe.SHUTDOWN_TIME - pe.q.SERVER_START_TIME
         flag = pipeline.shutdown_ev.wait(l)
         if not flag:
-            logger.info("Time's up! (%d)" % pipeline.main_options_hash.lifetime) # TODO inaccurate
+            logger.info("Time's up! (%d)" % pipeline.main_options_hash.lifetime)
         pipeline.shutdown_ev.set()
         # FIXME use of SERVER_START_TIME is very inaccurate -
         # this timeout doesn't start from walltime 0
@@ -848,9 +846,9 @@ def launchServer(pipeline, options):
         logger.exception("Caught keyboard interrupt, killing executors and shutting down server.")
         print("\nKeyboardInterrupt caught: cleaning up, shutting down executors.\n")
         sys.stdout.flush()
-        
     except:
         logger.exception("Exception running server in daemon.requestLoop. Server shutting down.")
+        print("%s" % sys.exc_info())
     else:
         # allow time for all clients to contact the server and be told to shut down
         # (we could instead add a way for the server to notify its registered clients):
@@ -860,10 +858,12 @@ def launchServer(pipeline, options):
         # TODO this only makes sense if we are actually shutting down nicely,
         # and not because we're out of walltime, in which case this doesn't help
         # (client jobs will die anyway)
-        print("Sleeping %d s to allow time for clients to shutdown..." % pe.SHUTDOWN_TIME)
-        time.sleep(pe.SHUTDOWN_TIME)
-    finally:
+        #print("Sleeping %d s to allow time for clients to shutdown..." % pe.SHUTDOWN_TIME)
+        #time.sleep(pe.SHUTDOWN_TIME)
+        # trying to access variables from `p` in the `finally` clause (in order
+        # to print a shutdown message) hangs for some reason, so do it here instead
         p.printShutdownMessage()
+    finally:
         # brutal, but awkward to do with our system of `Event`s
         # could send a signal to `t` instead:
         t.terminate()
