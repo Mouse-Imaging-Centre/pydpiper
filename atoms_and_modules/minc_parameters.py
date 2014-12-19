@@ -96,7 +96,7 @@ class setMincANTSParams(object):
                     self.iterations = self.regProtocol.iterations
                     self.useMask = self.regProtocol.useMask
                 except:
-                    print "The non-linear protocol you have specified is in an unrecognized form. Exiting..."
+                    print "The non-linear protocol you have specified is in an unrecognized form: \n%s\n Exiting..." % self.regProtocol
                     sys.exit()
         else:
             if self.fileRes:
@@ -283,7 +283,7 @@ class setNlinMinctraccParams(object):
                     self.weight = self.regProtocol.weight
                     self.stiffness = self.regProtocol.stiffness
                 except:
-                    print "The non-linear protocol you have specified is in an unrecognized form. Exiting..."
+                    print "The non-linear protocol you have specified is in an unrecognized form: \n%s\n Exiting..." % self.regProtocol
                     sys.exit()
         else:
             if self.fileRes:
