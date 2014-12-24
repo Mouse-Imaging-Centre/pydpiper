@@ -63,7 +63,8 @@ class LSQ12ANTSNlin:
         self.defaultDir = defaultDir
         
         if ((self.lsq12_protocol == None and self.subject_matter==None) or self.nlin_protocol == None):
-            self.fileRes = rf.returnFinestResolution(self.inputFH)
+            # always base the resolution to be used on the target for the registrations
+            self.fileRes = rf.returnFinestResolution(self.targetFH)
         else:
             self.fileRes = None
         
@@ -145,7 +146,8 @@ class HierarchicalMinctracc:
         self.defaultDir = defaultDir
         
         if ((self.lsq12_protocol == None and self.subject_matter==None) or self.nlin_protocol == None):
-            self.fileRes = rf.returnFinestResolution(self.inputFH)
+            # the resolution of the registration should be based on the target
+            self.fileRes = rf.returnFinestResolution(self.targetFH)
         else:
             self.fileRes = None
         

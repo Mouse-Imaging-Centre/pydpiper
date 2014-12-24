@@ -233,19 +233,19 @@ def setupInitModel(inputModel, pipeDir=None):
         print "Exiting..."
         sys.exit()
 
-def setInitialTarget(initModelOption, lsq6Target, lsq6Dir, outputDir):
+def setInitialTarget(initModelOption, lsq6Target, targetFileDir, outputDir):
     """Function checks to make sure either an init model or inital target are specified.
        Sets up and returns target and initial model."""
     if(initModelOption == None and lsq6Target == None):
-        print "Error: please specify either a target file for the registration (--lsq6-target), or an initial model (--init-model)\n"
+        print "Error: please specify either a target file for the registration (--lsq6-target or --boostrap), or an initial model (--init-model)\n"
         sys.exit()   
     if(initModelOption != None and lsq6Target != None):
-        print "Error: please specify ONLY ONE of the following options: --lsq6-target  --init-model\n"
+        print "Error: please specify ONLY ONE of the following options: --lsq6-target, --bootstrap, --init-model\n"
         sys.exit()
         
     initModel = None
     if(lsq6Target != None):
-        targetPipeFH = rfh.RegistrationPipeFH(abspath(lsq6Target), basedir=lsq6Dir)
+        targetPipeFH = rfh.RegistrationPipeFH(abspath(lsq6Target), basedir=targetFileDir)
     else: # options.init_model != None  
         initModel = setupInitModel(initModelOption, outputDir)
         if (initModel[1] != None):

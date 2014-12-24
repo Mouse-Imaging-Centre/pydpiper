@@ -63,7 +63,7 @@ class MAGeTApplication(AbstractApplication):
         labels = [] #array of input atlas labels, one for each average
         masks = [] # array of masks, one for each average
         atlases = [] #array of RegistrationPipeFH classes for each atlas/label pair
-        numAtlases = 0
+        numLibraryAtlases = 0
         for inFile in glob.glob(join(self.options.atlas_lib, "*.mnc")):
             if fnmatch.fnmatch(inFile, "*labels.mnc"):
                 labels.append(abspath(inFile))
@@ -82,7 +82,7 @@ class MAGeTApplication(AbstractApplication):
             sys.exit()
         else:
         # match labels with averages
-            numAtlases = len(labels)
+            numLibraryAtlases = len(labels)
             for iLabel in labels: 
                 atlasStart = iLabel.split("_labels.mnc")
                 for iAvg in average:
@@ -113,19 +113,22 @@ class MAGeTApplication(AbstractApplication):
         if self.options.mask or self.options.mask_only:
             mp = MAGeTMask(atlases, 
                            inputs, 
-                           numAtlases, 
+                           numLibraryAtlases, 
                            self.options.mask_method,
                            lsq12_protocol=self.options.lsq12_protocol,
                            nlin_protocol=self.options.nlin_protocol)
             self.pipeline.addPipeline(mp)
         
         if not self.options.mask_only:
-            if numTemplates > self.options.max_templates:
-                numTemplates = self.options.max_templates
-            # Register each atlas to each input image up to numTemplates
-            for nfile in range(numTemplates):
-                for afile in range(numAtlases):
-                    sp = MAGeTRegister(inputs[nfile], 
+            numLibraryAtlasesUsed = numLibraryAtlases
+            if numLibraryAtlases > self.options.max_templates:
+                numLibraryAtlasesUsed = self.options.max_templates
+            # The first thing we need to do is to align the atlases from the
+            # template library to all input files (unless there are more 
+            # atlases in the given library than the specified maximum (max_templates)
+            for inputFH in inputs:
+                for afile in range(numLibraryAtlasesUsed):
+                    sp = MAGeTRegister(inputFH, 
                                        atlases[afile],
                                        self.options.reg_method,
                                        name="initial",
@@ -135,34 +138,45 @@ class MAGeTApplication(AbstractApplication):
                     self.pipeline.addPipeline(sp)
                 # each template needs to be added only once, but will have multiple 
                 # input labels
-                templates.append(inputs[nfile])
+                templates.append(inputFH)
             
             # once the initial templates have been created, go and register each
             # inputFile to the templates. If --pairwise=False, do voxel voting on 
             # input-atlas registrations only
             if self.options.pairwise:
                 for inputFH in inputs:
+                    # in the previous loop, we aligned the atlases in the template 
+                    # library to all input files. These are all stored in the 
+                    # templates variable. We only need to register upto max_templates
+                    # files to each input files:
+                    num_currently_aligned_atlases = numLibraryAtlasesUsed
                     for tmplFH in templates:
-                        if tmplFH.getLastBasevol() != inputFH.getLastBasevol():
-                            sp = MAGeTRegister(inputFH, 
-                                               tmplFH, 
-                                               self.options.reg_method,
-                                               name="templates", 
-                                               createMask=False,
-                                               lsq12_protocol=self.options.lsq12_protocol,
-                                               nlin_protocol=self.options.nlin_protocol)
-                            self.pipeline.addPipeline(sp)
+                        # only align more atlases if not enough have been
+                        # collected so far
+                        if num_currently_aligned_atlases < self.options.max_templates:
+                            if tmplFH.getLastBasevol() != inputFH.getLastBasevol():
+                                sp = MAGeTRegister(inputFH, 
+                                                   tmplFH, 
+                                                   self.options.reg_method,
+                                                   name="templates", 
+                                                   createMask=False,
+                                                   lsq12_protocol=self.options.lsq12_protocol,
+                                                   nlin_protocol=self.options.nlin_protocol)
+                                self.pipeline.addPipeline(sp)
+                                num_currently_aligned_atlases += 1
                     voxel = voxelVote(inputFH, self.options.pairwise, False)
                     self.pipeline.addStage(voxel)
             else:
                 # only do voxel voting in this case if there was more than one input atlas
-                if numAtlases > 1:
+                if numLibraryAtlases > 1:
                     for inputFH in inputs:
                         voxel = voxelVote(inputFH, self.options.pairwise, False)
                         self.pipeline.addStage(voxel)   
         
-            logger.info("Number of input atlas/label pairs: " + str(numAtlases))   
-            logger.info("Number of templates: " + str(numTemplates))     
+            logger.info("Number of input atlas/label pairs: " + str(numLibraryAtlases))   
+            logger.info("Number of templates created (all input files...): " + str(numTemplates))
+            logger.info("Number of templates used for each inputfile: " + str(numLibraryAtlasesUsed))
+            
     
       
 if __name__ == "__main__":
