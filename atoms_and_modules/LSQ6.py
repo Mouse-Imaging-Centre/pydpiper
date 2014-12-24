@@ -902,8 +902,13 @@ class LSQ6Base(object):
         self.check_lsq6_folder()
         self.setLSQ6GroupToInputs()
         
-        #Get file resolution for each file: will need for subclasses. 
-        self.fileRes = rf.returnFinestResolution(self.inputs[0])
+        # Get file resolution for each file: will need for subclasses. 
+        # We base a number of parameters on the resolution of the target files / input files.
+        # This is mostly for minctracc calls which needs input files to be blurred and we set
+        # the -step parameter for minctracc based on the resolution of the target for the 
+        # registration. As such, we should simply use the targetFile for the registration 
+        # to base these parameters on
+        self.fileRes = rf.returnFinestResolution(self.target)
         
     def check_inputs(self):
         """
