@@ -528,9 +528,10 @@ if __name__ == "__main__":
     
     addExecutorArgumentGroup(parser)
 
-    # using parse_args instead of parse_known_args is a hack since we
+    # using parse_known_args instead of parse_args is a hack since we
     # currently send ALL arguments from the main program to the executor
-    # on PBS queues (FIXME not yet true on OGS queues).
+    # on PBS queues (FIXME not yet true on SGE queues, but this is
+    # not the best solution anyway).
     # Alternately, we could keep a copy of the executor parser around
     # when constructing the executor shell command
     options = parser.parse_known_args()[0]

@@ -990,4 +990,4 @@ class xfmInvert(CmdStage):
         self.cmd += ["xfminvert", "-clobber", self.xfm, self.output] 
                  
     def setName(self):
-        self.name = "xfminvert "                 
+        self.name = "xfminvert "
