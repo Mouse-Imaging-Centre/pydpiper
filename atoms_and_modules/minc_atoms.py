@@ -91,7 +91,13 @@ class mincANTS(CmdStage):
         self.finalizeCommand()
         self.setName()
         self.colour = "red"
+        self.setMemory()
         
+    def setMemory(self):
+        iterationElements = self.iterations.split("x")
+        if int(iterationElements[-1]) > 0:
+            self.setMem(3)
+
     def setName(self):
         self.name = "mincANTS"
     def addDefaults(self):
