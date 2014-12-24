@@ -71,9 +71,6 @@ def addExecutorArgumentGroup(parser):
     group.add_argument("--time-to-accept-jobs", dest="time_to_accept_jobs", 
                        type=int, default=180,
                        help="The number of minutes after which an executor will not accept new jobs anymore. This can be useful when running executors on a batch system where other (competing) jobs run for a limited amount of time. The executors can behave in a similar way by given them a rough end time. [Default = %(default)s]")
-    group.add_argument("--lifetime", dest="lifetime",
-                       type=int, default=None,
-                       help="Maximum lifetime in seconds of the server, or infinite if None. [Default = %(default)s]")
     group.add_argument('--local', dest="local", action='store_true', help="Don't submit anything to any specified queueing system but instead run as an executor")
     group.add_argument("--config-file", type=str, metavar='config_file', is_config_file=True,
                        required=False, help='Config file location')

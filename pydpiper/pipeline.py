@@ -825,21 +825,18 @@ def launchServer(pipeline, options):
         h.daemon = True
         h.start()
 
-        # wait for at most `lifetime`, then signal to other processes which may not have
-        # been the source of the event (note wait(None) => no timeout):
-        l = pipeline.main_options_hash.lifetime
-        if l is not None:
-            l = l - pe.SHUTDOWN_TIME - pe.q.SERVER_START_TIME
+        try:
+            jid    = os.env["PBS_JOBID"]
+            output = subprocess.check_output(['qstat', '-f', jid])
+
+            l      = int(re.search('Walltime.Remaining = (\d*)', output).group(1))
+            l      = l - pe.SHUTDOWN_TIME
+        except:
+            l = None
         flag = pipeline.shutdown_ev.wait(l)
         if not flag:
-            logger.info("Time's up! (%d)" % pipeline.main_options_hash.lifetime)
+            logger.info("Time's up!")
         pipeline.shutdown_ev.set()
-        # FIXME use of SERVER_START_TIME is very inaccurate -
-        # this timeout doesn't start from walltime 0
-        # so is slightly inaccurate ... we could start a timer earlier
-        # Also, we might want to wait for only some fraction of lifetime
-        # but this is perhaps better left to executor --time-to-accept-jobs
-        # or time estimates for each stage
 
     # FIXME if we terminate abnormally, we should _actually_ kill child executors (if running locally)
     except KeyboardInterrupt:

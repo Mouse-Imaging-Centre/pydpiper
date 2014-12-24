@@ -68,7 +68,7 @@ class runOnQueueingSystem():
         reconstruct = ""
         if self.arguments:
             reconstruct += ' '.join(remove_num_exec(self.arguments))
-        reconstruct += " --local --num-executors=0 " + " --lifetime=%d " % t
+        reconstruct += " --local --num-executors=0 " # + " --lifetime=%d " % t # TODO remove
         return reconstruct
     def constructAndSubmitJobFile(self, identifier, time, isMainFile, after=None, afterany=None):
         """Construct the bulk of the pbs script to be submitted via qsub"""
