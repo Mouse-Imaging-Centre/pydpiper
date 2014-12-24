@@ -66,13 +66,23 @@ class LSQ12Registration(AbstractApplication):
         
         #Initialize input files from args
         inputFiles = rf.initializeInputFiles(args, dirs.processedDir, maskDir=options.mask_dir)
+
+        # we potentially use the resolution of the input files to determine some
+        # minctracc parameters and blurring kernels (if no protocol or subject matter is specified)
+        resolutionForLSQ12 = None
         
         #Set up like file for resampling, if one is specified
         if options.lsq12_likeFile:
             likeFH = RegistrationFHBase(abspath(options.lsq12_likeFile), 
                                         basedir=dirs.lsq12Dir)
+            resolutionForLSQ12 = rf.returnFinestResolution(likeFH)
         else:
             likeFH = None
+            # if there is not a like file, we can use the resolution of
+            # the first input file. The assumption being that all input
+            # files have the same resolution
+            resolutionForLSQ12 = rf.returnFinestResolution(inputFiles[0])
+
         
         #Iterative LSQ12 model building
         lsq12 = FullLSQ12(inputFiles, 
@@ -80,7 +90,8 @@ class LSQ12Registration(AbstractApplication):
                           likeFile=likeFH,
                           maxPairs=options.lsq12_max_pairs, 
                           lsq12_protocol=options.lsq12_protocol, 
-                          subject_matter=options.lsq12_subject_matter)
+                          subject_matter=options.lsq12_subject_matter,
+                          resolution=resolutionForLSQ12)
         lsq12.iterate()
         self.pipeline.addPipeline(lsq12.p)
         
@@ -111,7 +122,8 @@ class FullLSQ12(object):
                  likeFile=None, 
                  maxPairs=None, 
                  lsq12_protocol=None,
-                 subject_matter=None):
+                 subject_matter=None,
+                 resolution=None):
         self.p = Pipeline()
         """Initial inputs should be an array of fileHandlers with lastBasevol in lsq12 space"""
         self.inputs = inputArray
@@ -130,12 +142,18 @@ class FullLSQ12(object):
             transform for that particular subject. 
             These xfms may be used subsequently for statistics calculations. """
         self.lsq12AvgXfms = {}
-        
+        self.fileRes = None
+
         """Create the blurring resolution from the file resolution"""
-        if (subject_matter==None and lsq12_protocol==None):
-            self.fileRes = rf.returnFinestResolution(self.inputs[0])
-        else:
+        if (subject_matter==None and resolution==None):
+            print "\nError: the FullLSQ12 module was called without specifying the resolution that it should be run at, and without specifying a subject matter. Please indicate one of the two. Exiting...\n"
+            sys.exit()
+        elif (subject_matter and resolution):
+            # subject matter has precedence over resolution
             self.fileRes = None
+        elif resolution:
+            self.fileRes = resolution
+            
         
         """"Set up parameter array"""
         self.lsq12Params = mp.setLSQ12MinctraccParams(self.fileRes, 

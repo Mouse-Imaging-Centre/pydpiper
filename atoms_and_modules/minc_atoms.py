@@ -868,7 +868,10 @@ class RotationalMinctracc(CmdStage):
             print "Unexpected error: ", sys.exc_info()
             raise
         
-        highestResolution = rf.returnFinestResolution(inSource)
+        # The resolution is used to determine the step size and 
+        # blurring kernels for the rotational minctracc call. This
+        # should be based on the target, not the input file (source)
+        highestResolution = rf.returnFinestResolution(inTarget)
         
         # TODO: finish the following if clause... hahaha
         #if(mousedata):

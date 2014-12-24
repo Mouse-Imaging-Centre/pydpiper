@@ -82,18 +82,26 @@ class MBMApplication(AbstractApplication):
         # However, only change this when either an initial model is specified
         # or when an lsq12_likefile is given. If we are running a bootstrap
         # or lsq6_target pipeline, we do not have to change anything
+        #
+        # Also provide the lsq12 module with the resolution at which this should
+        # all happen
+        resolutionForLSQ12 = None
         if options.lsq12_likeFile == None:
             if initModel:
                 targetPipeFH = initModel[0]
         else:
             targetPipeFH = rfh.RegistrationFHBase(os.path.abspath(options.lsq12_likeFile), 
                                                   basedir=dirs.lsq12Dir)
+        resolutionForLSQ12 = rf.returnFinestResolution(targetPipeFH)
+
+
         lsq12module = lsq12.FullLSQ12(inputFiles, 
                                       dirs.lsq12Dir, 
                                       likeFile=targetPipeFH, 
                                       maxPairs=None, 
                                       lsq12_protocol=options.lsq12_protocol,
-                                      subject_matter=options.lsq12_subject_matter)
+                                      subject_matter=options.lsq12_subject_matter,
+                                      resolution=resolutionForLSQ12)
         lsq12module.iterate()
         self.pipeline.addPipeline(lsq12module.p)
         
@@ -108,6 +116,8 @@ class MBMApplication(AbstractApplication):
                 lsq12module.lsq12AvgFH.setMask(initModel[0].getMask())
         
         #NLIN MODULE - Register with minctracc or mincANTS based on options.reg_method
+        # for now we can use the same resolution for the NLIN stages as we did for the 
+        # LSQ12 stage. At some point we should look into the subject matter option...
         nlinObj = nlin.initializeAndRunNLIN(dirs.lsq12Dir,
                                             inputFiles,
                                             dirs.nlinDir,
@@ -115,7 +125,8 @@ class MBMApplication(AbstractApplication):
                                             createAvg=False,
                                             targetAvg=lsq12module.lsq12AvgFH,
                                             nlin_protocol=options.nlin_protocol,
-                                            reg_method=options.reg_method)
+                                            reg_method=options.reg_method,
+                                            resolution=resolutionForLSQ12)
         
         self.pipeline.addPipeline(nlinObj.p)
         self.nlinAverages = nlinObj.nlinAverages
