@@ -7,8 +7,9 @@ import sys
 import signal
 import socket
 import time
+import re
 from datetime import datetime
-from subprocess import call
+from subprocess import call, check_output
 from shlex import split
 import multiprocessing
 from multiprocessing import Process, Event
@@ -678,7 +679,7 @@ class Pipeline():
                 # so load only the hashes of finished stages
                 previous_hashes = frozenset((int(e.split(',')[1]) for e in fh.read().split()))
         except:
-            logger.exception("Backup files aren't recoverable.  Continuing anyway...")
+            logger.info("Finished stages log doesn't exist or is corrupt.")
             return
         # processedStages was read from finished_stages_fh, so:
         self.finished_stages_fh = open(str(self.backupFileLocation) + '/finished_stages', 'w')
@@ -826,14 +827,16 @@ def launchServer(pipeline, options):
         h.start()
 
         try:
-            jid    = os.env["PBS_JOBID"]
-            output = subprocess.check_output(['qstat', '-f', jid])
+            jid    = os.environ["PBS_JOBID"]
+            output = check_output(['qstat', '-f', jid])
 
-            l      = int(re.search('Walltime.Remaining = (\d*)', output).group(1))
-            l      = l - pe.SHUTDOWN_TIME
+            time_left = int(re.search('Walltime.Remaining = (\d*)', output).group(1))
+            logger.debug("Time remaining: %d s" % time_left)
+            time_to_live = time_left - pe.SHUTDOWN_TIME
         except:
-            l = None
-        flag = pipeline.shutdown_ev.wait(l)
+            logger.exception("Couldn't determine remaining walltime from qstat call")
+            time_to_live = None
+        flag = pipeline.shutdown_ev.wait(time_to_live)
         if not flag:
             logger.info("Time's up!")
         pipeline.shutdown_ev.set()
