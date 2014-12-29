@@ -15,7 +15,7 @@ SERVER_START_TIME = 50
 def remove_num_exec(args):
     args = args[:] # copy for politeness
     for ix, arg in enumerate(args):
-        if re.search('--num', arg):
+        if re.search('--num-exec', arg):
             # matches? (argparse uses prefix matching...try to catch -
             # ideally we'd actually consult a table of legal arguments)
             if re.search('=', arg):
@@ -145,14 +145,14 @@ class runOnQueueingSystem():
             except:
                 print("Failed copying prologue script into submit script")
                 raise
-        self.jobFile.write("cd $PBS_O_WORKDIR\n\n") # jobs start in $HOME; $PBS_O_WORKDIR is the submission directory
+        # cd from $HOME into the submission directory:
+        self.jobFile.write("cd $PBS_O_WORKDIR\n\n")
         if isMainFile:
             self.jobFile.write(self.buildMainCommand(time))
             self.jobFile.write(" &\n\n")
         if launchExecs:
             self.jobFile.write("sleep %s\n" % SERVER_START_TIME)
             cmd = "pipeline_executor.py --local --num-executors=1 "
-            # FIXME bad things happen if --time-to-accept-jobs isn't specified
             cmd += ' '.join(remove_num_exec(self.arguments[1:])) + ' &\n\n'
             self.jobFile.write(cmd)
     def completeJobFile(self):
