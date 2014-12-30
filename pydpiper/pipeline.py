@@ -206,6 +206,12 @@ class Pipeline():
     def get_shutdown_ev(self):
         return self.shutdown_ev
 
+    def getNumberFailedExecutors(self):
+        return self.failed_executors
+
+    def getNumberFailedStages(self):
+        return self.failed_stages
+
     def getTotalNumberOfStages(self):
         return len(self.stages)
     
