@@ -153,7 +153,14 @@ class runOnQueueingSystem():
         if launchExecs:
             self.jobFile.write("sleep %s\n" % SERVER_START_TIME)
             cmd = "pipeline_executor.py --local --num-executors=1 "
-            cmd += ' '.join(remove_num_exec(self.arguments[1:])) + ' &\n\n'
+            cmd += ' '.join(remove_num_exec(self.arguments[1:]))
+            # this is a hack to prevent the executor on the server
+            # machine from timing out, relying on the current behaviour
+            # of (config)argparse to use the rightmost value of a
+            # command-line argument which appears twice:
+            if isMainFile:
+                cmd += ' --time-to-seppuku=172800 '
+            cmd += ' &\n\n'
             self.jobFile.write(cmd)
     def completeJobFile(self):
         """Completes pbs script--wait for background jobs to terminate as per scinet wiki"""
