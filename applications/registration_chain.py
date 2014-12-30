@@ -84,7 +84,8 @@ class RegistrationChain(AbstractApplication):
             initModel, targetPipeFH = rf.setInitialTarget(self.options.init_model, 
                                                           self.options.lsq6_target, 
                                                           dirs.lsq6Dir,
-                                                          self.outputDir)
+                                                          self.outputDir,
+                                                          options.pipeline_name)
             #LSQ6 MODULE, NUC and INORM
             inputFiles = []
             for subj in subjects:

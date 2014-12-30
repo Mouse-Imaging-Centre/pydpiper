@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 import os
-from argparse import ArgumentParser
+import argparse
 
 # setup the log file name before importing the Pyro4 library
 
@@ -11,13 +11,12 @@ import Pyro4
 
 if __name__ == '__main__':
 
-    parser = ArgumentParser()
-    parser.add_argument(name='uri_file', action="store", type=str,
-        help="file containing server's URI")
+    parser = argparse.ArgumentParser()
+    parser.add_argument("uri_file", type=str, help="file containing server's URI")
 
     options = parser.parse_args()
 
-    uri_file = options['uri_file']
+    uri_file = options.uri_file
 
     # find the server
     try:
@@ -50,12 +49,19 @@ if __name__ == '__main__':
 
     # currently runnable jobs:
     numberRunnableStages = proxyServer.getNumberRunnableStages()
-    print "\n\nNumber of runnable stages:               ", numberRunnableStages, "\n"
+    print "\nNumber of runnable stages:               ", numberRunnableStages, "\n"
+
+    # number of failed stages:
+    numberFailedStages = proxyServer.getNumberFailedStages()
+    print "\nNumber of failed stages:                 ", numberFailedStages
+    # number of lost/died executors:
+    numberFailedExecutors = proxyServer.getNumberFailedExecutors()
+    print "Number of failed/lost/dead executors:    ", numberFailedExecutors, "\n"
+
 
     # memory requirements for runnable stages:
     memArray = proxyServer.getMemoryRequirementsRunnable()
-    print "\n\nMemory requirement of runnable stages:   ", memArray
-
+    print "\nMemory requirement of runnable stages:   ", memArray
     # memory available in registered executors:
     memAvailable = proxyServer.getMemoryAvailableInClients()
     print "Memory available in registered clients:  ", memAvailable, "\n"

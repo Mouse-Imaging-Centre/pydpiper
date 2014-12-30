@@ -180,7 +180,7 @@ def isFileHandler(inSource, inTarget=None):
         isFileHandlingClass = False
     return(isFileHandlingClass)
 
-def setupInitModel(inputModel, pipeDir=None):
+def setupInitModel(inputModel, pipeName, pipeDir=None):
     """
         Creates fileHandlers for the initModel by reading files from.
         The directory where the input is specified.
@@ -191,16 +191,20 @@ def setupInitModel(inputModel, pipeDir=None):
             name_native.mnc --> File in native scanner space.
             name_native_mask.mnc --> Mask for name_native.mnc
             name_native_to_standard.xfm --> Transform from native space to standard space
+
+        we should make sure that files related to the initial model end up in 
+        a directory named analogous to all other files, i.e., {pipeline_name}_init_model
+        so we need to have the pipeName here:
     """
     errorMsg = "Failed to properly set up initModel."
-    
+
     try:
         imageFile = abspath(inputModel)
         imageBase = fh.removeBaseAndExtension(imageFile)
         imageDirectory = dirname(imageFile)
         if not pipeDir:
             pipeDir = abspath(curdir)
-        initModelDir = fh.createSubDir(pipeDir, "init_model")
+        initModelDir = fh.createSubDir(pipeDir, pipeName + "_init_model")
         if not exists(imageFile):
             errorMsg = "Specified --init-model does not exist: " + str(inputModel)
             raise
@@ -233,7 +237,7 @@ def setupInitModel(inputModel, pipeDir=None):
         print "Exiting..."
         sys.exit()
 
-def setInitialTarget(initModelOption, lsq6Target, targetFileDir, outputDir):
+def setInitialTarget(initModelOption, lsq6Target, targetFileDir, outputDir, pipeName):
     """Function checks to make sure either an init model or inital target are specified.
        Sets up and returns target and initial model."""
     if(initModelOption == None and lsq6Target == None):
@@ -247,7 +251,7 @@ def setInitialTarget(initModelOption, lsq6Target, targetFileDir, outputDir):
     if(lsq6Target != None):
         targetPipeFH = rfh.RegistrationPipeFH(abspath(lsq6Target), basedir=targetFileDir)
     else: # options.init_model != None  
-        initModel = setupInitModel(initModelOption, outputDir)
+        initModel = setupInitModel(initModelOption, pipeName, outputDir)
         if (initModel[1] != None):
             # we have a target in "native" space 
             targetPipeFH = initModel[1]

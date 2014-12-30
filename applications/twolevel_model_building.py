@@ -77,7 +77,8 @@ with each scan per subject listed on the same line and separated by a comma.
                 initModel, targetPipeFH = rf.setInitialTarget(options.init_model, 
                                                               options.lsq6_target, 
                                                               subjectDirs[i].lsq6Dir,
-                                                              self.outputDir)
+                                                              self.outputDir,
+                                                              options.pipeline_name)
                 #LSQ6 MODULE, NUC and INORM
                 runLSQ6NucInorm = lsq6.LSQ6NUCInorm(subjects[i],
                                                     targetPipeFH,
