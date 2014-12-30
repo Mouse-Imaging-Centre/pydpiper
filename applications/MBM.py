@@ -66,7 +66,8 @@ class MBMApplication(AbstractApplication):
         initModel, targetPipeFH = rf.setInitialTarget(options.init_model, 
                                                       target_file_for_lsq6, 
                                                       target_file_directory,
-                                                      self.outputDir)
+                                                      self.outputDir,
+                                                      options.pipeline_name)
             
         #LSQ6 MODULE, NUC and INORM
         runLSQ6NucInorm = lsq6.LSQ6NUCInorm(inputFiles,

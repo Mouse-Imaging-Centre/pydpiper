@@ -181,7 +181,8 @@ class LSQ6Registration(AbstractApplication):
         initModel, targetPipeFH = rf.setInitialTarget(options.init_model, 
                                                       target_file_for_lsq6, 
                                                       target_file_directory,
-                                                      self.outputDir)
+                                                      self.outputDir,
+                                                      options.pipeline_name)
         
         # Initialize LSQ6, NonUniformityCorrection and IntensityNormalization classes and
         # construct their pipelines. Note that because we read in the options directly, running
