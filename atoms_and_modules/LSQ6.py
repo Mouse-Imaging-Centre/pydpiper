@@ -47,10 +47,10 @@ def addLSQ6ArgumentGroup(parser):
                      type=str, default=None,
                      help="File in standard space in the initial model. The initial model "
                      "can also have a file in native space and potentially a transformation "
-                     "file. See our wiki for detailed information on initial models. [Default = %default]")
+                     "file. See our wiki for detailed information on initial models. [Default = %(default)s]")
     group.add_argument("--bootstrap", dest="bootstrap",
                      action="store_true", default=False,
-                     help="Use the first inputfile to the pipeline as the target for the 6 parameter alignment. [Default = %(default)]")
+                     help="Use the first inputfile to the pipeline as the target for the 6 parameter alignment. [Default = %(default)s]")
     parser.set_defaults(lsq6_method="lsq6_large_rotations")
     parser.set_defaults(nuc=True)
     parser.set_defaults(inormalize=True)
