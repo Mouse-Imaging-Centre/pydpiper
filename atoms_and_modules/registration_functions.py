@@ -95,7 +95,7 @@ def initializeInputFiles(args, mainDirectory, maskDir=None):
         if numMasks == 1:
                 for inputFH in inputs:
                     inputFH.setMask(absMaskPath + "/" + masks[0])
-        elif numMasks == numScans:
+        elif numMasks >= numScans:
             for m in masks:
                 maskBase = fh.removeBaseAndExtension(m).split("_mask")[0]
                 for inputFH in inputs:
