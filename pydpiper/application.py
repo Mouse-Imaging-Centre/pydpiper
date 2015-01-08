@@ -145,28 +145,33 @@ class AbstractApplication(object):
         # NB this doesn't capture environment variables
         # or contents of any config file so isn't really complete
         self.reconstructCommand()
-        
-        if not self.options.local and (self.options.queue == "pbs" or self.options.queue_type == "pbs"):
-            roq = runOnQueueingSystem(self.options, sys.argv)
-            roq.createAndSubmitPbsScripts()
-            logger.info("Finished submitting PBS job scripts...quitting")
-            return 
 
-        logger.debug("Calling `run`")
-        self.run()
-        logger.debug("Calling `initialize`")
-        self.pipeline.initialize()
-        self.pipeline.printStages(self.appName)
-                            
+        pbs_submit = (self.options.queue == "pbs" or \
+                      self.options.queue_type == "pbs") \
+                     and not self.options.local
+
+        if (self.options.execute and not pbs_submit) or self.options.create_graph:
+            logger.debug("Calling `run`")
+            self.run()
+            logger.debug("Calling `initialize`")
+            self.pipeline.initialize()
+            self.pipeline.printStages(self.appName)
+
         if self.options.create_graph:
             logger.debug("Writing dot file...")
             nx.write_dot(self.pipeline.G, "labeled-tree.dot")
             logger.debug("Done.")
-                
+
         if not self.options.execute:
             print "Not executing the command (--no-execute is specified).\nDone."
             return
         
+        if pbs_submit:
+            roq = runOnQueueingSystem(self.options, sys.argv)
+            roq.createAndSubmitPbsScripts()
+            logger.info("Finished submitting PBS job scripts...quitting")
+            return 
+                
         #pipelineDaemon runs pipeline, launches Pyro client/server and executors (if specified)
         # if use_ns is specified, Pyro NameServer must be started. 
         logger.info("Starting pipeline daemon...")
