@@ -10,6 +10,7 @@ from atoms_and_modules.registration_file_handling import RegistrationPipeFH, Reg
 from os.path import basename, abspath
 import sys
 import logging
+import random
 
 logger = logging.getLogger(__name__)
 
@@ -18,8 +19,8 @@ def addLSQ12ArgumentGroup(parser):
     group = parser.add_argument_group("LSQ12 registration options",
                         "Options for performing a pairwise, affine registration")
     group.add_argument("--lsq12-max-pairs", dest="lsq12_max_pairs",
-                       type=str, default=None,
-                       help="Maximum number of pairs to register together. NOTE: Not yet implemented!! [Default = %(default)s]")
+                       type=int, default=None,
+                       help="Maximum number of pairs to register together.  [Default = %(default)s]")
     group.add_argument("--lsq12-likefile", dest="lsq12_likeFile",
                        type=str, default=None,
                        help="Can optionally specify a like file for resampling at the end of pairwise "
@@ -120,7 +121,7 @@ class FullLSQ12(object):
     def __init__(self, inputArray, 
                  outputDir, 
                  likeFile=None, 
-                 maxPairs=None, 
+                 maxPairs=None,
                  lsq12_protocol=None,
                  subject_matter=None,
                  resolution=None):
@@ -167,69 +168,76 @@ class FullLSQ12(object):
         self.generations = self.lsq12Params.generations
         
         # Create new lsq12 group for each input prior to registration
-        for i in range(len(self.inputs)):
-            self.inputs[i].newGroup(groupName="lsq12")
+        for input in self.inputs:
+            input.newGroup(groupName="lsq12")
          
     def iterate(self):
-        if not self.maxPairs:
-            xfmsToAvg = {}
-            lsq12ResampledFiles = {}
-            for inputFH in self.inputs:
-                """Create an array of xfms, to compute an average lsq12 xfm for each input"""
-                xfmsToAvg[inputFH] = []
-                for targetFH in self.inputs:
-                    if inputFH != targetFH:
-                        lsq12 = LSQ12(inputFH,
-                                      targetFH,
-                                      blurs=self.blurs,
-                                      step=self.stepSize,
-                                      gradient=self.useGradient,
-                                      simplex=self.simplex,
-                                      w_translations=self.w_translations)
-                        self.p.addPipeline(lsq12.p)
-                        xfmsToAvg[inputFH].append(inputFH.getLastXfm(targetFH))
-                
-                """Create average xfm for inputFH using xfmsToAvg array"""
-                cmd = ["xfmavg", "-verbose", "-clobber"]
-                # '-clobber' works around #157, but is probably better in general
-                for i in range(len(xfmsToAvg[inputFH])):
-                    cmd.append(InputFile(xfmsToAvg[inputFH][i]))
-                avgXfmOutput = createBaseName(inputFH.transformsDir, inputFH.basename + "-avg-lsq12.xfm")
-                cmd.append(OutputFile(avgXfmOutput))
-                xfmavg = CmdStage(cmd)
-                xfmavg.setLogFile(LogFile(logFromFile(inputFH.logDir, avgXfmOutput)))
-                self.p.addStage(xfmavg)
-                self.lsq12AvgXfms[inputFH] = avgXfmOutput
-                """ resample brain and add to array for mincAveraging"""
-                if not self.likeFile:
-                    likeFile=inputFH
+        xfmsToAvg = {}
+        lsq12ResampledFiles = {}
+        for inputFH in self.inputs:
+            """Create an array of xfms, to compute an average lsq12 xfm for each input"""
+            xfmsToAvg[inputFH] = []
+            if self.maxPairs is not None:
+                if self.maxPairs >= len(self.inputs) - 1:
+                    # -1 prevents unnecessary sampling in the case self.maxPairs = len(self.inputs) - 1
+                    inputs = self.inputs
                 else:
-                    likeFile=self.likeFile
-                rslOutput = createBaseName(inputFH.resampledDir, inputFH.basename + "-resampled-lsq12.mnc")
-                res = ma.mincresample(inputFH, 
-                                      inputFH,
-                                      transform=avgXfmOutput, 
-                                      likeFile=likeFile, 
-                                      output=rslOutput,
-                                      argArray=["-sinc"])   
-                self.p.addStage(res)
-                lsq12ResampledFiles[inputFH] = rslOutput
-            """ After all registrations complete, setLastBasevol for each subject to be
-                resampled file in lsq12 space. We can then call mincAverage on fileHandlers,
-                as it will use the lastBasevol for each by default."""
-            for inputFH in self.inputs:
-                inputFH.setLastBasevol(lsq12ResampledFiles[inputFH])
-            """ mincAverage all resampled brains and put in lsq12Directory""" 
-            self.lsq12Avg = abspath(self.lsq12Dir) + "/" + basename(self.lsq12Dir) + "-pairs.mnc" 
-            self.lsq12AvgFH = RegistrationPipeFH(self.lsq12Avg, basedir=self.lsq12Dir)
-            avg = ma.mincAverage(self.inputs, 
-                                 self.lsq12AvgFH, 
-                                 output=self.lsq12Avg,
-                                 defaultDir=self.lsq12Dir)
-            self.p.addStage(avg)
-        else:
-            print "Registration using a specified number of max pairs not yet working. Check back soon!"
-            sys.exit()
+                    random.seed(tuple(map(lambda fh: fh.inputFileName, self.inputs)))
+                    # if inputFH is included in the sample, we will register against one fewer target
+                    inputs = random.sample(filter(lambda fh: fh != inputFH, self.inputs), self.maxPairs)
+            else:
+                inputs = self.inputs
+            for targetFH in inputs:
+                if inputFH != targetFH:
+                    lsq12 = LSQ12(inputFH,
+                                  targetFH,
+                                  blurs=self.blurs,
+                                  step=self.stepSize,
+                                  gradient=self.useGradient,
+                                  simplex=self.simplex,
+                                  w_translations=self.w_translations)
+                    self.p.addPipeline(lsq12.p)
+                    xfmsToAvg[inputFH].append(inputFH.getLastXfm(targetFH))
+
+            """Create average xfm for inputFH using xfmsToAvg array"""
+            avgXfmOutput = createBaseName(inputFH.transformsDir, inputFH.basename + "-avg-lsq12.xfm")
+            cmd = ["xfmavg", "-verbose", "-clobber"] \
+                  + map(InputFile, xfmsToAvg[inputFH]) + [OutputFile(avgXfmOutput)]
+            #for i in range(len(xfmsToAvg[inputFH])):
+            #    cmd.append(InputFile(xfmsToAvg[inputFH][i]))
+            # '-clobber' works around #157, but is probably better in general       
+            #cmd.append(OutputFile(avgXfmOutput))
+            xfmavg = CmdStage(cmd)
+            xfmavg.setLogFile(LogFile(logFromFile(inputFH.logDir, avgXfmOutput)))
+            self.p.addStage(xfmavg)
+            self.lsq12AvgXfms[inputFH] = avgXfmOutput
+            """ resample brain and add to array for mincAveraging"""
+            if not self.likeFile:
+                likeFile=inputFH
+            else:
+                likeFile=self.likeFile
+            rslOutput = createBaseName(inputFH.resampledDir, inputFH.basename + "-resampled-lsq12.mnc")
+            res = ma.mincresample(inputFH, 
+                                  inputFH,
+                                  transform=avgXfmOutput, 
+                                  likeFile=likeFile, 
+                                  output=rslOutput,
+                                  argArray=["-sinc"])   
+            self.p.addStage(res)
+            lsq12ResampledFiles[inputFH] = rslOutput
+        """ After all registrations complete, setLastBasevol for each subject to be
+            resampled file in lsq12 space. We can then call mincAverage on fileHandlers,
+            as it will use the lastBasevol for each by default."""
+        for inputFH in self.inputs:
+            inputFH.setLastBasevol(lsq12ResampledFiles[inputFH])
+        """ mincAverage all resampled brains and put in lsq12Directory""" 
+        self.lsq12Avg = abspath(self.lsq12Dir) + "/" + basename(self.lsq12Dir) + "-pairs.mnc" 
+        self.lsq12AvgFH = RegistrationPipeFH(self.lsq12Avg, basedir=self.lsq12Dir)
+        avg = ma.mincAverage(inputs, 
+                             self.lsq12AvgFH, 
+                             output=self.lsq12Avg,
+                             defaultDir=self.lsq12Dir)
+        self.p.addStage(avg)
             
 class LSQ12(object):
     """Basic LSQ12 class. 

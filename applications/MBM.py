@@ -99,7 +99,7 @@ class MBMApplication(AbstractApplication):
         lsq12module = lsq12.FullLSQ12(inputFiles, 
                                       dirs.lsq12Dir, 
                                       likeFile=targetPipeFH, 
-                                      maxPairs=None, 
+                                      maxPairs=options.lsq12_max_pairs, 
                                       lsq12_protocol=options.lsq12_protocol,
                                       subject_matter=options.lsq12_subject_matter,
                                       resolution=resolutionForLSQ12)
