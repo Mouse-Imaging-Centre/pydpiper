@@ -49,7 +49,7 @@ with each scan per subject listed on the same line and separated by a comma.
         
         # set help - note that the format is messed up, something that can be fixed if we upgrade
         # from optparse to argparse.
-        self.parser.set_description(helpString) 
+        self.parser.description = helpString
         
     def setup_appName(self):
         appName = "twolevel_model_building"
@@ -87,7 +87,7 @@ with each scan per subject listed on the same line and separated by a comma.
                                                     options)
                 self.pipeline.addPipeline(runLSQ6NucInorm.p)
             if options.input_space=="native" or options.input_space=="lsq6":
-                #LSQ12+NLIN (registration starts here or is run after LSQ6)
+                # LSQ12+NLIN (registration starts here or is run after LSQ6)
                 if options.input_space == "lsq6":
                     initModel=None
                 lsq12Nlin = mm.FullIterativeLSQ12Nlin(subjects[i], 
@@ -145,7 +145,14 @@ with each scan per subject listed on the same line and separated by a comma.
         for nlin in firstlevelNlins:
             nlinFH = rfh.RegistrationPipeFH(nlin.getLastBasevol(), mask=nlin.getMask(), basedir=dirs.processedDir)
             firstLevelNlinsNewFH.append(nlinFH)
-        lsq12Nlin = mm.FullIterativeLSQ12Nlin(firstLevelNlinsNewFH, dirs, options, avgPrefix="second_level")
+        # the following call needs to figure out at what resolution the LSQ12 and NLIN stages
+        # are supposed to be run. For this reason (if no subject matter is specified), 
+        # we will pass along the initial model
+        lsq12Nlin = mm.FullIterativeLSQ12Nlin(firstLevelNlinsNewFH, 
+                                              dirs, 
+                                              options, 
+                                              avgPrefix="second_level",
+                                              initModel=initModel)
         self.pipeline.addPipeline(lsq12Nlin.p)
         finalNlin = lsq12Nlin.nlinFH
         initialTarget = lsq12Nlin.initialTarget
