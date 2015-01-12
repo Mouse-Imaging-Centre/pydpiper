@@ -14,6 +14,7 @@ import atoms_and_modules.minc_parameters as mp
 from os.path import abspath, isdir, isfile
 import logging
 import sys
+from datetime import date
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +65,13 @@ class RegistrationChain(AbstractApplication):
         return appName
 
     def run(self):
-        
+
+        # if no pipeline name was provided, initialize it here with the current date
+        # setupDirectories deals with a missing pipeline name well, but we use this variable
+        # in some more places
+        if not self.options.pipeline_name:
+            self.options.pipeline_name = str(date.today()) + "_pipeline"
+
         #Setup output directories for registration chain (_processed only)       
         dirs = rf.setupDirectories(self.outputDir, self.options.pipeline_name, module="ALL")
         
@@ -85,7 +92,7 @@ class RegistrationChain(AbstractApplication):
                                                           self.options.lsq6_target, 
                                                           dirs.lsq6Dir,
                                                           self.outputDir,
-                                                          options.pipeline_name)
+                                                          self.options.pipeline_name)
             #LSQ6 MODULE, NUC and INORM
             inputFiles = []
             for subj in subjects:
