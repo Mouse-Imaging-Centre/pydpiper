@@ -41,17 +41,15 @@ with each scan per subject listed on the same line and separated by a comma.
 """
         
         # own options go here
-        lsq6.addLSQ6OptionGroup(self.parser)
-        lsq12.addLSQ12OptionGroup(self.parser)
-        nl.addNlinRegOptionGroup(self.parser)
-        rf.addGenRegOptionGroup(self.parser)
-        st.addStatsOptions(self.parser)
+        lsq6.addLSQ6ArgumentGroup(self.parser)
+        lsq12.addLSQ12ArgumentGroup(self.parser)
+        nl.addNlinRegArgumentGroup(self.parser)
+        rf.addGenRegArgumentGroup(self.parser)
+        st.addStatsArguments(self.parser)
         
-        # TODO: better usage description (once I've figured out what the usage will be ...)
-        self.parser.set_usage("%prog [options] input.csv")
         # set help - note that the format is messed up, something that can be fixed if we upgrade
         # from optparse to argparse.
-        self.parser.set_description(helpString) 
+        self.parser.description = helpString
         
     def setup_appName(self):
         appName = "twolevel_model_building"
@@ -79,7 +77,8 @@ with each scan per subject listed on the same line and separated by a comma.
                 initModel, targetPipeFH = rf.setInitialTarget(options.init_model, 
                                                               options.lsq6_target, 
                                                               subjectDirs[i].lsq6Dir,
-                                                              self.outputDir)
+                                                              self.outputDir,
+                                                              options.pipeline_name)
                 #LSQ6 MODULE, NUC and INORM
                 runLSQ6NucInorm = lsq6.LSQ6NUCInorm(subjects[i],
                                                     targetPipeFH,
@@ -88,7 +87,7 @@ with each scan per subject listed on the same line and separated by a comma.
                                                     options)
                 self.pipeline.addPipeline(runLSQ6NucInorm.p)
             if options.input_space=="native" or options.input_space=="lsq6":
-                #LSQ12+NLIN (registration starts here or is run after LSQ6)
+                # LSQ12+NLIN (registration starts here or is run after LSQ6)
                 if options.input_space == "lsq6":
                     initModel=None
                 lsq12Nlin = mm.FullIterativeLSQ12Nlin(subjects[i], 
@@ -146,7 +145,14 @@ with each scan per subject listed on the same line and separated by a comma.
         for nlin in firstlevelNlins:
             nlinFH = rfh.RegistrationPipeFH(nlin.getLastBasevol(), mask=nlin.getMask(), basedir=dirs.processedDir)
             firstLevelNlinsNewFH.append(nlinFH)
-        lsq12Nlin = mm.FullIterativeLSQ12Nlin(firstLevelNlinsNewFH, dirs, options, avgPrefix="second_level")
+        # the following call needs to figure out at what resolution the LSQ12 and NLIN stages
+        # are supposed to be run. For this reason (if no subject matter is specified), 
+        # we will pass along the initial model
+        lsq12Nlin = mm.FullIterativeLSQ12Nlin(firstLevelNlinsNewFH, 
+                                              dirs, 
+                                              options, 
+                                              avgPrefix="second_level",
+                                              initModel=initModel)
         self.pipeline.addPipeline(lsq12Nlin.p)
         finalNlin = lsq12Nlin.nlinFH
         initialTarget = lsq12Nlin.initialTarget

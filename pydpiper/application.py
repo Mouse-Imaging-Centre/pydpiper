@@ -1,9 +1,10 @@
-from optparse import OptionParser,OptionGroup
+from configargparse import ArgParser
 from pydpiper.pipeline import Pipeline, pipelineDaemon
 from pydpiper.queueing import runOnQueueingSystem
 from pydpiper.file_handling import makedirsIgnoreExisting
-from pydpiper.pipeline_executor import addExecutorOptionGroup, noExecSpecified
+from pydpiper.pipeline_executor import addExecutorArgumentGroup, noExecSpecified
 from datetime import datetime
+import time # TODO why both datetime and time?
 from pkg_resources import get_distribution
 import logging
 import networkx as nx
@@ -12,41 +13,44 @@ import os
 
 logger = logging.getLogger(__name__)
 
-def addApplicationOptionGroup(parser):
-    group = OptionGroup(parser,  "General application options", "General options for all pydpiper applications.")
-    group.add_option("--restart", dest="restart", 
-                               action="store_true",
-                               help="Restart pipeline using backup files. (Currently deprecated. Simply rerun the command you ran before)")
-    group.add_option("--output-dir", dest="output_directory",
-                               type="string", default=None,
+def addApplicationArgumentGroup(parser):
+    group = parser.add_argument_group("General application options", "General options for all pydpiper applications.")
+    group.add_argument("--restart", dest="restart", 
+                               action="store_false", default=True,
+                               help="Restart pipeline using backup files. [default = %(default)s]")
+    group.add_argument("--no-restart", dest="restart", 
+                               action="store_false", help="Opposite of --restart")
+    group.add_argument("--output-dir", dest="output_directory",
+                               type=str, default=None,
                                help="Directory where output data and backups will be saved.")
-    group.add_option("--create-graph", dest="create_graph",
+    group.add_argument("--create-graph", dest="create_graph",
                                action="store_true", default=False,
-                               help="Create a .dot file with graphical representation of pipeline relationships [default = %default]")
+                               help="Create a .dot file with graphical representation of pipeline relationships [default = %(default)s]")
     parser.set_defaults(execute=True)
     parser.set_defaults(verbose=False)
-    group.add_option("--execute", dest="execute",
+    group.add_argument("--execute", dest="execute",
                                action="store_true",
-                               help="Actually execute the planned commands [default]")
-    group.add_option("--no-execute", dest="execute",
+                               help="Actually execute the planned commands [default = %(default)s]")
+    group.add_argument("--no-execute", dest="execute",
                                action="store_false",
                                help="Opposite of --execute")
-    group.add_option("--version", dest="show_version",
+    group.add_argument("--version", dest="show_version",
                                action="store_true",
                                help="Print the version number and exit.")
-    group.add_option("--verbose", dest="verbose",
+    group.add_argument("--verbose", dest="verbose",
                                action="store_true",
-                               help="Be verbose in what is printed to the screen")
-    group.add_option("--no-verbose", dest="verbose",
+                               help="Be verbose in what is printed to the screen [default = %(default)s]")
+    group.add_argument("--no-verbose", dest="verbose",
                                action="store_false",
                                help="Opposite of --verbose [default]")
-    parser.add_option_group(group)
+    group.add_argument("files", type=str, nargs='+', metavar='file',
+                        help='Files to process')
 
 # Some sneakiness... Using the following lines, it's possible
 # to add an epilog to the parser that is written to screen
 # verbatim. That way in the help file you can show an example
 # of what an lsq6/nlin protocol should look like.
-class MyParser(OptionParser):
+class MyParser(ArgParser):
     def format_epilog(self, formatter):
         if not self.epilog:
             self.epilog = ""
@@ -73,13 +77,21 @@ class AbstractApplication(object):
               application.start()
     """
     def __init__(self):
-        self.parser = MyParser()
+        # use an environment variable to look for a default config file
+        # Alternately, we could use a default location for the file
+        # (say `files = ['/etc/pydpiper.cfg', '~/pydpiper.cfg', './pydpiper.cfg']`)
+        default_config_file = os.getenv("PYDPIPER_CONFIG_FILE")
+        if default_config_file is not None:
+            files = [default_config_file]
+        else:
+            files = []
+        self.parser = MyParser(default_config_files=files)
         self.__version__ = get_distribution("pydpiper").version
     
     def _setup_options(self):
             # PydPiper options
-        addExecutorOptionGroup(self.parser)
-        addApplicationOptionGroup(self.parser)
+        addExecutorArgumentGroup(self.parser)
+        addApplicationArgumentGroup(self.parser)
     
     def _print_version(self):
         if self.options.show_version:
@@ -88,7 +100,8 @@ class AbstractApplication(object):
     
     def _setup_pipeline(self):
         self.pipeline = Pipeline()
-        
+
+    # FIXME check that only one server is running with a given output directory
     def _setup_directories(self):
         """Output and backup directories setup here."""
         if not self.options.output_directory:
@@ -96,20 +109,29 @@ class AbstractApplication(object):
         else:
             self.outputDir = makedirsIgnoreExisting(self.options.output_directory)
         self.pipeline.setBackupFileLocation(self.outputDir)
-    
+
     def reconstructCommand(self):    
-        reconstruct = ""
-        for i in range(len(sys.argv)):
-            reconstruct += sys.argv[i] + " "
+        reconstruct = ' '.join(sys.argv)
         logger.info("Command is: " + reconstruct)
+        logger.info("Command version : " + self.__version__)
+        # also, because this is probably a better file for it (also has similar
+        # naming conventions as the pipeline-stages.txt file:
+        fileForCommandAndVersion = os.path.abspath(os.curdir + "/" + self.appName + "-pipeline-command-and-version-" + time.strftime("%d-%m-%Y-at-%H-%m-%S") + ".sh")
+        pf = open(fileForCommandAndVersion, "w")
+        pf.write("#!/usr/bin/env bash\n")
+        pf.write("# Command version is: " + self.__version__ + "\n")
+        pf.write("# Command was: \n")
+        pf.write(reconstruct + '\n')
+        pf.close()
         
     def start(self):
+        logger.info("Calling `start`")
         self._setup_options()
         self.setup_options()
-        
-        self.options, self.args = self.parser.parse_args()
-        
-        self._print_version()   
+        self.options = self.parser.parse_args()
+        self.args = self.options.files
+
+        self._print_version()
         
         #Check to make sure some executors have been specified. 
         noExecSpecified(self.options.num_exec)
@@ -119,35 +141,37 @@ class AbstractApplication(object):
         
         self.appName = self.setup_appName()
         self.setup_logger()
-        
-        if self.options.queue=="pbs":
-            roq = runOnQueueingSystem(self.options, sys.argv)
-            roq.createPbsScripts()
-            return 
-        
-        if self.options.restart:
-            print "\nThe restart option is deprecated (pipelines are not pickled anymore, because it takes too much time). Will restart based on which files exists already\n"
-            #logger.info("Restarting pipeline from pickled files.")
-            #self.pipeline.restart()
-            self.reconstructCommand()
+
+        # NB this doesn't capture environment variables
+        # or contents of any config file so isn't really complete
+        self.reconstructCommand()
+
+        pbs_submit = (self.options.queue == "pbs" or \
+                      self.options.queue_type == "pbs") \
+                     and not self.options.local
+
+        if (self.options.execute and not pbs_submit) or self.options.create_graph:
+            logger.debug("Calling `run`")
             self.run()
+            logger.debug("Calling `initialize`")
             self.pipeline.initialize()
             self.pipeline.printStages(self.appName)
-        else:
-            self.reconstructCommand()
-            self.run()
-            self.pipeline.initialize()
-            self.pipeline.printStages(self.appName)
-                            
+
         if self.options.create_graph:
             logger.debug("Writing dot file...")
             nx.write_dot(self.pipeline.G, "labeled-tree.dot")
             logger.debug("Done.")
-                
+
         if not self.options.execute:
             print "Not executing the command (--no-execute is specified).\nDone."
             return
         
+        if pbs_submit:
+            roq = runOnQueueingSystem(self.options, sys.argv)
+            roq.createAndSubmitPbsScripts()
+            logger.info("Finished submitting PBS job scripts...quitting")
+            return 
+                
         #pipelineDaemon runs pipeline, launches Pyro client/server and executors (if specified)
         # if use_ns is specified, Pyro NameServer must be started. 
         logger.info("Starting pipeline daemon...")

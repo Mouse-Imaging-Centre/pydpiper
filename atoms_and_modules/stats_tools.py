@@ -2,23 +2,22 @@ from pydpiper.pipeline import Pipeline, CmdStage, InputFile, OutputFile, LogFile
 from atoms_and_modules.registration_functions import isFileHandler
 from atoms_and_modules.minc_atoms import xfmConcat, xfmInvert
 import pydpiper.file_handling as fh
-from optparse import OptionGroup
 import sys
 
-def addStatsOptions(parser):
-    group = OptionGroup(parser, "Statistics options", 
-                        "Options for calculating statistics.")
-    group.add_option("--calc-stats", dest="calc_stats",
-                      action="store_true",
-                      help="Calculate statistics at the end of the registration. [Default]")
-    group.add_option("--no-calc-stats", dest="calc_stats",
-                      action="store_false", 
-                      help="If specified, statistics are not calculated. Opposite of --calc-stats.")
-    group.add_option("--stats-kernels", dest="stats_kernels",
-                      type="string", default="1.0,0.5,0.2,0.1", 
-                      help="comma separated list of blurring kernels for analysis. Default is: 1.0,0.5,0.2,0.1")
+def addStatsArguments(parser):
+    group = parser.add_argument_group("Statistics options", 
+                          "Options for calculating statistics.")
+    group.add_argument("--calc-stats", dest="calc_stats",
+                       action="store_true",
+                       help="Calculate statistics at the end of the registration. [Default]")
+    group.add_argument("--no-calc-stats", dest="calc_stats",
+                       action="store_false", 
+                       help="If specified, statistics are not calculated. Opposite of --calc-stats.")
+    group.add_argument("--stats-kernels", dest="stats_kernels",
+                       type=str, default="1.0,0.5,0.2,0.1", 
+                       help="comma separated list of blurring kernels for analysis. Default is: 1.0,0.5,0.2,0.1")
     parser.set_defaults(calc_stats=True)
-    parser.add_option_group(group)
+    parser.add_argument_group(group)
     
 def createOutputFileName(iFH, xfm, outputDir, nameExt):
     outDir = iFH.setOutputDirectory(outputDir)

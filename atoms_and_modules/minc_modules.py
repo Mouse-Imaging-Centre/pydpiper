@@ -63,7 +63,8 @@ class LSQ12ANTSNlin:
         self.defaultDir = defaultDir
         
         if ((self.lsq12_protocol == None and self.subject_matter==None) or self.nlin_protocol == None):
-            self.fileRes = rf.returnFinestResolution(self.inputFH)
+            # always base the resolution to be used on the target for the registrations
+            self.fileRes = rf.returnFinestResolution(self.targetFH)
         else:
             self.fileRes = None
         
@@ -145,7 +146,8 @@ class HierarchicalMinctracc:
         self.defaultDir = defaultDir
         
         if ((self.lsq12_protocol == None and self.subject_matter==None) or self.nlin_protocol == None):
-            self.fileRes = rf.returnFinestResolution(self.inputFH)
+            # the resolution of the registration should be based on the target
+            self.fileRes = rf.returnFinestResolution(self.targetFH)
         else:
             self.fileRes = None
         
@@ -208,16 +210,26 @@ class FullIterativeLSQ12Nlin:
         
     def buildPipeline(self):
         lsq12LikeFH = None 
+        resolutionForLSQ12 = None
         if self.initModel:
             lsq12LikeFH = self.initModel[0]
         elif self.options.lsq12_likeFile: 
             lsq12LikeFH = self.options.lsq12_likeFile 
+        
+        if lsq12LikeFH == None and self.options.lsq12_subject_matter == None:
+            print "\nError: the FullIterativeLSQ12Nlin module was called without specifying either an initial model, nor an lsq12_subject_matter. Currently that means that the code can not determine the resolution at which the registrations should be run. Please specify one of the two. Exiting\n"
+            sys.exit()
+        
+        if not (lsq12LikeFH == None):
+            resolutionForLSQ12 = rf.returnFinestResolution(lsq12LikeFH)
+
         lsq12module = lsq12.FullLSQ12(self.inputs,
                                       self.dirs.lsq12Dir,
                                       likeFile=lsq12LikeFH,
                                       maxPairs=self.options.lsq12_max_pairs,
                                       lsq12_protocol=self.options.lsq12_protocol,
-                                      subject_matter=self.options.lsq12_subject_matter)
+                                      subject_matter=self.options.lsq12_subject_matter,
+                                      resolution=resolutionForLSQ12)
         lsq12module.iterate()
         self.p.addPipeline(lsq12module.p)
         self.lsq12Params = lsq12module.lsq12Params
@@ -226,6 +238,9 @@ class FullIterativeLSQ12Nlin:
                 lsq12module.lsq12AvgFH.setMask(self.initModel[0].getMask())
         if not self.avgPrefix:
             self.avgPrefix = self.options.pipeline_name
+        # same as in MBM.py:
+        # for now we can use the same resolution for the NLIN stages as we did for the 
+        # LSQ12 stage. At some point we should look into the subject matter option...
         nlinModule = nlin.initializeAndRunNLIN(self.dirs.lsq12Dir,
                                                self.inputs,
                                                self.dirs.nlinDir,
@@ -233,7 +248,8 @@ class FullIterativeLSQ12Nlin:
                                                createAvg=False,
                                                targetAvg=lsq12module.lsq12AvgFH,
                                                nlin_protocol=self.options.nlin_protocol,
-                                               reg_method=self.options.reg_method)
+                                               reg_method=self.options.reg_method,
+                                               resolution=resolutionForLSQ12)
         self.p.addPipeline(nlinModule.p)
         self.nlinFH = nlinModule.nlinAverages[-1]
         self.nlinParams = nlinModule.nlinParams

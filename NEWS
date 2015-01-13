@@ -1,3 +1,55 @@
+New in Version 1.11
+===================
+(in addition to the changes in the alpha version)
+* MAGeT fix: the argument max-templates was incorrectly used, and meant in 
+  practice that atlases/segmentations were only created for the first 25 input 
+  files (default for max-templates). This is now fixed.
+* added the bootstrap option to MBM: use the first input file to the pipeline as 
+  the target for the LSQ6 stage
+* fixed the lsq6-target option for MBM: specify a single external file that will 
+  be used as the target for the LSQ6 stage
+* The parameters for some stages (mincblur/minctracc) are based on the resolution 
+  of the input files. When the stage graph is created prior to running the pipeline, 
+  this resolution is not always known and we used the resolution of the original input 
+  files. At run time, the resolution sometimes changed, creating discrepancies between 
+  stages at graph creation and run time. This would cause these stages to be rerun. 
+  This is now fixed. The resolution of the files are based predominantly on the initial 
+  model files or the target that is used for the LSQ6 stage.
+* fixed a masking issue in MAGeT: it would produce output files with an image range of 
+  unsigned short 0 to 1. The masked files now have a proper image range.
+* mincblur has a hardcoded limit in terms of its output file. At graph creation time the 
+  pipeline now checks to see whether mincblur can actually be run. If not, the pipeline 
+  won't start and advice you to either shorten the input file names or change the path 
+  you are running the pipeline in.
+* Added standard configurations for pipelines (MICe, SciNet), these are accessed through 
+  the environment variable PYDPIPER_CONFIG_FILE
+* file containing the command that was run and the version of pydpiper being used is written out
+* instead of pickling the pipeline status (which wasn't happening anymore), hashes of 
+  finished jobs are written out to a finished stages file
+* the default mincANTS parameters have changed from:
+  [SyN 0.5, Gauss 5 1, 100x100x100x0], [SyN 0.4, Gauss 5 1, 100x100x100x20], [SyN 0.4, Gauss 5 1, 100x100x100x50]
+  to:
+  [SyN 0.1, Gauss 2 1, 100x100x100x0], [SyN 0.1, Gauss 2 1, 100x100x100x20], [SyN 0.1, Gauss 2 1, 100x100x100x100]
+* lsq12-max-pairs is now implemented
+
+New in Version 1.11-alpha
+=========================
+* Moved from optparse to ConfigArgParse, which must be installed.
+  See README for usage details.
+* Improve server logic for handling failed executors and cases where
+  executors have insufficient resources to run available jobs.
+* Improved logic for handling walltime restrictions on PBS queues.
+  New flags are available to set some PBS-related variables.
+* Load correct modules on SciNet, with better error reporting
+  from module load failures and xfmavg stages.
+* To replace the old pickling of the current system state, there's
+  a new mechanism for logging completed stages to disk
+  (in pydpiper-backups/finished-stages) and correctly restarting the pipeline.
+* Fixed a bug where executor threads spawned from the server could hang.
+* Various small bugfixes, internal improvements, changes to logging and
+  usage messages, and updates to comments.
+* Added a .gitignore.
+
 New in Version 1.10
 ===================
 * PYRO environment variables are handled inside the code. The SERVERTYPE is 

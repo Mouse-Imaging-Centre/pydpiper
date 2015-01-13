@@ -2,7 +2,6 @@
 
 import atoms_and_modules.registration_file_handling as rfh
 import pydpiper.file_handling as fh
-from optparse import OptionGroup
 from os.path import abspath, exists, dirname, splitext, isfile, basename
 from os import curdir, walk
 from datetime import date
@@ -15,19 +14,18 @@ from pyminc.volumes.factory import volumeFromFile
 
 logger = logging.getLogger(__name__)
 
-def addGenRegOptionGroup(parser):
-    group = OptionGroup(parser, "General registration options",
-                        "General options for running various types of registrations.")
-    group.add_option("--pipeline-name", dest="pipeline_name",
-                      type="string", default=None,
-                      help="Name of pipeline and prefix for models.")
-    group.add_option("--input-space", dest="input_space",
-                      type="string", default="native", 
-                      help="Option to specify space of input-files. Can be native (default), lsq6, lsq12.")
-    group.add_option("--mask-dir", dest="mask_dir",
-                      type="string", default=None, 
-                      help="Directory of masks. If not specified, no masks are used. If only one mask in directory, same mask used for all inputs.")
-    parser.add_option_group(group)
+def addGenRegArgumentGroup(parser):
+    group = parser.add_argument_group("General registration options",
+                         "General options for running various types of registrations.")
+    group.add_argument("--pipeline-name", dest="pipeline_name",
+                       type=str, default=None,
+                       help="Name of pipeline and prefix for models.")
+    group.add_argument("--input-space", dest="input_space",
+                       type=str, default="native", 
+                       help="Option to specify space of input-files. Can be native (default), lsq6, lsq12.")
+    group.add_argument("--mask-dir", dest="mask_dir",
+                       type=str, default=None, 
+                       help="Directory of masks. If not specified, no masks are used. If only one mask in directory, same mask used for all inputs.")
 
 class StandardMBMDirectories(object):
     def __init__(self):
@@ -97,7 +95,7 @@ def initializeInputFiles(args, mainDirectory, maskDir=None):
         if numMasks == 1:
                 for inputFH in inputs:
                     inputFH.setMask(absMaskPath + "/" + masks[0])
-        elif numMasks == numScans:
+        elif numMasks >= numScans:
             for m in masks:
                 maskBase = fh.removeBaseAndExtension(m).split("_mask")[0]
                 for inputFH in inputs:
@@ -182,7 +180,7 @@ def isFileHandler(inSource, inTarget=None):
         isFileHandlingClass = False
     return(isFileHandlingClass)
 
-def setupInitModel(inputModel, pipeDir=None):
+def setupInitModel(inputModel, pipeName, pipeDir=None):
     """
         Creates fileHandlers for the initModel by reading files from.
         The directory where the input is specified.
@@ -193,16 +191,20 @@ def setupInitModel(inputModel, pipeDir=None):
             name_native.mnc --> File in native scanner space.
             name_native_mask.mnc --> Mask for name_native.mnc
             name_native_to_standard.xfm --> Transform from native space to standard space
+
+        we should make sure that files related to the initial model end up in 
+        a directory named analogous to all other files, i.e., {pipeline_name}_init_model
+        so we need to have the pipeName here:
     """
     errorMsg = "Failed to properly set up initModel."
-    
+
     try:
         imageFile = abspath(inputModel)
         imageBase = fh.removeBaseAndExtension(imageFile)
         imageDirectory = dirname(imageFile)
         if not pipeDir:
             pipeDir = abspath(curdir)
-        initModelDir = fh.createSubDir(pipeDir, "init_model")
+        initModelDir = fh.createSubDir(pipeDir, pipeName + "_init_model")
         if not exists(imageFile):
             errorMsg = "Specified --init-model does not exist: " + str(inputModel)
             raise
@@ -235,21 +237,21 @@ def setupInitModel(inputModel, pipeDir=None):
         print "Exiting..."
         sys.exit()
 
-def setInitialTarget(initModelOption, lsq6Target, lsq6Dir, outputDir):
+def setInitialTarget(initModelOption, lsq6Target, targetFileDir, outputDir, pipeName):
     """Function checks to make sure either an init model or inital target are specified.
        Sets up and returns target and initial model."""
     if(initModelOption == None and lsq6Target == None):
-        print "Error: please specify either a target file for the registration (--lsq6-target), or an initial model (--init-model)\n"
+        print "Error: please specify either a target file for the registration (--lsq6-target or --boostrap), or an initial model (--init-model)\n"
         sys.exit()   
     if(initModelOption != None and lsq6Target != None):
-        print "Error: please specify ONLY ONE of the following options: --lsq6-target  --init-model\n"
+        print "Error: please specify ONLY ONE of the following options: --lsq6-target, --bootstrap, --init-model\n"
         sys.exit()
         
     initModel = None
     if(lsq6Target != None):
-        targetPipeFH = rfh.RegistrationPipeFH(abspath(lsq6Target), basedir=lsq6Dir)
+        targetPipeFH = rfh.RegistrationPipeFH(abspath(lsq6Target), basedir=targetFileDir)
     else: # options.init_model != None  
-        initModel = setupInitModel(initModelOption, outputDir)
+        initModel = setupInitModel(initModelOption, pipeName, outputDir)
         if (initModel[1] != None):
             # we have a target in "native" space 
             targetPipeFH = initModel[1]
