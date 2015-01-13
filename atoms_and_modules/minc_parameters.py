@@ -122,9 +122,9 @@ class setMincANTSParams(object):
         self.similarityMetric = [["CC", "CC"],["CC", "CC"],["CC", "CC"]]
         self.weight = [[1,1],[1,1],[1,1]]
         self.radiusHisto = [[3,3],[3,3],[3,3]]
-        self.transformationModel = ["SyN[0.5]", "SyN[0.4]", "SyN[0.4]"]
-        self.regularization = ["Gauss[5,1]", "Gauss[5,1]", "Gauss[5,1]"]
-        self.iterations = ["100x100x100x0", "100x100x100x20", "100x100x100x50"]
+        self.transformationModel = ["SyN[0.1]", "SyN[0.1]", "SyN[0.1]"]
+        self.regularization = ["Gauss[2,1]", "Gauss[2,1]", "Gauss[2,1]"]
+        self.iterations = ["100x100x100x0", "100x100x100x20", "100x100x100x100"]
         self.useMask = [False, True, True]
         
     def setParams(self):
