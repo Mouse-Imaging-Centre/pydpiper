@@ -189,14 +189,6 @@ class runOnQueueingSystem():
                           ('synccount', synccount), ('syncwith', syncwith)]:
             if var is not None and var != 0: #synccount=0 is illegal
                 cmd += ['-Wdepend=%s' % attr + ':' + str(var)]
-        # if after is not None:
-        #     cmd += ['-Wdepend=after:' + after]
-        # if afterany is not None:
-        #     cmd += ['-Wdepend=afterany:' + afterany]
-        # if synccount is not None:
-        #     cmd += ['-Wdepend=synccount:' + synccount]
-        # if syncwith is not None:
-        #     cmd += ['-Wdepend=syncwith:' + syncwith]
         cmd += [self.jobFileName]
         out = subprocess.check_output(cmd)
         jobId = out.strip()
