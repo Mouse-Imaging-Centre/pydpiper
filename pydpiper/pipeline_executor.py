@@ -9,6 +9,7 @@ from multiprocessing import Process, Pool
 import subprocess as subprocess
 from shlex import split
 import pydpiper.queueing as q
+import atoms_and_modules.registration_functions as rf
 import logging
 import socket
 import signal
@@ -230,8 +231,8 @@ class pipelineExecutor():
             logger.warn("--sge_queue_opts is deprecated; use --queue-name instead")
         self.ns = options.use_ns
         self.uri_file = options.urifile
-        if self.uri_file == None:
-            self.uri_file = os.path.abspath(os.curdir + "/" + "uri")
+        if self.uri_file is None:
+            self.uri_file = os.path.abspath(os.path.join(os.curdir, options.pipeline_name + "_uri"))
         # the next variable is used to keep track of how long the
         # executor has been continuously idle/sleeping for. Measured
         # in seconds
@@ -322,7 +323,7 @@ class pipelineExecutor():
             memPerProc = float(self.mem)/float(self.procs)
             strmem = "vf=" + str(memPerProc) + "G" 
             jobname = ""
-            if not programName==None: 
+            if programName is not None:
                 executablePath = os.path.abspath(programName)
                 jobname = os.path.basename(executablePath) + "-" 
             now = datetime.now().strftime("%Y-%m-%d-at-%H-%M-%S-%f")
@@ -522,7 +523,8 @@ if __name__ == "__main__":
     else:
         files = []
     parser = ArgParser(default_config_files=files)    
-    
+
+    rf.addGenRegArgumentGroup(parser) # just to get --pipeline-name
     addExecutorArgumentGroup(parser)
 
     # using parse_known_args instead of parse_args is a hack since we

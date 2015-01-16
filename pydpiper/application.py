@@ -20,6 +20,9 @@ def addApplicationArgumentGroup(parser):
                                help="Restart pipeline using backup files. [default = %(default)s]")
     group.add_argument("--no-restart", dest="restart", 
                                action="store_false", help="Opposite of --restart")
+    # TODO instead of prefixing all subdirectories (logs, backups, processed, ...)
+    # with the pipeline name/date, we could create one identifying directory
+    # and put these other directories inside
     group.add_argument("--output-dir", dest="output_directory",
                                type=str, default=None,
                                help="Directory where output data and backups will be saved.")
@@ -98,8 +101,9 @@ class AbstractApplication(object):
             print self.__version__
             sys.exit()
     
-    def _setup_pipeline(self):
+    def _setup_pipeline(self, options):
         self.pipeline = Pipeline()
+        self.pipeline.main_options_hash = options
 
     # FIXME check that only one server is running with a given output directory
     def _setup_directories(self):
@@ -116,7 +120,7 @@ class AbstractApplication(object):
         logger.info("Command version : " + self.__version__)
         # also, because this is probably a better file for it (also has similar
         # naming conventions as the pipeline-stages.txt file:
-        fileForCommandAndVersion = os.path.abspath(os.curdir + "/" + self.appName + "-pipeline-command-and-version-" + time.strftime("%d-%m-%Y-at-%H-%m-%S") + ".sh")
+        fileForCommandAndVersion = os.path.abspath(os.curdir + "/" + self.options.pipeline_name + "-command-and-version-" + time.strftime("%d-%m-%Y-at-%H-%m-%S") + ".sh")
         pf = open(fileForCommandAndVersion, "w")
         pf.write("#!/usr/bin/env bash\n")
         pf.write("# Command version is: " + self.__version__ + "\n")
@@ -136,7 +140,7 @@ class AbstractApplication(object):
         #Check to make sure some executors have been specified. 
         noExecSpecified(self.options.num_exec)
              
-        self._setup_pipeline()
+        self._setup_pipeline(self.options)
         self._setup_directories()
         
         self.appName = self.setup_appName()
@@ -155,7 +159,7 @@ class AbstractApplication(object):
             self.run()
             logger.debug("Calling `initialize`")
             self.pipeline.initialize()
-            self.pipeline.printStages(self.appName)
+            self.pipeline.printStages(self.options.pipeline_name)
 
         if self.options.create_graph:
             logger.debug("Writing dot file...")

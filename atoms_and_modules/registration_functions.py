@@ -6,6 +6,7 @@ from os.path import abspath, exists, dirname, splitext, isfile, basename
 from os import curdir, walk
 from datetime import date
 import sys
+import time
 import re
 import csv
 import logging
@@ -17,8 +18,8 @@ logger = logging.getLogger(__name__)
 def addGenRegArgumentGroup(parser):
     group = parser.add_argument_group("General registration options",
                          "General options for running various types of registrations.")
-    group.add_argument("--pipeline-name", dest="pipeline_name",
-                       type=str, default=None,
+    group.add_argument("--pipeline-name", dest="pipeline_name", type=str,
+                       default=time.strftime("anonymous-pipeline-%d-%m-%Y-at-%H-%m-%S"),
                        help="Name of pipeline and prefix for models.")
     group.add_argument("--input-space", dest="input_space",
                        type=str, default="native", 
@@ -36,10 +37,10 @@ class StandardMBMDirectories(object):
 
 def setupDirectories(outputDir, pipeName, module):
     #Setup pipeline name
-    if not pipeName:
-        pipeName = str(date.today()) + "_pipeline"
+    #if not pipeName:
+    #    pipeName = str(date.today()) + "_pipeline"
     
-    #initilize directories class:
+    #initialize directories class:
     dirs = StandardMBMDirectories() 
     
     #create subdirectories based on which module is being run. _processed always created 

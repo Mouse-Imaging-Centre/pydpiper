@@ -113,7 +113,7 @@ class runOnQueueingSystem():
         return self.constructAndSubmitJobFile("-pipeline-",time, isMainFile=True, afterany=afterany, synccount=synccount)
     def createAndSubmitExecutorJobFile(self, i, time, syncwith=None, after=None):
         # This is called directly from pipeline_executor
-        # For multiple executors, this will be called multiple-times.
+        # For multiple executors, this will be called multiple times.
         execId = "-executor-" + str(i) + "-"
         self.constructAndSubmitJobFile(execId, time, isMainFile=False, after=after, syncwith=syncwith)
     def addHeaderAndCommands(self, time, isMainFile):

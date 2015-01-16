@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
-from os.path import basename,isdir,splitext, abspath
-from os import mkdir,makedirs
+from os.path import basename, isdir, splitext, abspath, join
+from os import mkdir, makedirs, path
 
 """File handling methods for creating subdirectories/base file names as needed"""
 
@@ -12,7 +12,7 @@ def removeBaseAndExtension(filename):
     return(root)
 def createSubDir(input_dir, subdir):
     #abspath in makedirsIgnoreExisting handles extra / if appropriate
-    _newdir = input_dir + "/" + subdir
+    _newdir = join(input_dir, subdir)
     returnDir = makedirsIgnoreExisting(_newdir)
     return (returnDir)
 def createLogDir(input_dir):
@@ -30,12 +30,12 @@ def logFromFile(logDir, inFile):
     return(log)
 def createBaseName(input_dir, base):
     # assume all / in input_dir accounted for? or add checking
-    return (input_dir + "/" + base)
+    return join(input_dir, base)
 def createLogFile(dirName, baseName):
     log = "%s/%s.log" % (dirName, baseName)
     return(log)
-def createBackupDir(output):
-    _backupDir = createSubDir(output, "pydpiper-backups")
+def createBackupDir(output, pipelineName):
+    _backupDir = createSubDir(output, pipelineName + "-pydpiper-backups")
     return(_backupDir)
 def makedirsIgnoreExisting(dirname):
     """os.makedirs which fails if dir exists"""

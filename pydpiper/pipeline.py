@@ -16,6 +16,7 @@ from multiprocessing import Process, Event
 import file_handling as fh
 import logging
 
+#TODO move this and Pyro4 imports down into launchServer where pipeline name is available?
 os.environ["PYRO_LOGLEVEL"] = os.getenv("PYRO_LOGLEVEL", "INFO")
 os.environ["PYRO_LOGFILE"]  = os.path.splitext(os.path.basename(__file__))[0] + ".log"
 # TODO name the server logfile more descriptively
@@ -264,10 +265,14 @@ class Pipeline():
 
     def setBackupFileLocation(self, outputDir=None):
         """Sets location of backup files."""
-        if (outputDir == None):
+        if outputDir is None:
             # set backups in current directory if directory doesn't currently exist
-            outputDir = os.getcwd() 
-        self.backupFileLocation = fh.createBackupDir(outputDir)   
+            outputDir = os.getcwd()
+        # TODO don't need this dir since we have only one backup file?
+        #self.backupFileLocation = fh.createBackupDir(outputDir, self.main_options_hash.pipeline_name)
+        self.backupFileLocation = os.path.join(outputDir,
+                                    self.main_options_hash.pipeline_name
+                                     + '_finished_stages')
     def addPipeline(self, p):
         if p.skipped_stages > 0:
             self.skipped_stages += p.skipped_stages
@@ -275,7 +280,7 @@ class Pipeline():
             self.addStage(s)
     def printStages(self, name):
         """Prints stages to a file, stage info to stdout"""
-        fileForPrinting = os.path.abspath(os.curdir + "/" + str(name) + "-pipeline-stages.txt")
+        fileForPrinting = os.path.abspath(os.curdir + "/" + str(name) + "_pipeline_stages.txt")
         pf = open(fileForPrinting, "w")
         for i in range(len(self.stages)):
             pf.write(str(i) + "  " + str(self.stages[i]) + "\n")
@@ -680,7 +685,7 @@ class Pipeline():
 
     def skip_completed_stages(self):
         try:
-            with open(str(self.backupFileLocation) + '/finished_stages', 'r') as fh:
+            with open(self.backupFileLocation, 'r') as fh:
                 # a stage's index is just an artifact of the graph construction,
                 # so load only the hashes of finished stages
                 previous_hashes = frozenset((int(e.split(',')[1]) for e in fh.read().split()))
@@ -688,7 +693,7 @@ class Pipeline():
             logger.info("Finished stages log doesn't exist or is corrupt.")
             return
         # processedStages was read from finished_stages_fh, so:
-        self.finished_stages_fh = open(str(self.backupFileLocation) + '/finished_stages', 'w')
+        self.finished_stages_fh = open(self.backupFileLocation, 'w')
         runnable  = []
         completed = 0
         while True:
@@ -840,7 +845,7 @@ def launchServer(pipeline, options):
             logger.debug("Time remaining: %d s" % time_left)
             time_to_live = time_left - pe.SHUTDOWN_TIME
         except:
-            logger.exception("Couldn't determine remaining walltime from qstat call")
+            logger.info("I couldn't determine your remaining walltime from qstat.")
             time_to_live = None
         flag = pipeline.shutdown_ev.wait(time_to_live)
         if not flag:
@@ -893,7 +898,7 @@ def pipelineDaemon(pipeline, options, programName=None):
     """Launches Pyro server and (if specified by options) pipeline executors"""
 
     if options.urifile is None:
-        options.urifile = os.path.abspath(os.path.join(os.curdir, "uri"))
+        options.urifile = os.path.abspath(os.path.join(os.curdir, options.pipeline_name + "_uri"))
 
     if options.restart:
         logger.debug("Examining filesystem to determine skippable stages...")
@@ -909,17 +914,17 @@ def pipelineDaemon(pipeline, options, programName=None):
     logger.debug("Number of stages in runnable index (size of queue): %i",
                  pipeline.runnable.qsize())
     
-    # provide the pipeline with the main option hash. The server when started 
-    # needs access to information in there in order to (re)launch executors
-    # during run time
-    pipeline.main_options_hash = options
+    # # provide the pipeline with the main option hash. The server when started 
+    # # needs access to information in there in order to (re)launch executors
+    # # during run time
+    #pipeline.main_options_hash = options
     pipeline.programName = programName
     # we are now appending to the stages file since we've already written
     # previously completed stages to it in skip_completed_stages
-    with open(str(pipeline.backupFileLocation) + '/finished_stages', 'a') as fh:
-        pipeline.finished_stages_fh = fh
-        logger.debug("Starting server...")
-        try:
+    try:
+        with open(pipeline.backupFileLocation, 'a') as fh: #TODO exception swallowed here if fh can't be created??
+            pipeline.finished_stages_fh = fh
+            logger.debug("Starting server...")
             launchServer(pipeline, options)
-        finally:
-            sys.exit(0)
+    finally:
+        sys.exit(0)
