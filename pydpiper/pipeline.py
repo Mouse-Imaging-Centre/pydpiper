@@ -591,21 +591,22 @@ class Pipeline():
         if executors_to_launch > 0:
             self.launchExecutorsFromServer(executors_to_launch)
 
-        # look for dead clients and requeue their jobs
-        t = time.time()
-        # copy() as unregisterClient mutates self.clients during iteration over the latter
-        for uri,client in self.clients.copy().iteritems():
-            if t - client.timestamp > pe.HEARTBEAT_INTERVAL + pe.LATENCY_TOLERANCE:
-                logger.warn("Executor at %s has died!", client.clientURI)
-                print("\nWarning: there has been no contact with %s, for %d seconds. Considering the executor as dead!\n" % (client.clientURI, pe.HEARTBEAT_INTERVAL + pe.LATENCY_TOLERANCE))
-                if self.failed_executors > self.main_options_hash.max_failed_executors:
-                    logger.warn("Currently %d executors have died. This is more than the number of allowed failed executors as set by the flag: --max-failed-executors. Too many executors lost to spawn new ones" % self.failed_executors)
+        if self.main_options_hash.monitor_heartbeats:
+            # look for dead clients and requeue their jobs
+            t = time.time()
+            # copy() as unregisterClient mutates self.clients during iteration over the latter
+            for uri,client in self.clients.copy().iteritems():
+                if t - client.timestamp > pe.HEARTBEAT_INTERVAL + pe.LATENCY_TOLERANCE:
+                    logger.warn("Executor at %s has died!", client.clientURI)
+                    print("\nWarning: there has been no contact with %s, for %d seconds. Considering the executor as dead!\n" % (client.clientURI, pe.HEARTBEAT_INTERVAL + pe.LATENCY_TOLERANCE))
+                    if self.failed_executors > self.main_options_hash.max_failed_executors:
+                        logger.warn("Currently %d executors have died. This is more than the number of allowed failed executors as set by the flag: --max-failed-executors. Too many executors lost to spawn new ones" % self.failed_executors)
 
-                self.failed_executors += 1
+                    self.failed_executors += 1
 
-                # the unregisterClient function will automatically requeue the
-                # stages that were associated with the lost client
-                self.unregisterClient(client.clientURI)
+                    # the unregisterClient function will automatically requeue the
+                    # stages that were associated with the lost client
+                    self.unregisterClient(client.clientURI)
 
     """
         Returns an integer indicating the number of executors to launch

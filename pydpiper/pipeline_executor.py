@@ -44,6 +44,10 @@ def addExecutorArgumentGroup(parser):
     group.add_argument("--max-failed-executors", dest="max_failed_executors",
                       type=int, default=2,
                       help="Maximum number of failed executors before we stop relaunching. [Default = %(default)s]")
+    # TODO add corresponding --monitor-heartbeats
+    group.add_argument("--no-monitor-heartbeats", dest="monitor_heartbeats",
+                      action="store_false",
+                      help="Don't assume executors have died if they don't check in with the server (NOTE: this can hang your pipeline if an executor crashes).")
     group.add_argument("--time", dest="time", 
                        type=str, default=None,
                        help="Wall time to request for each server/executor in the format hh:mm:ss. Required only if --queue-type=pbs. Current default on PBS is 48:00:00.")
