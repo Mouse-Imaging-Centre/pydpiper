@@ -234,9 +234,8 @@ def setupInitModel(inputModel, pipeName, pipeDir=None):
                 nativeToStdXfm = None
             return (standardFH, nativeFH, nativeToStdXfm)
     except:
-        print errorMsg
-        print "Exiting..."
-        sys.exit()
+        print(errorMsg)
+        raise
 
 def setInitialTarget(initModelOption, lsq6Target, targetFileDir, outputDir, pipeName):
     """Function checks to make sure either an init model or inital target are specified.

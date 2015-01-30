@@ -74,8 +74,8 @@ class mincANTS(CmdStage):
                 if self.useMask:
                     self.target_mask = target_mask
         except:
-            print "Failed in putting together mincANTS command."
-            print "Unexpected error: ", sys.exc_info()
+            print "Failed in putting together mincANTS command; unexpected error: "
+            raise
         
         self.similarity_metric = similarity_metric
         self.weight = weight 
@@ -218,8 +218,8 @@ class minctracc(CmdStage):
                     self.source_mask = source_mask
                     self.target_mask = target_mask 
         except:
-            print "Failed in putting together minctracc command."
-            print "Unexpected error: ", sys.exc_info()
+            print "Failed in putting together minctracc command; unexpected error: "
+            raise
         
         self.linearparam = linearparam       
         self.iterations = str(iterations)
@@ -354,8 +354,8 @@ class blur(CmdStage):
                     gradientBase = blurBase.replace("blur", "dxyz")
                     self.outputFiles += ["".join([gradientBase, ".mnc"])] 
         except:
-            print "Failed in putting together blur command."
-            print "Unexpected error: ", sys.exc_info()
+            print "Failed in putting together blur command; unexpected error: "
+            raise
             
         self.cmd = ["mincblur", "-clobber", "-no_apodize", "-fwhm", str(fwhm),
                     self.inputFiles[0], self.base]
@@ -371,8 +371,7 @@ class blur(CmdStage):
         # characters. Given that we don't know which version of mincblur is installed 
         # (this should and will be fixed at some point in the future), we'll exit here
         if len(self.outputFiles[0]) > 264:
-            print "\n\nError: mincblur (potentially) has a hardcoded limit for the allowed length of the output file. The following command will not be able to run: \n\n%s\n\nPlease rename your input files/paths to make sure the filenames become shorter.\n" % self.cmd
-            sys.exit()
+            raise Exception("mincblur (potentially) has a hardcoded limit for the allowed length of the output file. The following command will not be able to run: \n\n%s\n\nPlease rename your input files/paths to make sure the filenames become shorter.\n" % self.cmd)
 
 class autocrop(CmdStage):
     def __init__(self, 
@@ -407,7 +406,7 @@ class autocrop(CmdStage):
     
         except:
             print "Failed in putting together autocrop command"
-            print "Unexpected error: ", sys.exc_info()
+            raise
             
         self.addDefaults()
         self.finalizeCommand()
@@ -528,11 +527,8 @@ class mincresample(CmdStage):
         argarray could contain inFile and/or output files
         """
         
-        argArray = kwargs.pop("argArray", None)
-        if not argArray:
-            CmdStage.__init__(self, ["mincresample"])
-        else:
-            CmdStage.__init__(self, ["mincresample"] + argArray)
+        argArray = kwargs.pop("argArray", [])
+        CmdStage.__init__(self, ["mincresample"] + argArray)
           
         try:
             #MF TODO: What if we don't want to use lastBasevol?  
@@ -592,8 +588,8 @@ class mincresample(CmdStage):
                     self.logFile = logFile
     
         except:
-            print "Failed in putting together resample command"
-            print "Unexpected error: ", sys.exc_info()
+            print "Failed in putting together resample command; unexpected error: "
+            raise
             
         self.addDefaults()
         self.finalizeCommand()
@@ -756,8 +752,8 @@ class mincAverage(CmdStage):
                     self.logFile = logFile
     
         except:
-            print "Failed in putting together mincaverage command"
-            print "Unexpected error: ", sys.exc_info()
+            print "Failed in putting together mincaverage command; unexpected error: "
+            raise
             
         self.addDefaults()
         self.finalizeCommand()
@@ -864,8 +860,7 @@ class RotationalMinctracc(CmdStage):
                 self.source = inSource
                 self.target = inTarget
         except:
-            print "Failed in putting together RotationalMinctracc command."
-            print "Unexpected error: ", sys.exc_info()
+            print "Failed in putting together RotationalMinctracc command; unexpected error:"
             raise
         
         # The resolution is used to determine the step size and 
@@ -929,8 +924,7 @@ class RotationalMinctracc(CmdStage):
                     self.cmd += ["-m", mask]
                     self.inputFiles.append(mask)
             except:
-                print "Failed retrieving information about a mask for the target in RotationalMinctracc."
-                print "Unexpected error: ", sys.exc_info()
+                print "Failed retrieving information about a mask for the target in RotationalMinctracc; unexpected error: "
                 raise
 
 
@@ -998,8 +992,8 @@ class xfmInvert(CmdStage):
                     self.logFile = logFile
     
         except:
-            print "Failed in putting together xfminvert command"
-            print "Unexpected error: ", sys.exc_info()
+            print "Failed in putting together xfminvert command; unexpected error: "
+            raise
                                                
         self.finalizeCommand()
         self.setName()

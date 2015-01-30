@@ -421,7 +421,7 @@ class pipelineExecutor():
                 self.pyro_proxy_for_server.updateClientTimestamp(self.clientURI)
                 time.sleep(HEARTBEAT_INTERVAL)
         except:
-            logger.info("Heartbeat thread crashed: ")
+            logger.exception("Heartbeat thread crashed: ")
 
     # use an event set/timeout system to run the executor mainLoop -
     # we might want to pass some extra information in addition to waking the system
