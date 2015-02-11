@@ -417,7 +417,8 @@ class Pipeline():
         # It would be better to catch that earlier (by using a different/additional data structure)
         # but for now look for the case when a stage is run twice at the same time, which may
         # produce bizarre results as both processes write files
-        assert self.stages[index].status != 'running', 'stage %d is already running' % index
+        if self.stages[index].status == 'running':
+            raise Exception('stage %d is already running' % index)
         self.addRunningStageToClient(clientURI, index)
         self.currently_running_stages.add(index)
         self.stages[index].setRunning()

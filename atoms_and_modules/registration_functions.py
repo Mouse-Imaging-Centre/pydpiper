@@ -170,16 +170,17 @@ def isFileHandler(inSource, inTarget=None):
     If this function returns True - both types are fileHandlers. If it returns
     false, both types are strings. If there is a mismatch, the assert statement
     should cause an error to be raised."""
-    isFileHandlingClass = True
-    assertMsg = 'source and target files must both be same type: RegistrationPipeFH or string'
+    errorMsg = 'source and target files must both be same type: RegistrationPipeFH or string'
     if isinstance(inSource, rfh.RegistrationFHBase):
         if inTarget:
-            assert isinstance(inTarget, rfh.RegistrationFHBase), assertMsg
+            if not isinstance(inTarget, rfh.RegistrationFHBase):
+                raise Exception(errorMsg)
+        return True
     else:
         if inTarget:
-            assert not isinstance(inTarget, rfh.RegistrationFHBase), assertMsg
-        isFileHandlingClass = False
-    return(isFileHandlingClass)
+            if isinstance(inTarget, rfh.RegistrationFHBase):
+                raise Exception(errorMsg)
+        return False
 
 def setupInitModel(inputModel, pipeName, pipeDir=None):
     """
