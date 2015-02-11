@@ -422,10 +422,13 @@ class pipelineExecutor():
     def heartbeat(self):
         try:
             while self.registered_with_server:
+                logger.debug("Heartbeat...")
                 self.pyro_proxy_for_server.updateClientTimestamp(self.clientURI)
                 time.sleep(HEARTBEAT_INTERVAL)
         except:
             logger.exception("Heartbeat thread crashed: ")
+            # TODO should this take down the executor since globally Pydpiper
+            # is now in an inconsistent state?
 
     # use an event set/timeout system to run the executor mainLoop -
     # we might want to pass some extra information in addition to waking the system

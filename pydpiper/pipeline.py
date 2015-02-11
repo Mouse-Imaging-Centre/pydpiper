@@ -580,6 +580,7 @@ class Pipeline():
         t = time.time() # use server clock for consistency
         try:
             self.clients[clientURI].timestamp = t
+            logger.debug("Client %s updated timestamp", clientURI)
         except:
             print("Error: could not find client %s while updating the time stamp" % clientURI)
             logger.exception("clientURI not found in server client list:")
