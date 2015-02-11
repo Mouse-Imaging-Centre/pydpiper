@@ -212,23 +212,21 @@ def setupInitModel(inputModel, pipeName, pipeDir=None):
         else:
             mask = imageDirectory + "/" + imageBase + "_mask.mnc"
             if not exists(mask):
-                errorMsg = "Required mask for the --init-model does not exist: " + str(mask)
-                raise
+                raise Exception("Required mask for the --init-model does not exist: " + str(mask))
             standardFH = rfh.RegistrationPipeFH(imageFile, mask=mask, basedir=initModelDir)            
             #if native file exists, create FH
             nativeFileName = imageDirectory + "/" + imageBase + "_native.mnc"
             if exists(nativeFileName):
                 mask = imageDirectory + "/" + imageBase + "_native_mask.mnc"
                 if not exists(mask):
-                    errorMsg = "_native.mnc file included but associated mask not found"
-                    raise
+                    raise Exception("_native.mnc file included but associated mask not found")
                 else:
                     nativeFH = rfh.RegistrationPipeFH(nativeFileName, mask=mask, basedir=initModelDir)
                     nativeToStdXfm = imageDirectory + "/" + imageBase + "_native_to_standard.xfm"
                     if exists(nativeToStdXfm):
                         nativeFH.setLastXfm(standardFH, nativeToStdXfm)
                     else:
-                        nativeToStdXfm = None
+                        raise Exception("Your initial model directory has both native and standard files but no transformation between them; you need to supply %s_native_to_standard.xfm" % imageBase)
             else:
                 nativeFH = None
                 nativeToStdXfm = None
@@ -241,7 +239,7 @@ def setInitialTarget(initModelOption, lsq6Target, targetFileDir, outputDir, pipe
     """Function checks to make sure either an init model or inital target are specified.
        Sets up and returns target and initial model."""
     if(initModelOption == None and lsq6Target == None):
-        print "Error: please specify either a target file for the registration (--lsq6-target or --boostrap), or an initial model (--init-model)\n"
+        print "Error: please specify either a target file for the registration (--lsq6-target or --bootstrap), or an initial model (--init-model)\n"
         sys.exit()   
     if(initModelOption != None and lsq6Target != None):
         print "Error: please specify ONLY ONE of the following options: --lsq6-target, --bootstrap, --init-model\n"
