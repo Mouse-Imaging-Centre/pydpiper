@@ -313,9 +313,16 @@ class LSQ6NUCInorm(object):
             self.p.addPipeline(nucorrection.p)
         
         if self.options.inormalize:
+            need_to_resample_to_LSQ6 = True;
+            # Currently when no non-uniformity correction is applied, the input 
+            # file is intensity normalized in lsq6 space, not native space. This 
+            # means that in that case, we do not need to resample to LSQ6 anymore
+            # since the file is already in that space:
+            if not self.options.nuc:
+                need_to_resample_to_LSQ6 = False
             intensity_normalization = IntensityNormalization(self.inputFiles,
                                                              initial_model=self.initModel,
-                                                             resampleINORMtoLSQ6=True,
+                                                             resampleINORMtoLSQ6=need_to_resample_to_LSQ6,
                                                              targetForLSQ6=self.target)
             self.p.addPipeline(intensity_normalization.p)
 
