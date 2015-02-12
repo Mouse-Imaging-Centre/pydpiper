@@ -50,7 +50,13 @@ class MAGeTApplication(AbstractApplication):
             print "You can find the default MAGeT protocols in your pydpiper source directory, in: applications_testing/test_data/"
             sys.exit()
             
-
+        # There are two variables that can be used to determine where the output
+        # of the pipeline is stored: pipeline_name and outputDir
+        # If the outputDir is not specified, the current working directory is used.
+        if self.options.pipeline_name:
+            self.outputDir += "/" + self.options.pipeline_name
+            fh.makedirsIgnoreExisting(self.outputDir)
+            
         atlasDir = fh.createSubDir(self.outputDir, "input_atlases")
         
         """Read in atlases from directory specified in --atlas-library and 
