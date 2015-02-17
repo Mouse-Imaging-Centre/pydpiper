@@ -598,9 +598,10 @@ class Pipeline():
             t = time.time()
             # copy() as unregisterClient mutates self.clients during iteration over the latter
             for uri,client in self.clients.copy().iteritems():
-                if t - client.timestamp > pe.HEARTBEAT_INTERVAL + pe.LATENCY_TOLERANCE:
-                    logger.warn("Executor at %s has died!", client.clientURI)
-                    print("\nWarning: there has been no contact with %s, for %d seconds. Considering the executor as dead!\n" % (client.clientURI, pe.HEARTBEAT_INTERVAL + pe.LATENCY_TOLERANCE))
+                dt = t - client.timestamp
+                if dt > pe.HEARTBEAT_INTERVAL + pe.LATENCY_TOLERANCE:
+                    logger.warn("Executor at %s has died (no contact for %.1f sec)!", client.clientURI, dt)
+                    print("\nWarning: there has been no contact with %s, for %.1f seconds. Considering the executor as dead!\n" % (client.clientURI, dt))
                     if self.failed_executors > self.main_options_hash.max_failed_executors:
                         logger.warn("Currently %d executors have died. This is more than the number of allowed failed executors as set by the flag: --max-failed-executors. Too many executors lost to spawn new ones" % self.failed_executors)
 
@@ -914,7 +915,7 @@ def pipelineDaemon(pipeline, options, programName=None):
     
     logger.debug("Prior to starting server, total stages %i. Number processed: %i.", 
                  len(pipeline.stages), len(pipeline.processedStages))
-    logger.debug("Number of stages in runnable index (size of queue): %i",
+    logger.debug("Number of stages in runnable queue: %i",
                  pipeline.runnable.qsize())
     
     # # provide the pipeline with the main option hash. The server when started 
