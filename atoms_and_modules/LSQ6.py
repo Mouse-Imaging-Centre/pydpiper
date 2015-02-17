@@ -57,7 +57,9 @@ def addLSQ6ArgumentGroup(parser):
     group.add_argument("--lsq6-simple", dest="lsq6_method",
                      action="store_const", const="lsq6_simple",
                      help="Run a 6 parameter alignment assuming that the input files are roughly "
-                     "aligned: same space, similar orientation. [Default = %(default)s]")
+                     "aligned: same space, similar orientation. Keep in mind that if you use an "
+                     "initial model with both a standard and a native space, the assumption is "
+                     "that the input files are already roughly aligned to the native space [Default = %(default)s]")
     group.add_argument("--lsq6-centre-estimation", dest="lsq6_method",
                      action="store_const", const="lsq6_centre_estimation",
                      help="Run a 6 parameter alignment assuming that the input files have a "
