@@ -301,10 +301,8 @@ class pipelineExecutor():
         # to notify the server of the job's destruction
         # so the job is no longer in the client's set of stages
         # when unregisterClient is called
-        if self.registered_with_server:
-            self.pyro_proxy_for_server.unregisterClient(self.clientURI)
-            self.registered_with_server = False
-        
+        self.unregister_with_server()
+
     def completeAndExitChildren(self):
         # This function is called under normal circumstances (i.e., not because
         # of a keyboard interrupt). So we can close the pool of processes 
@@ -314,9 +312,20 @@ class pipelineExecutor():
             self.pool.close()
             # wait for the worker processes (children) to exit (must be called after terminate() or close()
             self.pool.join()
+        self.unregister_with_server()
+
+    def unregister_with_server(self):
         if self.registered_with_server:
-            self.pyro_proxy_for_server.unregisterClient(self.clientURI)
+            # unset the registered flag before calling unregisterClient
+            # to prevent an (unimportant) race condition wherein the
+            # unregisterClient() call begins while, simultaneously, the heartbeat
+            # thread finds the flag true and so sends a heartbeat
+            # request to the server, which raises an exception as the client has
+            # since unregistered, so is no longer present in some data structure
+            # (it's OK if the heartbeat begins before the flag is unset
+            # since the server runs single-threaded)
             self.registered_with_server = False
+            self.pyro_proxy_for_server.unregisterClient(self.clientURI)
         
     def submitToQueue(self, programName=None):
         """Submits to sge queueing system using sge_batch script""" 
