@@ -178,7 +178,8 @@ class runOnQueueingSystem():
             self.jobFile.write(cmd)
     def completeJobFile(self):
         """Completes pbs script--wait for background jobs to terminate as per scinet wiki"""
-        self.jobFile.write("wait" + "\n")
+        self.jobFile.write("wait\n")
+        self.jobFile.write("rm -f /dev/shm/* 2>/dev/null\n")
         self.jobFile.close()
     def submitJob(self, jobName, after=None, afterany=None, syncwith=None, synccount=None):
         """Submit job to batch queueing system"""

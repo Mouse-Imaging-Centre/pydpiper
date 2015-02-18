@@ -571,7 +571,7 @@ class Pipeline():
           return False
 
         if self.allStagesCompleted():
-            logger.debug("All stages complete ... done")
+            logger.info("All stages complete ... done")
             return False
         else:
             return True
@@ -834,7 +834,7 @@ def launchServer(pipeline, options):
             except:
                 logger.exception("Server loop encountered a problem.  Shutting down.")
             finally:
-                logger.debug("Server loop going to shut down ...")
+                logger.info("Server loop going to shut down ...")
                 p.set_shutdown_ev()
 
         h = Process(target=loop)
