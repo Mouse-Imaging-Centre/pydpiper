@@ -15,11 +15,13 @@ logger = logging.getLogger(__name__)
 
 def addApplicationArgumentGroup(parser):
     group = parser.add_argument_group("General application options", "General options for all pydpiper applications.")
-    group.add_argument("--restart", dest="restart", 
-                               action="store_false", default=True,
+    restart_group = group.add_mutually_exclusive_group()
+    parser.set_defaults(restart=True)
+    restart_group.add_argument("--restart", dest="restart", 
+                               action="store_true",
                                help="Restart pipeline using backup files. [default = %(default)s]")
-    group.add_argument("--no-restart", dest="restart", 
-                               action="store_false", help="Opposite of --restart")
+    restart_group.add_argument("--no-restart", dest="restart", 
+                               action="store_false", help="Do not continue from backup files.")
     # TODO instead of prefixing all subdirectories (logs, backups, processed, ...)
     # with the pipeline name/date, we could create one identifying directory
     # and put these other directories inside
@@ -29,23 +31,25 @@ def addApplicationArgumentGroup(parser):
     group.add_argument("--create-graph", dest="create_graph",
                                action="store_true", default=False,
                                help="Create a .dot file with graphical representation of pipeline relationships [default = %(default)s]")
+    execute_group = group.add_mutually_exclusive_group()
     parser.set_defaults(execute=True)
-    parser.set_defaults(verbose=False)
-    group.add_argument("--execute", dest="execute",
+    execute_group.add_argument("--execute", dest="execute",
                                action="store_true",
                                help="Actually execute the planned commands [default = %(default)s]")
-    group.add_argument("--no-execute", dest="execute",
+    execute_group.add_argument("--no-execute", dest="execute",
                                action="store_false",
                                help="Opposite of --execute")
     group.add_argument("--version", dest="show_version",
                                action="store_true",
-                               help="Print the version number and exit.")
-    group.add_argument("--verbose", dest="verbose",
-                               action="store_true",
-                               help="Be verbose in what is printed to the screen [default = %(default)s]")
-    group.add_argument("--no-verbose", dest="verbose",
-                               action="store_false",
-                               help="Opposite of --verbose [default]")
+                               help="Print the version number and exit")
+    verbosity_group = group.add_mutually_exclusive_group()
+    parser.set_defaults(verbose=False)
+    verbosity_group.add_argument("--verbose", dest="verbose",
+                                 action="store_true",
+                                 help="Be verbose in what is printed to the screen [default = %(default)s]")
+    verbosity_group.add_argument("--no-verbose", dest="verbose",
+                                 action="store_false",
+                                 help="Opposite of --verbose")
     group.add_argument("files", type=str, nargs='+', metavar='file',
                         help='Files to process')
 

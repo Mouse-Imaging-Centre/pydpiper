@@ -39,6 +39,7 @@ def addLSQ6ArgumentGroup(parser):
     """
         standard options for the LSQ6 module
     """
+
     group = parser.add_argument_group("LSQ6-registration options", "Options for performing a 6 parameter (rigid) registration.")
     group.add_argument("--lsq6-target", dest="lsq6_target",
                      type=str, default=None,
@@ -52,8 +53,6 @@ def addLSQ6ArgumentGroup(parser):
                      action="store_true", default=False,
                      help="Use the first inputfile to the pipeline as the target for the 6 parameter alignment. [Default = %(default)s]")
     parser.set_defaults(lsq6_method="lsq6_large_rotations")
-    parser.set_defaults(nuc=True)
-    parser.set_defaults(inormalize=True)
     group.add_argument("--lsq6-simple", dest="lsq6_method",
                      action="store_const", const="lsq6_simple",
                      help="Run a 6 parameter alignment assuming that the input files are roughly "
@@ -84,24 +83,26 @@ def addLSQ6ArgumentGroup(parser):
                      type=int, default=10,
                      help="Settings for the rotational interval in degrees when running the large rotation alignment."
                      " [Default = %(default)s]")
-    group.add_argument("--nuc", dest="nuc",
-                      action="store_true", 
-                      help="Perform non-uniformity correction. [Default = %(default)s]")
-    group.add_argument("--no-nuc", dest="nuc",
-                      action="store_false", 
-                      help="If specified, do not perform non-uniformity correction. Opposite of --nuc.")
-    group.add_argument("--inormalize", dest="inormalize",
-                      action="store_true", 
-                      help="Normalize the intensities after lsq6 alignment and nuc, if done. [Default = %(default)s] ")
-    group.add_argument("--no-inormalize", dest="inormalize",
-                      action="store_false", 
-                      help="If specified, do not perform intensity normalization. Opposite of --inormalize.")
     group.add_argument("--lsq6-protocol", dest="lsq6_protocol",
                       type=str, default=None,
                       help="Specify an lsq6 protocol that overrides the default setting for stages in "
                       "the 6 parameter minctracc call. Parameters must be specified as in the following \n"
                       "example: applications_testing/test_data/minctracc_example_linear_protocol.csv \n"
                       "[Default = %(default)s].")
+    nuc_group = group.add_mutually_exclusive_group(required=True)
+    nuc_group.add_argument("--nuc", dest="nuc",
+                           action="store_true", 
+                           help="Perform non-uniformity correction.")
+    nuc_group.add_argument("--no-nuc", dest="nuc",
+                           action="store_false", 
+                           help="Do not perform non-uniformity correction.")
+    inorm_group = group.add_mutually_exclusive_group(required=True)
+    inorm_group.add_argument("--inorm", dest="inormalize", action="store_true",
+                             help="Perform intensity normalization after LSQ6 alignment"
+                                  " and (if done) non-uniformity correction.")
+    inorm_group.add_argument("--no-inorm", dest="inormalize", action="store_false",
+                             help="Do not perform intensity normalization.")
+
     #group.add_argument("TODO") # this is the filename positional arg
     #group.add_argument("files", nargs='+', type=str, help="Files to process")
 
