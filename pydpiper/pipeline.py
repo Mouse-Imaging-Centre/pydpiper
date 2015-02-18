@@ -393,15 +393,15 @@ class Pipeline():
         try:
             self.clients[clientURI].running_stages.add(index)
         except:
-            print "Error: could not find client %s while trying to add running stage" % clientURI
-            raise Exception("clientURI not found in server client list")
+            print("Error: could not find client %s while trying to add running stage" % clientURI)
+            raise
 
     def removeRunningStageFromClient(self, clientURI, index):
         try:
             c = self.clients[clientURI]
         except:
-            print "Error: could not find client %s while trying to remove running stage" % clientURI
-            raise Exception("clientURI not found in server client list")
+            print("Error: could not find client %s while trying to remove running stage" % clientURI)
+            raise
         else:
             try:
                 c.running_stages.remove(index)
