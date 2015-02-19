@@ -183,7 +183,7 @@ def runStage(serverURI, clientURI, i):
             
             # log file for the stage
             of = open(command_logfile, 'a')
-            of.write("Running on: " + socket.gethostname() + " at " + datetime.isoformat(datetime.now(), " ") + "\n")
+            of.write("Stage " + str(i) + " running on " + socket.gethostname() + " at " + datetime.isoformat(datetime.now(), " ") + ":\n")
             of.write(command_to_run + "\n")
             of.flush()
             
