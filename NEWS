@@ -1,3 +1,25 @@
+New in Version 1.12
+===================
+* LSQ6 (MBM) fixes to the combination of --no-nuc and --inormalize. This would incorrectly apply the lsq6 transformation to the inormalized file twice
+* MAGeT -- now uses the pipeline_name argument -- has better error messages when there are issues with the atlases/labels/masks -- if no atlases are found in the atlas library, the program exists -- has an explicit way to specify --pairwise
+* improvements to error handling in the code
+* most pipeline related files and directories are now prefixed with the pipeline name
+* fixes to how the initial model is used. Now there are two possible scenarios:
+
+  image.mnc
+  image_mask.mnc
+
+  or
+
+  image.mnc
+  image_mask.mnc
+  image_native.mnc
+  image_native_mask.mnc
+  image_native_to_standard.xfm
+
+* debug statements added in order to inspect heartbeat issues -- heartbeat checking can also be turned off at the moment
+* on SciNet, as many executors as possible will start with the server using syncwith rather than after (in qsub)
+
 New in Version 1.11
 ===================
 (in addition to the changes in the alpha version)
