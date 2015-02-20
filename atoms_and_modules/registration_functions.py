@@ -6,6 +6,7 @@ from os.path import abspath, exists, dirname, splitext, isfile, basename
 from os import curdir, walk
 from datetime import date
 import sys
+import time
 import re
 import csv
 import logging
@@ -17,8 +18,8 @@ logger = logging.getLogger(__name__)
 def addGenRegArgumentGroup(parser):
     group = parser.add_argument_group("General registration options",
                          "General options for running various types of registrations.")
-    group.add_argument("--pipeline-name", dest="pipeline_name",
-                       type=str, default=None,
+    group.add_argument("--pipeline-name", dest="pipeline_name", type=str,
+                       default=time.strftime("anonymous-pipeline-%d-%m-%Y-at-%H-%m-%S"),
                        help="Name of pipeline and prefix for models.")
     group.add_argument("--input-space", dest="input_space",
                        type=str, default="native", 
@@ -36,10 +37,10 @@ class StandardMBMDirectories(object):
 
 def setupDirectories(outputDir, pipeName, module):
     #Setup pipeline name
-    if not pipeName:
-        pipeName = str(date.today()) + "_pipeline"
+    #if not pipeName:
+    #    pipeName = str(date.today()) + "_pipeline"
     
-    #initilize directories class:
+    #initialize directories class:
     dirs = StandardMBMDirectories() 
     
     #create subdirectories based on which module is being run. _processed always created 
@@ -169,16 +170,17 @@ def isFileHandler(inSource, inTarget=None):
     If this function returns True - both types are fileHandlers. If it returns
     false, both types are strings. If there is a mismatch, the assert statement
     should cause an error to be raised."""
-    isFileHandlingClass = True
-    assertMsg = 'source and target files must both be same type: RegistrationPipeFH or string'
+    errorMsg = 'source and target files must both be same type: RegistrationPipeFH or string'
     if isinstance(inSource, rfh.RegistrationFHBase):
         if inTarget:
-            assert isinstance(inTarget, rfh.RegistrationFHBase), assertMsg
+            if not isinstance(inTarget, rfh.RegistrationFHBase):
+                raise Exception(errorMsg)
+        return True
     else:
         if inTarget:
-            assert not isinstance(inTarget, rfh.RegistrationFHBase), assertMsg
-        isFileHandlingClass = False
-    return(isFileHandlingClass)
+            if isinstance(inTarget, rfh.RegistrationFHBase):
+                raise Exception(errorMsg)
+        return False
 
 def setupInitModel(inputModel, pipeName, pipeDir=None):
     """
@@ -211,37 +213,34 @@ def setupInitModel(inputModel, pipeName, pipeDir=None):
         else:
             mask = imageDirectory + "/" + imageBase + "_mask.mnc"
             if not exists(mask):
-                errorMsg = "Required mask for the --init-model does not exist: " + str(mask)
-                raise
+                raise Exception("Required mask for the --init-model does not exist: " + str(mask))
             standardFH = rfh.RegistrationPipeFH(imageFile, mask=mask, basedir=initModelDir)            
             #if native file exists, create FH
             nativeFileName = imageDirectory + "/" + imageBase + "_native.mnc"
             if exists(nativeFileName):
                 mask = imageDirectory + "/" + imageBase + "_native_mask.mnc"
                 if not exists(mask):
-                    errorMsg = "_native.mnc file included but associated mask not found"
-                    raise
+                    raise Exception("_native.mnc file included but associated mask not found")
                 else:
                     nativeFH = rfh.RegistrationPipeFH(nativeFileName, mask=mask, basedir=initModelDir)
                     nativeToStdXfm = imageDirectory + "/" + imageBase + "_native_to_standard.xfm"
                     if exists(nativeToStdXfm):
                         nativeFH.setLastXfm(standardFH, nativeToStdXfm)
                     else:
-                        nativeToStdXfm = None
+                        raise Exception("Your initial model directory has both native and standard files but no transformation between them; you need to supply %s_native_to_standard.xfm" % imageBase)
             else:
                 nativeFH = None
                 nativeToStdXfm = None
             return (standardFH, nativeFH, nativeToStdXfm)
     except:
-        print errorMsg
-        print "Exiting..."
-        sys.exit()
+        print(errorMsg)
+        raise
 
 def setInitialTarget(initModelOption, lsq6Target, targetFileDir, outputDir, pipeName):
     """Function checks to make sure either an init model or inital target are specified.
        Sets up and returns target and initial model."""
     if(initModelOption == None and lsq6Target == None):
-        print "Error: please specify either a target file for the registration (--lsq6-target or --boostrap), or an initial model (--init-model)\n"
+        print "Error: please specify either a target file for the registration (--lsq6-target or --bootstrap), or an initial model (--init-model)\n"
         sys.exit()   
     if(initModelOption != None and lsq6Target != None):
         print "Error: please specify ONLY ONE of the following options: --lsq6-target, --bootstrap, --init-model\n"

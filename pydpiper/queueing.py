@@ -70,7 +70,7 @@ class runOnQueueingSystem():
             reconstruct += ' '.join(remove_num_exec(self.arguments))
         reconstruct += " --local --num-executors=0 " # + " --lifetime=%d " % t # TODO remove
         return reconstruct
-    def constructAndSubmitJobFile(self, identifier, time, isMainFile, after=None, afterany=None):
+    def constructAndSubmitJobFile(self, identifier, time, isMainFile, after=None, afterany=None, synccount=None, syncwith=None):
         """Construct the bulk of the pbs script to be submitted via qsub"""
         now = datetime.now()  
         jobName = self.jobName + identifier + now.strftime("%Y%m%d-%H%M%S%f") + ".job"
@@ -78,30 +78,44 @@ class runOnQueueingSystem():
         self.jobFile = open(self.jobFileName, "w")
         self.addHeaderAndCommands(time, isMainFile)
         self.completeJobFile()
-        jobId = self.submitJob(jobName, after, afterany)
+        jobId = self.submitJob(jobName, after=after, afterany=afterany, synccount=synccount, syncwith=syncwith)
         return jobId
     def createAndSubmitPbsScripts(self): 
         """Creates pbs script(s) for main program and separate executors, if needed"""       
         time_remaining = self.job_lifetime
         serverJobId = None
+        # based on the user's estimate for (sequential) walltime, create
+        # "generations" of parallel jobs each living for the max_walltime allowed
         while time_remaining > 0:
             t = max(self.min_walltime, time_remaining)
             if self.max_walltime is not None:
                 t = min(t, self.max_walltime)
             time_remaining -= t
-            serverJobId = self.createAndSubmitMainJobFile(time=t, afterany=serverJobId)
+            # within each "generation", spawn jobs each with 1 node and executor
+            # (and a server on one node).  Use Torque's capability to start
+            # as many as possible at one time, and start the remainder after this
+            # (so the server will be available):
+            remote_execs = self.numexec - 1
+            max_synched_jobs = 5
+            synched_jobs = min(remote_execs, max_synched_jobs)
+            serverJobId = self.createAndSubmitMainJobFile(time=t, afterany=serverJobId, synccount=synched_jobs)
             if self.numexec >= 2:
-                for i in range(1, self.numexec):
+                # TODO max_synched_jobs is actually 2 on debug queue,
+                # so should be configurable
+                for i in range(0, synched_jobs):
+                    self.createAndSubmitExecutorJobFile(i, time=t, syncwith=serverJobId)
+                for i in range(synched_jobs, remote_execs):
                     self.createAndSubmitExecutorJobFile(i, time=t, after=serverJobId)
             # in principle a server could overlap the previous generation of clients,
-            # but at present the clients just die within seconds
-    def createAndSubmitMainJobFile(self,time, afterany=None):
-        return self.constructAndSubmitJobFile("-pipeline-",time, isMainFile=True, afterany=afterany)
-    def createAndSubmitExecutorJobFile(self, i, time, after):
+            # but at present the clients crash within seconds of the previous 
+            # server exiting, so there is no need to introduce stricter dependencies
+    def createAndSubmitMainJobFile(self, time, afterany=None, synccount=None):
+        return self.constructAndSubmitJobFile("-pipeline-",time, isMainFile=True, afterany=afterany, synccount=synccount)
+    def createAndSubmitExecutorJobFile(self, i, time, syncwith=None, after=None):
         # This is called directly from pipeline_executor
-        # For multiple executors, this will be called multiple-times.
+        # For multiple executors, this will be called multiple times.
         execId = "-executor-" + str(i) + "-"
-        self.constructAndSubmitJobFile(execId, time, isMainFile=False, after=after)
+        self.constructAndSubmitJobFile(execId, time, isMainFile=False, after=after, syncwith=syncwith)
     def addHeaderAndCommands(self, time, isMainFile):
         """Constructs header and commands for pbs script, based on options input from calling program"""
         self.jobFile.write("#!/bin/bash\n")
@@ -164,17 +178,18 @@ class runOnQueueingSystem():
             self.jobFile.write(cmd)
     def completeJobFile(self):
         """Completes pbs script--wait for background jobs to terminate as per scinet wiki"""
-        self.jobFile.write("wait" + "\n")
+        self.jobFile.write("wait\n")
+        self.jobFile.write("rm -f /dev/shm/* 2>/dev/null\n")
         self.jobFile.close()
-    def submitJob(self, jobName, after=None, afterany=None):
+    def submitJob(self, jobName, after=None, afterany=None, syncwith=None, synccount=None):
         """Submit job to batch queueing system"""
         os.environ['PYRO_LOGFILE'] = jobName + '.log'
         # use -V to get all (Pyro) variables, incl. PYRO_LOGFILE
         cmd = ['qsub', '-o', jobName + '-o.log', '-e', jobName + '-e.log', '-V']
-        if after is not None:
-            cmd += ['-Wdepend=after:' + after]
-        if afterany is not None:
-            cmd += ['-Wdepend=afterany:' + afterany]
+        for attr, var in [('after', after), ('afterany', afterany),
+                          ('synccount', synccount), ('syncwith', syncwith)]:
+            if var is not None and var != 0: #synccount=0 is illegal
+                cmd += ['-Wdepend=%s' % attr + ':' + str(var)]
         cmd += [self.jobFileName]
         out = subprocess.check_output(cmd)
         jobId = out.strip()

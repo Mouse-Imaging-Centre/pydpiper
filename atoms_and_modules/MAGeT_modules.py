@@ -14,9 +14,13 @@ def addMAGeTArgumentGroup(parser):
     group.add_argument("--atlas-library", dest="atlas_lib",
                        type=str, default="atlas_label_pairs",
                        help="Directory of existing atlas/label pairs")
+    group.add_argument("--pairwise", dest="pairwise",
+                       action="store_true",
+                       help="""If specified, register inputs to each other pairwise. [Default]""")
     group.add_argument("--no-pairwise", dest="pairwise",
-                       action="store_false", default=True,
-                       help="""Pairwise crossing of templates. [Default = %(default)s]. If specified, only register inputs to atlases in library""")
+                       action="store_false",
+                       help="""If specified, only register inputs to atlases in library.""")
+    parser.set_defaults(pairwise=True)
     group.add_argument("--mask", dest="mask",
                        action="store_true", default=False,
                        help="Create a mask for all images prior to handling labels. [Default = %(default)s]")

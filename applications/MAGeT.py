@@ -50,7 +50,13 @@ class MAGeTApplication(AbstractApplication):
             print "You can find the default MAGeT protocols in your pydpiper source directory, in: applications_testing/test_data/"
             sys.exit()
             
-
+        # There are two variables that can be used to determine where the output
+        # of the pipeline is stored: pipeline_name and outputDir
+        # If the outputDir is not specified, the current working directory is used.
+        if self.options.pipeline_name:
+            self.outputDir += "/" + self.options.pipeline_name
+            fh.makedirsIgnoreExisting(self.outputDir)
+            
         atlasDir = fh.createSubDir(self.outputDir, "input_atlases")
         
         """Read in atlases from directory specified in --atlas-library and 
@@ -72,14 +78,13 @@ class MAGeTApplication(AbstractApplication):
             else:
                 average.append(abspath(inFile))
         # check to make sure len(average)==len(labels)
-        if not len(average) == len(labels):
-            logger.error("Number of input atlas labels does not match averages.")
-            logger.error("Check " + str(self.options.atlas_lib) + " and try again.")
+        if (not len(average) == len(labels)) or (not len(average) == len(masks)):
+            print "\nError: not all atlases/labels/masks match."
+            print "The allowed naming conventions are:\n{atlas}.mnc\n{atlas}_labels.mnc\n{atlas}_mask.mnc"
+            print "\nand:\n{atlas}_average.mnc\n{atlas}_labels.mnc\n{atlas}_mask.mnc\n"
+            print "Check the atlas library directory: " + str(self.options.atlas_lib) + " and try again."
+            print "Exiting..."
             sys.exit() 
-        elif not len(average) == len(masks):
-            logger.error("Number of input atlas masks does not match averages.")
-            logger.error("Check " + str(self.options.atlas_lib) + " and try again.")
-            sys.exit()
         else:
         # match labels with averages
             numLibraryAtlases = len(labels)
@@ -98,7 +103,13 @@ class MAGeTApplication(AbstractApplication):
                         break
                 atlasPipeFH.addLabels(abspath(iLabel), inputLabel=True) 
                 atlases.append(atlasPipeFH)
-        
+
+        # exit if no atlases were found in the specified directory
+        if numLibraryAtlases == 0:
+            print "\nError: no atlases were found in the specified directory: %s" % self.options.atlas_lib
+            print "Exiting..."
+            sys.exit()
+
         #MF TODO: add some checking to make sure that atlas/labels/naming all worked correctly
         # eg if we have A4_mask.mnc "matching" with A3_labels, we wont get right thing.
         

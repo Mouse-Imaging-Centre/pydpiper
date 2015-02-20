@@ -9,6 +9,7 @@ from multiprocessing import Process, Pool
 import subprocess as subprocess
 from shlex import split
 import pydpiper.queueing as q
+import atoms_and_modules.registration_functions as rf
 import logging
 import socket
 import signal
@@ -43,6 +44,10 @@ def addExecutorArgumentGroup(parser):
     group.add_argument("--max-failed-executors", dest="max_failed_executors",
                       type=int, default=2,
                       help="Maximum number of failed executors before we stop relaunching. [Default = %(default)s]")
+    # TODO add corresponding --monitor-heartbeats
+    group.add_argument("--no-monitor-heartbeats", dest="monitor_heartbeats",
+                      action="store_false",
+                      help="Don't assume executors have died if they don't check in with the server (NOTE: this can hang your pipeline if an executor crashes).")
     group.add_argument("--time", dest="time", 
                        type=str, default=None,
                        help="Wall time to request for each server/executor in the format hh:mm:ss. Required only if --queue-type=pbs. Current default on PBS is 48:00:00.")
@@ -168,7 +173,7 @@ def runStage(serverURI, clientURI, i):
     
     # Retrieve stage information, run stage and set finished or failed accordingly  
     try:
-        logger.info("Running stage %i", i)
+        logger.info("Running stage %i (on %s)", i, clientURI)
         p.setStageStarted(i, clientURI)
         try:
             # get stage information
@@ -178,7 +183,7 @@ def runStage(serverURI, clientURI, i):
             
             # log file for the stage
             of = open(command_logfile, 'a')
-            of.write("Running on: " + socket.gethostname() + " at " + datetime.isoformat(datetime.now(), " ") + "\n")
+            of.write("Stage " + str(i) + " running on " + socket.gethostname() + " at " + datetime.isoformat(datetime.now(), " ") + ":\n")
             of.write(command_to_run + "\n")
             of.flush()
             
@@ -190,10 +195,10 @@ def runStage(serverURI, clientURI, i):
             ret = process.returncode 
             of.close()
         except:
-            logger.exception("Exception whilst running stage: %i ", i)   
+            logger.exception("Exception whilst running stage: %i (on %s)", i, clientURI)   
             client.notifyStageTerminated(i)
         else:
-            logger.info("Stage %i finished, return was: %i", i, ret)
+            logger.info("Stage %i finished, return was: %i (on %s)", i, ret, clientURI)
             client.notifyStageTerminated(i, ret)
 
         # If completed, return mem & processes back for re-use
@@ -230,8 +235,8 @@ class pipelineExecutor():
             logger.warn("--sge_queue_opts is deprecated; use --queue-name instead")
         self.ns = options.use_ns
         self.uri_file = options.urifile
-        if self.uri_file == None:
-            self.uri_file = os.path.abspath(os.curdir + "/" + "uri")
+        if self.uri_file is None:
+            self.uri_file = os.path.abspath(os.path.join(os.curdir, options.pipeline_name + "_uri"))
         # the next variable is used to keep track of how long the
         # executor has been continuously idle/sleeping for. Measured
         # in seconds
@@ -296,10 +301,8 @@ class pipelineExecutor():
         # to notify the server of the job's destruction
         # so the job is no longer in the client's set of stages
         # when unregisterClient is called
-        if self.registered_with_server:
-            self.pyro_proxy_for_server.unregisterClient(self.clientURI)
-            self.registered_with_server = False
-        
+        self.unregister_with_server()
+
     def completeAndExitChildren(self):
         # This function is called under normal circumstances (i.e., not because
         # of a keyboard interrupt). So we can close the pool of processes 
@@ -309,9 +312,22 @@ class pipelineExecutor():
             self.pool.close()
             # wait for the worker processes (children) to exit (must be called after terminate() or close()
             self.pool.join()
+        self.unregister_with_server()
+
+    def unregister_with_server(self):
         if self.registered_with_server:
-            self.pyro_proxy_for_server.unregisterClient(self.clientURI)
+            # unset the registered flag before calling unregisterClient
+            # to prevent an (unimportant) race condition wherein the
+            # unregisterClient() call begins while, simultaneously, the heartbeat
+            # thread finds the flag true and so sends a heartbeat
+            # request to the server, which raises an exception as the client has
+            # since unregistered, so is no longer present in some data structure
+            # (it's OK if the heartbeat begins before the flag is unset
+            # since the server runs single-threaded)
+            logger.info("Unsetting the registered-with-the-server flag for executor: %s", self.clientURI)
             self.registered_with_server = False
+            logger.info("Now going to call unregisterClient on the server (executor: %s)", self.clientURI)
+            self.pyro_proxy_for_server.unregisterClient(self.clientURI)
         
     def submitToQueue(self, programName=None):
         """Submits to sge queueing system using sge_batch script""" 
@@ -322,7 +338,7 @@ class pipelineExecutor():
             memPerProc = float(self.mem)/float(self.procs)
             strmem = "vf=" + str(memPerProc) + "G" 
             jobname = ""
-            if not programName==None: 
+            if programName is not None:
                 executablePath = os.path.abspath(programName)
                 jobname = os.path.basename(executablePath) + "-" 
             now = datetime.now().strftime("%Y-%m-%d-at-%H-%M-%S-%f")
@@ -417,10 +433,13 @@ class pipelineExecutor():
     def heartbeat(self):
         try:
             while self.registered_with_server:
+                logger.debug("Heartbeat...")
                 self.pyro_proxy_for_server.updateClientTimestamp(self.clientURI)
                 time.sleep(HEARTBEAT_INTERVAL)
         except:
-            logger.info("Heartbeat thread crashed: ")
+            logger.exception("Heartbeat thread crashed: ")
+            # TODO should this take down the executor since globally Pydpiper
+            # is now in an inconsistent state?
 
     # use an event set/timeout system to run the executor mainLoop -
     # we might want to pass some extra information in addition to waking the system
@@ -522,7 +541,8 @@ if __name__ == "__main__":
     else:
         files = []
     parser = ArgParser(default_config_files=files)    
-    
+
+    rf.addGenRegArgumentGroup(parser) # just to get --pipeline-name
     addExecutorArgumentGroup(parser)
 
     # using parse_known_args instead of parse_args is a hack since we

@@ -2,6 +2,9 @@
 
 import os
 import argparse
+import signal
+
+signal.signal(signal.SIGPIPE, signal.SIG_DFL)
 
 # setup the log file name before importing the Pyro4 library
 

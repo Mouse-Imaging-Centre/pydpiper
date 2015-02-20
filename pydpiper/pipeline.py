@@ -16,6 +16,7 @@ from multiprocessing import Process, Event
 import file_handling as fh
 import logging
 
+#TODO move this and Pyro4 imports down into launchServer where pipeline name is available?
 os.environ["PYRO_LOGLEVEL"] = os.getenv("PYRO_LOGLEVEL", "INFO")
 os.environ["PYRO_LOGFILE"]  = os.path.splitext(os.path.basename(__file__))[0] + ".log"
 # TODO name the server logfile more descriptively
@@ -264,10 +265,14 @@ class Pipeline():
 
     def setBackupFileLocation(self, outputDir=None):
         """Sets location of backup files."""
-        if (outputDir == None):
+        if outputDir is None:
             # set backups in current directory if directory doesn't currently exist
-            outputDir = os.getcwd() 
-        self.backupFileLocation = fh.createBackupDir(outputDir)   
+            outputDir = os.getcwd()
+        # TODO don't need this dir since we have only one backup file?
+        #self.backupFileLocation = fh.createBackupDir(outputDir, self.main_options_hash.pipeline_name)
+        self.backupFileLocation = os.path.join(outputDir,
+                                    self.main_options_hash.pipeline_name
+                                     + '_finished_stages')
     def addPipeline(self, p):
         if p.skipped_stages > 0:
             self.skipped_stages += p.skipped_stages
@@ -275,7 +280,7 @@ class Pipeline():
             self.addStage(s)
     def printStages(self, name):
         """Prints stages to a file, stage info to stdout"""
-        fileForPrinting = os.path.abspath(os.curdir + "/" + str(name) + "-pipeline-stages.txt")
+        fileForPrinting = os.path.abspath(os.curdir + "/" + str(name) + "_pipeline_stages.txt")
         pf = open(fileForPrinting, "w")
         for i in range(len(self.stages)):
             pf.write(str(i) + "  " + str(self.stages[i]) + "\n")
@@ -388,15 +393,15 @@ class Pipeline():
         try:
             self.clients[clientURI].running_stages.add(index)
         except:
-            print "Error: could not find client %s while trying to add running stage" % clientURI
-            raise Exception("clientURI not found in server client list")
+            print("Error: could not find client %s while trying to add running stage" % clientURI)
+            raise
 
     def removeRunningStageFromClient(self, clientURI, index):
         try:
             c = self.clients[clientURI]
         except:
-            print "Error: could not find client %s while trying to remove running stage" % clientURI
-            raise Exception("clientURI not found in server client list")
+            print("Error: could not find client %s while trying to remove running stage" % clientURI)
+            raise
         else:
             try:
                 c.running_stages.remove(index)
@@ -412,7 +417,8 @@ class Pipeline():
         # It would be better to catch that earlier (by using a different/additional data structure)
         # but for now look for the case when a stage is run twice at the same time, which may
         # produce bizarre results as both processes write files
-        assert self.stages[index].status != 'running', 'stage %d is already running' % index
+        if self.stages[index].status == 'running':
+            raise Exception('stage %d is already running' % index)
         self.addRunningStageToClient(clientURI, index)
         self.currently_running_stages.add(index)
         self.stages[index].setRunning()
@@ -565,7 +571,7 @@ class Pipeline():
           return False
 
         if self.allStagesCompleted():
-            logger.debug("All stages complete ... done")
+            logger.info("All stages complete ... done")
             return False
         else:
             return True
@@ -574,6 +580,7 @@ class Pipeline():
         t = time.time() # use server clock for consistency
         try:
             self.clients[clientURI].timestamp = t
+            logger.debug("Client %s updated timestamp", clientURI)
         except:
             print("Error: could not find client %s while updating the time stamp" % clientURI)
             logger.exception("clientURI not found in server client list:")
@@ -586,21 +593,23 @@ class Pipeline():
         if executors_to_launch > 0:
             self.launchExecutorsFromServer(executors_to_launch)
 
-        # look for dead clients and requeue their jobs
-        t = time.time()
-        # copy() as unregisterClient mutates self.clients during iteration over the latter
-        for uri,client in self.clients.copy().iteritems():
-            if t - client.timestamp > pe.HEARTBEAT_INTERVAL + pe.LATENCY_TOLERANCE:
-                logger.warn("Executor at %s has died!", client.clientURI)
-                print("\nWarning: there has been no contact with %s, for %d seconds. Considering the executor as dead!\n" % (client.clientURI, pe.HEARTBEAT_INTERVAL + pe.LATENCY_TOLERANCE))
-                if self.failed_executors > self.main_options_hash.max_failed_executors:
-                    logger.warn("Currently %d executors have died. This is more than the number of allowed failed executors as set by the flag: --max-failed-executors. Too many executors lost to spawn new ones" % self.failed_executors)
+        if self.main_options_hash.monitor_heartbeats:
+            # look for dead clients and requeue their jobs
+            t = time.time()
+            # copy() as unregisterClient mutates self.clients during iteration over the latter
+            for uri,client in self.clients.copy().iteritems():
+                dt = t - client.timestamp
+                if dt > pe.HEARTBEAT_INTERVAL + pe.LATENCY_TOLERANCE:
+                    logger.warn("Executor at %s has died (no contact for %.1f sec)!", client.clientURI, dt)
+                    print("\nWarning: there has been no contact with %s, for %.1f seconds. Considering the executor as dead!\n" % (client.clientURI, dt))
+                    if self.failed_executors > self.main_options_hash.max_failed_executors:
+                        logger.warn("Currently %d executors have died. This is more than the number of allowed failed executors as set by the flag: --max-failed-executors. Too many executors lost to spawn new ones" % self.failed_executors)
 
-                self.failed_executors += 1
+                    self.failed_executors += 1
 
-                # the unregisterClient function will automatically requeue the
-                # stages that were associated with the lost client
-                self.unregisterClient(client.clientURI)
+                    # the unregisterClient function will automatically requeue the
+                    # stages that were associated with the lost client
+                    self.unregisterClient(client.clientURI)
 
     """
         Returns an integer indicating the number of executors to launch
@@ -680,7 +689,7 @@ class Pipeline():
 
     def skip_completed_stages(self):
         try:
-            with open(str(self.backupFileLocation) + '/finished_stages', 'r') as fh:
+            with open(self.backupFileLocation, 'r') as fh:
                 # a stage's index is just an artifact of the graph construction,
                 # so load only the hashes of finished stages
                 previous_hashes = frozenset((int(e.split(',')[1]) for e in fh.read().split()))
@@ -688,7 +697,7 @@ class Pipeline():
             logger.info("Finished stages log doesn't exist or is corrupt.")
             return
         # processedStages was read from finished_stages_fh, so:
-        self.finished_stages_fh = open(str(self.backupFileLocation) + '/finished_stages', 'w')
+        self.finished_stages_fh = open(self.backupFileLocation, 'w')
         runnable  = []
         completed = 0
         while True:
@@ -825,7 +834,7 @@ def launchServer(pipeline, options):
             except:
                 logger.exception("Server loop encountered a problem.  Shutting down.")
             finally:
-                logger.debug("Server loop going to shut down ...")
+                logger.info("Server loop going to shut down ...")
                 p.set_shutdown_ev()
 
         h = Process(target=loop)
@@ -840,7 +849,7 @@ def launchServer(pipeline, options):
             logger.debug("Time remaining: %d s" % time_left)
             time_to_live = time_left - pe.SHUTDOWN_TIME
         except:
-            logger.exception("Couldn't determine remaining walltime from qstat call")
+            logger.info("I couldn't determine your remaining walltime from qstat.")
             time_to_live = None
         flag = pipeline.shutdown_ev.wait(time_to_live)
         if not flag:
@@ -893,7 +902,7 @@ def pipelineDaemon(pipeline, options, programName=None):
     """Launches Pyro server and (if specified by options) pipeline executors"""
 
     if options.urifile is None:
-        options.urifile = os.path.abspath(os.path.join(os.curdir, "uri"))
+        options.urifile = os.path.abspath(os.path.join(os.curdir, options.pipeline_name + "_uri"))
 
     if options.restart:
         logger.debug("Examining filesystem to determine skippable stages...")
@@ -906,20 +915,20 @@ def pipelineDaemon(pipeline, options, programName=None):
     
     logger.debug("Prior to starting server, total stages %i. Number processed: %i.", 
                  len(pipeline.stages), len(pipeline.processedStages))
-    logger.debug("Number of stages in runnable index (size of queue): %i",
+    logger.debug("Number of stages in runnable queue: %i",
                  pipeline.runnable.qsize())
     
-    # provide the pipeline with the main option hash. The server when started 
-    # needs access to information in there in order to (re)launch executors
-    # during run time
-    pipeline.main_options_hash = options
+    # # provide the pipeline with the main option hash. The server when started 
+    # # needs access to information in there in order to (re)launch executors
+    # # during run time
+    #pipeline.main_options_hash = options
     pipeline.programName = programName
     # we are now appending to the stages file since we've already written
     # previously completed stages to it in skip_completed_stages
-    with open(str(pipeline.backupFileLocation) + '/finished_stages', 'a') as fh:
-        pipeline.finished_stages_fh = fh
-        logger.debug("Starting server...")
-        try:
+    try:
+        with open(pipeline.backupFileLocation, 'a') as fh: #TODO exception swallowed here if fh can't be created??
+            pipeline.finished_stages_fh = fh
+            logger.debug("Starting server...")
             launchServer(pipeline, options)
-        finally:
-            sys.exit(0)
+    finally:
+        sys.exit(0)

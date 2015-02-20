@@ -57,7 +57,9 @@ def addLSQ6ArgumentGroup(parser):
     group.add_argument("--lsq6-simple", dest="lsq6_method",
                      action="store_const", const="lsq6_simple",
                      help="Run a 6 parameter alignment assuming that the input files are roughly "
-                     "aligned: same space, similar orientation. [Default = %(default)s]")
+                     "aligned: same space, similar orientation. Keep in mind that if you use an "
+                     "initial model with both a standard and a native space, the assumption is "
+                     "that the input files are already roughly aligned to the native space [Default = %(default)s]")
     group.add_argument("--lsq6-centre-estimation", dest="lsq6_method",
                      action="store_const", const="lsq6_centre_estimation",
                      help="Run a 6 parameter alignment assuming that the input files have a "
@@ -313,9 +315,16 @@ class LSQ6NUCInorm(object):
             self.p.addPipeline(nucorrection.p)
         
         if self.options.inormalize:
+            need_to_resample_to_LSQ6 = True;
+            # Currently when no non-uniformity correction is applied, the input 
+            # file is intensity normalized in lsq6 space, not native space. This 
+            # means that in that case, we do not need to resample to LSQ6 anymore
+            # since the file is already in that space:
+            if not self.options.nuc:
+                need_to_resample_to_LSQ6 = False
             intensity_normalization = IntensityNormalization(self.inputFiles,
                                                              initial_model=self.initModel,
-                                                             resampleINORMtoLSQ6=True,
+                                                             resampleINORMtoLSQ6=need_to_resample_to_LSQ6,
                                                              targetForLSQ6=self.target)
             self.p.addPipeline(intensity_normalization.p)
 
