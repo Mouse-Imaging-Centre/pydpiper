@@ -35,6 +35,22 @@ class StandardMBMDirectories(object):
         self.nlinDir = None
         self.processedDir = None
 
+def checkThatInputFilesAreProvided(args):
+    # in order to be able to print the version number, the main application
+    # class can not require to have at least 1 input file, because then specifying:
+    #
+    # program.py --version
+    # would return:
+    # "too few arguments". 
+    #
+    # As such the number of input files is handled using the nargs=* argument, allowing
+    # for zero or more input files. That means that each application that actually requires
+    # input files (not all do, some use a .csv file) needs to check this
+    # Here we should check that we actually have input files 
+    if len(args) < 1:
+        print "\nError: no input files are provided. Exiting...\n"
+        sys.exit()
+
 def setupDirectories(outputDir, pipeName, module):
     #Setup pipeline name
     #if not pipeName:
@@ -70,7 +86,7 @@ def initializeInputFiles(args, mainDirectory, maskDir=None):
     for i in range(len(args)):
         ext = splitext(args[i])[1]
         if(re.match(".mnc", ext) == None):
-            print "Error: input file is not a MINC file:, ", args[i], "\n"
+            print "Error: input file is not a MINC file: %s\n" % args[i]
             sys.exit()
     
     inputs = []
