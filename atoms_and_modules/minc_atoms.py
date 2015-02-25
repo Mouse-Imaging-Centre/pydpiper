@@ -3,7 +3,9 @@
 from pydpiper.pipeline import CmdStage, Pipeline
 from atoms_and_modules.registration_functions import isFileHandler
 import atoms_and_modules.registration_functions as rf
-from os.path import abspath, basename, splitext, join
+from pyminc.volumes.factory import volumeFromFile
+from operator import mul
+from os.path import abspath, basename, splitext, join, isfile
 from os import curdir
 import pydpiper.file_handling as fh
 import sys
@@ -15,6 +17,7 @@ class mincANTS(CmdStage):
     def __init__(self,
                  inSource,
                  inTarget,
+                 memoryRequired,
                  output=None,
                  logFile=None,
                  defaultDir="transforms", 
@@ -91,12 +94,21 @@ class mincANTS(CmdStage):
         self.finalizeCommand()
         self.setName()
         self.colour = "red"
-        self.setMemory()
+        self.setMemory(inSource, memoryRequired)
         
-    def setMemory(self):
+    def setMemory(self, inSource, memoryRequired):
         iterationElements = self.iterations.split("x")
+        # TODO also benchmark/set memory for the case where no iterations are at finest resolution
         if int(iterationElements[-1]) > 0:
-            self.setMem(3)
+            # more ugliness you might expect to be hidden inside inSource ...
+            f = inSource.getLastBasevol()
+            if not isfile(f):
+                f = inSource.inputFileName
+                if not isfile(f):
+                    raise TypeError, "expected file handler or string, got: %s" % type(f)
+            voxels = reduce(mul, volumeFromFile(f).getSizes())
+
+            self.setMem(memoryRequired[0] + voxels * memoryRequired[1])
 
     def setName(self):
         self.name = "mincANTS"
