@@ -11,9 +11,7 @@ import re
 from datetime import datetime
 from subprocess import call, check_output
 from shlex import split
-import multiprocessing
 from multiprocessing import Process, Event
-import file_handling as fh
 import logging
 
 #TODO move this and Pyro4 imports down into launchServer where pipeline name is available?
@@ -104,7 +102,7 @@ class PipelineStage():
     def __eq__(self, other):
         return self.inputFiles == other.inputFiles and self.outputFiles == other.outputFiles
     def __ne__(self, other):
-        return not(__eq__(self,other))
+        return not(self.__eq__(self,other))
     def getNumberOfRetries(self):
         return self.number_retries
     def incrementNumberOfRetries(self):
@@ -625,7 +623,6 @@ class Pipeline():
         if self.failed_executors > self.main_options_hash.max_failed_executors:
             return 0
 
-        executors_to_launch = 0
         if self.main_options_hash.num_exec != 0:
             # Server should launch executors itself
             # This should happen regardless of whether or not executors
