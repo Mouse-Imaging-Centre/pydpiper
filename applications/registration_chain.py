@@ -83,7 +83,13 @@ class RegistrationChain(AbstractApplication):
         #Take average time point, subtract 1 for proper indexing
         avgTime = self.options.avg_time_point - 1
         
-        #Read in files from csv
+        # Read in files from csv
+        # What is returned (subjects) is a dictionary where each entry is numbered
+        # from 0 .. #subjects -1, where each value associated with a key is an
+        # array of the file handlers for the files related to that entry. For instance:
+        # {0: [<FH for fileA_1.mnc>, <FH for fileA_2.mnc>],
+        #  1: [<FH for fileB_1.mnc>, <FH for fileB_2.mnc>]}
+        #
         subjects = rf.setupSubjectHash(self.args[0], dirs, self.options.mask_dir)
         
         # If input = native space then do LSQ6 first on all files.
@@ -116,8 +122,17 @@ class RegistrationChain(AbstractApplication):
         #Value will be different for input_space == native vs LSQ6
         currGroupIndex = rf.getCurrIndexForInputs(subjects)
         
-        #If requested, run iterative groupwise registration for all subjects at the specified
-        #common timepoint, otherwise look to see if files are specified from a previous run.
+        # If requested, run iterative groupwise registration for all subjects at the specified
+        # common timepoint, otherwise look to see if files are specified from a previous run.
+        # For example, if the avgTime is timepoint 2, the following is run in this toy scenario:
+        #
+        #                            ------------
+        # subject A    A_time_1   -> | A_time_2 | ->   A_time_3
+        # subject B    B_time_1   -> | B_time_2 | ->   B_time_3
+        # subject C    C_time_1   -> | C_time_2 | ->   C_time_3
+        #                            ------------
+        #                                 |
+        #                            group_wise registration on time point 2
         if self.options.run_groupwise:
             inputs = []
             for s in subjects:
@@ -150,11 +165,34 @@ class RegistrationChain(AbstractApplication):
                 logger.info("Calculating registration chain only") 
                 nlinFH = None
         
-        for subj in subjects:
-            s = subjects[subj]
+        # now run a chained registration for each of the subjects. Given the toy scenario above:
+        # subject A    A_time_1   ->   A_time_2   ->   A_time_3
+        # subject B    B_time_1   ->   B_time_2   ->   B_time_3
+        # subject C    C_time_1   ->   C_time_2   ->   C_time_3
+        # 
+        # The following registrations are run:
+        # 1) A_time_1   ->   A_time_2
+        # 2) A_time_2   ->   A_time_3
+        #
+        # 3) B_time_1   ->   B_time_2
+        # 4) B_time_2   ->   B_time_3
+        #
+        # 5) C_time_1   ->   C_time_2
+        # 6) C_time_2   ->   C_time_3
+        #
+        # Prior to starting the registration chain, we will add a new group "chain"
+        # to each of the file handlers. That way the transformations we later need
+        # in order to determine the stats can all be retrieved from this group.
+        for subjKey in subjects:
+            s = subjects[subjKey]
+            count = len(s)
+            for i in range(count):
+                s[i].newGroup(groupName = "chain")
+        # now run the actual registrations
+        for subjKey in subjects:
+            s = subjects[subjKey]
             count = len(s) 
             for i in range(count - 1):
-                s[i].newGroup(groupName="chain")
                 if self.options.reg_method == "mincANTS":
                     register = mm.LSQ12ANTSNlin(s[i], 
                                                 s[i+1],
