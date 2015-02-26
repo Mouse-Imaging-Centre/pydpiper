@@ -370,9 +370,14 @@ class LongitudinalStatsConcatAndResample:
                 for i in reversed(range(self.timePoint)): 
                     self.statsAndConcat(s, i, count, beforeAvg=True)
                          
-            """ Loop over points after average. If average is at first time point, this loop
-                will hit all time points (other than first). If average is at subsequent time 
-                point, it hits all time points not covered previously. xfmToCommon needs to be reset."""
+            # Loop over points after average. If average is at first time point, this loop
+            # will hit all time points (other than first). If average is at subsequent time 
+            # point, it hits all time points not covered previously. 
+            #
+            # xfmToCommon (possibly) needs to be reset: if the average time point is not the first time point
+            # then the array xfmToCommon now contains a list of transformations from the first time point to the
+            # average. For instance if the average time point is time point 3, then xfmToCommon now contains:
+            # [ time_0_to_time_1.xfm, time_1_to_time_2.xfm, time_2_to_average_at_time_point2.xfm ]
             if xfmToNlin:
                 self.xfmToCommon = [xfmToNlin]
             else:

@@ -98,11 +98,11 @@ class mincANTS(CmdStage):
         
     def setMemory(self, inSource, memoryRequired):
         iterationElements = self.iterations.split("x")
-        intercept = memoryRequired[0]
+        base_memory = memoryRequired[0]
         if int(iterationElements[-1]) == 0:
-            slope = memoryRequired[1]
+            mem_per_voxel = memoryRequired[1]
         else:
-            slope = memoryRequired[2]
+            mem_per_voxel = memoryRequired[2]
         # more ugliness you might expect to be hidden inside inSource ...
         f = inSource.getLastBasevol()
         if not isfile(f):
@@ -110,7 +110,7 @@ class mincANTS(CmdStage):
             if not isfile(f):
                 raise TypeError, "expected file handler or string, got: %s" % type(f)
         voxels = reduce(mul, volumeFromFile(f).getSizes())
-        self.setMem(memoryRequired[0] + voxels * memoryRequired[1])
+        self.setMem(base_memory + voxels * mem_per_voxel)
 
     def setName(self):
         self.name = "mincANTS"
