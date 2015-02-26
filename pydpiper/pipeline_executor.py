@@ -432,9 +432,11 @@ class pipelineExecutor():
 
     def heartbeat(self):
         try:
+            tick = 0
             while self.registered_with_server:
-                logger.debug("Heartbeat...")
-                self.pyro_proxy_for_server.updateClientTimestamp(self.clientURI)
+                logger.debug("Heartbeat %d..." % tick)
+                tick += 1
+                self.pyro_proxy_for_server.updateClientTimestamp(self.clientURI, i)
                 time.sleep(HEARTBEAT_INTERVAL)
         except:
             logger.exception("Heartbeat thread crashed: ")
