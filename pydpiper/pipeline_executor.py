@@ -173,7 +173,7 @@ def runStage(serverURI, clientURI, i):
     
     # Retrieve stage information, run stage and set finished or failed accordingly  
     try:
-        logger.info("Running stage %i", i)
+        logger.info("Running stage %i (on %s)", i, clientURI)
         p.setStageStarted(i, clientURI)
         try:
             # get stage information
@@ -195,10 +195,10 @@ def runStage(serverURI, clientURI, i):
             ret = process.returncode 
             of.close()
         except:
-            logger.exception("Exception whilst running stage: %i ", i)   
+            logger.exception("Exception whilst running stage: %i (on %s)", i, clientURI)   
             client.notifyStageTerminated(i)
         else:
-            logger.info("Stage %i finished, return was: %i", i, ret)
+            logger.info("Stage %i finished, return was: %i (on %s)", i, ret, clientURI)
             client.notifyStageTerminated(i, ret)
 
         # If completed, return mem & processes back for re-use
@@ -324,7 +324,9 @@ class pipelineExecutor():
             # since unregistered, so is no longer present in some data structure
             # (it's OK if the heartbeat begins before the flag is unset
             # since the server runs single-threaded)
+            logger.info("Unsetting the registered-with-the-server flag for executor: %s", self.clientURI)
             self.registered_with_server = False
+            logger.info("Now going to call unregisterClient on the server (executor: %s)", self.clientURI)
             self.pyro_proxy_for_server.unregisterClient(self.clientURI)
         
     def submitToQueue(self, programName=None):

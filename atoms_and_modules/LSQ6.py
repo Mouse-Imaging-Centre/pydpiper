@@ -57,7 +57,9 @@ def addLSQ6ArgumentGroup(parser):
     group.add_argument("--lsq6-simple", dest="lsq6_method",
                      action="store_const", const="lsq6_simple",
                      help="Run a 6 parameter alignment assuming that the input files are roughly "
-                     "aligned: same space, similar orientation. [Default = %(default)s]")
+                     "aligned: same space, similar orientation. Keep in mind that if you use an "
+                     "initial model with both a standard and a native space, the assumption is "
+                     "that the input files are already roughly aligned to the native space [Default = %(default)s]")
     group.add_argument("--lsq6-centre-estimation", dest="lsq6_method",
                      action="store_const", const="lsq6_centre_estimation",
                      help="Run a 6 parameter alignment assuming that the input files have a "
@@ -102,8 +104,6 @@ def addLSQ6ArgumentGroup(parser):
                       "the 6 parameter minctracc call. Parameters must be specified as in the following \n"
                       "example: applications_testing/test_data/minctracc_example_linear_protocol.csv \n"
                       "[Default = %(default)s].")
-    #group.add_argument("TODO") # this is the filename positional arg
-    #group.add_argument("files", nargs='+', type=str, help="Files to process")
 
 class LSQ6Registration(AbstractApplication):
     """ 
@@ -155,7 +155,8 @@ class LSQ6Registration(AbstractApplication):
     
     def run(self):
         options = self.options
-        #args = self.args
+
+        rf.checkThatInputFilesAreProvided(options.files)
 
         verifyCorrectLSQ6TargetOptions(options.bootstrap,
                                        options.init_model,
