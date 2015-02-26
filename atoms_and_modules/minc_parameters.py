@@ -82,8 +82,9 @@ class setMincANTSParams(object):
         #the except clause assumes it is an object of type(self).
     def setupProtocol(self): 
         if self.regProtocol:
-            # NOTE: if a regProtocol is specified, it must currently specify ALL
-            # registration options as the defaults are not used in this case
+            # FIXME: if a regProtocol is specified, it must currently specify ALL
+            # registration options as the defaults are not used in this case.
+            # It might make sense just to set default params anyway before doing this
             try:
                 self.setParams()
             except:
@@ -129,7 +130,7 @@ class setMincANTSParams(object):
         self.regularization = ["Gauss[2,1]", "Gauss[2,1]", "Gauss[2,1]"]
         self.iterations = ["100x100x100x0", "100x100x100x20", "100x100x100x100"]
         self.useMask = [False, True, True]
-        self.memoryRequired = [0.2, 2.1e-7]
+        self.memoryRequired = [0.177, 1.385e-7, 2.1e-7]
         
     def setParams(self):
         """Set parameters from specified protocol"""
@@ -209,8 +210,9 @@ class setMincANTSParams(object):
                     elif p[i] == "False" or p[i] == "FALSE":
                         self.useMask.append(False)
             elif p[0]=="memoryRequired":
-                """linear estimate of memRequired: p[1] + voxels * p[2]"""
-                self.memoryRequired = (float(p[1]),float(p[2]))
+                """linear estimate of memRequired: mem = p[0] + voxels * p[i]
+                   where i = 2 (for NxMxPx0 stages) or i = 3 (for highest res stages)"""
+                self.memoryRequired = (float(p[1]), float(p[2]), float(p[3]))
             else:
                 print "Improper parameter specified for mincANTS protocol: " + str(p[0])
                 print "Exiting..."
