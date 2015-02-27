@@ -104,8 +104,6 @@ def addLSQ6ArgumentGroup(parser):
                       "the 6 parameter minctracc call. Parameters must be specified as in the following \n"
                       "example: applications_testing/test_data/minctracc_example_linear_protocol.csv \n"
                       "[Default = %(default)s].")
-    #group.add_argument("TODO") # this is the filename positional arg
-    #group.add_argument("files", nargs='+', type=str, help="Files to process")
 
 class LSQ6Registration(AbstractApplication):
     """ 
@@ -157,7 +155,8 @@ class LSQ6Registration(AbstractApplication):
     
     def run(self):
         options = self.options
-        #args = self.args
+
+        rf.checkThatInputFilesAreProvided(options.files)
 
         verifyCorrectLSQ6TargetOptions(options.bootstrap,
                                        options.init_model,

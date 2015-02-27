@@ -61,6 +61,8 @@ class LSQ12Registration(AbstractApplication):
     def run(self):
         options = self.options
         args = self.args
+
+        rf.checkThatInputFilesAreProvided(args)
         
         # Setup output directories for LSQ12 registration.        
         dirs = rf.setupDirectories(self.outputDir, options.pipeline_name, module="LSQ12")

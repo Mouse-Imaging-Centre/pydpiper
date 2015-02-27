@@ -9,9 +9,11 @@ import atoms_and_modules.LSQ12 as lsq12
 import atoms_and_modules.NLIN as nlin
 import atoms_and_modules.minc_parameters as mp
 import atoms_and_modules.stats_tools as st
+from atoms_and_modules.minc_modules import createQualityControlImages
 import os
 import logging
 from datetime import date
+import time
 
 
 logger = logging.getLogger(__name__)
@@ -36,6 +38,8 @@ class MBMApplication(AbstractApplication):
     def run(self):
         options = self.options
         args = self.args
+
+        rf.checkThatInputFilesAreProvided(args)
 
         # make sure only one of the lsq6 target options is provided
         lsq6.verifyCorrectLSQ6TargetOptions(options.bootstrap,
@@ -76,7 +80,18 @@ class MBMApplication(AbstractApplication):
                                             dirs.lsq6Dir, 
                                             options)
         self.pipeline.addPipeline(runLSQ6NucInorm.p)
-        
+
+        # At this point in the pipeline it's important to check the 
+        # general alignment. If things are widly off here, there's no
+        # need to continue on with the registration. Currently we will
+        # inform the user by printing out a message pointing to 
+        # a verification image showing slices through all files
+        montageLSQ6 = self.outputDir + "/" + options.pipeline_name + "_quality_control_montage_lsq6.png"
+        # TODO, base scaling factor on resolution of initial model or target
+        lsq6VerificationImages = createQualityControlImages(inputFiles,
+                                                            montageOutPut=montageLSQ6)
+        self.pipeline.addPipeline(lsq6VerificationImages.p)
+
         # LSQ12 MODULE
         # We need to specify a likeFile/space when all files are resampled
         # at the end of LSQ12. If one is not specified, use standard space. 

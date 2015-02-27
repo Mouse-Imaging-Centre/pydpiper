@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-from pydpiper.pipeline import Pipeline
+from pydpiper.pipeline import Pipeline, InputFile, OutputFile, LogFile, CmdStage
 import atoms_and_modules.LSQ12 as lsq12
 import atoms_and_modules.NLIN as nlin
 import atoms_and_modules.minc_atoms as ma
@@ -8,9 +8,12 @@ import atoms_and_modules.registration_file_handling as rfh
 import atoms_and_modules.stats_tools as st
 import atoms_and_modules.minc_parameters as mp
 import atoms_and_modules.registration_functions as rf
+from pydpiper.file_handling import removeBaseAndExtension, createBaseName, logFromFile
+from atoms_and_modules.registration_functions import isFileHandler
 import pydpiper.file_handling as fh
 from pyminc.volumes.factory import volumeFromFile
 import sys
+from os.path import splitext
 
 class SetResolution:
     def __init__(self, filesToResample, resolution):
@@ -328,7 +331,7 @@ class LongitudinalStatsConcatAndResample:
             """ Concat transforms to get xfmToCommon and calculate statistics 
                 Note that inverted transform, which is what we want, is calculated in
                 the statistics module. """
-            xtc = fh.createBaseName(s[i].transformsDir, s[i].basename + "_to_" + self.commonName + ".xfm")
+            xtc = createBaseName(s[i].transformsDir, s[i].basename + "_to_" + self.commonName + ".xfm")
             xc = ma.xfmConcat(self.xfmToCommon, xtc, fh.logFromFile(s[i].logDir, xtc))
             self.p.addStage(xc)
             s[i].addAndSetXfmToUse(self.nlinFH, xtc)
@@ -370,9 +373,14 @@ class LongitudinalStatsConcatAndResample:
                 for i in reversed(range(self.timePoint)): 
                     self.statsAndConcat(s, i, count, beforeAvg=True)
                          
-            """ Loop over points after average. If average is at first time point, this loop
-                will hit all time points (other than first). If average is at subsequent time 
-                point, it hits all time points not covered previously. xfmToCommon needs to be reset."""
+            # Loop over points after average. If average is at first time point, this loop
+            # will hit all time points (other than first). If average is at subsequent time 
+            # point, it hits all time points not covered previously. 
+            #
+            # xfmToCommon (possibly) needs to be reset: if the average time point is not the first time point
+            # then the array xfmToCommon now contains a list of transformations from the first time point to the
+            # average. For instance if the average time point is time point 3, then xfmToCommon now contains:
+            # [ time_0_to_time_1.xfm, time_1_to_time_2.xfm, time_2_to_average_at_time_point2.xfm ]
             if xfmToNlin:
                 self.xfmToCommon = [xfmToNlin]
             else:
@@ -398,8 +406,8 @@ def resampleToCommon(xfm, FH, statsGroup, statsKernels, nlinFH):
         if statsGroup.absoluteJacobians:
             filesToResample.append(statsGroup.absoluteJacobians[b])
     for f in filesToResample:
-        outputBase = fh.removeBaseAndExtension(f).split(".mnc")[0]
-        outputFile = fh.createBaseName(outputDirectory, outputBase + "_common" + ".mnc")
+        outputBase = removeBaseAndExtension(f).split(".mnc")[0]
+        outputFile = createBaseName(outputDirectory, outputBase + "_common" + ".mnc")
         logFile = fh.logFromFile(FH.logDir, outputFile)
         targetAndLike=nlinFH.getLastBasevol()
         res = ma.mincresample(f, 
@@ -412,3 +420,57 @@ def resampleToCommon(xfm, FH, statsGroup, statsKernels, nlinFH):
         pipeline.addStage(res)
     
     return pipeline
+
+
+class createQualityControlImages(object):
+    """
+    This class takes a list of input files and creates
+    a set of quality control (verification) images. Optionally
+    these images can be combined in a single montage image for
+    easy viewing
+    
+    If the inputFiles are fileHandler, the last base volume
+    will be used to create the images from.
+
+    The scaling factor corresponds to the the mincpik -scale 
+    parameter
+    """
+    def __init__(self, 
+                 inputFiles, 
+                 createMontage=True,
+                 montageOutPut=None,
+                 scalingFactor=20):
+        self.p = Pipeline()
+        self.individualImages = []
+
+        if createMontage and montageOutPut == None:
+            print "\nError: createMontage is specified in createQualityControlImages, but no output name for the montage is provided. Exiting...\n"
+            sys.exit()
+
+        # for each of the input files, run a mincpik call and create 
+        # a triplane image.
+        for file in inputFiles:
+            if isFileHandler(file):
+                # create command using last base vol
+                inputToMincpik = file.getLastBasevol()
+                outputMincpik = createBaseName(file.tmpDir,
+                                            removeBaseAndExtension(inputToMincpik) + "_QC_image.png")
+                cmd = ["mincpik", "-clobber",
+                       "-scale", scalingFactor,
+                       "-triplanar",
+                       InputFile(inputToMincpik),
+                       OutputFile(outputMincpik)]
+                mincpik = CmdStage(cmd)
+                mincpik.setLogFile(LogFile(logFromFile(file.logDir, outputMincpik)))
+                self.p.addStage(mincpik)
+                self.individualImages.append(outputMincpik)
+
+        # if montageOutput is specified, create the overview image
+        if createMontage:
+            cmdmontage = ["montage", "-geometry", "+2+2"] \
+                         + map(InputFile, self.individualImages) + [OutputFile(montageOutPut)]
+            montage = CmdStage(cmdmontage)
+            montage.setLogFile(splitext(montageOutPut)[0] + ".log")
+            self.p.addStage(montage)
+            
+                

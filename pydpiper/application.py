@@ -46,7 +46,7 @@ def addApplicationArgumentGroup(parser):
     group.add_argument("--no-verbose", dest="verbose",
                                action="store_false",
                                help="Opposite of --verbose [default]")
-    group.add_argument("files", type=str, nargs='+', metavar='file',
+    group.add_argument("files", type=str, nargs='*', metavar='file',
                         help='Files to process')
 
 # Some sneakiness... Using the following lines, it's possible
@@ -136,9 +136,11 @@ class AbstractApplication(object):
         self.args = self.options.files
 
         self._print_version()
-        
-        #Check to make sure some executors have been specified. 
-        noExecSpecified(self.options.num_exec)
+
+        # Check to make sure some executors have been specified if we are 
+        # actually going to run:
+        if self.options.execute:
+            noExecSpecified(self.options.num_exec)
              
         self._setup_pipeline(self.options)
         self._setup_directories()

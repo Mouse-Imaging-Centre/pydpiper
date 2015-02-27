@@ -44,10 +44,10 @@ def finalGenerationFileNames(inputFH):
        protocol (minctracc vs mincANTS) or number of generations. 
     """
     registerDir = inputFH.setOutputDirectory("transforms")
-    registerFileName = removeBaseAndExtension(inputFH.basename) + "-final-nlin.xfm"
+    registerFileName = inputFH.basename + "-final-nlin.xfm"
     registerOutput = createBaseName(registerDir, registerFileName)
     resampleDir = inputFH.setOutputDirectory("resampled")
-    resampleFileName = removeBaseAndExtension(inputFH.basename) + "-resampled-final-nlin.mnc"
+    resampleFileName = inputFH.basename + "-resampled-final-nlin.mnc"
     resampleOutput = createBaseName(resampleDir, resampleFileName)
     return (registerOutput, resampleOutput)
 
@@ -347,6 +347,7 @@ class NLINANTS(NLINBase):
                       similarity_metric=self.similarityMetric[i],
                       weight=self.weight[i], 
                       iterations=self.iterations[i],
+                      memoryRequired = self.nlinParams.memoryRequired,
                       radius_or_histo=self.radiusHisto[i],
                       transformation_model = self.transformationModel[i],
                       regularization=self.regularization[i],
