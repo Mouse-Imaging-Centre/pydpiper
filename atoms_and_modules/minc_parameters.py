@@ -85,6 +85,12 @@ class setMincANTSParams(object):
             # FIXME: if a regProtocol is specified, it must currently specify ALL
             # registration options as the defaults are not used in this case.
             # It might make sense just to set default params anyway before doing this
+            #
+            # For now, we will only set the memoryRequired by default. This will 
+            # maintain backwards compatibility with older versions, because 
+            # original non linear protocols can still be used:
+            # (this definitely still is a FIXME :-))
+            self.memoryRequired = [0.177, 1.385e-7, 2.1e-7]
             try:
                 self.setParams()
             except:
