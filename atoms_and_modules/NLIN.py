@@ -44,10 +44,10 @@ def finalGenerationFileNames(inputFH):
        protocol (minctracc vs mincANTS) or number of generations. 
     """
     registerDir = inputFH.setOutputDirectory("transforms")
-    registerFileName = removeBaseAndExtension(inputFH.basename) + "-final-nlin.xfm"
+    registerFileName = inputFH.basename + "-final-nlin.xfm"
     registerOutput = createBaseName(registerDir, registerFileName)
     resampleDir = inputFH.setOutputDirectory("resampled")
-    resampleFileName = removeBaseAndExtension(inputFH.basename) + "-resampled-final-nlin.mnc"
+    resampleFileName = inputFH.basename + "-resampled-final-nlin.mnc"
     resampleOutput = createBaseName(resampleDir, resampleFileName)
     return (registerOutput, resampleOutput)
 
