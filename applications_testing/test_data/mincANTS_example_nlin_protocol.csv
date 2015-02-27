@@ -7,3 +7,4 @@
 "regularization";"Gauss[2,1]";"Gauss[2,1]";"Gauss[2,1]"
 "iterations";"100x100x100x0";"100x100x100x40";"100x100x100x150"
 "useMask";False;True;True
+"memoryRequired";0.177;1.385e-7;2.1e-7
