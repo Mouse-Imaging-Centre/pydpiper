@@ -1,3 +1,19 @@
+New in Version 1.13
+===================
+* reverted back to launching executors without syncwith (which didn't work)
+* memory usage for mincANTS commands is determined by the code based on total
+  number of voxels in the files (can be overridden using the non linear protocol)
+* a verification image is created after the LSQ6 stage
+* the registration chain works (but has not been tested on its full functionality)
+* fixed a bug that removed part of the filename for *final-nlin* files if the 
+  original files contained a dot 
+
+  (NOTE: this breaks compatibility with version 
+  1.12, because the output filenames are now changed)
+
+* heartbeat counts are stored in order to debug latency issues between the server
+  and executors
+
 New in Version 1.12
 ===================
 * LSQ6 (MBM) fixes to the combination of --no-nuc and --inormalize. This would incorrectly apply the lsq6 transformation to the inormalized file twice
