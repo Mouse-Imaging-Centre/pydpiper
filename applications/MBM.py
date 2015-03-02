@@ -89,7 +89,8 @@ class MBMApplication(AbstractApplication):
         montageLSQ6 = self.outputDir + "/" + options.pipeline_name + "_quality_control_montage_lsq6.png"
         # TODO, base scaling factor on resolution of initial model or target
         lsq6VerificationImages = createQualityControlImages(inputFiles,
-                                                            montageOutPut=montageLSQ6)
+                                                            montageOutPut=montageLSQ6,
+                                                            stage="lsq6")
         self.pipeline.addPipeline(lsq6VerificationImages.p)
 
         # LSQ12 MODULE

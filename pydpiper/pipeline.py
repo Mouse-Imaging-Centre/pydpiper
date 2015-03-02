@@ -119,6 +119,8 @@ class CmdStage(PipelineStage):
         # (these might be called multiple times, so should be benign
         # in some sense)
         self.runnable_hooks = []
+        # functions to be called when a stage finishes
+        self.finished_hooks = []
     def parseArgs(self):
         if self.argArray:
             for a in self.argArray:
@@ -448,6 +450,9 @@ class Pipeline():
         else:
             logger.info("Finished Stage " + str(index) + ": " + str(self.stages[index]))
             self.removeFromRunning(index, clientURI, new_status = "finished")
+            # run any potential hooks now that the stage has finished:
+            for f in self.stages[index].finished_hooks:
+                f()
         self.processedStages.append(index)
         # write out the (index, hash) pairs to disk.  We don't actually need the indices
         # for anything (in fact, the restart code in skip_completed_stages is resilient 
