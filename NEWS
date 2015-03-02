@@ -1,8 +1,13 @@
 New in Version 1.13
 ===================
+* a composite image is now created after the LSQ6 stage and a message output,
+  allowing the user to abort the pipeline if the registration has failed
 * reverted back to launching executors without syncwith (which didn't work)
 * memory usage for mincANTS commands is determined by the code based on total
   number of voxels in the files (can be overridden using the non linear protocol)
+* the command stage type now has runnable-time and completion-time hooks, allowing
+  arbitrary Python code to be run (this is used in the implementation of the memory
+  usage and composite image features above)
 * a verification image is created after the LSQ6 stage
 * the registration chain works (but has not been tested on its full functionality)
 * fixed a bug that removed part of the filename for *final-nlin* files if the 
