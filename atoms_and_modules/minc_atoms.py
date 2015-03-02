@@ -628,7 +628,7 @@ class mincresample(CmdStage):
             self.cmd += ["-transformation", self.cxfm]              
     def finalizeCommand(self):
         """Add -2, clobber, input and output files """
-        self.cmd += ["-2", "-clobber", self.inFile, self.outfile]
+        self.cmd += ["-2", "-clobber", "-short", "-unsigned", self.inFile, self.outfile]
     def setName(self):
         self.name = "mincresample " 
     def setOutputFile(self, FH, defaultDir):
@@ -784,7 +784,7 @@ class mincAverage(CmdStage):
         self.sd = splitext(self.output)[0] + "-sd.mnc"  
         self.outputFiles += [self.output, self.sd]       
         self.cmd += ["mincaverage",
-                     "-clobber", "-normalize", "-sdfile", self.sd, "-max_buffer_size_in_kb", str(409620)] 
+                     "-clobber", "-normalize", "-short", "-unsigned", "-sdfile", self.sd, "-max_buffer_size_in_kb", str(409620)] 
                  
     def finalizeCommand(self):
         for i in range(len(self.filesToAvg)):
