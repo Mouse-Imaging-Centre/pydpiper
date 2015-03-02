@@ -17,7 +17,7 @@ class mincANTS(CmdStage):
     def __init__(self,
                  inSource,
                  inTarget,
-                 memoryRequired,
+                 memoryCoeffs=[0.177, 1.385e-7, 2.1e-7],
                  output=None,
                  logFile=None,
                  defaultDir="transforms", 
@@ -94,22 +94,19 @@ class mincANTS(CmdStage):
         self.finalizeCommand()
         self.setName()
         self.colour = "red"
-        self.setMemory(inSource, memoryRequired)
+        # defer calculation of memory use until the actual file to be used
+        # is available (since the input file may be, e.g., much larger)
+        self.runnable_hooks.append(
+            lambda : self.setMemory(inSource, memoryCoeffs))
         
-    def setMemory(self, inSource, memoryRequired):
+    def setMemory(self, inSource, memoryCoeffs):
         iterationElements = self.iterations.split("x")
-        base_memory = memoryRequired[0]
+        base_memory = memoryCoeffs[0]
         if int(iterationElements[-1]) == 0:
-            mem_per_voxel = memoryRequired[1]
+            mem_per_voxel = memoryCoeffs[1]
         else:
-            mem_per_voxel = memoryRequired[2]
-        # more ugliness you might expect to be hidden inside inSource ...
-        f = inSource.getLastBasevol()
-        if not isfile(f):
-            f = inSource.inputFileName
-            if not isfile(f):
-                raise TypeError, "expected file handler or string, got: %s" % type(f)
-        voxels = reduce(mul, volumeFromFile(f).getSizes())
+            mem_per_voxel = memoryCoeffs[2]
+        voxels = reduce(mul, volumeFromFile(self.source[0]).getSizes())
         self.setMem(base_memory + voxels * mem_per_voxel)
 
     def setName(self):

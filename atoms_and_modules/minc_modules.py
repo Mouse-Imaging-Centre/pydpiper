@@ -439,9 +439,11 @@ class createQualityControlImages(object):
                  inputFiles, 
                  createMontage=True,
                  montageOutPut=None,
-                 scalingFactor=20):
+                 scalingFactor=20,
+                 stage="lsq6"):
         self.p = Pipeline()
         self.individualImages = []
+        self.stage = stage
 
         if createMontage and montageOutPut == None:
             print "\nError: createMontage is specified in createQualityControlImages, but no output name for the montage is provided. Exiting...\n"
@@ -471,6 +473,20 @@ class createQualityControlImages(object):
                          + map(InputFile, self.individualImages) + [OutputFile(montageOutPut)]
             montage = CmdStage(cmdmontage)
             montage.setLogFile(splitext(montageOutPut)[0] + ".log")
+            message_to_print = "\n* * * * * * *\nPlease consider the following verification "
+            message_to_print += "image, which shows a slice through all input "
+            message_to_print += "files after the %s alignment. If the " % self.stage
+            message_to_print += "files are ill aligned, consider stopping this "
+            message_to_print += "pipeline and changing the %s parameters \n%s\n" % (self.stage,montageOutPut)
+            message_to_print += "* * * * * * *\n"
+            # the hook needs a return. Given that "print" does not return
+            # anything, we need to encapsulate the print statement in a 
+            # function (which in this case will return None, but that's fine)
+            def printMessageForMontage():
+                print message_to_print
+            montage.finished_hooks.append(
+                lambda : printMessageForMontage())
             self.p.addStage(montage)
+
             
                 
