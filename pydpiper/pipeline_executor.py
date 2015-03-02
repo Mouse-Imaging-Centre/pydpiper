@@ -174,6 +174,7 @@ def runStage(serverURI, clientURI, i):
     # Retrieve stage information, run stage and set finished or failed accordingly  
     try:
         logger.info("Running stage %i (on %s)", i, clientURI)
+        logger.debug("Memory requested: %.2f", p.getStageMem(i))
         p.setStageStarted(i, clientURI)
         try:
             # get stage information

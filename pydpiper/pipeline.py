@@ -115,6 +115,10 @@ class CmdStage(PipelineStage):
         self.cmd = [] # the input array converted to strings
         self.parseArgs()
         self.checkLogFile()
+        # functions to be called when the stage becomes runnable
+        # (these might be called multiple times, so should be benign
+        # in some sense)
+        self.runnable_hooks = []
     def parseArgs(self):
         if self.argArray:
             for a in self.argArray:
@@ -307,9 +311,7 @@ class Pipeline():
             if self.stages[i].isFinished() == False:
                 """ either it has 0 predecessors """
                 if len(self.G.predecessors(i)) == 0:
-                    self.runnable.put(i)
-                    # keep track of the memory requirements of the runnable jobs
-                    self.mem_req_for_runnable.append(self.stages[i].mem)
+                    self.enqueue(i)
                     graphHeads.append(i)
                 """ or all of its predecessors are finished """
                 if len(self.G.predecessors(i)) != 0:
@@ -318,9 +320,7 @@ class Pipeline():
                         if self.stages[j].isFinished() == False:
                             predfinished = False
                     if predfinished == True:
-                        self.runnable.put(i) 
-                        # keep track of the memory requirements of the runnable jobs
-                        self.mem_req_for_runnable.append(self.stages[i].mem)
+                        self.enqueue(i)
                         graphHeads.append(i)
         logger.info("Graph heads: " + str(graphHeads))
     def getStage(self, i):
@@ -359,7 +359,7 @@ class Pipeline():
                     logger.debug("The executor does not have enough free memory (free: %.2fG, required: %.2fG) to run stage %d. (Executor: %s)", clientMemFree, self.getStageMem(i), i, clientURIstr)
                 if self.getStageProcs(i) > clientProcsFree:
                     logger.debug("The executor does not have enough free processors (free: %.1f, required: %.1f) to run stage %d. (Executor: %s)", clientProcsFree, self.getStageProcs(i), i, clientURIstr)
-                self.requeue(i)
+                self.enqueue(i)
                 # TODO search the queue for something this client can run?
                 return ("wait", None)
         else:
@@ -456,9 +456,7 @@ class Pipeline():
         self.finished_stages_fh.flush()
         for i in self.G.successors(index):
             if self.checkIfRunnable(i):
-                self.runnable.put(i)
-                # keep track of the memory requirements of the runnable jobs
-                self.mem_req_for_runnable.append(self.stages[i].mem)
+                self.enqueue(i)
 
     def removeFromRunning(self, index, clientURI, new_status):
         try:
@@ -472,7 +470,7 @@ class Pipeline():
         """Clean up a stage lost due to unresponsive client"""
         logger.info("Lost Stage %d: %s: ", index, self.stages[index])
         self.removeFromRunning(index, clientURI, new_status = None)
-        self.requeue(index)
+        self.enqueue(index)
 
     def setStageFailed(self, index, clientURI):
         # given an index, sets stage to failed, adds to processed stages array
@@ -492,7 +490,7 @@ class Pipeline():
             logger.info("RETRYING: ERROR in Stage " + str(index) + ": " + str(self.stages[index]))
             logger.info("RETRYING: adding this stage back to the runnable queue.")
             logger.info("RETRYING: Logfile for Stage " + str(self.stages[index].logFile))
-            self.requeue(index)
+            self.enqueue(index)
         else:
             self.removeFromRunning(index, clientURI, new_status = "failed")
             logger.info("ERROR in Stage " + str(index) + ": " + str(self.stages[index]))
@@ -505,10 +503,12 @@ class Pipeline():
             for i in nx.dfs_successor(self.G, index).keys():
                 self.processedStages.append(i)
 
-    def requeue(self, i):
+    def enqueue(self, i):
         """If stage cannot be run due to insufficient mem/procs, executor returns it to the queue"""
-        logger.debug("Requeueing stage %d", i)
+        logger.debug("Queueing stage %d", i)
         self.runnable.put(i)
+        for f in self.stages[i].runnable_hooks:
+            f()
         # keep track of the memory requirements of the runnable jobs
         self.mem_req_for_runnable.append(self.stages[i].mem)
 
@@ -726,7 +726,7 @@ class Pipeline():
 
         logger.debug("Runnable: %s", runnable)
         for i in runnable:
-            self.requeue(i)
+            self.enqueue(i)
 
         self.finished_stages_fh.close()
         logger.info('Previously completed stages (of %d total): %d', len(self.stages), completed)

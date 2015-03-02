@@ -347,7 +347,7 @@ class NLINANTS(NLINBase):
                       similarity_metric=self.similarityMetric[i],
                       weight=self.weight[i], 
                       iterations=self.iterations[i],
-                      memoryRequired = self.nlinParams.memoryRequired,
+                      memoryCoeffs = self.nlinParams.memoryRequired,
                       radius_or_histo=self.radiusHisto[i],
                       transformation_model = self.transformationModel[i],
                       regularization=self.regularization[i],
