@@ -17,7 +17,7 @@ class mincANTS(CmdStage):
     def __init__(self,
                  inSource,
                  inTarget,
-                 memoryCoeffs,
+                 memoryCoeffs=[0.177, 1.385e-7, 2.1e-7],
                  output=None,
                  logFile=None,
                  defaultDir="transforms", 
@@ -106,14 +106,6 @@ class mincANTS(CmdStage):
             mem_per_voxel = memoryCoeffs[1]
         else:
             mem_per_voxel = memoryCoeffs[2]
-        # more ugliness you might expect to be hidden inside inSource ...
-        #f = inSource.getLastBasevol()
-        #print("f was: %s" % f)
-        #if not isfile(f):
-        #    f = inSource.inputFileName
-        #    if not isfile(f):
-        #        raise TypeError, "expected file handler or string, got: %s" % type(f)
-        print(self.source[0])
         voxels = reduce(mul, volumeFromFile(self.source[0]).getSizes())
         self.setMem(base_memory + voxels * mem_per_voxel)
 
