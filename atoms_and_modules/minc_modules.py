@@ -479,6 +479,9 @@ class createQualityControlImages(object):
             message_to_print += "files are ill aligned, consider stopping this "
             message_to_print += "pipeline and changing the %s parameters \n%s\n" % (self.stage,montageOutPut)
             message_to_print += "* * * * * * *\n"
+            # the hook needs a return. Given that "print" does not return
+            # anything, we need to encapsulate the print statement in a 
+            # function (which in this case will return None, but that's fine)
             def printMessageForMontage():
                 print message_to_print
             montage.finished_hooks.append(
