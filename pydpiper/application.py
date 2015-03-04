@@ -91,7 +91,7 @@ class AbstractApplication(object):
         else:
             files = []
         self.parser = MyParser(default_config_files=files)
-        self.__version__ = get_distribution("pydpiper").version
+        self.__version__ = get_distribution("pydpiper").version  # pylint: disable=E1101
     
     def _setup_options(self):
             # PydPiper options

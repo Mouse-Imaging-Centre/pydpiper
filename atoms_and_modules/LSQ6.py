@@ -982,10 +982,13 @@ class LSQ6Base(object):
         if(self.initial_model != None):
             if(self.initial_model[2] != None):
                 for inputFH in self.inputs:
-                    prevxfm = inputFH.getLastXfm(self.target)
-                    newxfm = inputFH.registerVolume(self.initial_model[0], "transforms")
-                    logFile = fh.logFromFile(inputFH.logDir, newxfm)
-                    self.p.addStage(ma.xfmConcat([prevxfm, self.initial_model[2]],
+                    if not isinstance(inputFH, rfh.RegistrationPipeFH):
+                        raise TypeError("only works with file handlers")
+                    else:
+                        prevxfm = inputFH.getLastXfm(self.target)                            # pylint: disable=E1101
+                        newxfm = inputFH.registerVolume(self.initial_model[0], "transforms") # pylint: disable=E1101
+                        logFile = fh.logFromFile(inputFH.logDir, newxfm)                     # pylint: disable=E1101
+                        self.p.addStage(ma.xfmConcat([prevxfm, self.initial_model[2]],
                                              newxfm,
                                              logFile))
     
@@ -1011,7 +1014,7 @@ class LSQ6Base(object):
             # no arguments need to be provided to setLastBasevol: the last
             # resampled file will be used. If a mask was also resampled
             # during the last stage, this will be updated as well.
-            inputfile.setLastBasevol()
+            inputfile.setLastBasevol() # pylint: disable=E1101
                 
 
     def createAverage(self):

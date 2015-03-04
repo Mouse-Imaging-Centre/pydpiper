@@ -239,6 +239,8 @@ class NLINBase(object):
         self.nlinAverages = [] 
         """Create the blurring resolution from the file resolution"""
         self.fileRes = resolution
+        # hack:
+        self.generations = 0
 
         if (nlin_protocol==None and resolution == None):
             print("\nError: NLIN module was initialized without a protocol, and without a resolution for the registrations to be run at. Please specify one of the two. Exiting\n") 
@@ -251,7 +253,7 @@ class NLINBase(object):
         for i in range(len(self.inputs)):
             self.inputs[i].newGroup(groupName="nlin")
     
-    def addBlurStage(self):
+    def addBlurStage(self, _fh, _i):
         """
             Add blurs to pipeline. Because blurs are handled differently by
             parameter arrays in minctracc and mincANTS subclasses, they are added
@@ -259,7 +261,7 @@ class NLINBase(object):
         """
         pass
     
-    def regAndResample(self):
+    def regAndResample(self, *args):
         """Registration and resampling calls"""
         pass
     
