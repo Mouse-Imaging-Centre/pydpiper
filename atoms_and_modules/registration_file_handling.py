@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 
+from __future__ import print_function
 import pydpiper.file_handling as fh
-from os.path import abspath, join
+from os.path import abspath
 from os import curdir
 import sys
 
@@ -43,15 +44,15 @@ class RegistrationGroupedFiles():
                 try:
                     blurToReturn = self.gradients[fwhm]
                 except:
-                    print "Error: the gradient file with fwhm ", fwhm, " does not exist for file ", self.basevol
-                    print "Unexpected error: ", sys.exc_info()
+                    print("Error: the gradient file with fwhm ", fwhm, " does not exist for file ", self.basevol)
+                    print("Unexpected error: ", sys.exc_info())
                     raise
             else:
                 try:
                     blurToReturn = self.blurs[fwhm]
                 except:
-                    print "Error: the blur file with fwhm ", fwhm, " does not exist for file ", self.basevol
-                    print "Unexpected error: ", sys.exc_info()
+                    print("Error: the blur file with fwhm ", fwhm, " does not exist for file ", self.basevol)
+                    print("Unexpected error: ", sys.exc_info())
                     raise
         return(blurToReturn)
 
@@ -120,7 +121,7 @@ class RegistrationFHBase():
             # if no newBaseVol is given, lastresampled is used
             if not newBaseVol:
                 if not self.groupedFiles[self.currentGroupIndex].lastresampled:
-                    print "Error: setLastBasevol called without a newBaseVol and no lastresampled file exists. Unable to determine which file to set as the LastBasevol."
+                    print("Error: setLastBasevol called without a newBaseVol and no lastresampled file exists. Unable to determine which file to set as the LastBasevol.")
                 else:
                     self.groupedFiles[self.currentGroupIndex].basevol = self.groupedFiles[self.currentGroupIndex].lastresampled
                     # update the mask if there is a resampled version around

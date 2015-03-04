@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+from __future__ import print_function
 import atoms_and_modules.registration_file_handling as rfh
 import pydpiper.file_handling as fh
 from os.path import abspath, exists, dirname, splitext, isfile, basename
@@ -48,7 +49,7 @@ def checkThatInputFilesAreProvided(args):
     # input files (not all do, some use a .csv file) needs to check this
     # Here we should check that we actually have input files 
     if len(args) < 1:
-        print "\nError: no input files are provided. Exiting...\n"
+        print("\nError: no input files are provided. Exiting...\n")
         sys.exit()
 
 def setupDirectories(outputDir, pipeName, module):
@@ -81,12 +82,12 @@ def initializeInputFiles(args, mainDirectory, maskDir=None):
     # initial error handling:  verify that at least one input file is specified 
     # and that it is a MINC file
     if(len(args) < 1):
-        print "Error: no source image provided\n"
+        print("Error: no source image provided\n")
         sys.exit()
     for i in range(len(args)):
         ext = splitext(args[i])[1]
         if(re.match(".mnc", ext) == None):
-            print "Error: input file is not a MINC file: %s\n" % args[i]
+            print("Error: input file is not a MINC file: %s\n" % args[i])
             sys.exit()
     
     inputs = []
@@ -172,10 +173,10 @@ def getCurrIndexForInputs(subjects):
                     currentGroupIndex = s[i].currentGroupIndex
                 else:
                     if s[i].currentGroupIndex != currentGroupIndex:
-                        print "Current group indices do not match for all subjects after LSQ6. Exiting..."
+                        print("Current group indices do not match for all subjects after LSQ6. Exiting...")
                         sys.exit()
     else:
-        print "getCurrIndexForInputs function currently only works with a dictionary. Exiting..."
+        print("getCurrIndexForInputs function currently only works with a dictionary. Exiting...")
         sys.exit()
         
     return currentGroupIndex
@@ -256,10 +257,10 @@ def setInitialTarget(initModelOption, lsq6Target, targetFileDir, outputDir, pipe
     """Function checks to make sure either an init model or inital target are specified.
        Sets up and returns target and initial model."""
     if(initModelOption == None and lsq6Target == None):
-        print "Error: please specify either a target file for the registration (--lsq6-target or --bootstrap), or an initial model (--init-model)\n"
+        print("Error: please specify either a target file for the registration (--lsq6-target or --bootstrap), or an initial model (--init-model)\n")
         sys.exit()   
     if(initModelOption != None and lsq6Target != None):
-        print "Error: please specify ONLY ONE of the following options: --lsq6-target, --bootstrap, --init-model\n"
+        print("Error: please specify ONLY ONE of the following options: --lsq6-target, --bootstrap, --init-model\n")
         sys.exit()
         
     initModel = None
@@ -317,10 +318,10 @@ def returnFinestResolution(inputFile):
             fileRes = getFinestResolution(inputFile.inputFileName)
             return fileRes
         except:
-            print "------------------------------------------------------------------------------------"
-            print "Cannot get file resolution from specified files to setup default registration protocol: " + str(inputFile.inputFileName)
-            print "Please specify a registration protocol or a value for the subject matter."
-            print "------------------------------------------------------------------------------------"
+            print("------------------------------------------------------------------------------------")
+            print("Cannot get file resolution from specified files to setup default registration protocol: " + str(inputFile.inputFileName))
+            print("Please specify a registration protocol or a value for the subject matter.")
+            print("------------------------------------------------------------------------------------")
             sys.exit()
     
 def getXfms(nlinFH, subjects, space, mbmDir, time=None):

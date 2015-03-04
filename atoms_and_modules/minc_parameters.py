@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+from __future__ import print_function
 from os.path import abspath
 import csv
 import sys
@@ -106,14 +107,14 @@ class setMincANTSParams(object):
                     self.useMask = self.regProtocol.useMask
                     self.memoryRequired = self.regProtocol.memoryRequired
                 except:
-                    print "The non-linear protocol you have specified is in an unrecognized form: \n%s\n Exiting..." % self.regProtocol
+                    print("The non-linear protocol you have specified is in an unrecognized form: \n%s\n Exiting..." % self.regProtocol)
                     sys.exit()
         else:
             if self.fileRes:
                 self.defaultParams()
             else:
-                print "Unable to set default registration parameters due to lack of file resolution."
-                print "Try specifying a non-linear protocol, or investigate why this is happening."
+                print("Unable to set default registration parameters due to lack of file resolution.")
+                print("Try specifying a non-linear protocol, or investigate why this is happening.")
                 sys.exit()
         self.generations = self.getGenerations()
 
@@ -220,8 +221,8 @@ class setMincANTSParams(object):
                    where i = 2 (for NxMxPx0 stages) or i = 3 (for highest res stages)"""
                 self.memoryRequired = (float(p[1]), float(p[2]), float(p[3]))
             else:
-                print "Improper parameter specified for mincANTS protocol: " + str(p[0])
-                print "Exiting..."
+                print("Improper parameter specified for mincANTS protocol: " + str(p[0]))
+                print("Exiting...")
                 sys.exit()
                 
     def getGenerations(self):
@@ -235,7 +236,7 @@ class setMincANTSParams(object):
             or len(self.regularization) != arrayLength
             or len(self.iterations) != arrayLength
             or len(self.useMask) != arrayLength):
-            print errorMsg
+            print(errorMsg)
             raise
         else:
             return arrayLength
@@ -298,14 +299,14 @@ class setNlinMinctraccParams(object):
                     self.weight = self.regProtocol.weight
                     self.stiffness = self.regProtocol.stiffness
                 except:
-                    print "The non-linear protocol you have specified is in an unrecognized form: \n%s\n Exiting..." % self.regProtocol
+                    print("The non-linear protocol you have specified is in an unrecognized form: \n%s\n Exiting..." % self.regProtocol)
                     sys.exit()
         else:
             if self.fileRes:
                 self.defaultParams()
             else:
-                print "Unable to set default registration parameters due to lack of file resolution."
-                print "Try specifying a non-linear protocol, or investigate why this is happening."
+                print("Unable to set default registration parameters due to lack of file resolution.")
+                print("Try specifying a non-linear protocol, or investigate why this is happening.")
                 sys.exit()
         
 
@@ -402,8 +403,8 @@ class setNlinMinctraccParams(object):
                 for i in range(1,len(p)):
                     self.similarity.append(float(p[i]))
             else:
-                print "Improper parameter specified for minctracc protocol: " + str(p[0])
-                print "Exiting..."
+                print("Improper parameter specified for minctracc protocol: " + str(p[0]))
+                print("Exiting...")
                 sys.exit()
         # set defaults that don't have to appear in the protocol
         if(not stiffness_found):
@@ -429,7 +430,7 @@ class setNlinMinctraccParams(object):
             or len(self.similarity) != arrayLength
             or len(self.weight) != arrayLength
             or len(self.stiffness) != arrayLength):
-            print errorMsg
+            print(errorMsg)
             sys.exit()
         else:
             return arrayLength
@@ -474,7 +475,7 @@ class setLSQ12MinctraccParams(setNlinMinctraccParams):
             or len(self.useGradient) != arrayLength
             or len(self.simplex) != arrayLength
             or len(self.w_translations) != arrayLength):
-            print errorMsg
+            print(errorMsg)
             sys.exit()
         else:
             return arrayLength 
@@ -512,8 +513,8 @@ class setLSQ6MinctraccParams(setLSQ12MinctraccParams):
             gradientdefaults = [False,False,False,True,False]
             translations     = [0.4,0.4,0.4,0.4,0.4]
         else:
-            print "An improper initial transform was specified: " + str(self.initial_transform)
-            print "Exiting..."
+            print("An improper initial transform was specified: " + str(self.initial_transform))
+            print("Exiting...")
             sys.exit()
             
         self.blurs    = [i * self.fileRes for i in blurfactors]

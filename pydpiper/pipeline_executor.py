@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+from __future__ import print_function
 import time
 import sys
 import os
@@ -15,7 +16,6 @@ import socket
 import signal
 import threading
 import Pyro4
-import re
 
 Pyro4.config.SERVERTYPE = "multiplex"
 
@@ -574,7 +574,7 @@ if __name__ == "__main__":
     elif options.queue == "pbs" or options.queue_type == "pbs":
         roq = q.runOnQueueingSystem(options)
         for i in range(options.num_exec):
-            roq.createAndSubmitExecutorJobFile(i)
+            roq.createAndSubmitExecutorJobFile(i, after=None, time=options.time)
     elif options.queue == "sge" or options.queue_type == "sge":
         for i in range(options.num_exec):
             pe = pipelineExecutor(options)

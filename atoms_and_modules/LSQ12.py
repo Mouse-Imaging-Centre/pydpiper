@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+from __future__ import print_function
 from pydpiper.application import AbstractApplication
 from pydpiper.pipeline import Pipeline, InputFile, OutputFile, LogFile, CmdStage
 from pydpiper.file_handling import createBaseName, logFromFile
@@ -149,7 +150,7 @@ class FullLSQ12(object):
 
         """Create the blurring resolution from the file resolution"""
         if (subject_matter==None and resolution==None):
-            print "\nError: the FullLSQ12 module was called without specifying the resolution that it should be run at, and without specifying a subject matter. Please indicate one of the two. Exiting...\n"
+            print("\nError: the FullLSQ12 module was called without specifying the resolution that it should be run at, and without specifying a subject matter. Please indicate one of the two. Exiting...\n")
             sys.exit()
         elif (subject_matter and resolution):
             # subject matter has precedence over resolution

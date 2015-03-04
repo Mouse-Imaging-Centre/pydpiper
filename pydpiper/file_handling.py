@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 
+from __future__ import print_function
 from os.path import basename, isdir, splitext, abspath, join
-from os import mkdir, makedirs, path
+from os import makedirs
 
 """File handling methods for creating subdirectories/base file names as needed"""
 
@@ -45,5 +46,5 @@ def makedirsIgnoreExisting(dirname):
             makedirs(newDir)
         return(newDir)
     except:
-        print "Could not create directory " + str(dirname)
+        print("Could not create directory " + str(dirname))
         raise

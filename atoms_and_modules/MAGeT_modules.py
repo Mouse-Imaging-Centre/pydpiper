@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+from __future__ import print_function
 from pydpiper.pipeline import CmdStage, Pipeline, InputFile, OutputFile, LogFile
 import pydpiper.file_handling as fh
 from atoms_and_modules.minc_modules import LSQ12ANTSNlin, HierarchicalMinctracc

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
+from __future__ import print_function
 from pydpiper.application import AbstractApplication
-import pydpiper.file_handling as fh
 import atoms_and_modules.registration_functions as rf
 import atoms_and_modules.registration_file_handling as rfh
 import atoms_and_modules.minc_modules as mm
@@ -10,7 +10,6 @@ import atoms_and_modules.LSQ6 as lsq6
 import atoms_and_modules.LSQ12 as lsq12
 import atoms_and_modules.NLIN as nlin
 import atoms_and_modules.stats_tools as st
-import atoms_and_modules.minc_parameters as mp
 from os.path import abspath, isdir, isfile
 import logging
 import sys
@@ -114,8 +113,8 @@ class RegistrationChain(AbstractApplication):
         elif self.options.input_space == "lsq6":
             initModel = None
         else:
-            print """Only native and lsq6 are allowed as input_space options for the registration chain. You specified: """ + str(self.options.input_space)
-            print "Exiting..."
+            print("""Only native and lsq6 are allowed as input_space options for the registration chain. You specified: """ + str(self.options.input_space))
+            print("Exiting...")
             sys.exit()
             
         #Get current group index for use later, when chain is run. 

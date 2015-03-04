@@ -1,3 +1,4 @@
+from __future__ import print_function
 from configargparse import ArgParser
 from pydpiper.pipeline import Pipeline, pipelineDaemon
 from pydpiper.queueing import runOnQueueingSystem
@@ -10,6 +11,7 @@ import logging
 import networkx as nx
 import sys
 import os
+
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +91,7 @@ class AbstractApplication(object):
         else:
             files = []
         self.parser = MyParser(default_config_files=files)
-        self.__version__ = get_distribution("pydpiper").version
+        self.__version__ = get_distribution("pydpiper").version  # pylint: disable=E1101
     
     def _setup_options(self):
             # PydPiper options
@@ -98,7 +100,7 @@ class AbstractApplication(object):
     
     def _print_version(self):
         if self.options.show_version:
-            print self.__version__
+            print(self.__version__)
             sys.exit()
     
     def _setup_pipeline(self, options):
@@ -169,7 +171,7 @@ class AbstractApplication(object):
             logger.debug("Done.")
 
         if not self.options.execute:
-            print "Not executing the command (--no-execute is specified).\nDone."
+            print("Not executing the command (--no-execute is specified).\nDone.")
             return
         
         if pbs_submit:

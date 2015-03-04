@@ -1,3 +1,4 @@
+from __future__ import print_function
 from pydpiper.pipeline import Pipeline, CmdStage, InputFile, OutputFile, LogFile
 from atoms_and_modules.registration_functions import isFileHandler
 from atoms_and_modules.minc_atoms import xfmConcat, xfmInvert
@@ -74,15 +75,15 @@ class CalcStats(object):
             for i in statsKernels.split(","):
                 self.blurs.append(float(i))
         else:
-            print "Improper type of blurring kernels specified for stats calculation: " + str(statsKernels)
+            print("Improper type of blurring kernels specified for stats calculation: " + str(statsKernels))
             sys.exit()
            
     def setupXfms(self):
         self.xfm = self.inputFH.getLastXfm(self.targetFH)
         if not self.xfm:
-            print "Cannot calculate statistics. No transform between input and target specified."
-            print "Input: " + self.inputFH.getLastBasevol()
-            print "Target: " + self.targetFH.getLastBasevol()
+            print("Cannot calculate statistics. No transform between input and target specified.")
+            print("Input: " + self.inputFH.getLastBasevol())
+            print("Target: " + self.targetFH.getLastBasevol())
             sys.exit()
         else:
             self.invXfm = self.targetFH.getLastXfm(self.inputFH)
@@ -219,7 +220,7 @@ class CalcChainStats(CalcStats):
     def setupXfms(self):
         self.xfm = self.inputFH.getLastXfm(self.targetFH)
         if not self.xfm:
-            print "Cannot calculate statistics. No transform between input and target specified."
+            print("Cannot calculate statistics. No transform between input and target specified.")
             sys.exit()
     
     def calcFullDisplacement(self):
@@ -265,8 +266,8 @@ class linearPartofNlin(CmdStage):
                 raise
     
         except:
-            print "Failed in putting together linearPartofNlin command"
-            print "Unexpected error: ", sys.exc_info()
+            print("Failed in putting together linearPartofNlin command")
+            print("Unexpected error: ", sys.exc_info())
             
         self.addDefaults()
         self.finalizeCommand()
@@ -315,8 +316,8 @@ class mincDisplacement(CmdStage):
                 raise
     
         except:
-            print "Failed in putting together minc_displacement command"
-            print "Unexpected error: ", sys.exc_info()
+            print("Failed in putting together minc_displacement command")
+            print("Unexpected error: ", sys.exc_info())
             
         self.addDefaults()
         self.finalizeCommand()

@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
-from os.path import abspath, isfile
+from __future__ import print_function
+from os.path import abspath
 from pydpiper.pipeline import Pipeline
 from pydpiper.file_handling import createBaseName, createLogFile, removeBaseAndExtension
 from pydpiper.application import AbstractApplication
@@ -175,8 +176,8 @@ class initializeAndRunNLIN(object):
                     if self.targetMask:
                         self.initialTarget.setMask(self.targetMask)
             else:
-                print "You have passed a target average that is neither a string nor a file handler: " + str(self.targetAvg)
-                print "Exiting..."
+                print("You have passed a target average that is neither a string nor a file handler: " + str(self.targetAvg))
+                print("Exiting...")
         else:
             self.targetAvg = abspath(self.targetOutputDir) + "/" + "initial-target.mnc" 
             self.initialTarget = RegistrationPipeFH(self.targetAvg, 
@@ -238,9 +239,11 @@ class NLINBase(object):
         self.nlinAverages = [] 
         """Create the blurring resolution from the file resolution"""
         self.fileRes = resolution
+        # hack:
+        self.generations = 0
 
         if (nlin_protocol==None and resolution == None):
-            print "\nError: NLIN module was initialized without a protocol, and without a resolution for the registrations to be run at. Please specify one of the two. Exiting\n" 
+            print("\nError: NLIN module was initialized without a protocol, and without a resolution for the registrations to be run at. Please specify one of the two. Exiting\n") 
             sys.exit()
         if (nlin_protocol and resolution):
             # we should have the nlin_protocol be able to overwrite the given resolution:
@@ -250,7 +253,7 @@ class NLINBase(object):
         for i in range(len(self.inputs)):
             self.inputs[i].newGroup(groupName="nlin")
     
-    def addBlurStage(self):
+    def addBlurStage(self, _fh, _i):
         """
             Add blurs to pipeline. Because blurs are handled differently by
             parameter arrays in minctracc and mincANTS subclasses, they are added
@@ -258,7 +261,7 @@ class NLINBase(object):
         """
         pass
     
-    def regAndResample(self):
+    def regAndResample(self, *args):
         """Registration and resampling calls"""
         pass
     

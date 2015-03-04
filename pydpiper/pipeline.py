@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 
+from __future__ import print_function
+
 import networkx as nx
 import Queue
 import os
@@ -14,7 +16,7 @@ from shlex import split
 from multiprocessing import Process, Event
 import logging
 
-#TODO move this and Pyro4 imports down into launchServer where pipeline name is available?
+# TODO move this and Pyro4 imports down into launchServer where pipeline name is available?
 os.environ["PYRO_LOGLEVEL"] = os.getenv("PYRO_LOGLEVEL", "INFO")
 os.environ["PYRO_LOGFILE"]  = os.path.splitext(os.path.basename(__file__))[0] + ".log"
 # TODO name the server logfile more descriptively
@@ -30,6 +32,7 @@ STAGE_RETRY_INTERVAL = 1
 logger = logging.getLogger(__name__)
 
 sys.excepthook = Pyro4.util.excepthook
+
 
 class PipelineFile():
     def __init__(self, filename):
@@ -102,7 +105,7 @@ class PipelineStage():
     def __eq__(self, other):
         return self.inputFiles == other.inputFiles and self.outputFiles == other.outputFiles
     def __ne__(self, other):
-        return not(self.__eq__(self,other))
+        return not(self.__eq__(other))
     def getNumberOfRetries(self):
         return self.number_retries
     def incrementNumberOfRetries(self):
@@ -142,15 +145,11 @@ class CmdStage(PipelineStage):
         of.write(repr(self) + "\n")
         of.flush()
 
-        if self.is_effectively_complete():
-            of.write("All output files exist. Skipping stage.\n")
-            returncode = 0
-        else:
-            args = split(repr(self)) 
-            returncode = call(args, stdout=of, stderr=of, shell=False) 
+        args = split(repr(self))
+        returncode = call(args, stdout=of, stderr=of, shell=False)
         of.close()
         return(returncode)
-    
+
     def getHash(self):
         return(hash(" ".join(self.cmd)))
     def __repr__(self):
@@ -209,6 +208,7 @@ class Pipeline():
     # expose methods to get/set shutdown_ev via Pyro (setter not needed):
     def set_shutdown_ev(self):
         self.shutdown_ev.set()
+
     def get_shutdown_ev(self):
         return self.shutdown_ev
 
@@ -220,7 +220,7 @@ class Pipeline():
 
     def getTotalNumberOfStages(self):
         return len(self.stages)
-    
+
     def getNumberProcessedStages(self):
         return len(self.processedStages)
 
@@ -253,7 +253,7 @@ class Pipeline():
         # for base stages and entire command for CmdStages
         h = stage.getHash()
         if self.stagehash.has_key(h):
-            self.skipped_stages += 1 
+            self.skipped_stages += 1
             #stage already exists - nothing to be done
         else: #stage doesn't exist - add it
             self.stagehash[h] = self.counter
@@ -282,18 +282,20 @@ class Pipeline():
             self.skipped_stages += p.skipped_stages
         for s in p.stages:
             self.addStage(s)
+
     def printStages(self, name):
         """Prints stages to a file, stage info to stdout"""
+
         fileForPrinting = os.path.abspath(os.curdir + "/" + str(name) + "_pipeline_stages.txt")
         pf = open(fileForPrinting, "w")
         for i in range(len(self.stages)):
             pf.write(str(i) + "  " + str(self.stages[i]) + "\n")
         pf.close()
-        print "Total number of stages in the pipeline: ", len(self.stages)
-                   
+        print("Total number of stages in the pipeline: ", len(self.stages))
+                 
     def printNumberProcessedStages(self):
-        print "Number of stages already processed:     ", len(self.processedStages)
-                   
+        print("Number of stages already processed:     ", len(self.processedStages))
+                  
     def createEdges(self):
         """computes stage dependencies by examining their inputs/outputs"""
         starttime = time.time()
@@ -306,6 +308,7 @@ class Pipeline():
                     self.G.add_edge(self.outputhash[ip], i)
         endtime = time.time()
         logger.info("Create Edges time: " + str(endtime-starttime))
+
     def computeGraphHeads(self):
         """adds stages with no incomplete predecessors to the runnable queue"""
         graphHeads = []
@@ -406,7 +409,7 @@ class Pipeline():
             try:
                 c.running_stages.remove(index)
             except:
-                print "Error: unable to remove stage index from registered client: %s" % clientURI
+                print("Error: unable to remove stage index from registered client: %s" % clientURI)
                 logger.exception("Could not remove stage index from running stages list")
                 raise
 
@@ -560,7 +563,7 @@ class Pipeline():
             minMemRequired = min(self.mem_req_for_runnable)
             memAvailable = self.getMemoryAvailableInClients()
             if max(memAvailable) < minMemRequired:
-                print "\n\nError: the maximum amount of memory available in any executor is %f. The minimum amount of memory required to run any of the runnable stages is: %f. Quitting...\n\n" % (max(memAvailable),minMemRequired)
+                print("\n\nError: the maximum amount of memory available in any executor is %f. The minimum amount of memory required to run any of the runnable stages is: %f. Quitting...\n\n" % (max(memAvailable), minMemRequired))
                 return False
 
         # return False if all executors have died but not spawning new ones:
@@ -772,12 +775,12 @@ def launchServer(pipeline, options):
             # Print each argument separately so caller doesn't need to
             # stuff everything to be printed into a single string
             for arg in args:
-                print arg,
-            print
-    else:   
+                print(arg,)
+            print()
+    else:
         verboseprint = lambda *a: None
     
-    # getIpAddress is similar to socket.gethostbyname(...) 
+    # getIpAddress is similar to socket.gethostbyname(...)
     # but uses a hack to attempt to avoid returning localhost (127....)
     network_address = Pyro4.socketutil.getIpAddress(socket.gethostname(),
                                                     workaround127 = True, ipVersion = 4)
@@ -800,7 +803,7 @@ def launchServer(pipeline, options):
     try:
         # start Pyro server
         t = Process(target=daemon.requestLoop)
-        #t.daemon = True # this isn't allowed
+        # t.daemon = True # this isn't allowed
         t.start()
 
         # at this point requests made to the Pyro daemon will touch process `t`'s copy
@@ -817,8 +820,7 @@ def launchServer(pipeline, options):
         # the shutdown event (we shouldn't actually see a SIGTERM on PBS
         # since PBS submission logic gives us a lifetime related to our walltime
         # request ...)
-        def handler(sig,_stack):
-            #logger.info("Caught signal %s", sig) # this probably isn't safe!!
+        def handler(sig, _stack):
             pipeline.shutdown_ev.set()
         signal.signal(signal.SIGTERM, handler)
 
@@ -913,9 +915,9 @@ def pipelineDaemon(pipeline, options, programName=None):
 
     #check for valid pipeline 
     if pipeline.runnable.empty():
-        print "Pipeline has no runnable stages. Exiting..."
+        print("Pipeline has no runnable stages. Exiting...")
         sys.exit()
-    
+   
     logger.debug("Prior to starting server, total stages %i. Number processed: %i.", 
                  len(pipeline.stages), len(pipeline.processedStages))
     logger.debug("Number of stages in runnable queue: %i",
