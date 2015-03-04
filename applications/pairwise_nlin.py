@@ -7,7 +7,6 @@ import atoms_and_modules.registration_file_handling as rfh
 import atoms_and_modules.minc_modules as mm
 import atoms_and_modules.minc_atoms as ma
 import atoms_and_modules.stats_tools as st
-import atoms_and_modules.option_groups as og
 from datetime import date
 from os.path import abspath, isdir
 import logging
@@ -28,7 +27,6 @@ class PairwiseNonlinear(AbstractApplication):
         self.parser.add_argument_group(group)
         """Add option groups from specific modules"""
         rf.addGenRegArgumentGroup(self.parser)
-        og.tmpLongitudinalArgumentGroup(self.parser)
         st.addStatsArguments(self.parser)
         
     def setup_appName(self):

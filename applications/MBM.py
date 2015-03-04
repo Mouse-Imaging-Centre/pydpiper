@@ -7,19 +7,17 @@ import atoms_and_modules.registration_file_handling as rfh
 import atoms_and_modules.LSQ6 as lsq6
 import atoms_and_modules.LSQ12 as lsq12
 import atoms_and_modules.NLIN as nlin
-import atoms_and_modules.minc_parameters as mp
 import atoms_and_modules.stats_tools as st
 from atoms_and_modules.minc_modules import createQualityControlImages
 import os
 import logging
 from datetime import date
-import time
 
 
 logger = logging.getLogger(__name__)
 
 def addMBMGroup(parser):
-    group = parser.add_argument_group("MBM options", "Options for MICe-build-model.")
+    parser.add_argument_group("MBM options", "Options for MICe-build-model.")
 
 class MBMApplication(AbstractApplication):
     def setup_options(self):

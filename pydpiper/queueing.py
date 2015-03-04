@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+from __future__ import print_function
 from datetime import datetime
 from os.path import isdir, basename
 from os import mkdir
@@ -63,12 +64,12 @@ class runOnQueueingSystem():
             executablePath = os.path.abspath(self.arguments[0])
             self.jobName = basename(executablePath)
         self.prologue_file = options.prologue_file
-    def buildMainCommand(self, t):
+    def buildMainCommand(self):
         """Re-construct main command to be called in pbs script, adding --local flag"""
         reconstruct = ""
         if self.arguments:
             reconstruct += ' '.join(remove_num_exec(self.arguments))
-        reconstruct += " --local --num-executors=0 " # + " --lifetime=%d " % t # TODO remove
+        reconstruct += " --local --num-executors=0 "
         return reconstruct
     def constructAndSubmitJobFile(self, identifier, time, isMainFile, after=None, afterany=None):
         """Construct the bulk of the pbs script to be submitted via qsub"""
@@ -106,7 +107,6 @@ class runOnQueueingSystem():
         """Constructs header and commands for pbs script, based on options input from calling program"""
         self.jobFile.write("#!/bin/bash\n")
         requestNodes = 1
-        execProcs = self.procs
         name = self.jobName
         launchExecs = True   
         if isMainFile:
@@ -119,7 +119,6 @@ class runOnQueueingSystem():
                 name += "-no-executors"
             elif self.numexec == 1:
                 name += "-all"
-                execProcs = self.procs
                 halfPpn = self.ppn/2
                 if nodes[1] <= halfPpn and nodes[0] != 0:
                     requestNodes = nodes[0]
@@ -127,7 +126,6 @@ class runOnQueueingSystem():
                     requestNodes = nodes[0] + 1               
             else:  
                 name += "-plus-exec" 
-                execProcs = self.procs
         else:
             name += "-executor"
         m,s = divmod(time,60)
@@ -148,7 +146,7 @@ class runOnQueueingSystem():
         # cd from $HOME into the submission directory:
         self.jobFile.write("cd $PBS_O_WORKDIR\n\n")
         if isMainFile:
-            self.jobFile.write(self.buildMainCommand(time))
+            self.jobFile.write(self.buildMainCommand())
             self.jobFile.write(" &\n\n")
         if launchExecs:
             self.jobFile.write("sleep %s\n" % SERVER_START_TIME)

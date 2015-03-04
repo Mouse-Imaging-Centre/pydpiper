@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
-from os.path import abspath, isfile
+from __future__ import print_function
+from os.path import abspath
 from pydpiper.pipeline import Pipeline
 from pydpiper.file_handling import createBaseName, createLogFile, removeBaseAndExtension
 from pydpiper.application import AbstractApplication
@@ -175,8 +176,8 @@ class initializeAndRunNLIN(object):
                     if self.targetMask:
                         self.initialTarget.setMask(self.targetMask)
             else:
-                print "You have passed a target average that is neither a string nor a file handler: " + str(self.targetAvg)
-                print "Exiting..."
+                print("You have passed a target average that is neither a string nor a file handler: " + str(self.targetAvg))
+                print("Exiting...")
         else:
             self.targetAvg = abspath(self.targetOutputDir) + "/" + "initial-target.mnc" 
             self.initialTarget = RegistrationPipeFH(self.targetAvg, 
@@ -240,7 +241,7 @@ class NLINBase(object):
         self.fileRes = resolution
 
         if (nlin_protocol==None and resolution == None):
-            print "\nError: NLIN module was initialized without a protocol, and without a resolution for the registrations to be run at. Please specify one of the two. Exiting\n" 
+            print("\nError: NLIN module was initialized without a protocol, and without a resolution for the registrations to be run at. Please specify one of the two. Exiting\n") 
             sys.exit()
         if (nlin_protocol and resolution):
             # we should have the nlin_protocol be able to overwrite the given resolution:

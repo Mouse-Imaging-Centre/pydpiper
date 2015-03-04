@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+from __future__ import print_function
 from pydpiper.application import AbstractApplication
 import atoms_and_modules.registration_functions as rf
 import atoms_and_modules.minc_modules as mm
@@ -127,7 +128,7 @@ with each scan per subject listed on the same line and separated by a comma.
                 if not options.nlin_protocol:
                     options.nlin_protocol = nlinObj.nlinParams
             else:
-                print "--input-space can only be native, lsq6 or lsq12. You specified: " + str(options.input_space)
+                print("--input-space can only be native, lsq6 or lsq12. You specified: " + str(options.input_space))
                 sys.exit()
             
             # add the last NLIN average to the volumes that will proceed to step 2

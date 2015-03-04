@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+from __future__ import print_function
 from pydpiper.pipeline import Pipeline, InputFile, OutputFile, LogFile, CmdStage
 import atoms_and_modules.LSQ12 as lsq12
 import atoms_and_modules.NLIN as nlin
@@ -220,7 +221,7 @@ class FullIterativeLSQ12Nlin:
             lsq12LikeFH = self.options.lsq12_likeFile 
         
         if lsq12LikeFH == None and self.options.lsq12_subject_matter == None:
-            print "\nError: the FullIterativeLSQ12Nlin module was called without specifying either an initial model, nor an lsq12_subject_matter. Currently that means that the code can not determine the resolution at which the registrations should be run. Please specify one of the two. Exiting\n"
+            print("\nError: the FullIterativeLSQ12Nlin module was called without specifying either an initial model, nor an lsq12_subject_matter. Currently that means that the code can not determine the resolution at which the registrations should be run. Please specify one of the two. Exiting\n")
             sys.exit()
         
         if not (lsq12LikeFH == None):
@@ -295,7 +296,7 @@ class LongitudinalStatsConcatAndResample:
             for i in statsKernels.split(","):
                 self.blurs.append(float(i))
         else:
-            print "Improper type of blurring kernels specified for stats calculation: " + str(statsKernels)
+            print("Improper type of blurring kernels specified for stats calculation: " + str(statsKernels))
             sys.exit()
     
     def statsCalculation(self, inputFH, targetFH, xfm=None, useChainStats=True):
@@ -396,7 +397,7 @@ def resampleToCommon(xfm, FH, statsGroup, statsKernels, nlinFH):
         for i in statsKernels.split(","):
             blurs.append(float(i))
     else:
-        print "Improper type of blurring kernels specified for stats calculation: " + str(statsKernels)
+        print("Improper type of blurring kernels specified for stats calculation: " + str(statsKernels))
         sys.exit()
     pipeline = Pipeline()
     outputDirectory = FH.statsDir
@@ -446,7 +447,7 @@ class createQualityControlImages(object):
         self.stage = stage
 
         if createMontage and montageOutPut == None:
-            print "\nError: createMontage is specified in createQualityControlImages, but no output name for the montage is provided. Exiting...\n"
+            print("\nError: createMontage is specified in createQualityControlImages, but no output name for the montage is provided. Exiting...\n")
             sys.exit()
 
         # for each of the input files, run a mincpik call and create 
@@ -483,7 +484,7 @@ class createQualityControlImages(object):
             # anything, we need to encapsulate the print statement in a 
             # function (which in this case will return None, but that's fine)
             def printMessageForMontage():
-                print message_to_print
+                print(message_to_print)
             montage.finished_hooks.append(
                 lambda : printMessageForMontage())
             self.p.addStage(montage)

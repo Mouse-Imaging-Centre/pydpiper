@@ -1,14 +1,14 @@
 #!/usr/bin/env python
 
+from __future__ import print_function
 from pydpiper.pipeline import CmdStage, Pipeline
 from atoms_and_modules.registration_functions import isFileHandler
 import atoms_and_modules.registration_functions as rf
 from pyminc.volumes.factory import volumeFromFile
 from operator import mul
-from os.path import abspath, basename, splitext, join, isfile
+from os.path import abspath, basename, splitext
 from os import curdir
 import pydpiper.file_handling as fh
-import sys
 import fnmatch
 import re
 import copy
@@ -77,7 +77,7 @@ class mincANTS(CmdStage):
                 if self.useMask:
                     self.target_mask = target_mask
         except:
-            print "Failed in putting together mincANTS command; unexpected error: "
+            print("Failed in putting together mincANTS command; unexpected error: ")
             raise
         
         self.similarity_metric = similarity_metric
@@ -141,7 +141,7 @@ class mincANTS(CmdStage):
             or len(metric) != arrayLength
             or len(weight) != arrayLength
             or len(radius) != arrayLength):
-            print errorMsg
+            print(errorMsg)
             raise
         else:
             return
@@ -229,7 +229,7 @@ class minctracc(CmdStage):
                     self.source_mask = source_mask
                     self.target_mask = target_mask 
         except:
-            print "Failed in putting together minctracc command; unexpected error: "
+            print("Failed in putting together minctracc command; unexpected error: ")
             raise
         
         self.linearparam = linearparam       
@@ -365,7 +365,7 @@ class blur(CmdStage):
                     gradientBase = blurBase.replace("blur", "dxyz")
                     self.outputFiles += ["".join([gradientBase, ".mnc"])] 
         except:
-            print "Failed in putting together blur command; unexpected error: "
+            print("Failed in putting together blur command; unexpected error: ")
             raise
             
         self.cmd = ["mincblur", "-clobber", "-no_apodize", "-fwhm", str(fwhm),
@@ -416,7 +416,7 @@ class autocrop(CmdStage):
                     self.logFile = logFile
     
         except:
-            print "Failed in putting together autocrop command"
+            print("Failed in putting together autocrop command")
             raise
             
         self.addDefaults()
@@ -551,7 +551,7 @@ class mincresample(CmdStage):
                     if isFileHandler(likeFile):
                         self.likeFile = likeFile.getLastBasevol() 
                     else:
-                        print "likeFile must be RegistrationPipeFH or RegistrationFHBase."
+                        print("likeFile must be RegistrationPipeFH or RegistrationFHBase.")
                         raise 
                 invert = False
                 for cmd in self.cmd:
@@ -571,7 +571,7 @@ class mincresample(CmdStage):
                     self.outputLocation=inFile
                 else:
                     if not isFileHandler(self.outputLocation):
-                        print "outputLocation must be RegistrationPipeFH or RegistrationFHBase."
+                        print("outputLocation must be RegistrationPipeFH or RegistrationFHBase.")
                         raise
                 default = kwargs.pop("defaultDir", None)
                 if not default:
@@ -599,7 +599,7 @@ class mincresample(CmdStage):
                     self.logFile = logFile
     
         except:
-            print "Failed in putting together resample command; unexpected error: "
+            print("Failed in putting together resample command; unexpected error: ")
             raise
             
         self.addDefaults()
@@ -763,7 +763,7 @@ class mincAverage(CmdStage):
                     self.logFile = logFile
     
         except:
-            print "Failed in putting together mincaverage command; unexpected error: "
+            print("Failed in putting together mincaverage command; unexpected error: ")
             raise
             
         self.addDefaults()
@@ -871,7 +871,7 @@ class RotationalMinctracc(CmdStage):
                 self.source = inSource
                 self.target = inTarget
         except:
-            print "Failed in putting together RotationalMinctracc command; unexpected error:"
+            print("Failed in putting together RotationalMinctracc command; unexpected error:")
             raise
         
         # The resolution is used to determine the step size and 
@@ -935,7 +935,7 @@ class RotationalMinctracc(CmdStage):
                     self.cmd += ["-m", mask]
                     self.inputFiles.append(mask)
             except:
-                print "Failed retrieving information about a mask for the target in RotationalMinctracc; unexpected error: "
+                print("Failed retrieving information about a mask for the target in RotationalMinctracc; unexpected error: ")
                 raise
 
 
@@ -1003,7 +1003,7 @@ class xfmInvert(CmdStage):
                     self.logFile = logFile
     
         except:
-            print "Failed in putting together xfminvert command; unexpected error: "
+            print("Failed in putting together xfminvert command; unexpected error: ")
             raise
                                                
         self.finalizeCommand()
