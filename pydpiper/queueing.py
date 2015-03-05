@@ -55,7 +55,7 @@ class runOnQueueingSystem():
         self.uri_file = options.urifile
         if self.uri_file is None:
             self.uri_file = os.path.abspath(os.path.join(os.curdir, "uri"))
-        self.jobDir = os.path.join(os.environ["HOME"], "pbs-jobs")
+        self.jobDir = os.path.abspath(os.path.join(os.curdir, "pbs-jobs"))
         if not isdir(self.jobDir):
             mkdir(self.jobDir) 
         if self.arguments is None:
