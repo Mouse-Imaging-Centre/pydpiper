@@ -351,27 +351,35 @@ class LongitudinalStatsConcatAndResample:
                in the group with the name "final". We need to use this group for to get the
                transform and do the stats calculation, and then reset to the current group.
                Calculate stats first from average to timepoint included in average"""
-               
-            currGroup = s[self.timePoint].currentGroupIndex
-            index = s[self.timePoint].getGroupIndex("final")
-            xfmToNlin = s[self.timePoint].getLastXfm(self.nlinFH, groupIndex=index)
+
+            if self.timePoint == -1:
+                # This means that we used the last file for each of the subjects
+                # to create the common average. This will be a variable time 
+                # point, so we have to determine it for each of the input files
+                timePointToUse = len(s) - 1
+            else:
+                timePointToUse = self.timePoint
+
+            currGroup = s[timePointToUse].currentGroupIndex
+            index = s[timePointToUse].getGroupIndex("final")
+            xfmToNlin = s[timePointToUse].getLastXfm(self.nlinFH, groupIndex=index)
             
             if xfmToNlin:
                 self.xfmToCommon = [xfmToNlin]
             else:
                 self.xfmToCommon = []
             if self.nlinFH:
-                s[self.timePoint].currentGroupIndex = index
-                self.statsCalculation(s[self.timePoint], self.nlinFH, xfm=None, useChainStats=False)
-                s[self.timePoint].currentGroupIndex = currGroup
+                s[timePointToUse].currentGroupIndex = index
+                self.statsCalculation(s[timePointToUse], self.nlinFH, xfm=None, useChainStats=False)
+                s[timePointToUse].currentGroupIndex = currGroup
             """Next: If timepoint included in average is NOT final timepoint, 
                also calculate i to i+1 stats."""
-            if count - self.timePoint > 1:
-                self.statsCalculation(s[self.timePoint], s[self.timePoint+1], xfm=xfmToNlin, useChainStats=True)
-            if not self.timePoint - 1 < 0:
+            if count - timePointToUse > 1:
+                self.statsCalculation(s[timePointToUse], s[timePointToUse+1], xfm=xfmToNlin, useChainStats=True)
+            if not timePointToUse - 1 < 0:
                 """ Average happened at time point other than first time point. 
                     Loop over points prior to average."""
-                for i in reversed(range(self.timePoint)): 
+                for i in reversed(range(timePointToUse)): 
                     self.statsAndConcat(s, i, count, beforeAvg=True)
                          
             # Loop over points after average. If average is at first time point, this loop
@@ -386,7 +394,7 @@ class LongitudinalStatsConcatAndResample:
                 self.xfmToCommon = [xfmToNlin]
             else:
                 self.xfmToCommon = []  
-            for i in range(self.timePoint + 1, count):
+            for i in range(timePointToUse + 1, count):
                 self.statsAndConcat(s, i, count, beforeAvg=False)
  
 def resampleToCommon(xfm, FH, statsGroup, statsKernels, nlinFH):

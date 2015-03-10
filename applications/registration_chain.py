@@ -23,7 +23,9 @@ def addRegChainArgumentGroup(parser):
                        "Options for registering consecutive timepoints of longitudinal data.")
     group.add_argument("--avg-time-point", dest="avg_time_point",
                        type=int, default=1,
-                       help="Time point averaged prior to this registration to get common nlin space.")
+                       help="Time point averaged prior to this registration to get common nlin space."
+                            "If you want to use the last time point from each of your input files, "
+                            "(they might differ per input file) specify -1. [Default = %(default)s]")
     group.add_argument("--common-space-name", dest="common_name",
                        type=str, default="common", 
                        help="Option to specify a name for the common space. This is useful for the "
@@ -79,9 +81,17 @@ class RegistrationChain(AbstractApplication):
             logger.error("Incorrect registration method specified: " + self.options.reg_method)
             sys.exit()
         
-        #Take average time point, subtract 1 for proper indexing
-        avgTime = self.options.avg_time_point - 1
-        
+        if self.options.avg_time_point == -1:
+            # In this case we are simply using the very last
+            # scan from each of the input files
+            avgTime = -1
+        else:
+            #Take average time point, subtract 1 for proper indexing
+            avgTime = self.options.avg_time_point - 1
+
+        if avgTime == -1 and self.options.run_groupwise:
+            print("\nThe groupwise registration will be run using the last time points for each of the input files.\n")
+
         # Read in files from csv
         # What is returned (subjects) is a dictionary where each entry is numbered
         # from 0 .. #subjects -1, where each value associated with a key is an
@@ -135,7 +145,12 @@ class RegistrationChain(AbstractApplication):
         if self.options.run_groupwise:
             inputs = []
             for s in subjects:
-                inputs.append(subjects[s][avgTime])
+                if avgTime >= 0:
+                    inputs.append(subjects[s][avgTime])
+                else:  
+                    # avgTime == -1:
+                    lastTimePoint = len(subjects[s]) - 1
+                    inputs.append(subjects[s][lastTimePoint])
             #Run full LSQ12 and NLIN modules.
             lsq12Nlin = mm.FullIterativeLSQ12Nlin(inputs, 
                                                   dirs, 
