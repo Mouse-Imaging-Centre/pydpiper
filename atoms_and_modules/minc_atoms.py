@@ -671,13 +671,7 @@ class mincresampleLabels(mincresample):
         endOfFile = "-" + funcargs["append"] + ".mnc"
         if self.setInputLabels:
             outBase = fh.removeBaseAndExtension(self.cxfm)
-            if fnmatch.fnmatch(outBase, "*_minctracc_*"):
-                outputName = outBase.split("_minctracc_")[0]
-            elif fnmatch.fnmatch(outBase, "*_ANTS_*"):
-                outputName = outBase.split("_ANTS_")[0]
-            else:
-                outputName = outBase
-            outBase = outputName + "-input"
+            outBase += "-input"
         else:
             labelsToResample = fh.removeBaseAndExtension(self.inFile)
             likeBaseVol = fh.removeBaseAndExtension(FH.getLastBasevol())
