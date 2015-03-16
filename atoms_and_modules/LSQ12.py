@@ -171,8 +171,8 @@ class FullLSQ12(object):
         self.generations = self.lsq12Params.generations
         
         # Create new lsq12 group for each input prior to registration
-        for input in self.inputs:
-            input.newGroup(groupName="lsq12")
+        for inputF in self.inputs:
+            inputF.newGroup(groupName="lsq12")
          
     def iterate(self):
         xfmsToAvg = {}

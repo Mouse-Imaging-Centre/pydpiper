@@ -200,13 +200,14 @@ class FullIterativeLSQ12Nlin:
     """Does a full iterative LSQ12 and NLIN. Basically iterative model building starting from LSQ6
        and without stats at the end. Designed to be called as part of a larger application. 
        Specifying an initModel is optional, all other arguments are mandatory."""
-    def __init__(self, inputs, dirs, options, avgPrefix=None, initModel=None):
+    def __init__(self, inputs, dirs, options, avgPrefix=None, initModel=None, fileResolution=None):
         self.inputs = inputs
         self.dirs = dirs
         self.options = options
         self.avgPrefix = avgPrefix
         self.initModel = initModel
         self.nlinFH = None
+        self.providedResolution = fileResolution
         
         self.p = Pipeline()
         
@@ -220,13 +221,20 @@ class FullIterativeLSQ12Nlin:
         elif self.options.lsq12_likeFile: 
             lsq12LikeFH = self.options.lsq12_likeFile 
         
-        if lsq12LikeFH == None and self.options.lsq12_subject_matter == None:
+        if lsq12LikeFH == None and self.options.lsq12_subject_matter == None and self.providedResolution == None:
             print("\nError: the FullIterativeLSQ12Nlin module was called without specifying either an initial model, nor an lsq12_subject_matter. Currently that means that the code can not determine the resolution at which the registrations should be run. Please specify one of the two. Exiting\n")
             sys.exit()
         
         if not (lsq12LikeFH == None):
             resolutionForLSQ12 = rf.returnFinestResolution(lsq12LikeFH)
 
+        if resolutionForLSQ12 == None and self.providedResolution == None:
+            print("\nError: the resolution at which the LSQ12 and the NLIN registration should be run could not be determined from either the initial model nor the LSQ12 like file. Please provide the fileResolution to the FullIterativeLSQ12Nlin module. Exiting\n")
+            sys.exit()
+        
+        if resolutionForLSQ12 == None and self.providedResolution:
+            resolutionForLSQ12 = self.providedResolution
+        
         lsq12module = lsq12.FullLSQ12(self.inputs,
                                       self.dirs.lsq12Dir,
                                       likeFile=lsq12LikeFH,
@@ -460,11 +468,11 @@ class createQualityControlImages(object):
 
         # for each of the input files, run a mincpik call and create 
         # a triplane image.
-        for file in inputFiles:
-            if isFileHandler(file):
+        for inFile in inputFiles:
+            if isFileHandler(inFile):
                 # create command using last base vol
-                inputToMincpik = file.getLastBasevol()
-                outputMincpik = createBaseName(file.tmpDir,
+                inputToMincpik = inFile.getLastBasevol()
+                outputMincpik = createBaseName(inFile.tmpDir,
                                             removeBaseAndExtension(inputToMincpik) + "_QC_image.png")
                 cmd = ["mincpik", "-clobber",
                        "-scale", scalingFactor,
@@ -472,7 +480,7 @@ class createQualityControlImages(object):
                        InputFile(inputToMincpik),
                        OutputFile(outputMincpik)]
                 mincpik = CmdStage(cmd)
-                mincpik.setLogFile(LogFile(logFromFile(file.logDir, outputMincpik)))
+                mincpik.setLogFile(LogFile(logFromFile(inFile.logDir, outputMincpik)))
                 self.p.addStage(mincpik)
                 self.individualImages.append(outputMincpik)
 

@@ -101,6 +101,8 @@ class RegistrationChain(AbstractApplication):
         #
         subjects = rf.setupSubjectHash(self.args[0], dirs, self.options.mask_dir)
         
+        resolutionForGroupWiseRegistration = None
+        
         # If input = native space then do LSQ6 first on all files.
         if self.options.input_space == "native":
             initModel, targetPipeFH = rf.setInitialTarget(self.options.init_model, 
@@ -122,6 +124,14 @@ class RegistrationChain(AbstractApplication):
         
         elif self.options.input_space == "lsq6":
             initModel = None
+            # In this case the input files are already aligned. We can 
+            # the finest resolution of one of the provided input files:
+            # resolution of first file:
+            resolutionForGroupWiseRegistration = rf.getFinestResolution(subjects[0][0])
+            for subj in subjects:
+                for i in range(len(subjects[subj])):
+                    if rf.getFinestResolution(subjects[subj][i]) < resolutionForGroupWiseRegistration:
+                        resolutionForGroupWiseRegistration = rf.getFinestResolution(subjects[subj][i])
         else:
             print("""Only native and lsq6 are allowed as input_space options for the registration chain. You specified: """ + str(self.options.input_space))
             print("Exiting...")
@@ -156,7 +166,8 @@ class RegistrationChain(AbstractApplication):
                                                   dirs, 
                                                   self.options, 
                                                   avgPrefix=self.options.common_name, 
-                                                  initModel=initModel)
+                                                  initModel=initModel,
+                                                  fileResolution=resolutionForGroupWiseRegistration)
             self.pipeline.addPipeline(lsq12Nlin.p)
             nlinFH = lsq12Nlin.nlinFH
             
