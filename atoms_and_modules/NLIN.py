@@ -409,15 +409,19 @@ class NLINminctracc(NLINBase):
             firstRegOutput = None
             registerOutput = None
             resampleOutput = None
-        """If self.useGradient is True, then we call minctracc twice: once
-            with a gradient and once without. Otherwise, we call only once
-            without a gradient. """
+        """ In order to make the behavior of different modules / registration
+            methods work in the same manner, the self.useGradient variable
+            will determine what the blurring kernel needs to be applied on:
+            either the image intensities (if self.useGradient = False),
+            or     the image gradients   (if self.useGradient = True).
+        """
+        useGradients = self.useGradient[i]
         mta = minctracc(inputFH, 
                         self.target, 
                         defaultDir="tmp",
                         output=firstRegOutput, 
                         blur=self.blurs[i],
-                        gradient=False,
+                        gradient=useGradients,
                         iterations=self.iterations[i],
                         step=self.stepSize[i],
                         weight=self.weight[i], 
@@ -426,22 +430,31 @@ class NLINminctracc(NLINBase):
                         w_translations = self.w_translations[i],
                         simplex=self.simplex[i])
         self.p.addStage(mta)
-        if self.useGradient[i]:
-            mtb = minctracc(inputFH, 
-                            self.target, 
-                            output=registerOutput,
-                            defaultDir="tmp", 
-                            blur=self.blurs[i],
-                            gradient=True,
-                            iterations=self.iterations[i],
-                            step=self.stepSize[i],
-                            weight=self.weight[i], 
-                            stiffness=self.stiffness[i],
-                            similarity=self.similarity[i],
-                            simplex=self.simplex[i])
-            self.p.addStage(mtb)
-            """Need to set last xfm so that next generation will use it as the input transform"""
-            inputFH.setLastXfm(nlinFH, mtb.outputFiles[0])
+        # after each registration stage, we have to update
+        # the last transformation between the nlinFH and the input file
+        # TODO: we should definitely do something about this. This 
+        # assignment below is very cryptic (what is this nlinFH??), but
+        # I assume that with the new file handler classes coming up, this
+        # will all become more clear. 
+        inputFH.setLastXfm(nlinFH, mta.outputFiles[0])
+         
+        
+        #if self.useGradient[i]:
+        #    mtb = minctracc(inputFH, 
+        #                    self.target, 
+        #                    output=registerOutput,
+        #                    defaultDir="tmp", 
+        #                    blur=self.blurs[i],
+        #                    gradient=True,
+        #                    iterations=self.iterations[i],
+        #                    step=self.stepSize[i],
+        #                    weight=self.weight[i], 
+        #                    stiffness=self.stiffness[i],
+        #                    similarity=self.similarity[i],
+        #                    simplex=self.simplex[i])
+        #    self.p.addStage(mtb)
+        #    """Need to set last xfm so that next generation will use it as the input transform"""
+        #    inputFH.setLastXfm(nlinFH, mtb.outputFiles[0])
         rs = mincresample(inputFH, 
                           self.target, 
                           likeFile=self.target, 

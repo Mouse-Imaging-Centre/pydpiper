@@ -167,7 +167,7 @@ class AbstractApplication(object):
 
         if self.options.create_graph:
             logger.debug("Writing dot file...")
-            nx.write_dot(self.pipeline.G, "labeled-tree.dot")
+            nx.write_dot(self.pipeline.G, str(self.options.pipeline_name) + "_labeled-tree.dot")
             logger.debug("Done.")
 
         if not self.options.execute:

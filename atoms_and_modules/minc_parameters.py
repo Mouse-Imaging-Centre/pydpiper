@@ -314,19 +314,28 @@ class setNlinMinctraccParams(object):
         """ Default minctracc parameters """
         
         #TODO: Rewrite this so it looks more like LSQ6 with matrices of factors
-        self.blurs = [self.fileRes*5.0, self.fileRes*(10.0/3.0), self.fileRes*(10.0/3.0),
-                      self.fileRes*(10.0/3.0), self.fileRes*(5.0/3.0), self.fileRes]
-        self.stepSize = [self.fileRes*(35.0/3.0), self.fileRes*10.0, self.fileRes*(25.0/3.0),
-                      self.fileRes*4.0, self.fileRes*2.0, self.fileRes]
-        self.iterations = [20,6,8,8,8,8]
-        self.simplex =    [5,2,2,2,2,2]
-        self.useGradient = [True, True, True, True, True, True]
-        self.optimization = ["-use_simplex", "-use_simplex", "-use_simplex", "-use_simplex", 
-                             "-use_simplex", "-use_simplex"]
-        self.w_translations = [0.4, 0.4, 0.4, 0.4, 0.4, 0.4 ]
-        self.stiffness  =     [0.98,0.98,0.98,0.98,0.98,0.98]
-        self.weight     =     [0.8, 0.8, 0.8, 0.8, 0.8, 0.8 ]
-        self.similarity =     [0.8, 0.8, 0.8, 0.8, 0.8, 0.8 ]
+        self.blurs = [self.fileRes*5.0, self.fileRes*5.0,
+                      self.fileRes*4.0, self.fileRes*4.0,
+                      self.fileRes*4.0, self.fileRes*4.0,
+                      self.fileRes*4.0, self.fileRes*4.0,
+                      self.fileRes*2.0, self.fileRes*2.0,
+                      self.fileRes, self.fileRes]
+        self.stepSize = [self.fileRes*11.0, self.fileRes*11.0,
+                         self.fileRes*10.0, self.fileRes*10.0,
+                         self.fileRes*8.0, self.fileRes*8.0,
+                         self.fileRes*4.0, self.fileRes*4.0, 
+                         self.fileRes*2.0,self.fileRes*2.0, 
+                         self.fileRes, self.fileRes]
+        self.iterations = [20,20,6,6,8,8,8,8,8,8,8,8]
+        self.simplex =    [5, 5, 2,2,2,2,2,2,2,2,2,2]
+        self.useGradient = [False,True,False,True,False,True,False,True,False,True,False,True]
+        self.optimization = ["-use_simplex","-use_simplex","-use_simplex","-use_simplex", 
+                             "-use_simplex","-use_simplex","-use_simplex","-use_simplex",
+                             "-use_simplex","-use_simplex","-use_simplex","-use_simplex"]
+        self.w_translations = [0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4]
+        self.stiffness  =     [0.98,0.98,0.98,0.98,0.98,0.98,0.98,0.98,0.98,0.98,0.98,0.98]
+        self.weight     =     [0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8]
+        self.similarity =     [0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8]
             
     def setParams(self):
         """Set parameters from specified protocol"""

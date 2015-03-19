@@ -245,6 +245,7 @@ class minctracc(CmdStage):
         self.w_shear = str(w_shear)
         self.simplex = str(simplex)
         self.optimization = str(optimization)
+        self.gradient = gradient
 
         self.addDefaults()
         self.finalizeCommand()
@@ -257,6 +258,11 @@ class minctracc(CmdStage):
             self.name = "minctracc nlin step: " + self.step 
         else:
             self.name = "minctracc" + self.linearparam + " "
+        
+        if self.gradient:
+            self.name = self.name + " dxyz"
+        else:
+            self.name = self.name + " blur"
     def addDefaults(self):
         self.cmd = ["minctracc",
                     "-clobber",
