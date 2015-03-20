@@ -14,6 +14,7 @@ from os.path import abspath, isdir, isfile
 import logging
 import sys
 from datetime import date
+import csv
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +67,16 @@ class RegistrationChain(AbstractApplication):
         return appName
 
     def run(self):
+
+        # we should start with some input file checking. The paths to the input files
+        # all reside in self.args[0] (a .csv file)
+        all_input_files = []
+        fileList = open(self.args[0], 'rb')
+        subjectList = csv.reader(fileList, delimiter=',', skipinitialspace=True) 
+        for subjLine in subjectList:
+            for subj in subjLine:
+                all_input_files.append(subj)
+        rf.checkInputFiles(all_input_files)
 
         # if no pipeline name was provided, initialize it here with the current date
         # setupDirectories deals with a missing pipeline name well, but we use this variable

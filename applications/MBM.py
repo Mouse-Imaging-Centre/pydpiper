@@ -37,7 +37,7 @@ class MBMApplication(AbstractApplication):
         options = self.options
         args = self.args
 
-        rf.checkThatInputFilesAreProvided(args)
+        rf.checkInputFiles(args)
 
         # make sure only one of the lsq6 target options is provided
         lsq6.verifyCorrectLSQ6TargetOptions(options.bootstrap,

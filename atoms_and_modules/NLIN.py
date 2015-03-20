@@ -85,6 +85,8 @@ class NonlinearRegistration(AbstractApplication):
     def run(self):
         options = self.options
         args = self.args
+        
+        rf.checkInputFiles(args)
        
         # Setup output directories for non-linear registration.        
         dirs = rf.setupDirectories(self.outputDir, options.pipeline_name, module="NLIN")

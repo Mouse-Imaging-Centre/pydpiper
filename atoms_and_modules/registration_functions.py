@@ -6,6 +6,7 @@ import pydpiper.file_handling as fh
 from os.path import abspath, exists, dirname, splitext, isfile, basename
 from os import curdir, walk
 from datetime import date
+import subprocess
 import sys
 import time
 import re
@@ -36,7 +37,7 @@ class StandardMBMDirectories(object):
         self.nlinDir = None
         self.processedDir = None
 
-def checkThatInputFilesAreProvided(args):
+def checkInputFiles(args):
     # in order to be able to print the version number, the main application
     # class can not require to have at least 1 input file, because then specifying:
     #
@@ -51,6 +52,29 @@ def checkThatInputFilesAreProvided(args):
     if len(args) < 1:
         print("\nError: no input files are provided. Exiting...\n")
         sys.exit()
+    else:
+        # here we should also check that the input files can be read
+        issuesWithInputs = 0
+        for inputF in args:
+            mincinfoCmd = subprocess.Popen(["mincinfo", inputF], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=False)
+            # the following returns anything other than None, the string matched, 
+            # and thus indicates that the file could not be read
+            if re.search("Unable to open file", mincinfoCmd.stdout.read()):
+                print("Error: can not read input file: " + str(inputF))
+                issuesWithInputs = 1
+        if issuesWithInputs:
+            print("Error: issues reading input files. Exiting...\n")
+            sys.exit()
+    # lastly we should check that the actual filenames are distinct, because
+    # directories are made based on the basename
+    seen = set()
+    for inputF in args:
+        fileBase = splitext(basename(inputF))[0]
+        if fileBase in seen:
+            print("Error: the following name occurs at least twice in the input file list:\n" + str(fileBase) + "\nPlease provide unique names for all input files. Exiting\n")
+            sys.exit()
+        seen.add(fileBase)
+    
 
 def setupDirectories(outputDir, pipeName, module):
     #Setup pipeline name

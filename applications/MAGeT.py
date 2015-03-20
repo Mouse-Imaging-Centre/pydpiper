@@ -4,7 +4,7 @@ from __future__ import print_function
 from pydpiper.application import AbstractApplication
 import pydpiper.file_handling as fh
 from atoms_and_modules.registration_file_handling import RegistrationPipeFH
-from atoms_and_modules.registration_functions import initializeInputFiles, addGenRegArgumentGroup, checkThatInputFilesAreProvided
+from atoms_and_modules.registration_functions import initializeInputFiles, addGenRegArgumentGroup, checkInputFiles
 from atoms_and_modules.MAGeT_modules import MAGeTMask, MAGeTRegister, voxelVote, addMAGeTArgumentGroup
 from atoms_and_modules.LSQ12 import addLSQ12ArgumentGroup
 from atoms_and_modules.NLIN import addNlinRegArgumentGroup
@@ -35,7 +35,7 @@ class MAGeTApplication(AbstractApplication):
         return appName
 
     def run(self):
-        checkThatInputFilesAreProvided(self.args)
+        checkInputFiles(self.args)
             
         if self.options.reg_method != "minctracc" and self.options.reg_method != "mincANTS":
             print("Incorrect registration method specified: ", self.options.reg_method)

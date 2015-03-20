@@ -157,7 +157,7 @@ class LSQ6Registration(AbstractApplication):
     def run(self):
         options = self.options
 
-        rf.checkThatInputFilesAreProvided(options.files)
+        rf.checkInputFiles(options.files)
 
         verifyCorrectLSQ6TargetOptions(options.bootstrap,
                                        options.init_model,
