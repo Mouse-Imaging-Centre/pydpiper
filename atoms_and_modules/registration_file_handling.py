@@ -183,6 +183,9 @@ class RegistrationPipeFH(RegistrationFHBase):
             to add a mask to it, you will have to explicitly set it using the mask
             parameter
         """
+        # There is actually an issue with the following line
+        # because it does not check whether the new group
+        # already exists or not...
         groupIndex = self.currentGroupIndex + 1
         if not inputVolume:
             inputVolume = self.getLastBasevol()

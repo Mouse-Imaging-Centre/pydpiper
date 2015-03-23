@@ -148,60 +148,9 @@ class RegistrationChain(AbstractApplication):
             print("Exiting...")
             sys.exit()
             
-        #Get current group index for use later, when chain is run. 
-        #Value will be different for input_space == native vs LSQ6
-        currGroupIndex = rf.getCurrIndexForInputs(subjects)
         
-        # If requested, run iterative groupwise registration for all subjects at the specified
-        # common timepoint, otherwise look to see if files are specified from a previous run.
-        # For example, if the avgTime is timepoint 2, the following is run in this toy scenario:
-        #
-        #                            ------------
-        # subject A    A_time_1   -> | A_time_2 | ->   A_time_3
-        # subject B    B_time_1   -> | B_time_2 | ->   B_time_3
-        # subject C    C_time_1   -> | C_time_2 | ->   C_time_3
-        #                            ------------
-        #                                 |
-        #                            group_wise registration on time point 2
-        if self.options.run_groupwise:
-            inputs = []
-            for s in subjects:
-                if avgTime >= 0:
-                    inputs.append(subjects[s][avgTime])
-                else:  
-                    # avgTime == -1:
-                    lastTimePoint = len(subjects[s]) - 1
-                    inputs.append(subjects[s][lastTimePoint])
-            #Run full LSQ12 and NLIN modules.
-            lsq12Nlin = mm.FullIterativeLSQ12Nlin(inputs, 
-                                                  dirs, 
-                                                  self.options, 
-                                                  avgPrefix=self.options.common_name, 
-                                                  initModel=initModel,
-                                                  fileResolution=resolutionForGroupWiseRegistration)
-            self.pipeline.addPipeline(lsq12Nlin.p)
-            nlinFH = lsq12Nlin.nlinFH
-            
-            #Set lastBasevol and group to lsq6 space, using currGroupIndex set above.
-            for i in inputs:
-                i.currentGroupIndex = currGroupIndex
-        else: 
-            if self.options.mbm_dir and self.options.nlin_avg:
-                if (not isdir(self.options.mbm_dir)) or (not isfile(self.options.nlin_avg)):
-                    logger.error("The specified MBM-directory or nlin-average do not exist.") 
-                    logger.error("Specified MBM-directory: " + abspath(self.options.mbm_dir))
-                    logger.error("Specified nlin average: " + abspath(self.options.nlin_avg))
-                    sys.exit()
-                # create file handler for nlin average
-                nlinFH = rfh.RegistrationPipeFH(abspath(self.options.nlin_avg), basedir=dirs.processedDir)
-                # Get transforms from subjects at avg time point to final nlin average and vice versa 
-                rf.getXfms(nlinFH, subjects, "lsq6", abspath(self.options.mbm_dir), time=avgTime)
-            else:
-                logger.info("MBM directory and nlin_average not specified.")
-                logger.info("Calculating registration chain only") 
-                nlinFH = None
-        
-        # now run a chained registration for each of the subjects. Given the toy scenario above:
+        # Due to the way the current file handling works, we should run the
+        # chain part of the registrations first. In the toy scenario below: 
         # subject A    A_time_1   ->   A_time_2   ->   A_time_3
         # subject B    B_time_1   ->   B_time_2   ->   B_time_3
         # subject C    C_time_1   ->   C_time_2   ->   C_time_3
@@ -241,11 +190,10 @@ class RegistrationChain(AbstractApplication):
                                                   lsq12_protocol=self.options.lsq12_protocol,
                                                   nlin_protocol=self.options.nlin_protocol)
                     self.pipeline.addPipeline(hm.p)
-                """Resample s[i] into space of s[i+1]""" 
-                if nlinFH:
-                    resample = ma.mincresample(s[i], s[i+1], likeFile=nlinFH, argArray=["-sinc"])
-                else:
-                    resample = ma.mincresample(s[i], s[i+1], likeFile=s[i], argArray=["-sinc"])
+                # Resample s[i] into space of s[i+1]. The common time point will be
+                # created after this, so as like file we should use the "larger"
+                # time point of the two.
+                resample = ma.mincresample(s[i], s[i+1], likeFile=s[i+1], argArray=["-sinc"])
                 self.pipeline.addStage(resample)
                 """Invert transforms for use later in stats"""
                 lastXfm = s[i].getLastXfm(s[i+1])
@@ -256,6 +204,52 @@ class RegistrationChain(AbstractApplication):
                     self.pipeline.addStage(xi)
                     s[i+1].addAndSetXfmToUse(s[i], xi.outputFiles[0])
         
+        # If requested, run iterative groupwise registration for all subjects at the specified
+        # common timepoint, otherwise look to see if files are specified from a previous run.
+        # For example, if the avgTime is timepoint 2, the following is run in this toy scenario:
+        #
+        #                            ------------
+        # subject A    A_time_1   -> | A_time_2 | ->   A_time_3
+        # subject B    B_time_1   -> | B_time_2 | ->   B_time_3
+        # subject C    C_time_1   -> | C_time_2 | ->   C_time_3
+        #                            ------------
+        #                                 |
+        #                            group_wise registration on time point 2
+        #
+        if self.options.run_groupwise:
+            inputs = []
+            for s in subjects:
+                if avgTime >= 0:
+                    inputs.append(subjects[s][avgTime])
+                else:  
+                    # avgTime == -1:
+                    lastTimePoint = len(subjects[s]) - 1
+                    inputs.append(subjects[s][lastTimePoint])
+            #Run full LSQ12 and NLIN modules.
+            lsq12Nlin = mm.FullIterativeLSQ12Nlin(inputs, 
+                                                  dirs, 
+                                                  self.options, 
+                                                  avgPrefix=self.options.common_name, 
+                                                  initModel=initModel,
+                                                  fileResolution=resolutionForGroupWiseRegistration)
+            self.pipeline.addPipeline(lsq12Nlin.p)
+            nlinFH = lsq12Nlin.nlinFH
+        else: 
+            if self.options.mbm_dir and self.options.nlin_avg:
+                if (not isdir(self.options.mbm_dir)) or (not isfile(self.options.nlin_avg)):
+                    logger.error("The specified MBM-directory or nlin-average do not exist.") 
+                    logger.error("Specified MBM-directory: " + abspath(self.options.mbm_dir))
+                    logger.error("Specified nlin average: " + abspath(self.options.nlin_avg))
+                    sys.exit()
+                # create file handler for nlin average
+                nlinFH = rfh.RegistrationPipeFH(abspath(self.options.nlin_avg), basedir=dirs.processedDir)
+                # Get transforms from subjects at avg time point to final nlin average and vice versa 
+                rf.getXfms(nlinFH, subjects, "lsq6", abspath(self.options.mbm_dir), time=avgTime)
+            else:
+                logger.info("MBM directory and nlin_average not specified.")
+                logger.info("Calculating registration chain only") 
+                nlinFH = None
+
         """Now that all registration is complete, calculate stats, concat transforms and resample"""
         car = mm.LongitudinalStatsConcatAndResample(subjects, 
                                                     avgTime, 

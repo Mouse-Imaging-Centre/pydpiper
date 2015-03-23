@@ -343,6 +343,18 @@ class LongitudinalStatsConcatAndResample:
             xtc = createBaseName(s[i].transformsDir, s[i].basename + "_to_" + self.commonName + ".xfm")
             xc = ma.xfmConcat(self.xfmToCommon, xtc, fh.logFromFile(s[i].logDir, xtc))
             self.p.addStage(xc)
+            # here in order to visually inspect the alignment with the common
+            # time point, we should resample this subject:
+            inputResampledToCommon = createBaseName(s[i].resampledDir, s[i].basename + "_to_" + self.commonName + ".mnc") 
+            logToCommon = fh.logFromFile(s[i].logDir, inputResampledToCommon)
+            resampleCmd = ma.mincresample(s[i],
+                                          self.nlinFH,
+                                          likeFile=self.nlinFH,
+                                          transform=xtc,
+                                          output=inputResampledToCommon,
+                                          logFile=logToCommon,
+                                          argArray=["-sinc"])
+            self.p.addStage(resampleCmd)
             s[i].addAndSetXfmToUse(self.nlinFH, xtc)
             self.statsCalculation(s[i], self.nlinFH, xfm=None, useChainStats=False)
         else:
