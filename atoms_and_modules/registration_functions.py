@@ -184,8 +184,20 @@ def setupSubjectHash(csvFile, dirs, maskDir):
             pd = dirs.processedDir
         elif isinstance(dirs, dict):
             pd = dirs[index].processedDir
-        subjects[index] = initializeInputFiles(subj, pd, maskDir)
+        # if the csv file is saved in a program like 
+        # open office or libre office and not all subjects
+        # have the same number of time point, the missing
+        # time points will be saved as comma separated
+        # empty fields. This causes issues when initializing
+        # the input files, so we will remove them here:
+        usable_time_points = []
+        for singlePointInSubj in subj:
+            if singlePointInSubj != '':
+                usable_time_points.append(singlePointInSubj)
+        subjects[index] = initializeInputFiles(usable_time_points, pd, maskDir)
         index += 1
+        # reset list of usable time points
+        usable_time_points = [] 
     return subjects
 
 def getCurrIndexForInputs(subjects):

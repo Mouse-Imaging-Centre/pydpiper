@@ -75,7 +75,8 @@ class RegistrationChain(AbstractApplication):
         subjectList = csv.reader(fileList, delimiter=',', skipinitialspace=True) 
         for subjLine in subjectList:
             for subj in subjLine:
-                all_input_files.append(subj)
+                if subj != "":
+                    all_input_files.append(subj)
         rf.checkInputFiles(all_input_files)
 
         # if no pipeline name was provided, initialize it here with the current date
