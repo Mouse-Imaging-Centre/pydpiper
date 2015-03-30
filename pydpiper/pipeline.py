@@ -3,7 +3,6 @@
 from __future__ import print_function
 
 import networkx as nx
-import Queue
 import os
 import sys
 import signal
@@ -167,11 +166,11 @@ class Pipeline():
         # an array of the actual stages (PipelineStage objects)
         self.stages = []
         self.nameArray = []
-        # a queue of the stages ready to be run - contains indices
-        self.runnable = Queue.Queue()
+        # indices of the stages ready to be run
+        self.runnable = set()
         # an array to keep track of stage memory requirements
         self.mem_req_for_runnable = []
-        self.currently_running_stages = set([])
+        self.currently_running_stages = set()
         # the current stage counter
         self.counter = 0
         # hash to keep the output to stage association
@@ -237,7 +236,7 @@ class Pipeline():
         return self.currently_running_stages
 
     def getNumberRunnableStages(self):
-        return self.runnable.qsize()
+        return len(self.runnable)
 
     def getMemoryRequirementsRunnable(self):
         return self.mem_req_for_runnable
@@ -350,7 +349,7 @@ class Pipeline():
     """Given client information, issue commands to the client (along similar
     lines to getRunnableStageIndex) and update server's internal view of client.
     This is highly stateful, being a resource-tracking wrapper around
-    getRunnableStageIndex and hence a glorified Queue().get()."""
+    getRunnableStageIndex and hence a glorified Set.pop."""
     def getCommand(self, clientURIstr, clientMemFree, clientProcsFree):
         if self.is_time_to_drain():
             return ("shutdown_abnormally", None)
@@ -365,7 +364,9 @@ class Pipeline():
                 if self.getStageProcs(i) > clientProcsFree:
                     logger.debug("The executor does not have enough free processors (free: %.1f, required: %.1f) to run stage %d. (Executor: %s)", clientProcsFree, self.getStageProcs(i), i, clientURIstr)
                 self.enqueue(i)
-                # TODO search the queue for something this client can run?
+                # TODO now that the queue is a set, don't just pop but intelligently look for
+                # something this client can run (e.g., by passing available resources
+                # into getRunnableStageIx)?
                 return ("wait", None)
         else:
             return (flag, i)
@@ -377,10 +378,10 @@ class Pipeline():
     def getRunnableStageIndex(self):
         if self.allStagesCompleted():
             return ("shutdown_normally", None)
-        elif self.runnable.empty():
+        elif len(self.runnable) == 0:
             return ("wait", None)
         else:
-            index = self.runnable.get()
+            index = self.runnable.pop()
             # remove an instance of currently required memory
             try:
                 self.mem_req_for_runnable.remove(self.stages[index].mem)
@@ -416,7 +417,7 @@ class Pipeline():
     def setStageStarted(self, index, clientURI):
         URIstring = "(" + str(clientURI) + ")"
         logger.info("Starting Stage " + str(index) + ": " + str(self.stages[index]) + URIstring)
-        # There may be a bug in which a stage is added to the runnable queue multiple times.
+        # There may be a bug in which a stage is added to the runnable set multiple times.
         # It would be better to catch that earlier (by using a different/additional data structure)
         # but for now look for the case when a stage is run twice at the same time, which may
         # produce bizarre results as both processes write files
@@ -427,7 +428,7 @@ class Pipeline():
         self.stages[index].setRunning()
 
     def checkIfRunnable(self, index):
-        """stage added to runnable queue if all predecessors finished"""
+        """stage added to runnable set if all predecessors finished"""
         canRun = True
         logger.debug("Checking if stage " + str(index) + " is runnable ...")
         if self.stages[index].isFinished():
@@ -442,7 +443,7 @@ class Pipeline():
         return canRun
 
     def setStageFinished(self, index, clientURI, save_state = True, checking_pipeline_status = False):
-        """given an index, sets corresponding stage to finished and adds successors to the runnable queue"""
+        """given an index, sets corresponding stage to finished and adds successors to the runnable set"""
         # this function can be called when a pipeline is restarted, and 
         # we go through all stages and set the finished ones to... finished... :-)
         # in that case, we can not remove the stage from the list of running
@@ -496,7 +497,7 @@ class Pipeline():
             self.removeFromRunning(index, clientURI, new_status = None)
             self.stages[index].incrementNumberOfRetries()
             logger.info("RETRYING: ERROR in Stage " + str(index) + ": " + str(self.stages[index]))
-            logger.info("RETRYING: adding this stage back to the runnable queue.")
+            logger.info("RETRYING: adding this stage back to the runnable set.")
             logger.info("RETRYING: Logfile for Stage " + str(self.stages[index].logFile))
             self.enqueue(index)
         else:
@@ -512,17 +513,18 @@ class Pipeline():
                 self.processedStages.append(i)
 
     def enqueue(self, i):
-        """If stage cannot be run due to insufficient mem/procs, executor returns it to the queue"""
+        """If stage cannot be run due to insufficient mem/procs, executor returns it to the runnable set"""
         logger.debug("Queueing stage %d", i)
-        self.runnable.put(i)
+        self.runnable.add(i)
         for f in self.stages[i].runnable_hooks:
             f()
         # keep track of the memory requirements of the runnable jobs
         self.mem_req_for_runnable.append(self.stages[i].mem)
 
     def initialize(self):
-        """called once all stages have been added - computes dependencies and adds graph heads to runnable queue"""
-        self.runnable = Queue.Queue()
+        """called once all stages have been added - computes dependencies and adds graph heads to runnable set"""
+        # FIXME but `runnable` is created by `__init__` ... is it being re-used?
+        #self.runnable = set()
         self.createEdges()
         self.computeGraphHeads()
         
@@ -544,13 +546,10 @@ class Pipeline():
 
         # exit if there are still stages that need to be run, 
         # but when there are no runnable nor any running stages left
-        if (self.runnable.empty() and
+        if (len(self.runnable) == 0 and
             len(self.currently_running_stages) == 0
             and self.failed_stages > 0):
-            # nothing running, nothing can be run, but we're
-            # also not done processing all stages
             logger.info("ERROR: no more runnable stages, however not all stages have finished. Going to shut down.")
-            # This is something we should also directly report back to the user:
             print("\nERROR: no more runnable stages, however not all stages have finished. Going to shut down.\n")
             sys.stdout.flush()
             return False
@@ -559,7 +558,7 @@ class Pipeline():
         # jobs available that can be run with the registered executors, 
         # currently we should exit (potentially later on, we can submit
         # executors that have enough memory available)
-        if self.runnable.qsize() > 0 and len(self.clients) > 0:
+        if len(self.runnable) > 0 and len(self.clients) > 0:
             minMemRequired = min(self.mem_req_for_runnable)
             memAvailable = self.getMemoryAvailableInClients()
             if max(memAvailable) < minMemRequired:
@@ -570,7 +569,7 @@ class Pipeline():
         # 1) there are stages that can be run, and
         # 2) there are no running nor waiting executors, and
         # 3) the number of lost executors has exceeded the number of allowed failed execturs
-        if( not self.runnable.empty() and
+        if(len(self.runnable) > 0 and
             (self.number_launched_and_waiting_clients + len(self.clients)) == 0 and
             self.failed_executors > self.main_options_hash.max_failed_executors ):
           print("Error: %d executors have died. This is more than the number of allowed failed executors as set by the flag: --max-failed-executors. Can not spawn new ones. Exiting..." % self.failed_executors)
@@ -598,8 +597,9 @@ class Pipeline():
         logger.debug("Looping ...")
         executors_to_launch = self.numberOfExecutorsToLaunch()
         if executors_to_launch > 0:
-            self.launchExecutorsFromServer(executors_to_launch)
-
+            self.launchExecutorsFromServer(executors_to_launch,
+                                           memNeeded=max(self.runnable,
+                                                         key=lambda i: self.stages[i].mem))
         if self.main_options_hash.monitor_heartbeats:
             # look for dead clients and requeue their jobs
             t = time.time()
@@ -642,19 +642,21 @@ class Pipeline():
             executor_launch_room = max_num_executors - active_executors
             # there are runnable stages, and there is room to launch 
             # additional executors
-            return min(self.runnable.qsize(), executor_launch_room)
+            return min(len(self.runnable), executor_launch_room)
         else:
             return 0
         
-    def launchExecutorsFromServer(self, number_to_launch):
+    def launchExecutorsFromServer(self, number_to_launch, memNeeded):
         try:
             logger.info("Launching %i executors", number_to_launch)
             for i in range(number_to_launch):
-                p = Process(target=launchPipelineExecutor, args=(self.main_options_hash,self.programName))
+                p = Process(target=launchPipelineExecutor,
+                            args=(self.main_options_hash,self.programName,memNeeded))
                 p.start()
                 self.incrementLaunchedClients()
         except:
             logger.exception("Failed launching executors from the server.")
+            raise
         
     def getProcessedStageCount(self):
         return len(self.processedStages)
@@ -708,12 +710,13 @@ class Pipeline():
         completed = 0
         while True:
             # self.runnable should be populated initially by the graph heads.
-            # Traverse the graph by removing stages from the runnable queue and,
-            # if they don't need to be re-run, adding their dependencies to the queue
-            # (via setStageFinished); if they do, accumulate them.  In this way we
-            # populate the runnable queue with a set of stages which must and can be run
-            # (either because the inputs/outputs/code has changed or because an ancestor
-            # has re-run) but whose ancestors have all completed
+            # Traverse the graph by removing stages from the runnable set and,
+            # if they don't need to be re-run, adding their dependencies to that set
+            # (via setStageFinished); if they do, accumulate them.  Once this set is emptied,
+            # we have computed a set of stages which must and can be run
+            # (either because the input/output filenames or command has changed
+            # or because an ancestor has re-run, i.e., the files themselves have changed)
+            # but whose ancestors have already been run
             flag,i = self.getRunnableStageIndex()
             if i == None:
                 break
@@ -756,11 +759,11 @@ class Pipeline():
         logger.debug("Clients still registered at shutdown: " + str(self.clients))
         sys.stdout.flush()
 
-def launchPipelineExecutor(options, programName=None):
+def launchPipelineExecutor(options, programName=None, memNeeded=None):
     """Launch pipeline executor directly from pipeline"""
-    pipelineExecutor = pe.pipelineExecutor(options)
+    pipelineExecutor = pe.pipelineExecutor(options, memNeeded)
     if options.queue_type == "sge" or options.queue == "sge":
-        pipelineExecutor.submitToQueue(programName) 
+        pipelineExecutor.submitToQueue(programName)
     else: 
         pe.launchExecutor(pipelineExecutor)
         
@@ -914,14 +917,14 @@ def pipelineDaemon(pipeline, options, programName=None):
         pipeline.skip_completed_stages()
 
     #check for valid pipeline 
-    if pipeline.runnable.empty():
+    if len(pipeline.runnable) == 0:
         print("Pipeline has no runnable stages. Exiting...")
         sys.exit()
    
     logger.debug("Prior to starting server, total stages %i. Number processed: %i.", 
                  len(pipeline.stages), len(pipeline.processedStages))
     logger.debug("Number of stages in runnable queue: %i",
-                 pipeline.runnable.qsize())
+                 len(pipeline.runnable))
     
     # # provide the pipeline with the main option hash. The server when started 
     # # needs access to information in there in order to (re)launch executors

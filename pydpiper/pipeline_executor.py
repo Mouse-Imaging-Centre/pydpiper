@@ -223,9 +223,17 @@ class ChildProcess():
         self.procs = procs 
 
 class pipelineExecutor():
-    def __init__(self, options):
+    def __init__(self, options, memNeeded = None):
         # better: self.options = options ... ?
-        self.mem = options.mem
+        # TODO the additional argument `mem` represents the
+        # server's estimate of the amount of memory
+        # an executor may need to run available jobs
+        # -- perhaps options.mem should be renamed
+        # options.max_mem since this represents a per-node
+        # limit (or at least a per-executor limit)
+        self.mem = memNeeded or options.mem
+        if self.mem > options.mem:
+            raise ValueError("executor requesting %.2fG memory but maximum is %.2fG" % (options.mem, self.mem))
         self.procs = options.proc
         self.ppn = options.ppn
         self.queue_type = options.queue_type or options.queue
@@ -335,7 +343,7 @@ class pipelineExecutor():
         if self.queue_type == "sge":
             strprocs = str(self.procs) 
             # NOTE: sge_batch multiplies vf value by # of processors. 
-            # Since options.mem = total amount of memory needed, divide by self.procs to get value 
+            # Since options.mem = total amount of memory needed, divide by self.procs to get value
             memPerProc = float(self.mem)/float(self.procs)
             strmem = "vf=" + str(memPerProc) + "G" 
             jobname = ""
