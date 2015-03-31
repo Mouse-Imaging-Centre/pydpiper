@@ -222,6 +222,9 @@ class ChildProcess():
         self.mem = mem
         self.procs = procs 
 
+class InsufficientResources(Exception):
+    pass
+
 class pipelineExecutor():
     def __init__(self, options, memNeeded = None):
         # better: self.options = options ... ?
@@ -231,9 +234,11 @@ class pipelineExecutor():
         # -- perhaps options.mem should be renamed
         # options.max_mem since this represents a per-node
         # limit (or at least a per-executor limit)
+        logger.debug("memNeeded: %sG", memNeeded)
         self.mem = memNeeded or options.mem
+        logger.debug("self.mem = %0.2fG", self.mem)
         if self.mem > options.mem:
-            raise ValueError("executor requesting %.2fG memory but maximum is %.2fG" % (options.mem, self.mem))
+            raise InsufficientResources("executor requesting %.2fG memory but maximum is %.2fG" % (options.mem, self.mem))
         self.procs = options.proc
         self.ppn = options.ppn
         self.queue_type = options.queue_type or options.queue
@@ -368,7 +373,8 @@ class pipelineExecutor():
             # Only one exec is launched at a time in this manner, so:
             cmd += ["--num-executors", str(1)]
             # send ALL args except --num-executors to the executor
-            cmd += q.remove_num_exec(sys.argv)
+            cmd += q.remove_flags(['--num-exec', '--mem'], sys.argv)
+            cmd += ['--mem', str(self.mem)]
             # FIXME huge hack -- shouldn't we just iterate over options,
             # possibly checking for membership in the executor option group?
             # The problem is that we can't easily check if an option is

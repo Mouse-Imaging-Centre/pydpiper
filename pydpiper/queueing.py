@@ -11,21 +11,24 @@ import subprocess
 # FIXME
 SERVER_START_TIME = 50
 
-# FIXME huge hack - fix: form the parser from an iterable data structure of args
+# FIXME huge hack
+# fix: form the parser from an iterable data structure of args
 # and consult this
-def remove_num_exec(args):
+# TODO has terrible time complexity
+def remove_flags(flags, args):
     args = args[:] # copy for politeness
     for ix, arg in enumerate(args):
-        if re.search('--num-exec', arg):
-            # matches? (argparse uses prefix matching...try to catch -
-            # ideally we'd actually consult a table of legal arguments)
-            if re.search('=', arg):
-                # sys.argv has form [..., '--num-executors=3', ...]
-                args.pop(ix)
-            else:
-                # sys.argv has form [..., '--num-executors', '3', ...]
-                args.pop(ix)
-                args.pop(ix)
+        for flag in flags:
+            if re.search(flag, arg):
+                # matches? (argparse uses prefix matching...try to catch -
+                # ideally we'd actually consult a table of legal arguments)
+                if re.search('=', arg):
+                    # sys.argv has form [..., '--num-executors=3', ...]
+                    args.pop(ix)
+                else:
+                    # sys.argv has form [..., '--num-executors', '3', ...]
+                    args.pop(ix)
+                    args.pop(ix)
     return args
 
 class runOnQueueingSystem():
@@ -68,7 +71,8 @@ class runOnQueueingSystem():
         """Re-construct main command to be called in pbs script, adding --local flag"""
         reconstruct = ""
         if self.arguments:
-            reconstruct += ' '.join(remove_num_exec(self.arguments))
+            reconstruct += ' '.join(remove_flags(['--num-exec', '--mem'],
+                                                 self.arguments))
         reconstruct += " --local --num-executors=0 "
         return reconstruct
     def constructAndSubmitJobFile(self, identifier, time, isMainFile, after=None, afterany=None):
@@ -151,7 +155,7 @@ class runOnQueueingSystem():
         if launchExecs:
             self.jobFile.write("sleep %s\n" % SERVER_START_TIME)
             cmd = "pipeline_executor.py --local --num-executors=1 "
-            cmd += ' '.join(remove_num_exec(self.arguments[1:]))
+            cmd += ' '.join(remove_flags(['--num-exec'], self.arguments[1:]))
             # this is a hack to prevent the executor on the server
             # machine from timing out, relying on the current behaviour
             # of (config)argparse to use the rightmost value of a

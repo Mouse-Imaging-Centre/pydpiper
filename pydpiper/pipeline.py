@@ -354,19 +354,23 @@ class Pipeline():
         if self.is_time_to_drain():
             return ("shutdown_abnormally", None)
 
+        # TODO now that getRunnableStageIndex pops from a set,
+        # intelligently look for something this client can run
+        # (e.g., by passing available resources
+        # into getRunnableStageIndex)?
         flag, i = self.getRunnableStageIndex()
         if flag == "run_stage":
-            if ((self.getStageMem(i) <= clientMemFree) and (self.getStageProcs(i) <= clientProcsFree)):
+            eps = 0.000001
+            memOK   = self.getStageMem(i) <= clientMemFree + eps
+            procsOK = self.getStageProcs(i) <= clientProcsFree
+            if memOK and procsOK:
                 return (flag, i)
             else:
-                if self.getStageMem(i) > clientMemFree:
+                if not memOK:
                     logger.debug("The executor does not have enough free memory (free: %.2fG, required: %.2fG) to run stage %d. (Executor: %s)", clientMemFree, self.getStageMem(i), i, clientURIstr)
-                if self.getStageProcs(i) > clientProcsFree:
+                if not procsOK:
                     logger.debug("The executor does not have enough free processors (free: %.1f, required: %.1f) to run stage %d. (Executor: %s)", clientProcsFree, self.getStageProcs(i), i, clientURIstr)
                 self.enqueue(i)
-                # TODO now that the queue is a set, don't just pop but intelligently look for
-                # something this client can run (e.g., by passing available resources
-                # into getRunnableStageIx)?
                 return ("wait", None)
         else:
             return (flag, i)
@@ -523,8 +527,6 @@ class Pipeline():
 
     def initialize(self):
         """called once all stages have been added - computes dependencies and adds graph heads to runnable set"""
-        # FIXME but `runnable` is created by `__init__` ... is it being re-used?
-        #self.runnable = set()
         self.createEdges()
         self.computeGraphHeads()
         
@@ -554,26 +556,31 @@ class Pipeline():
             sys.stdout.flush()
             return False
 
-        # check memory availability and requirements. If there are no
-        # jobs available that can be run with the registered executors, 
-        # currently we should exit (potentially later on, we can submit
-        # executors that have enough memory available)
-        if len(self.runnable) > 0 and len(self.clients) > 0:
-            minMemRequired = min(self.mem_req_for_runnable)
-            memAvailable = self.getMemoryAvailableInClients()
-            if max(memAvailable) < minMemRequired:
-                print("\n\nError: the maximum amount of memory available in any executor is %f. The minimum amount of memory required to run any of the runnable stages is: %f. Quitting...\n\n" % (max(memAvailable), minMemRequired))
-                return False
-
         # return False if all executors have died but not spawning new ones:
         # 1) there are stages that can be run, and
         # 2) there are no running nor waiting executors, and
         # 3) the number of lost executors has exceeded the number of allowed failed execturs
         if(len(self.runnable) > 0 and
             (self.number_launched_and_waiting_clients + len(self.clients)) == 0 and
-            self.failed_executors > self.main_options_hash.max_failed_executors ):
-          print("Error: %d executors have died. This is more than the number of allowed failed executors as set by the flag: --max-failed-executors. Can not spawn new ones. Exiting..." % self.failed_executors)
+            self.failed_executors > self.main_options_hash.max_failed_executors):
+          msg = "Error: %d executors have died. This is more than the number of allowed failed executors as set by the flag: --max-failed-executors. Can not spawn new ones. Exiting..." % self.failed_executors
+          print(msg)
+          logger.warn(msg)
           return False
+
+        # TODO combine with above clause?
+        if ((len(self.runnable) > 0) and
+          # require no running jobs rather than no clients
+          # since in some configurations (e.g., currently SciNet config has
+          # the server-local executor shut down only when the server does)
+          # the latter choice might lead to the system
+          # running indefinitely with no jobs
+          (self.number_launched_and_waiting_clients + len(self.clients) == 0 and
+          self.executor_memory_required(self.runnable) > self.main_options_hash.mem)):
+            msg = "Shutting down due to jobs which require more memory than available anywhere."
+            print(msg)
+            logger.warn(msg)
+            return False
 
         if self.allStagesCompleted():
             logger.info("All stages complete ... done")
@@ -592,14 +599,29 @@ class Pipeline():
             logger.exception("clientURI not found in server client list:")
             raise
 
+    # requires: stages != []
+    # a better interface might be (self, [stage]) -> { MemAmount : (NumStages, [Stage]) }
+    # or maybe the same in a heap (to facilitate getting N stages with most memory)
+    def executor_memory_required(self, stages):
+        return self.stages[max(stages, key=lambda i: self.stages[i].mem)].mem
+
     # this can't be a loop since we call it via sockets and don't want to block the socket forever
     def manageExecutors(self):
         logger.debug("Looping ...")
         executors_to_launch = self.numberOfExecutorsToLaunch()
         if executors_to_launch > 0:
-            self.launchExecutorsFromServer(executors_to_launch,
-                                           memNeeded=max(self.runnable,
-                                                         key=lambda i: self.stages[i].mem))
+            memNeeded = self.executor_memory_required(self.runnable)
+            if memNeeded <= self.main_options_hash.mem:
+                self.launchExecutorsFromServer(executors_to_launch, memNeeded)
+            else:
+                # we ought to set the stage to failed and run other available stages.
+                # However, usually the largest-memory stages run last and in parallel,
+                # so there's little benefit to doing so, and it makes sense to finish
+                # the running jobs and exit.
+                msg = "A stage requires %.2fG of memory to run, but max allowed is %.2fG" \
+                        % (memNeeded, self.main_options_hash.mem)
+                logger.error(msg)
+                print(msg)
         if self.main_options_hash.monitor_heartbeats:
             # look for dead clients and requeue their jobs
             t = time.time()
@@ -632,6 +654,12 @@ class Pipeline():
         if self.failed_executors > self.main_options_hash.max_failed_executors:
             return 0
 
+        if (len(self.runnable) > 0 and
+            self.executor_memory_required(self.runnable) > self.main_options_hash.mem):
+            # we might still want to launch executors for the stages with smaller
+            # requirements
+            return 0
+        
         if self.main_options_hash.num_exec != 0:
             # Server should launch executors itself
             # This should happen regardless of whether or not executors
@@ -651,7 +679,7 @@ class Pipeline():
             logger.info("Launching %i executors", number_to_launch)
             for i in range(number_to_launch):
                 p = Process(target=launchPipelineExecutor,
-                            args=(self.main_options_hash,self.programName,memNeeded))
+                            args=(self.main_options_hash, memNeeded, self.programName))
                 p.start()
                 self.incrementLaunchedClients()
         except:
@@ -759,12 +787,12 @@ class Pipeline():
         logger.debug("Clients still registered at shutdown: " + str(self.clients))
         sys.stdout.flush()
 
-def launchPipelineExecutor(options, programName=None, memNeeded=None):
+def launchPipelineExecutor(options, memNeeded, programName=None):
     """Launch pipeline executor directly from pipeline"""
     pipelineExecutor = pe.pipelineExecutor(options, memNeeded)
     if options.queue_type == "sge" or options.queue == "sge":
         pipelineExecutor.submitToQueue(programName)
-    else: 
+    else:
         pe.launchExecutor(pipelineExecutor)
         
 def launchServer(pipeline, options):
@@ -926,17 +954,15 @@ def pipelineDaemon(pipeline, options, programName=None):
     logger.debug("Number of stages in runnable queue: %i",
                  len(pipeline.runnable))
     
-    # # provide the pipeline with the main option hash. The server when started 
-    # # needs access to information in there in order to (re)launch executors
-    # # during run time
-    #pipeline.main_options_hash = options
     pipeline.programName = programName
-    # we are now appending to the stages file since we've already written
-    # previously completed stages to it in skip_completed_stages
     try:
-        with open(pipeline.backupFileLocation, 'a') as fh: #TODO exception swallowed here if fh can't be created??
+        # we are now appending to the stages file since we've already written
+        # previously completed stages to it in skip_completed_stages
+        with open(pipeline.backupFileLocation, 'a') as fh:
             pipeline.finished_stages_fh = fh
             logger.debug("Starting server...")
             launchServer(pipeline, options)
+    except:
+        logger.exception("Exception (=> quitting): ")
     finally:
         sys.exit(0)
