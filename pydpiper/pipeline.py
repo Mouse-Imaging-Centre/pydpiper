@@ -911,7 +911,6 @@ def pipelineDaemon(pipeline, options, programName=None):
         logger.debug("Examining filesystem to determine skippable stages...")
         pipeline.skip_completed_stages()
 
-    #check for valid pipeline 
     if pipeline.runnable.empty():
         print "Pipeline has no runnable stages. Exiting..."
         sys.exit()
@@ -921,17 +920,15 @@ def pipelineDaemon(pipeline, options, programName=None):
     logger.debug("Number of stages in runnable queue: %i",
                  pipeline.runnable.qsize())
     
-    # # provide the pipeline with the main option hash. The server when started 
-    # # needs access to information in there in order to (re)launch executors
-    # # during run time
-    #pipeline.main_options_hash = options
     pipeline.programName = programName
-    # we are now appending to the stages file since we've already written
-    # previously completed stages to it in skip_completed_stages
     try:
-        with open(pipeline.backupFileLocation, 'a') as fh: #TODO exception swallowed here if fh can't be created??
+        # we are now appending to the stages file since we've already written
+        # previously completed stages to it in skip_completed_stages
+        with open(pipeline.backupFileLocation, 'a') as fh:
             pipeline.finished_stages_fh = fh
             logger.debug("Starting server...")
             launchServer(pipeline, options)
+    except:
+        logger.exception("Exception (=> quitting): ")
     finally:
         sys.exit(0)
