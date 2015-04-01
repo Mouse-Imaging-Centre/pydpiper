@@ -31,18 +31,22 @@ def remove_flags(flags, args):
                     args.pop(ix)
     return args
 
+def timestr_to_secs(ts):
+    # TODO replace with a library function
+    # TODO put into a util module
+    try:
+        h, m, s = ts.split(':')
+        return 3600 * int(h) + 60 * int(m) + int(s)
+    except:
+        raise Exception("invalid (H...)HH:MM:SS timestring: %s" % ts)
+
 class runOnQueueingSystem():
     def __init__(self, options, sysArgs=None):
         #Note: options are the same as whatever is in calling program
         #Options MUST also include standard pydpiper options
         # self.options = options would be easier than this manual unpacking
         # for vars that don't have much 'logic' associated with them ...
-        self.timestr = options.time or '48:00:00'
-        try:
-            h,m,s = self.timestr.split(':')
-        except:
-            raise Exception("invalid (H)HH:MM:SS timestring: %s" % self.timestr)
-        self.job_lifetime = 3600 * int(h) + 60 * int(m) + int(s)
+        self.job_lifetime = timestr_to_secs(options.time or '48:00:00')
         self.mem = options.mem
         self.max_walltime = options.max_walltime
         self.min_walltime = options.min_walltime
