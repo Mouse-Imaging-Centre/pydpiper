@@ -43,9 +43,9 @@ if __name__ == '__main__':
     print("Number of clients waiting in the queue: ", waitingClients, "\n")
 
     # stages currently running:
-    runningStagesList = proxyServer.getCurrentlyRunningStages()
-    print("Currently running stages: ")
-    for stage in runningStagesList:
+    runningStages = proxyServer.getCurrentlyRunningStages()
+    print("Currently running stages (%d): " % len(runningStages))
+    for stage in runningStages:
         print(stage, " ", proxyServer.getStageCommand(stage))
 
     # currently runnable jobs:
@@ -62,8 +62,8 @@ if __name__ == '__main__':
 
     # memory requirements for runnable stages:
     memArray = proxyServer.getMemoryRequirementsRunnable()
-    print("\nMemory requirement of runnable stages:   ", memArray)
+    print("\nMemory requirement of runnable stages: %s" % memArray)
     # memory available in registered executors:
     memAvailable = proxyServer.getMemoryAvailableInClients()
-    print("Memory available in registered clients:  ", memAvailable, "\n")
-    
+    print("Memory available in registered clients: %s \n" %
+          map(lambda x: round(x, 4), memAvailable))
