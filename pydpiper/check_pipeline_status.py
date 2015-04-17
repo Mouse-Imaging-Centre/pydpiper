@@ -46,7 +46,7 @@ if __name__ == '__main__':
     runningStages = proxyServer.getCurrentlyRunningStages()
     print("Currently running stages (%d): " % len(runningStages))
     for stage in runningStages:
-        print(stage, " ", proxyServer.getStageCommand(stage))
+        print("%s\t%s\n" % (stage, proxyServer.getStageCommand(stage)))
 
     # currently runnable jobs:
     numberRunnableStages = proxyServer.getNumberRunnableStages()
