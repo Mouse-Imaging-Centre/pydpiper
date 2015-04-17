@@ -9,7 +9,7 @@ import re
 import subprocess
 
 # FIXME
-SERVER_START_TIME = 50
+SERVER_START_TIME = 180
 
 # FIXME huge hack
 # fix: form the parser from an iterable data structure of args
@@ -75,9 +75,11 @@ class runOnQueueingSystem():
         """Re-construct main command to be called in pbs script, adding --local flag"""
         reconstruct = ""
         if self.arguments:
-            reconstruct += ' '.join(remove_flags(['--num-exec', '--mem'],
+            reconstruct += ' '.join(remove_flags(['--num-exec', '--mem',
+                                                  '--time-to-seppuku'],
                                                  self.arguments))
-        reconstruct += " --local --num-executors=0 "
+        reconstruct += " --local --num-executors=1 --time-to-seppuku=%d " \
+                         % self.max_walltime
         return reconstruct
     def constructAndSubmitJobFile(self, identifier, time, isMainFile, after=None, afterany=None):
         """Construct the bulk of the pbs script to be submitted via qsub"""
@@ -116,14 +118,13 @@ class runOnQueueingSystem():
         self.jobFile.write("#!/bin/bash\n")
         requestNodes = 1
         name = self.jobName
-        launchExecs = True   
+        launchExecs = not isMainFile
         if isMainFile:
             # Number of nodes used depends on:
             # 1) number of available processors per node
             # 2) number of processes per executor
             nodes = divmod(self.procs, self.ppn)
             if self.numexec == 0:
-                launchExecs = False
                 name += "-no-executors"
             elif self.numexec == 1:
                 name += "-all"
@@ -160,12 +161,6 @@ class runOnQueueingSystem():
             self.jobFile.write("sleep %s\n" % SERVER_START_TIME)
             cmd = "pipeline_executor.py --local --num-executors=1 "
             cmd += ' '.join(remove_flags(['--num-exec'], self.arguments[1:]))
-            # this is a hack to prevent the executor on the server
-            # machine from timing out, relying on the current behaviour
-            # of (config)argparse to use the rightmost value of a
-            # command-line argument which appears twice:
-            if isMainFile:
-                cmd += ' --time-to-seppuku=172800 '
             cmd += ' &\n\n'
             self.jobFile.write(cmd)
     def completeJobFile(self):

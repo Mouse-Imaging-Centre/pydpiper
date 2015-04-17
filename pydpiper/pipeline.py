@@ -577,7 +577,7 @@ class Pipeline():
           # running indefinitely with no jobs
           (self.number_launched_and_waiting_clients + len(self.clients) == 0 and
           self.executor_memory_required(self.runnable) > self.main_options_hash.mem)):
-            msg = "Shutting down due to jobs which require more memory than available anywhere."
+            msg = "Shutting down due to jobs which require more memory (%.2fG) than available anywhere." % self.executor_memory_required(self.runnable)
             print(msg)
             logger.warn(msg)
             return False
@@ -603,7 +603,8 @@ class Pipeline():
     # a better interface might be (self, [stage]) -> { MemAmount : (NumStages, [Stage]) }
     # or maybe the same in a heap (to facilitate getting N stages with most memory)
     def executor_memory_required(self, stages):
-        return self.stages[max(stages, key=lambda i: self.stages[i].mem)].mem
+        s = max(stages, key=lambda i: self.stages[i].mem)
+        return self.stages[s].mem
 
     # this can't be a loop since we call it via sockets and don't want to block the socket forever
     def manageExecutors(self):
