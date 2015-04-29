@@ -469,10 +469,11 @@ class createQualityControlImages(object):
                  createMontage=True,
                  montageOutPut=None,
                  scalingFactor=20,
-                 stage="lsq6"):
+                 message="lsq6"):
         self.p = Pipeline()
         self.individualImages = []
-        self.stage = stage
+        self.individualImagesLabeled = [] 
+        self.message = message
 
         if createMontage and montageOutPut == None:
             print("\nError: createMontage is specified in createQualityControlImages, but no output name for the montage is provided. Exiting...\n")
@@ -495,18 +496,29 @@ class createQualityControlImages(object):
                 mincpik.setLogFile(LogFile(logFromFile(inFile.logDir, outputMincpik)))
                 self.p.addStage(mincpik)
                 self.individualImages.append(outputMincpik)
+                # we should add a label to each of the individual images
+                # so it will be easier for the user to identify what
+                # which images potentially fail
+                outputConvert = createBaseName(inFile.tmpDir, 
+                                               removeBaseAndExtension(inputToMincpik) + "_QC_image_labeled.png")
+                cmdConvert = ["convert", "-label", inFile.basename,
+                              InputFile(outputMincpik),
+                              OutputFile(outputConvert)]
+                convertAddLabel = CmdStage(cmdConvert)
+                convertAddLabel.setLogFile(LogFile(logFromFile(inFile.logDir, outputConvert)))
+                self.p.addStage(convertAddLabel)
+                self.individualImagesLabeled.append(outputConvert)
 
         # if montageOutput is specified, create the overview image
         if createMontage:
             cmdmontage = ["montage", "-geometry", "+2+2"] \
-                         + map(InputFile, self.individualImages) + [OutputFile(montageOutPut)]
+                         + map(InputFile, self.individualImagesLabeled) + [OutputFile(montageOutPut)]
             montage = CmdStage(cmdmontage)
             montage.setLogFile(splitext(montageOutPut)[0] + ".log")
             message_to_print = "\n* * * * * * *\nPlease consider the following verification "
             message_to_print += "image, which shows a slice through all input "
-            message_to_print += "files after the %s alignment. If the " % self.stage
-            message_to_print += "files are ill aligned, consider stopping this "
-            message_to_print += "pipeline and changing the %s parameters \n%s\n" % (self.stage,montageOutPut)
+            message_to_print += "files %s. " % self.message
+            message_to_print += "\n%s\n" % (montageOutPut)
             message_to_print += "* * * * * * *\n"
             # the hook needs a return. Given that "print" does not return
             # anything, we need to encapsulate the print statement in a 

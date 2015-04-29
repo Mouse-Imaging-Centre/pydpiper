@@ -280,6 +280,7 @@ class LSQ6NUCInorm(object):
         self.initModel = initModel
         self.lsq6Dir = lsq6Directory
         self.options = options 
+        self.lsq6Avg = None # add the average from the lsq6 module here
         
         self.setupPipeline()
     
@@ -298,6 +299,7 @@ class LSQ6NUCInorm(object):
         lsq6module.createLSQ6Transformation()
         lsq6module.finalize()
         self.p.addPipeline(lsq6module.p)
+        self.lsq6Avg = lsq6module.lsq6Avg
         
         if self.options.nuc:
             already_resample_to_LSQ6 = False

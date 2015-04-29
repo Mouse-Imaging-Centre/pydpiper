@@ -70,13 +70,29 @@ class MBMApplication(AbstractApplication):
                                                       target_file_directory,
                                                       self.outputDir,
                                                       options.pipeline_name)
-            
+        
+        # We will create an initial verification image here. This
+        # will show the user whether it is likely for the alignment to
+        # work altogether (potentially the orientation of the target
+        # and the input files is too different.) 
+        montageBeforeRegistration = self.outputDir + "/" + options.pipeline_name + "_quality_control_target_and_inputfiles.png"
+        initialVerificationImages = createQualityControlImages([targetPipeFH] + inputFiles,
+                                                               montageOutPut=montageBeforeRegistration,
+                                                               message="at the very start of the registration.")
+        self.pipeline.addPipeline(initialVerificationImages.p)
+        
         #LSQ6 MODULE, NUC and INORM
         runLSQ6NucInorm = lsq6.LSQ6NUCInorm(inputFiles,
                                             targetPipeFH,
                                             initModel, 
                                             dirs.lsq6Dir, 
                                             options)
+        # TODO: This is a temporary hack: we add the output of the verification 
+        # image as an input to all stages from the LSQ6 stage to make
+        # sure that this image is created as soon as possible
+        # This obviously is overkill, but it doens't really hurt either
+        for lsq6Stage in runLSQ6NucInorm.p.stages:
+            lsq6Stage.inputFiles.append(montageBeforeRegistration)
         self.pipeline.addPipeline(runLSQ6NucInorm.p)
 
         # At this point in the pipeline it's important to check the 
@@ -86,9 +102,15 @@ class MBMApplication(AbstractApplication):
         # a verification image showing slices through all files
         montageLSQ6 = self.outputDir + "/" + options.pipeline_name + "_quality_control_montage_lsq6.png"
         # TODO, base scaling factor on resolution of initial model or target
-        lsq6VerificationImages = createQualityControlImages(inputFiles,
+        # add the LSQ6 average file as well:
+        filesToCreateImagesFrom = []
+        if runLSQ6NucInorm.lsq6Avg:
+            filesToCreateImagesFrom = [runLSQ6NucInorm.lsq6Avg] + inputFiles
+        else:
+            filesToCreateImagesFrom = inputFiles
+        lsq6VerificationImages = createQualityControlImages(filesToCreateImagesFrom,
                                                             montageOutPut=montageLSQ6,
-                                                            stage="lsq6")
+                                                            message="after the lsq6 alignment")
         self.pipeline.addPipeline(lsq6VerificationImages.p)
 
         # LSQ12 MODULE
@@ -118,6 +140,12 @@ class MBMApplication(AbstractApplication):
                                       subject_matter=options.lsq12_subject_matter,
                                       resolution=resolutionForLSQ12)
         lsq12module.iterate()
+        # TODO: This is also a temporary hack: we add the output of the verification 
+        # image as an input to all stages from the LSQ12 stage to make
+        # sure that this image is created as soon as possible
+        # This obviously is overkill, but it doens't really hurt either
+        for lsq12Stage in lsq12module.p.stages:
+            lsq12Stage.inputFiles.append(montageLSQ6)
         self.pipeline.addPipeline(lsq12module.p)
         
         #TODO: Additional NUC step here. This will impact both the lsq6 and lsq12 modules. 
