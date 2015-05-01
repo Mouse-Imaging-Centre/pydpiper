@@ -39,7 +39,6 @@ MBM_name = "MBM_test"
 os.chdir(MBM_dir)
 files = glob.glob("{datadir}/test-images/*.mnc".format(**vars()))
 subprocess.check_call("""MBM.py
-  --no-execute
   --pipeline-name={MBM_name}
   --num-executors={num_execs}
   --verbose --create-graph
@@ -50,7 +49,6 @@ subprocess.check_call("""MBM.py
 os.chdir(MAGeT_dir)
 MAGeT_name = "MAGeT_test"
 subprocess.check_call("""MAGeT.py 
-  --no-execute
   --create-graph
   --registration-method=minctracc
   --pipeline-name={MAGeT_name}
