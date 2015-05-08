@@ -104,8 +104,8 @@ class AbstractApplication(object):
             sys.exit()
     
     def _setup_pipeline(self, options):
-        self.pipeline = Pipeline()
-        self.pipeline.main_options_hash = options
+        self.pipeline = Pipeline(options)
+        #self.pipeline.main_options_hash = options
 
     # FIXME check that only one server is running with a given output directory
     def _setup_directories(self):

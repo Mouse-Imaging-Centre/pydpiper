@@ -159,7 +159,7 @@ class Pipeline():
     # setting a bunch of instance variables after __init__ - the presence of a method
     # called `initialize` should be a hint that all is perhaps not well, but perhaps
     # there is indeed some information legitimately unavailable when we first construct
-    def __init__(self):
+    def __init__(self,options=None):
         # the core pipeline is stored in a directed graph. The graph is made
         # up of integer indices
         self.G = nx.DiGraph()
@@ -177,8 +177,9 @@ class Pipeline():
         self.outputhash = {}
         # a hash per stage - computed from inputs and outputs or whole command
         self.stagehash = {}
-        # an array containing the status per stage
+        # an array containing stages that have been (successfully) processed
         self.processedStages = []
+        self.failedStages = []
         # location of backup files for restart if needed
         self.backupFileLocation = None
         # table of registered clients (using ExecClient class instances) indexed by URI
@@ -192,18 +193,28 @@ class Pipeline():
         self.failed_executors = 0
         # main option hash, needed for the pipeline (server) to launch additional
         # executors during run time
-        self.main_options_hash = None
+        self.main_options = options
         # time to shut down, due to walltime or having completed all stages?
         # (use an event rather than a simple flag for shutdown notification
         # so that we can shut down even if a process is currently sleeping)
         self.shutdown_ev = Event()
         self.programName = None
         self.skipped_stages = 0
-        self.failed_stages = 0
         self.verbose = 0
         # Handle to write out processed stages to
         self.finished_stages_fh = None
-
+        
+        if self.main_options:
+            self.outputDir = self.main_options.output_directory 
+            if not self.outputDir:
+                self.outputDir = os.getcwd()
+            # redirect the standard output to a text file
+            serverLogFile = os.path.join(self.outputDir,self.main_options.pipeline_name + '_server_log_in_text')
+            if self.main_options.queue_type == "pbs":
+                # the 0 at the end indicates a 0 buffer, so 
+                # things are printed right away
+                sys.stdout = open(serverLogFile, 'a', 0) 
+        
     # expose methods to get/set shutdown_ev via Pyro (setter not needed):
     def set_shutdown_ev(self):
         self.shutdown_ev.set()
@@ -215,7 +226,7 @@ class Pipeline():
         return self.failed_executors
 
     def getNumberFailedStages(self):
-        return self.failed_stages
+        return len(self.failedStages)
 
     def getTotalNumberOfStages(self):
         return len(self.stages)
@@ -272,9 +283,9 @@ class Pipeline():
             # set backups in current directory if directory doesn't currently exist
             outputDir = os.getcwd()
         # TODO don't need this dir since we have only one backup file?
-        #self.backupFileLocation = fh.createBackupDir(outputDir, self.main_options_hash.pipeline_name)
+        #self.backupFileLocation = fh.createBackupDir(outputDir, self.main_options.pipeline_name)
         self.backupFileLocation = os.path.join(outputDir,
-                                    self.main_options_hash.pipeline_name
+                                    self.main_options.pipeline_name
                                      + '_finished_stages')
     def addPipeline(self, p):
         if p.skipped_stages > 0:
@@ -394,8 +405,8 @@ class Pipeline():
                 logger.exception("It wasn't here!")
             return ("run_stage", index)
 
-    def allStagesCompleted(self):
-        return len(self.processedStages) == len(self.stages)
+    def allStagesCompleted(self): 
+        return len(self.processedStages) == len(self.stages) 
 
     def addRunningStageToClient(self, clientURI, index):
         try:
@@ -486,7 +497,7 @@ class Pipeline():
         self.enqueue(index)
 
     def setStageFailed(self, index, clientURI):
-        # given an index, sets stage to failed, adds to processed stages array
+        # given an index, sets stage to failed, adds to failed stages array
         # But... only if this stage has already been retried twice (<- for now static)
         # Once in while retrying a stage makes sense, because of some odd I/O
         # read write issue (NFS race condition?). At least that's what I think is 
@@ -511,10 +522,10 @@ class Pipeline():
             print("\nERROR in Stage %s: %s" % (str(index), str(self.stages[index])))
             print("Logfile for (potentially) more information:\n%s\n" % self.stages[index].logFile)
             sys.stdout.flush()
-            self.processedStages.append(index)
-            self.failed_stages += 1
-            for i in nx.dfs_successor(self.G, index).keys():
-                self.processedStages.append(i)
+            self.failedStages.append(index)
+            for i in nx.dfs_successors(self.G, index).keys():
+                self.failedStages.append(i)
+                
 
     def enqueue(self, i):
         """If stage cannot be run due to insufficient mem/procs, executor returns it to the runnable set"""
@@ -550,7 +561,7 @@ class Pipeline():
         # but when there are no runnable nor any running stages left
         if (len(self.runnable) == 0 and
             len(self.currently_running_stages) == 0
-            and self.failed_stages > 0):
+            and len(self.failedStages) > 0):
             logger.info("ERROR: no more runnable stages, however not all stages have finished. Going to shut down.")
             print("\nERROR: no more runnable stages, however not all stages have finished. Going to shut down.\n")
             sys.stdout.flush()
@@ -560,13 +571,13 @@ class Pipeline():
         # 1) there are stages that can be run, and
         # 2) there are no running nor waiting executors, and
         # 3) the number of lost executors has exceeded the number of allowed failed execturs
-        if(len(self.runnable) > 0 and
-            (self.number_launched_and_waiting_clients + len(self.clients)) == 0 and
-            self.failed_executors > self.main_options_hash.max_failed_executors):
-          msg = "Error: %d executors have died. This is more than the number of allowed failed executors as set by the flag: --max-failed-executors. Can not spawn new ones. Exiting..." % self.failed_executors
-          print(msg)
-          logger.warn(msg)
-          return False
+        if(len(self.runnable) > 0 and 
+           (self.number_launched_and_waiting_clients + len(self.clients)) == 0 and 
+           self.failed_executors > self.main_options.max_failed_executors):             
+            msg = "Error: %d executors have died. This is more than the number of allowed failed executors as set by the flag: --max-failed-executors. Can not spawn new ones. Exiting..." % self.failed_executors
+            print(msg)
+            logger.warn(msg)
+            return False
 
         # TODO combine with above clause?
         if ((len(self.runnable) > 0) and
@@ -576,7 +587,7 @@ class Pipeline():
           # the latter choice might lead to the system
           # running indefinitely with no jobs
           (self.number_launched_and_waiting_clients + len(self.clients) == 0 and
-          self.executor_memory_required(self.runnable) > self.main_options_hash.mem)):
+          self.executor_memory_required(self.runnable) > self.main_options.mem)):
             msg = "Shutting down due to jobs which require more memory (%.2fG) than available anywhere." % self.executor_memory_required(self.runnable)
             print(msg)
             logger.warn(msg)
@@ -612,7 +623,7 @@ class Pipeline():
         executors_to_launch = self.numberOfExecutorsToLaunch()
         if executors_to_launch > 0:
             memNeeded = self.executor_memory_required(self.runnable)
-            if memNeeded <= self.main_options_hash.mem:
+            if memNeeded <= self.main_options.mem:
                 self.launchExecutorsFromServer(executors_to_launch, memNeeded)
             else:
                 # we ought to set the stage to failed and run other available stages.
@@ -620,10 +631,10 @@ class Pipeline():
                 # so there's little benefit to doing so, and it makes sense to finish
                 # the running jobs and exit.
                 msg = "A stage requires %.2fG of memory to run, but max allowed is %.2fG" \
-                        % (memNeeded, self.main_options_hash.mem)
+                        % (memNeeded, self.main_options.mem)
                 logger.error(msg)
                 print(msg)
-        if self.main_options_hash.monitor_heartbeats:
+        if self.main_options.monitor_heartbeats:
             # look for dead clients and requeue their jobs
             t = time.time()
             # copy() as unregisterClient mutates self.clients during iteration over the latter
@@ -632,7 +643,7 @@ class Pipeline():
                 if dt > pe.HEARTBEAT_INTERVAL + pe.LATENCY_TOLERANCE:
                     logger.warn("Executor at %s has died (no contact for %.1f sec)!", client.clientURI, dt)
                     print("\nWarning: there has been no contact with %s, for %.1f seconds. Considering the executor as dead!\n" % (client.clientURI, dt))
-                    if self.failed_executors > self.main_options_hash.max_failed_executors:
+                    if self.failed_executors > self.main_options.max_failed_executors:
                         logger.warn("Currently %d executors have died. This is more than the number of allowed failed executors as set by the flag: --max-failed-executors. Too many executors lost to spawn new ones" % self.failed_executors)
 
                     self.failed_executors += 1
@@ -645,29 +656,29 @@ class Pipeline():
         Returns an integer indicating the number of executors to launch
         
         This function first verifies whether the server can launch executors
-        on its own (self.main_options_hash.nums_exec != 0). Then it checks to
+        on its own (self.main_options.nums_exec != 0). Then it checks to
         see whether the executors are able to kill themselves. If they are,
         it's possible that new executors need to be launched. This happens when
         there are runnable stages, but the number of active executors is smaller
         than the number of executors the server is able to launch
     """
     def numberOfExecutorsToLaunch(self):
-        if self.failed_executors > self.main_options_hash.max_failed_executors:
+        if self.failed_executors > self.main_options.max_failed_executors:
             return 0
 
         if (len(self.runnable) > 0 and
-            self.executor_memory_required(self.runnable) > self.main_options_hash.mem):
+            self.executor_memory_required(self.runnable) > self.main_options.mem):
             # we might still want to launch executors for the stages with smaller
             # requirements
             return 0
         
-        if self.main_options_hash.num_exec != 0:
+        if self.main_options.num_exec != 0:
             # Server should launch executors itself
             # This should happen regardless of whether or not executors
             # can kill themselves, because the server is now responsible 
             # for the inital launches as well.
             active_executors = self.number_launched_and_waiting_clients + len(self.clients)
-            max_num_executors = self.main_options_hash.num_exec
+            max_num_executors = self.main_options.num_exec
             executor_launch_room = max_num_executors - active_executors
             # there are runnable stages, and there is room to launch 
             # additional executors
@@ -680,7 +691,7 @@ class Pipeline():
             logger.info("Launching %i executors", number_to_launch)
             for i in range(number_to_launch):
                 p = Process(target=launchPipelineExecutor,
-                            args=(self.main_options_hash, memNeeded, self.programName))
+                            args=(self.main_options, memNeeded, self.programName))
                 p.start()
                 self.incrementLaunchedClients()
         except:
