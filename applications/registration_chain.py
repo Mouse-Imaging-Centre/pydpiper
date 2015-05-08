@@ -127,11 +127,27 @@ class RegistrationChain(AbstractApplication):
             for subj in subjects:
                 for i in range(len(subjects[subj])):
                     inputFiles.append(subjects[subj][i])
+            # We will create an initial verification image here. This
+            # will show the user whether it is likely for the alignment to
+            # work altogether (potentially the orientation of the target
+            # and the input files is too different.) 
+            montageBeforeRegistration = self.outputDir + "/" + self.options.pipeline_name + "_quality_control_target_and_inputfiles.png"
+            initialVerificationImages = mm.createQualityControlImages([targetPipeFH] + inputFiles,
+                                                                   montageOutPut=montageBeforeRegistration,
+                                                                   message="at the very start of the registration.")
+            self.pipeline.addPipeline(initialVerificationImages.p)
+                
             runLSQ6NucInorm = lsq6.LSQ6NUCInorm(inputFiles,
                                                 targetPipeFH,
                                                 initModel, 
                                                 dirs.lsq6Dir, 
                                                 self.options)
+            # TODO: This is a temporary hack: we add the output of the verification 
+            # image as an input to all stages from the LSQ6 stage to make
+            # sure that this image is created as soon as possible
+            # This obviously is overkill, but it doens't really hurt either
+            for lsq6Stage in runLSQ6NucInorm.p.stages:
+                lsq6Stage.inputFiles.append(montageBeforeRegistration)
             self.pipeline.addPipeline(runLSQ6NucInorm.p)
         
         elif self.options.input_space == "lsq6":
