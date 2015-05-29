@@ -776,7 +776,7 @@ class mincAverage(CmdStage):
         self.sd = splitext(self.output)[0] + "-sd.mnc"  
         self.outputFiles += [self.output, self.sd]       
         self.cmd += ["mincaverage",
-                     "-clobber", "-normalize", "-sdfile", self.sd, "-max_buffer_size_in_kb", str(409620)] 
+                     "-clobber", "-normalize", "-sdfile", self.sd, "-max_buffer_size_in_kb", str(409620)]
                  
     def finalizeCommand(self):
         for i in range(len(self.filesToAvg)):
@@ -788,7 +788,32 @@ class mincAverage(CmdStage):
         outDir = inFile.setOutputDirectory(defaultDir)
         outBase = (fh.removeBaseAndExtension(inFile.getLastBasevol()) + "_" + "avg.mnc")
         outputFile = fh.createBaseName(outDir, outBase)
-        return(outputFile)  
+        return(outputFile)
+
+class pMincAverage(mincAverage):
+    def addDefaults(self):
+        self.inputFiles.extend(self.filesToAvg)
+        self.outputFiles += [self.output]
+        self.cmd += ["pmincaverage", "--clobber=true"]  #not checked by pmincaverage!
+    #def finalizeCommand(self):
+    #    self.cmd.extend(self.filesToAvg)
+    #    self.cmd.append(self.output)
+    def setName(self):
+        self.name = "pmincaverage "
+
+def average(inputArray,
+            outputAvg,
+            queue_type,
+            output=None,
+            logFile=None,
+            defaultDir=None,
+            shell_cmd='mincaverage'):
+    if shell_cmd == 'pmincaverage' or queue_type == 'pbs':
+        stage = pMincAverage
+    else:
+        stage = mincAverage
+    return stage(inputArray, outputAvg=outputAvg, output=output,
+                 logFile=logFile, defaultDir=defaultDir)
 
 class mincAverageDisp(mincAverage):
     def __init__(self, 

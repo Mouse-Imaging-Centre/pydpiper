@@ -89,8 +89,9 @@ class LSQ12Registration(AbstractApplication):
 
         
         #Iterative LSQ12 model building
-        lsq12 = FullLSQ12(inputFiles, 
-                          dirs.lsq12Dir, 
+        lsq12 = FullLSQ12(inputFiles,
+                          outputDir=dirs.lsq12Dir,
+                          queue_type=options.queue_type,
                           likeFile=likeFH,
                           maxPairs=options.lsq12_max_pairs, 
                           lsq12_protocol=options.lsq12_protocol, 
@@ -122,13 +123,15 @@ class FullLSQ12(object):
     """
     
     def __init__(self, inputArray, 
-                 outputDir, 
+                 outputDir,
+                 queue_type,
                  likeFile=None, 
                  maxPairs=None,
                  lsq12_protocol=None,
                  subject_matter=None,
                  resolution=None):
         self.p = Pipeline()
+        self.queue_type = queue_type
         """Initial inputs should be an array of fileHandlers with lastBasevol in lsq12 space"""
         self.inputs = inputArray
         """Output directory should be _nlin """
@@ -236,10 +239,10 @@ class FullLSQ12(object):
         """ mincAverage all resampled brains and put in lsq12Directory""" 
         self.lsq12Avg = abspath(self.lsq12Dir) + "/" + basename(self.lsq12Dir) + "-pairs.mnc" 
         self.lsq12AvgFH = RegistrationPipeFH(self.lsq12Avg, basedir=self.lsq12Dir)
-        avg = ma.mincAverage(inputs, 
-                             self.lsq12AvgFH, 
-                             output=self.lsq12Avg,
-                             defaultDir=self.lsq12Dir)
+        avg = ma.average(inputs, queue_type=self.queue_type,
+                         outputAvg=self.lsq12AvgFH,
+                         output=self.lsq12Avg,
+                         defaultDir=self.lsq12Dir)
         self.p.addStage(avg)
             
 class LSQ12(object):

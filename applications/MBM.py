@@ -133,7 +133,8 @@ class MBMApplication(AbstractApplication):
 
 
         lsq12module = lsq12.FullLSQ12(inputFiles, 
-                                      dirs.lsq12Dir, 
+                                      dirs.lsq12Dir,
+                                      queue_type=options.queue_type,
                                       likeFile=targetPipeFH, 
                                       maxPairs=options.lsq12_max_pairs, 
                                       lsq12_protocol=options.lsq12_protocol,

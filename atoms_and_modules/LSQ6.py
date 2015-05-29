@@ -199,6 +199,7 @@ class LSQ6Registration(AbstractApplication):
 
 def getLSQ6Module(inputFiles,
                   targetPipeFH,
+                  options,  # TODO could narrow this to only queue_type
                   lsq6Directory           = None,
                   initialTransform        = None,
                   initModel               = None,
@@ -235,6 +236,7 @@ def getLSQ6Module(inputFiles,
     if(initialTransform == "lsq6_simple"):
         lsq6module =  LSQ6HierarchicalMinctracc(inputFiles,
                                                 targetPipeFH,
+                                                options,
                                                 initial_model     = initModel,
                                                 lsq6OutputDir     = lsq6Directory,
                                                 initial_transform = "identity",
@@ -246,6 +248,7 @@ def getLSQ6Module(inputFiles,
     if(initialTransform == "lsq6_centre_estimation"):
         lsq6module =  LSQ6HierarchicalMinctracc(inputFiles,
                                                 targetPipeFH,
+                                                options,
                                                 initial_model     = initModel,
                                                 lsq6OutputDir     = lsq6Directory,
                                                 initial_transform = "estimate",
@@ -257,6 +260,7 @@ def getLSQ6Module(inputFiles,
     if(initialTransform == "lsq6_large_rotations"):
         lsq6module = LSQ6RotationalMinctracc(inputFiles,
                                              targetPipeFH,
+                                             options,
                                              initial_model = initModel,
                                              lsq6OutputDir = lsq6Directory,
                                              large_rotation_parameters = largeRotationParameters,
@@ -287,7 +291,8 @@ class LSQ6NUCInorm(object):
     def setupPipeline(self):
         lsq6module = getLSQ6Module(self.inputFiles,
                                    self.target,
-                                   self.lsq6Dir,
+                                   options=self.options,
+                                   lsq6Directory=self.lsq6Dir,
                                    initialTransform = self.options.lsq6_method,
                                    initModel        = self.initModel,
                                    lsq6Protocol     =  self.options.lsq6_protocol,
@@ -327,7 +332,7 @@ class LSQ6NUCInorm(object):
             intensity_normalization = IntensityNormalization(self.inputFiles,
                                                              initial_model=self.initModel,
                                                              resampleINORMtoLSQ6=need_to_resample_to_LSQ6,
-                                                             targetForLSQ6=self.target)
+                                                             targetForLSQ6=self.target, options=self.options)
             self.p.addPipeline(intensity_normalization.p)
 
 class NonUniformityCorrection(object):
@@ -704,6 +709,7 @@ class IntensityNormalization(object):
     """
     def __init__(self,
                  inputFiles,
+                 options,
                  mask = None,
                  inorm_const = 1000,
                  method = "-ratioOfMedians",
@@ -711,6 +717,7 @@ class IntensityNormalization(object):
                  initial_model = None,
                  targetForLSQ6 = None):
         self.p                   = Pipeline()
+        self.options             = options
         self.inputs              = inputFiles
         self.masks               = None
         self.inormconst          = inorm_const
@@ -900,9 +907,11 @@ class LSQ6Base(object):
     def __init__(self,
                  inputFiles,
                  targetFile,
+                 options,
                  initial_model = None,
                  lsq6OutputDir = None):
         self.p              = Pipeline()
+        self.options        = options
         self.inputs         = inputFiles
         self.target         = targetFile
         self.initial_model  = initial_model
@@ -1030,7 +1039,8 @@ class LSQ6Base(object):
             logBase = fh.removeBaseAndExtension(lsq6AvgOutput)
             avgLog = fh.createLogFile(lsq6FH.logDir, logBase)
             # Note: We are calling mincAverage here with filenames rather than file handlers
-            avg = ma.mincAverage(self.filesToAvg, lsq6AvgOutput, logFile=avgLog)
+            avg = ma.average(self.filesToAvg, outputAvg=lsq6AvgOutput, logFile=avgLog,
+                             queue_type=self.options.queue_type)
             self.p.addStage(avg)
             self.lsq6Avg = lsq6FH
 
@@ -1068,13 +1078,16 @@ class LSQ6RotationalMinctracc(LSQ6Base):
     def __init__(self, 
                  inputFiles,
                  targetFile,
+                 options,
                  initial_model = None,
                  lsq6OutputDir = None,
                  large_rotation_parameters="10,4,10,8",
                  large_rotation_range     = 50,
                  large_rotation_interval  = 10):
         # initialize all the defaults in parent class
-        LSQ6Base.__init__(self, inputFiles, targetFile, initial_model, lsq6OutputDir)
+        LSQ6Base.__init__(self, inputFiles, targetFile, options,
+                          initial_model=initial_model,
+                          lsq6OutputDir=lsq6OutputDir)
         
         self.parameters        = large_rotation_parameters
         self.rotation_range    = large_rotation_range
@@ -1164,12 +1177,15 @@ class LSQ6HierarchicalMinctracc(LSQ6Base):
     def __init__(self,
                  inputFiles,
                  targetFile,
+                 options,
                  initial_model     = None,
                  lsq6OutputDir     = None,
                  initial_transform = "estimate",
                  lsq6_protocol     = None):
         # initialize all the defaults in the parent class
-        LSQ6Base.__init__(self, inputFiles, targetFile, initial_model, lsq6OutputDir)
+        LSQ6Base.__init__(self, inputFiles, targetFile, options,
+                          initial_model=initial_model,
+                          lsq6OutputDir=lsq6OutputDir)
         self.initial_transform = initial_transform 
         self.lsq6_protocol     = lsq6_protocol
         
