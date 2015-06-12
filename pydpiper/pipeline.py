@@ -32,6 +32,7 @@ logger = logging.getLogger(__name__)
 
 sys.excepthook = Pyro4.util.excepthook
 
+default_mem = 1.75 #GB/job
 
 class PipelineFile():
     def __init__(self, filename):
@@ -71,7 +72,7 @@ class ExecClient():
 
 class PipelineStage():
     def __init__(self):
-        self.mem = 2.0 # default memory allotted per stage
+        self.mem = default_mem
         self.procs = 1 # default number of processors per stage
         self.inputFiles = [] # the input files for this stage
         self.outputFiles = [] # the output files for this stage

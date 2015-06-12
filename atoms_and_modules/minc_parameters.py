@@ -336,6 +336,7 @@ class setNlinMinctraccParams(object):
         self.stiffness  =     [0.98,0.98,0.98,0.98,0.98,0.98,0.98,0.98,0.98,0.98,0.98,0.98]
         self.weight     =     [0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8]
         self.similarity =     [0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8]
+        self.memory = None # FIXME set to, e.g., 40um defaults??
             
     def setParams(self):
         """Set parameters from specified protocol"""
@@ -411,6 +412,8 @@ class setNlinMinctraccParams(object):
                 """similarity is a minctracc weighting factor, should be float"""
                 for i in range(1,len(p)):
                     self.similarity.append(float(p[i]))
+            elif p[0] == "memory":
+                self.memory = map(int, p[1:])
             else:
                 print("Improper parameter specified for minctracc protocol: " + str(p[0]))
                 print("Exiting...")
