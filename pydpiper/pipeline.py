@@ -211,10 +211,8 @@ class Pipeline():
                 self.outputDir = os.getcwd()
             # redirect the standard output to a text file
             serverLogFile = os.path.join(self.outputDir,self.main_options.pipeline_name + '_server_log_in_text')
-            if self.main_options.queue_type == "pbs":
-                # the 0 at the end indicates a 0 buffer, so 
-                # things are printed right away
-                sys.stdout = open(serverLogFile, 'a', 0) 
+            if self.main_options.queue_type == "pbs" and self.main_options.local:
+                sys.stdout = open(serverLogFile, 'a', 1) # 1 => line buffering
         
     # expose methods to get/set shutdown_ev via Pyro (setter not needed):
     def set_shutdown_ev(self):
