@@ -433,19 +433,13 @@ class setNlinMinctraccParams(object):
     def getGenerations(self):
         arrayLength = len(self.blurs)
         errorMsg = "Number of parameters in non-linear minctracc protocol is not consistent."
-        if (len(self.stepSize) != arrayLength 
-            or len(self.iterations) != arrayLength
-            or len(self.simplex) != arrayLength
-            or len(self.useGradient) != arrayLength
-            or len(self.w_translations) != arrayLength
-            or len(self.optimization) != arrayLength
-            or len(self.similarity) != arrayLength
-            or len(self.weight) != arrayLength
-            or len(self.stiffness) != arrayLength):
-            print(errorMsg)
-            sys.exit()
-        else:
-            return arrayLength
+        for x in [self.stepSize, self.iterations, self.simplex,
+                  self.useGradient, self.w_translations, self.optimization,
+                  self.similarity, self.weight, self.stiffness, self.memory]:
+            if len(x) != arrayLength:
+                print(errorMsg)
+                sys.exit()
+        return arrayLength
         
 class setLSQ12MinctraccParams(setNlinMinctraccParams):
     def __init__(self, fileRes, subject_matter=None, reg_protocol=None):

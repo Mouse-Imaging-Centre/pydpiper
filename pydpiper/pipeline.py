@@ -34,7 +34,7 @@ sys.excepthook = Pyro4.util.excepthook
 
 default_mem = 1.75 #GB/job
 
-class PipelineFile():
+class PipelineFile(object):
     def __init__(self, filename):
         self.filename = filename
         self.setType()
@@ -63,14 +63,14 @@ class LogFile(PipelineFile):
     will be used to keep track of the stages it's running and whether
     it's still alive (based on a periodic heartbeat)
     """
-class ExecClient():
+class ExecClient(object):
     def __init__(self, client, maxmemory):
         self.clientURI = client
         self.maxmemory = maxmemory
         self.running_stages = set([])
         self.timestamp = time.time()
 
-class PipelineStage():
+class PipelineStage(object):
     def __init__(self):
         self.mem = default_mem
         self.procs = 1 # default number of processors per stage
@@ -155,7 +155,7 @@ class CmdStage(PipelineStage):
     def __repr__(self):
         return(" ".join(self.cmd))
 
-class Pipeline():
+class Pipeline(object):
     # TODO the way we initialize a pipeline is currently a bit gross, e.g.,
     # setting a bunch of instance variables after __init__ - the presence of a method
     # called `initialize` should be a hint that all is perhaps not well, but perhaps

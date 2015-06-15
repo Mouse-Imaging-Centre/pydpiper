@@ -108,7 +108,7 @@ class mincANTS(CmdStage):
         else:
             mem_per_voxel = memoryCoeffs[2]
         voxels = reduce(mul, volumeFromFile(self.source[0]).getSizes())
-        self.mem = base_memory + voxels * mem_per_voxel
+        self.mem = max(default_mem, base_memory + voxels * mem_per_voxel)
 
     def setName(self):
         self.name = "mincANTS"
@@ -148,7 +148,7 @@ class mincANTS(CmdStage):
             return
 
 MinctraccMemCfg = namedtuple('MinctraccMemCfg', ['base_mem', 'mem_per_voxel'])
-minctracc_default_mem_cfg = MinctraccMemCfg(base_mem = 3e5, mem_per_voxel = 3.175e-10)
+minctracc_default_mem_cfg = MinctraccMemCfg(base_mem = 3e-4, mem_per_voxel = 3.175e-10)
 # these coefficients assume we're at the native resolution, hence are conservative
 # for all sensible registrations
         
@@ -266,7 +266,7 @@ class minctracc(CmdStage):
                 lambda : self.setMemory(self.source, minctracc_default_mem_cfg))
 
     def setMemory(self, source, cfg):
-        voxels = reduce(mul, volumeFromFile(source.getLastBasevol()).getSizes())
+        voxels = reduce(mul, volumeFromFile(source).getSizes())
         self.mem = max(default_mem, cfg.base_mem + voxels * cfg.mem_per_voxel)
 
     def setName(self):
@@ -416,11 +416,17 @@ class blur(CmdStage):
             raise Exception("mincblur (potentially) has a hardcoded limit for the allowed length of the output file. The following command will not be able to run: \n\n%s\n\nPlease rename your input files/paths to make sure the filenames become shorter.\n" % self.cmd)
         # TODO the hooks could take a config parameter from the pipeline
         # in order to override the default cfg: lambda cfg: setMem(...cfg...)
+        if isinstance(inFile, str): # ick
+            vol = inFile
+        else:
+            # must do this now due to inFile mutation (ugh)
+            # otherwise we'll get filename of a future file
+            vol = inFile.getLastBasevol()
         self.runnable_hooks.append(
-            lambda : self.setMemory(inFile, mincblur_mem_cfg))
+            lambda : self.setMemory(vol, mincblur_mem_cfg))
 
-    def setMemory(self, inFile, mem_cfg):
-        voxels = reduce(mul, volumeFromFile(inFile.getLastBasevol()).getSizes())
+    def setMemory(self, volname, mem_cfg):
+        voxels = reduce(mul, volumeFromFile(volname).getSizes())
         self.mem = max(default_mem,
                        (mem_cfg.base_mem + voxels * mem_cfg.mem_per_voxel) * \
                        mem_cfg.tmpdir_factor if mem_cfg.include_tmpdir else 1)
