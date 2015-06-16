@@ -215,7 +215,7 @@ def runStage(serverURI, clientURI, i):
         executor. A child process is defined as a process that was 
         initiated by the executor
         """
-class ChildProcess():
+class ChildProcess(object):
     def __init__(self, stage, result, mem, procs):
         self.stage = stage
         self.result = result
@@ -225,7 +225,7 @@ class ChildProcess():
 class InsufficientResources(Exception):
     pass
 
-class pipelineExecutor():
+class pipelineExecutor(object):
     def __init__(self, options, memNeeded = None):
         # better: self.options = options ... ?
         # TODO the additional argument `mem` represents the

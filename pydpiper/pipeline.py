@@ -32,8 +32,9 @@ logger = logging.getLogger(__name__)
 
 sys.excepthook = Pyro4.util.excepthook
 
+default_mem = 1.75 #GB/job
 
-class PipelineFile():
+class PipelineFile(object):
     def __init__(self, filename):
         self.filename = filename
         self.setType()
@@ -62,16 +63,16 @@ class LogFile(PipelineFile):
     will be used to keep track of the stages it's running and whether
     it's still alive (based on a periodic heartbeat)
     """
-class ExecClient():
+class ExecClient(object):
     def __init__(self, client, maxmemory):
         self.clientURI = client
         self.maxmemory = maxmemory
         self.running_stages = set([])
         self.timestamp = time.time()
 
-class PipelineStage():
+class PipelineStage(object):
     def __init__(self):
-        self.mem = 2.0 # default memory allotted per stage
+        self.mem = default_mem
         self.procs = 1 # default number of processors per stage
         self.inputFiles = [] # the input files for this stage
         self.outputFiles = [] # the output files for this stage
@@ -154,7 +155,7 @@ class CmdStage(PipelineStage):
     def __repr__(self):
         return(" ".join(self.cmd))
 
-class Pipeline():
+class Pipeline(object):
     # TODO the way we initialize a pipeline is currently a bit gross, e.g.,
     # setting a bunch of instance variables after __init__ - the presence of a method
     # called `initialize` should be a hint that all is perhaps not well, but perhaps
@@ -210,10 +211,8 @@ class Pipeline():
                 self.outputDir = os.getcwd()
             # redirect the standard output to a text file
             serverLogFile = os.path.join(self.outputDir,self.main_options.pipeline_name + '_server_log_in_text')
-            if self.main_options.queue_type == "pbs":
-                # the 0 at the end indicates a 0 buffer, so 
-                # things are printed right away
-                sys.stdout = open(serverLogFile, 'a', 0) 
+            if self.main_options.queue_type == "pbs" and self.main_options.local:
+                sys.stdout = open(serverLogFile, 'a', 1) # 1 => line buffering
         
     # expose methods to get/set shutdown_ev via Pyro (setter not needed):
     def set_shutdown_ev(self):

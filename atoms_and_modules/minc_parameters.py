@@ -336,6 +336,7 @@ class setNlinMinctraccParams(object):
         self.stiffness  =     [0.98,0.98,0.98,0.98,0.98,0.98,0.98,0.98,0.98,0.98,0.98,0.98]
         self.weight     =     [0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8]
         self.similarity =     [0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8]
+        self.memory = None # FIXME set to, e.g., 40um defaults??
             
     def setParams(self):
         """Set parameters from specified protocol"""
@@ -411,6 +412,8 @@ class setNlinMinctraccParams(object):
                 """similarity is a minctracc weighting factor, should be float"""
                 for i in range(1,len(p)):
                     self.similarity.append(float(p[i]))
+            elif p[0] == "memory":
+                self.memory = map(int, p[1:])
             else:
                 print("Improper parameter specified for minctracc protocol: " + str(p[0]))
                 print("Exiting...")
@@ -430,19 +433,13 @@ class setNlinMinctraccParams(object):
     def getGenerations(self):
         arrayLength = len(self.blurs)
         errorMsg = "Number of parameters in non-linear minctracc protocol is not consistent."
-        if (len(self.stepSize) != arrayLength 
-            or len(self.iterations) != arrayLength
-            or len(self.simplex) != arrayLength
-            or len(self.useGradient) != arrayLength
-            or len(self.w_translations) != arrayLength
-            or len(self.optimization) != arrayLength
-            or len(self.similarity) != arrayLength
-            or len(self.weight) != arrayLength
-            or len(self.stiffness) != arrayLength):
-            print(errorMsg)
-            sys.exit()
-        else:
-            return arrayLength
+        for x in [self.stepSize, self.iterations, self.simplex,
+                  self.useGradient, self.w_translations, self.optimization,
+                  self.similarity, self.weight, self.stiffness, self.memory]:
+            if len(x) != arrayLength:
+                print(errorMsg)
+                sys.exit()
+        return arrayLength
         
 class setLSQ12MinctraccParams(setNlinMinctraccParams):
     def __init__(self, fileRes, subject_matter=None, reg_protocol=None):

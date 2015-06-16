@@ -193,6 +193,7 @@ class HierarchicalMinctracc:
                                      step=self.nlinParams.stepSize[i],
                                      w_translations=self.nlinParams.w_translations[i],
                                      simplex=self.nlinParams.simplex[i],
+                                     memory=self.nlinParams.memory[i] if self.nlinParams.memory else None,
                                      optimization=self.nlinParams.optimization[i])
             self.p.addStage(nlinStage)
 

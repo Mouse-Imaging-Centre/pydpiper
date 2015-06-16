@@ -1,10 +1,11 @@
 #!/usr/bin/env python
 
 from __future__ import print_function
-from pydpiper.pipeline import CmdStage, Pipeline
+from pydpiper.pipeline import CmdStage, Pipeline, default_mem
 from atoms_and_modules.registration_functions import isFileHandler
 import atoms_and_modules.registration_functions as rf
 from pyminc.volumes.factory import volumeFromFile
+from collections import namedtuple
 from operator import mul
 from os.path import abspath, basename, splitext
 from os import curdir
@@ -107,7 +108,7 @@ class mincANTS(CmdStage):
         else:
             mem_per_voxel = memoryCoeffs[2]
         voxels = reduce(mul, volumeFromFile(self.source[0]).getSizes())
-        self.setMem(base_memory + voxels * mem_per_voxel)
+        self.mem = max(default_mem, base_memory + voxels * mem_per_voxel)
 
     def setName(self):
         self.name = "mincANTS"
@@ -145,6 +146,11 @@ class mincANTS(CmdStage):
             raise
         else:
             return
+
+MinctraccMemCfg = namedtuple('MinctraccMemCfg', ['base_mem', 'mem_per_voxel'])
+minctracc_default_mem_cfg = MinctraccMemCfg(base_mem = 3e-4, mem_per_voxel = 3.175e-10)
+# these coefficients assume we're at the native resolution, hence are conservative
+# for all sensible registrations
         
 class minctracc(CmdStage):
     def __init__(self, 
@@ -170,7 +176,8 @@ class minctracc(CmdStage):
                  w_shear=0.02,
                  simplex=1,
                  optimization="-use_simplex",
-                 useMask=True):
+                 useMask=True,
+                 memory=None):
         #MF TODO: Specify different w_translations, rotations, scales shear in each direction?
         # Now assumes same in all directions
         # Go to more general **kwargs?
@@ -252,6 +259,15 @@ class minctracc(CmdStage):
         self.setTransform()
         self.setName()
         self.colour = "red"
+        if memory is not None:
+            self.mem = memory
+        else:
+            self.runnable_hooks.append(
+                lambda : self.setMemory(self.source, minctracc_default_mem_cfg))
+
+    def setMemory(self, source, cfg):
+        voxels = reduce(mul, volumeFromFile(source).getSizes())
+        self.mem = max(default_mem, cfg.base_mem + voxels * cfg.mem_per_voxel)
 
     def setName(self):
         if self.linearparam == "nlin":
@@ -326,10 +342,19 @@ class minctracc(CmdStage):
                 _numCmd = "-" + self.linearparam
             self.cmd += ["-xcorr", _numCmd]
 
+
+MincblurMemCfg = namedtuple("MincblurMemCfg",
+                            ['base_mem', 'mem_per_voxel',
+                             'include_tmpdir', 'tmpdir_factor'])
+mincblur_default_mem_cfg = MincblurMemCfg(base_mem=1.25e-02, mem_per_voxel=5.9e-9,
+                                          tmpdir_factor=2.5, include_tmpdir=True)
+mincblur_mem_cfg = mincblur_default_mem_cfg
+# TODO add env var for this? or via normal options at stage runnable time via hooks
+
 class blur(CmdStage):
     def __init__(self, 
                  inFile, 
-                 fwhm, 
+                 fwhm,
                  defaultDir="tmp",
                  gradient=False):
         """calls mincblur with the specified 3D Gaussian kernel
@@ -389,6 +414,23 @@ class blur(CmdStage):
         # (this should and will be fixed at some point in the future), we'll exit here
         if len(self.outputFiles[0]) > 264:
             raise Exception("mincblur (potentially) has a hardcoded limit for the allowed length of the output file. The following command will not be able to run: \n\n%s\n\nPlease rename your input files/paths to make sure the filenames become shorter.\n" % self.cmd)
+        # TODO the hooks could take a config parameter from the pipeline
+        # in order to override the default cfg: lambda cfg: setMem(...cfg...)
+        if isinstance(inFile, str): # ick
+            vol = inFile
+        else:
+            # must do this now due to inFile mutation (ugh)
+            # otherwise we'll get filename of a future file
+            vol = inFile.getLastBasevol()
+        self.runnable_hooks.append(
+            lambda : self.setMemory(vol, mincblur_mem_cfg))
+
+    def setMemory(self, volname, mem_cfg):
+        voxels = reduce(mul, volumeFromFile(volname).getSizes())
+        self.mem = max(default_mem,
+                       (mem_cfg.base_mem + voxels * mem_cfg.mem_per_voxel) * \
+                       mem_cfg.tmpdir_factor if mem_cfg.include_tmpdir else 1)
+
 
 class autocrop(CmdStage):
     def __init__(self, 

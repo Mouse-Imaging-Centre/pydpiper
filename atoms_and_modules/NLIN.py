@@ -391,6 +391,7 @@ class NLINminctracc(NLINBase):
         self.stiffness = self.nlinParams.stiffness
         self.weight = self.nlinParams.weight
         self.similarity = self.nlinParams.similarity
+        self.memory = self.nlinParams.memory
     
     
     def addBlurStage(self, FH, i):
@@ -430,7 +431,8 @@ class NLINminctracc(NLINBase):
                         stiffness=self.stiffness[i],
                         similarity=self.similarity[i],
                         w_translations = self.w_translations[i],
-                        simplex=self.simplex[i])
+                        simplex=self.simplex[i],
+                        memory=self.memory[i] if self.memory else None)
         self.p.addStage(mta)
         # after each registration stage, we have to update
         # the last transformation between the nlinFH and the input file

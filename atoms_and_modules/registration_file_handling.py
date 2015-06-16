@@ -6,7 +6,7 @@ from os.path import abspath
 from os import curdir
 import sys
 
-class RegistrationGroupedFiles():
+class RegistrationGroupedFiles(object):
     """A class to keep together all bits for a RegistrationPipeFH stage"""
     def __init__(self, inputVolume, mask=None):
         self.basevol = inputVolume
@@ -64,7 +64,7 @@ class RegistrationGroupedFiles():
             self.gradients[fwhm] = gradient
             self.lastgradient = fwhm
 
-class RegistrationFHBase():
+class RegistrationFHBase(object):
     """
         Base class for providing file-handling support to registration pipelines
     """
