@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+from __future__ import print_function
 from pydpiper.application import AbstractApplication
 from pydpiper.pipeline import Pipeline, CmdStage, InputFile, OutputFile, LogFile
 import pydpiper.file_handling as fh
@@ -29,10 +30,10 @@ def verifyCorrectLSQ6TargetOptions(bootstrap, init_model, lsq6_target):
                                     init_model  != None,
                                     lsq6_target != None))
     if(number_of_target_options == 0):
-        print "\nError: please specify a target for the 6 parameter alignmnet. Options are: --lsq6-target, --init-model, --bootstrap.\n"
+        print("\nError: please specify a target for the 6 parameter alignmnet. Options are: --lsq6-target, --init-model, --bootstrap.\n")
         sys.exit()
     if(number_of_target_options > 1):
-        print "\nError: please specify only one of the following options: --lsq6-target, --init-model, --bootstrap. Don't know which target to use...\n"
+        print("\nError: please specify only one of the following options: --lsq6-target, --init-model, --bootstrap. Don't know which target to use...\n")
         sys.exit()
 
 def addLSQ6ArgumentGroup(parser):
@@ -59,7 +60,9 @@ def addLSQ6ArgumentGroup(parser):
                      help="Run a 6 parameter alignment assuming that the input files are roughly "
                      "aligned: same space, similar orientation. Keep in mind that if you use an "
                      "initial model with both a standard and a native space, the assumption is "
-                     "that the input files are already roughly aligned to the native space [Default = %(default)s]")
+                     "that the input files are already roughly aligned to the native space. "
+                     "Three iterations are run: 1st is 17 times stepsize blur, 2nd is 9 times "
+                     "stepsize gradient, 3rd is 4 times stepsize blur. [Default = %(default)s]")
     group.add_argument("--lsq6-centre-estimation", dest="lsq6_method",
                      action="store_const", const="lsq6_centre_estimation",
                      help="Run a 6 parameter alignment assuming that the input files have a "
@@ -156,7 +159,7 @@ class LSQ6Registration(AbstractApplication):
     def run(self):
         options = self.options
 
-        rf.checkThatInputFilesAreProvided(options.files)
+        rf.checkInputFiles(options.files)
 
         verifyCorrectLSQ6TargetOptions(options.bootstrap,
                                        options.init_model,
@@ -198,6 +201,7 @@ class LSQ6Registration(AbstractApplication):
 
 def getLSQ6Module(inputFiles,
                   targetPipeFH,
+                  options,  # TODO could narrow this to only queue_type
                   lsq6Directory           = None,
                   initialTransform        = None,
                   initModel               = None,
@@ -234,6 +238,7 @@ def getLSQ6Module(inputFiles,
     if(initialTransform == "lsq6_simple"):
         lsq6module =  LSQ6HierarchicalMinctracc(inputFiles,
                                                 targetPipeFH,
+                                                options,
                                                 initial_model     = initModel,
                                                 lsq6OutputDir     = lsq6Directory,
                                                 initial_transform = "identity",
@@ -245,6 +250,7 @@ def getLSQ6Module(inputFiles,
     if(initialTransform == "lsq6_centre_estimation"):
         lsq6module =  LSQ6HierarchicalMinctracc(inputFiles,
                                                 targetPipeFH,
+                                                options,
                                                 initial_model     = initModel,
                                                 lsq6OutputDir     = lsq6Directory,
                                                 initial_transform = "estimate",
@@ -256,6 +262,7 @@ def getLSQ6Module(inputFiles,
     if(initialTransform == "lsq6_large_rotations"):
         lsq6module = LSQ6RotationalMinctracc(inputFiles,
                                              targetPipeFH,
+                                             options,
                                              initial_model = initModel,
                                              lsq6OutputDir = lsq6Directory,
                                              large_rotation_parameters = largeRotationParameters,
@@ -279,13 +286,15 @@ class LSQ6NUCInorm(object):
         self.initModel = initModel
         self.lsq6Dir = lsq6Directory
         self.options = options 
+        self.lsq6Avg = None # add the average from the lsq6 module here
         
         self.setupPipeline()
     
     def setupPipeline(self):
         lsq6module = getLSQ6Module(self.inputFiles,
                                    self.target,
-                                   self.lsq6Dir,
+                                   options=self.options,
+                                   lsq6Directory=self.lsq6Dir,
                                    initialTransform = self.options.lsq6_method,
                                    initModel        = self.initModel,
                                    lsq6Protocol     =  self.options.lsq6_protocol,
@@ -297,6 +306,7 @@ class LSQ6NUCInorm(object):
         lsq6module.createLSQ6Transformation()
         lsq6module.finalize()
         self.p.addPipeline(lsq6module.p)
+        self.lsq6Avg = lsq6module.lsq6Avg
         
         if self.options.nuc:
             already_resample_to_LSQ6 = False
@@ -324,7 +334,7 @@ class LSQ6NUCInorm(object):
             intensity_normalization = IntensityNormalization(self.inputFiles,
                                                              initial_model=self.initModel,
                                                              resampleINORMtoLSQ6=need_to_resample_to_LSQ6,
-                                                             targetForLSQ6=self.target)
+                                                             targetForLSQ6=self.target, options=self.options)
             self.p.addPipeline(intensity_normalization.p)
 
 class NonUniformityCorrection(object):
@@ -397,14 +407,14 @@ class NonUniformityCorrection(object):
         # check consistency in input files
         if(self.singlemask != None):
             if(rf.isFileHandler(self.inputs[0]) and not(rf.isFileHandler(self.singlemask))):
-                print "Error: the input files and single mask file for NonUniformityCorrection should be the same type. Here, inputs are file handlers, but the single mask is not (perhaps you wanted to associate this mask with the input files using the file handler?).\n"
+                print("Error: the input files and single mask file for NonUniformityCorrection should be the same type. Here, inputs are file handlers, but the single mask is not (perhaps you wanted to associate this mask with the input files using the file handler?).\n")
                 sys.exit()
             if(not(rf.isFileHandler(self.inputs[0])) and rf.isFileHandler(self.singlemask)):
-                print "Error: the input files and single mask file for NonUniformityCorrection should be the same type. Here, inputs are not file handlers, but the single mask is.\n"
+                print("Error: the input files and single mask file for NonUniformityCorrection should be the same type. Here, inputs are not file handlers, but the single mask is.\n")
                 sys.exit()
         
         if(not(self.useOriginalInput) and self.resampleNUCtoLSQ6):
-            print "Warning: in NonUniformityCorrection the native files are not used, however resampleNUCtoLSQ6Space is specified. This is not necessary. Disabling this latter option. Only the \"nuc\" group will be added if file handlers are used.\n"
+            print("Warning: in NonUniformityCorrection the native files are not used, however resampleNUCtoLSQ6Space is specified. This is not necessary. Disabling this latter option. Only the \"nuc\" group will be added if file handlers are used.\n")
             self.resampleNUCtoLSQ6 = False
         
         # add the first group name (this will either be "nuc" or "nuc-native"
@@ -510,7 +520,7 @@ class NonUniformityCorrection(object):
                         # add this mask to the file handler of the input file (to the original)
                         inputFH.mask = rs.outfile
                 else:
-                    print "Error: could not determine the transformation towards the standard-space initial model using the lsq6 group. Exiting for now.\n"
+                    print("Error: could not determine the transformation towards the standard-space initial model using the lsq6 group. Exiting for now.\n")
                     sys.exit()
         else:
             # if we are not using the original files, we must be using the last input files.  Given that the assumption is 
@@ -582,11 +592,11 @@ class NonUniformityCorrection(object):
             Can only be called on file handlers 
         """
         if(not(rf.isFileHandler(self.inputs[0]))):
-            print "Error: resampleNUCtoLSQ6Space can only be called on file handlers. Goodbye.\n"
+            print("Error: resampleNUCtoLSQ6Space can only be called on file handlers. Goodbye.\n")
             sys.exit()        
 
         if(self.initial_model == None and self.targetForLSQ6 == None):
-            print "Error: resampleNUCtoLSQ6Space does not know what to do without an initial model and without a target file for the LSQ6 stage. Sorry. Goodbye.\n"
+            print("Error: resampleNUCtoLSQ6Space does not know what to do without an initial model and without a target file for the LSQ6 stage. Sorry. Goodbye.\n")
             sys.exit()
             
         # create a new group for these files
@@ -624,11 +634,11 @@ class NonUniformityCorrection(object):
                         self.p.addPipeline(resamplings.p)
                     else:
                         # not good either...
-                        print "\nError: can not find the 6 parameter transformation between: %s and %s (in the function: resampleNUCtoLSQ6Space). Exiting now...\n" % (inputFH.inputFileName, lsq6SpaceTarget.inputFileName)
+                        print("\nError: can not find the 6 parameter transformation between: %s and %s (in the function: resampleNUCtoLSQ6Space). Exiting now...\n" % (inputFH.inputFileName, lsq6SpaceTarget.inputFileName))
                         sys.exit()
                 else:
                     #oops...
-                    print "\nError: we were not able to find the \"lsq6\" class of files during the non uniformity correction stage. Were trying to determine the transformation that resamples the non uniformity corrected file in native space to LSQ6 space. Exiting now...\n\n"
+                    print("\nError: we were not able to find the \"lsq6\" class of files during the non uniformity correction stage. Were trying to determine the transformation that resamples the non uniformity corrected file in native space to LSQ6 space. Exiting now...\n\n")
                     sys.exit()
         self.NUCorrectedLSQ6 = nuCorrectedLSQ6
         self.NUCorrectedLSQ6Masks = nuCorrectedLSQ6Masks
@@ -701,6 +711,7 @@ class IntensityNormalization(object):
     """
     def __init__(self,
                  inputFiles,
+                 options,
                  mask = None,
                  inorm_const = 1000,
                  method = "-ratioOfMedians",
@@ -708,6 +719,7 @@ class IntensityNormalization(object):
                  initial_model = None,
                  targetForLSQ6 = None):
         self.p                   = Pipeline()
+        self.options             = options
         self.inputs              = inputFiles
         self.masks               = None
         self.inormconst          = inorm_const
@@ -807,11 +819,11 @@ class IntensityNormalization(object):
             the pipeline target (possibly given by --lsq6-target or --bootstrap)
         """
         if(not(rf.isFileHandler(self.inputs[0]))):
-            print "Error: resampleINORMtoLSQ6Space can only be called on file handlers. Goodbye.\n"
+            print("Error: resampleINORMtoLSQ6Space can only be called on file handlers. Goodbye.\n")
             sys.exit()
         
         if(self.initial_model == None and self.targetForLSQ6 == None):
-            print "Error: resampleINORMtoLSQ6Space does not know what to do without an initial model and without a target file for the LSQ6 stage. Sorry. Goodbye.\n"
+            print("Error: resampleINORMtoLSQ6Space does not know what to do without an initial model and without a target file for the LSQ6 stage. Sorry. Goodbye.\n")
             sys.exit()
             
         # create a new group for these files
@@ -848,11 +860,11 @@ class IntensityNormalization(object):
                         self.p.addPipeline(resamplings.p)
                     else:
                         # not good either...
-                        print "\nError: can not find the 6 parameter transformation between: %s and %s (in the function: resampleINORMtoLSQ6Space). Exiting now...\n" % (inputFH.inputFileName, lsq6SpaceTarget.inputFileName)
+                        print("\nError: can not find the 6 parameter transformation between: %s and %s (in the function: resampleINORMtoLSQ6Space). Exiting now...\n" % (inputFH.inputFileName, lsq6SpaceTarget.inputFileName))
                         sys.exit()
                 else:
                     # oops...
-                    print "\nError: we were not able to find the \"lsq6\" class of files during the inormalize stage. Were trying to determine the transformation that resamples the intensity normalized file in native space to LSQ6 space. Exiting now...\n\n"
+                    print("\nError: we were not able to find the \"lsq6\" class of files during the inormalize stage. Were trying to determine the transformation that resamples the intensity normalized file in native space to LSQ6 space. Exiting now...\n\n")
                     sys.exit()
         self.INORMLSQ6 = INORMLSQ6
         self.INORMLSQ6Masks = INORMLSQ6Masks
@@ -897,9 +909,11 @@ class LSQ6Base(object):
     def __init__(self,
                  inputFiles,
                  targetFile,
+                 options,
                  initial_model = None,
                  lsq6OutputDir = None):
         self.p              = Pipeline()
+        self.options        = options
         self.inputs         = inputFiles
         self.target         = targetFile
         self.initial_model  = initial_model
@@ -927,7 +941,7 @@ class LSQ6Base(object):
         # input file checking...    
         if(not(type(self.inputs) is list)):
             if(not rf.isFileHandler(self.inputs)):
-                print "My apologies... the LSQ6 modules currently only work with file handlers (input file)...\nGoodbye"
+                print("My apologies... the LSQ6 modules currently only work with file handlers (input file)...\nGoodbye")
                 sys.exit()
             else:
                 # for ease of use, turn into a list
@@ -935,10 +949,10 @@ class LSQ6Base(object):
         else:
             for inputfile in self.inputs:
                 if(not rf.isFileHandler(inputfile)):
-                    print "My apologies... the LSQ6 modules currently only work with file handlers (input files)...\nGoodbye"
+                    print("My apologies... the LSQ6 modules currently only work with file handlers (input files)...\nGoodbye")
                     sys.exit()
         if(not rf.isFileHandler(self.target)):
-            print "My apologies... the LSQ6 modules currently only work with file handlers (target file)...\nGoodbye"
+            print("My apologies... the LSQ6 modules currently only work with file handlers (target file)...\nGoodbye")
             sys.exit()
     
     def check_lsq6_folder(self):
@@ -947,7 +961,7 @@ class LSQ6Base(object):
             defined is at least 2 input files are provided
         """
         if(len(self.inputs) > 1 and not(self.lsq6OutputDir)):
-            print "Error: ", len(self.inputs), " input files were provided to the LSQ6 module but no output directory for the average was given. Don't know where to put it...\nGoodbye."
+            print("Error: ", len(self.inputs), " input files were provided to the LSQ6 module but no output directory for the average was given. Don't know where to put it...\nGoodbye.")
             sys.exit()
         
         # just in case this directory was not created yet
@@ -981,10 +995,13 @@ class LSQ6Base(object):
         if(self.initial_model != None):
             if(self.initial_model[2] != None):
                 for inputFH in self.inputs:
-                    prevxfm = inputFH.getLastXfm(self.target)
-                    newxfm = inputFH.registerVolume(self.initial_model[0], "transforms")
-                    logFile = fh.logFromFile(inputFH.logDir, newxfm)
-                    self.p.addStage(ma.xfmConcat([prevxfm, self.initial_model[2]],
+                    if not isinstance(inputFH, rfh.RegistrationPipeFH):
+                        raise TypeError("only works with file handlers")
+                    else:
+                        prevxfm = inputFH.getLastXfm(self.target)                            # pylint: disable=E1101
+                        newxfm = inputFH.registerVolume(self.initial_model[0], "transforms") # pylint: disable=E1101
+                        logFile = fh.logFromFile(inputFH.logDir, newxfm)                     # pylint: disable=E1101
+                        self.p.addStage(ma.xfmConcat([prevxfm, self.initial_model[2]],
                                              newxfm,
                                              logFile))
     
@@ -1010,7 +1027,7 @@ class LSQ6Base(object):
             # no arguments need to be provided to setLastBasevol: the last
             # resampled file will be used. If a mask was also resampled
             # during the last stage, this will be updated as well.
-            inputfile.setLastBasevol()
+            inputfile.setLastBasevol() # pylint: disable=E1101
                 
 
     def createAverage(self):
@@ -1024,7 +1041,8 @@ class LSQ6Base(object):
             logBase = fh.removeBaseAndExtension(lsq6AvgOutput)
             avgLog = fh.createLogFile(lsq6FH.logDir, logBase)
             # Note: We are calling mincAverage here with filenames rather than file handlers
-            avg = ma.mincAverage(self.filesToAvg, lsq6AvgOutput, logFile=avgLog)
+            avg = ma.average(self.filesToAvg, outputAvg=lsq6AvgOutput, logFile=avgLog,
+                             queue_type=self.options.queue_type)
             self.p.addStage(avg)
             self.lsq6Avg = lsq6FH
 
@@ -1062,13 +1080,16 @@ class LSQ6RotationalMinctracc(LSQ6Base):
     def __init__(self, 
                  inputFiles,
                  targetFile,
+                 options,
                  initial_model = None,
                  lsq6OutputDir = None,
                  large_rotation_parameters="10,4,10,8",
                  large_rotation_range     = 50,
                  large_rotation_interval  = 10):
         # initialize all the defaults in parent class
-        LSQ6Base.__init__(self, inputFiles, targetFile, initial_model, lsq6OutputDir)
+        LSQ6Base.__init__(self, inputFiles, targetFile, options,
+                          initial_model=initial_model,
+                          lsq6OutputDir=lsq6OutputDir)
         
         self.parameters        = large_rotation_parameters
         self.rotation_range    = large_rotation_range
@@ -1158,12 +1179,15 @@ class LSQ6HierarchicalMinctracc(LSQ6Base):
     def __init__(self,
                  inputFiles,
                  targetFile,
+                 options,
                  initial_model     = None,
                  lsq6OutputDir     = None,
                  initial_transform = "estimate",
                  lsq6_protocol     = None):
         # initialize all the defaults in the parent class
-        LSQ6Base.__init__(self, inputFiles, targetFile, initial_model, lsq6OutputDir)
+        LSQ6Base.__init__(self, inputFiles, targetFile, options,
+                          initial_model=initial_model,
+                          lsq6OutputDir=lsq6OutputDir)
         self.initial_transform = initial_transform 
         self.lsq6_protocol     = lsq6_protocol
         
@@ -1191,7 +1215,7 @@ class LSQ6HierarchicalMinctracc(LSQ6Base):
         elif self.initial_transform == "identity":
             self.linearParams.insert(0, "lsq6-identity")
         else:
-            print "Error: unknown option used for initial_transform in LSQ6HierarchicalMinctracc: ", self.initial_transform
+            print("Error: unknown option used for initial_transform in LSQ6HierarchicalMinctracc: ", self.initial_transform)
             sys.exit()
     
     def createLSQ6Transformation(self):

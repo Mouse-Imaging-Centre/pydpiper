@@ -1,6 +1,6 @@
 To install pydpiper, both the current source and most stable release can be downloaded from github:
 
-https://github.com/mfriedel/pydpiper
+https://github.com/Mouse-Imaging-Centre/pydpiper
 
 Using the Downloads button, access the .tar.gz or .zip file.
 Unzip and untar and change into the source directory (e.g. cd pydpiper)
@@ -14,7 +14,9 @@ ConfigArgParse - https://pypi.python.org/pypi/ConfigArgParse
 Py.test - http://pytest.org/
 graphviz - http://www.graphviz.org/
 pygraphviz - http://pygraphviz.github.io/
+minc-toolkit - https://github.com/BIC-MNI/minc-toolkit
 minc-stuffs - https://github.com/Mouse-Imaging-Centre/minc-stuffs
+pyminc - https://github.com/Mouse-Imaging-Centre/pyminc
 
 In Ubuntu (tested on 12.04), run: 
 	apt-get install python-networkx

@@ -1,9 +1,10 @@
 #!/usr/bin/env python
 
+from __future__ import print_function
 from pydpiper.application import AbstractApplication
 import pydpiper.file_handling as fh
 from atoms_and_modules.registration_file_handling import RegistrationPipeFH
-from atoms_and_modules.registration_functions import initializeInputFiles, addGenRegArgumentGroup, checkThatInputFilesAreProvided
+from atoms_and_modules.registration_functions import initializeInputFiles, addGenRegArgumentGroup, checkInputFiles
 from atoms_and_modules.MAGeT_modules import MAGeTMask, MAGeTRegister, voxelVote, addMAGeTArgumentGroup
 from atoms_and_modules.LSQ12 import addLSQ12ArgumentGroup
 from atoms_and_modules.NLIN import addNlinRegArgumentGroup
@@ -34,21 +35,21 @@ class MAGeTApplication(AbstractApplication):
         return appName
 
     def run(self):
-        checkThatInputFilesAreProvided(self.args)
+        checkInputFiles(self.args)
             
         if self.options.reg_method != "minctracc" and self.options.reg_method != "mincANTS":
-            print "Incorrect registration method specified: ", self.options.reg_method
+            print("Incorrect registration method specified: ", self.options.reg_method)
             sys.exit()
 
         # given that the lsq12 and nlin protocols are hard coded at the moment, exit if we are not at 
         # MICe, and provide some information as to where to find them
         if not exists(self.options.lsq12_protocol):
-            print "The lsq12 protocol does not exists: ", self.options.lsq12_protocol
-            print "You can find the default MAGeT protocols in your pydpiper source directory, in: applications_testing/test_data/"
+            print("The lsq12 protocol does not exists: ", self.options.lsq12_protocol)
+            print("You can find the default MAGeT protocols in your pydpiper source directory, in: applications_testing/test_data/")
             sys.exit()
         if not exists(self.options.nlin_protocol):
-            print "The nlin protocol does not exists: ", self.options.nlin_protocol
-            print "You can find the default MAGeT protocols in your pydpiper source directory, in: applications_testing/test_data/"
+            print("The nlin protocol does not exists: ", self.options.nlin_protocol)
+            print("You can find the default MAGeT protocols in your pydpiper source directory, in: applications_testing/test_data/")
             sys.exit()
             
         # There are two variables that can be used to determine where the output
@@ -80,11 +81,11 @@ class MAGeTApplication(AbstractApplication):
                 average.append(abspath(inFile))
         # check to make sure len(average)==len(labels)
         if (not len(average) == len(labels)) or (not len(average) == len(masks)):
-            print "\nError: not all atlases/labels/masks match."
-            print "The allowed naming conventions are:\n{atlas}.mnc\n{atlas}_labels.mnc\n{atlas}_mask.mnc"
-            print "\nand:\n{atlas}_average.mnc\n{atlas}_labels.mnc\n{atlas}_mask.mnc\n"
-            print "Check the atlas library directory: " + str(self.options.atlas_lib) + " and try again."
-            print "Exiting..."
+            print("\nError: not all atlases/labels/masks match.")
+            print("The allowed naming conventions are:\n{atlas}.mnc\n{atlas}_labels.mnc\n{atlas}_mask.mnc")
+            print("\nand:\n{atlas}_average.mnc\n{atlas}_labels.mnc\n{atlas}_mask.mnc\n")
+            print("Check the atlas library directory: " + str(self.options.atlas_lib) + " and try again.")
+            print("Exiting...")
             sys.exit() 
         else:
         # match labels with averages
@@ -107,8 +108,8 @@ class MAGeTApplication(AbstractApplication):
 
         # exit if no atlases were found in the specified directory
         if numLibraryAtlases == 0:
-            print "\nError: no atlases were found in the specified directory: %s" % self.options.atlas_lib
-            print "Exiting..."
+            print("\nError: no atlases were found in the specified directory: %s" % self.options.atlas_lib)
+            print("Exiting...")
             sys.exit()
 
         #MF TODO: add some checking to make sure that atlas/labels/naming all worked correctly

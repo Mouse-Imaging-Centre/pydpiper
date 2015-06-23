@@ -1,10 +1,12 @@
 #!/usr/bin/env python
 
+from __future__ import print_function
 import atoms_and_modules.registration_file_handling as rfh
 import pydpiper.file_handling as fh
 from os.path import abspath, exists, dirname, splitext, isfile, basename
 from os import curdir, walk
 from datetime import date
+import subprocess
 import sys
 import time
 import re
@@ -35,7 +37,7 @@ class StandardMBMDirectories(object):
         self.nlinDir = None
         self.processedDir = None
 
-def checkThatInputFilesAreProvided(args):
+def checkInputFiles(args):
     # in order to be able to print the version number, the main application
     # class can not require to have at least 1 input file, because then specifying:
     #
@@ -48,8 +50,31 @@ def checkThatInputFilesAreProvided(args):
     # input files (not all do, some use a .csv file) needs to check this
     # Here we should check that we actually have input files 
     if len(args) < 1:
-        print "\nError: no input files are provided. Exiting...\n"
+        print("\nError: no input files are provided. Exiting...\n")
         sys.exit()
+    else:
+        # here we should also check that the input files can be read
+        issuesWithInputs = 0
+        for inputF in args:
+            mincinfoCmd = subprocess.Popen(["mincinfo", inputF], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=False)
+            # the following returns anything other than None, the string matched, 
+            # and thus indicates that the file could not be read
+            if re.search("Unable to open file", mincinfoCmd.stdout.read()):
+                print("Error: can not read input file: " + str(inputF))
+                issuesWithInputs = 1
+        if issuesWithInputs:
+            print("Error: issues reading input files. Exiting...\n")
+            sys.exit()
+    # lastly we should check that the actual filenames are distinct, because
+    # directories are made based on the basename
+    seen = set()
+    for inputF in args:
+        fileBase = splitext(basename(inputF))[0]
+        if fileBase in seen:
+            print("Error: the following name occurs at least twice in the input file list:\n" + str(fileBase) + "\nPlease provide unique names for all input files. Exiting\n")
+            sys.exit()
+        seen.add(fileBase)
+    
 
 def setupDirectories(outputDir, pipeName, module):
     #Setup pipeline name
@@ -81,12 +106,12 @@ def initializeInputFiles(args, mainDirectory, maskDir=None):
     # initial error handling:  verify that at least one input file is specified 
     # and that it is a MINC file
     if(len(args) < 1):
-        print "Error: no source image provided\n"
+        print("Error: no source image provided\n")
         sys.exit()
     for i in range(len(args)):
         ext = splitext(args[i])[1]
         if(re.match(".mnc", ext) == None):
-            print "Error: input file is not a MINC file: %s\n" % args[i]
+            print("Error: input file is not a MINC file: %s\n" % args[i])
             sys.exit()
     
     inputs = []
@@ -159,8 +184,20 @@ def setupSubjectHash(csvFile, dirs, maskDir):
             pd = dirs.processedDir
         elif isinstance(dirs, dict):
             pd = dirs[index].processedDir
-        subjects[index] = initializeInputFiles(subj, pd, maskDir)
+        # if the csv file is saved in a program like 
+        # open office or libre office and not all subjects
+        # have the same number of time point, the missing
+        # time points will be saved as comma separated
+        # empty fields. This causes issues when initializing
+        # the input files, so we will remove them here:
+        usable_time_points = []
+        for singlePointInSubj in subj:
+            if singlePointInSubj != '':
+                usable_time_points.append(singlePointInSubj)
+        subjects[index] = initializeInputFiles(usable_time_points, pd, maskDir)
         index += 1
+        # reset list of usable time points
+        usable_time_points = [] 
     return subjects
 
 def getCurrIndexForInputs(subjects):
@@ -172,10 +209,10 @@ def getCurrIndexForInputs(subjects):
                     currentGroupIndex = s[i].currentGroupIndex
                 else:
                     if s[i].currentGroupIndex != currentGroupIndex:
-                        print "Current group indices do not match for all subjects after LSQ6. Exiting..."
+                        print("Current group indices do not match for all subjects after LSQ6. Exiting...")
                         sys.exit()
     else:
-        print "getCurrIndexForInputs function currently only works with a dictionary. Exiting..."
+        print("getCurrIndexForInputs function currently only works with a dictionary. Exiting...")
         sys.exit()
         
     return currentGroupIndex
@@ -256,10 +293,10 @@ def setInitialTarget(initModelOption, lsq6Target, targetFileDir, outputDir, pipe
     """Function checks to make sure either an init model or inital target are specified.
        Sets up and returns target and initial model."""
     if(initModelOption == None and lsq6Target == None):
-        print "Error: please specify either a target file for the registration (--lsq6-target or --bootstrap), or an initial model (--init-model)\n"
+        print("Error: please specify either a target file for the registration (--lsq6-target or --bootstrap), or an initial model (--init-model)\n")
         sys.exit()   
     if(initModelOption != None and lsq6Target != None):
-        print "Error: please specify ONLY ONE of the following options: --lsq6-target, --bootstrap, --init-model\n"
+        print("Error: please specify ONLY ONE of the following options: --lsq6-target, --bootstrap, --init-model\n")
         sys.exit()
         
     initModel = None
@@ -317,10 +354,10 @@ def returnFinestResolution(inputFile):
             fileRes = getFinestResolution(inputFile.inputFileName)
             return fileRes
         except:
-            print "------------------------------------------------------------------------------------"
-            print "Cannot get file resolution from specified files to setup default registration protocol: " + str(inputFile.inputFileName)
-            print "Please specify a registration protocol or a value for the subject matter."
-            print "------------------------------------------------------------------------------------"
+            print("------------------------------------------------------------------------------------")
+            print("Cannot get file resolution from specified files to setup default registration protocol: " + str(inputFile.inputFileName))
+            print("Please specify a registration protocol or a value for the subject matter.")
+            print("------------------------------------------------------------------------------------")
             sys.exit()
     
 def getXfms(nlinFH, subjects, space, mbmDir, time=None):

@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+from __future__ import print_function
 from datetime import datetime
 from os.path import isdir, basename
 from os import mkdir
@@ -8,24 +9,36 @@ import re
 import subprocess
 
 # FIXME
-SERVER_START_TIME = 50
+SERVER_START_TIME = 180
 
-# FIXME huge hack - fix: form the parser from an iterable data structure of args
+# FIXME huge hack
+# fix: form the parser from an iterable data structure of args
 # and consult this
-def remove_num_exec(args):
+# TODO has terrible time complexity
+def remove_flags(flags, args):
     args = args[:] # copy for politeness
     for ix, arg in enumerate(args):
-        if re.search('--num-exec', arg):
-            # matches? (argparse uses prefix matching...try to catch -
-            # ideally we'd actually consult a table of legal arguments)
-            if re.search('=', arg):
-                # sys.argv has form [..., '--num-executors=3', ...]
-                args.pop(ix)
-            else:
-                # sys.argv has form [..., '--num-executors', '3', ...]
-                args.pop(ix)
-                args.pop(ix)
+        for flag in flags:
+            if re.search(flag, arg):
+                # matches? (argparse uses prefix matching...try to catch -
+                # ideally we'd actually consult a table of legal arguments)
+                if re.search('=', arg):
+                    # sys.argv has form [..., '--num-executors=3', ...]
+                    args.pop(ix)
+                else:
+                    # sys.argv has form [..., '--num-executors', '3', ...]
+                    args.pop(ix)
+                    args.pop(ix)
     return args
+
+def timestr_to_secs(ts):
+    # TODO replace with a library function
+    # TODO put into a util module
+    try:
+        h, m, s = ts.split(':')
+        return 3600 * int(h) + 60 * int(m) + int(s)
+    except:
+        raise Exception("invalid (H...)HH:MM:SS timestring: %s" % ts)
 
 class runOnQueueingSystem():
     def __init__(self, options, sysArgs=None):
@@ -33,12 +46,7 @@ class runOnQueueingSystem():
         #Options MUST also include standard pydpiper options
         # self.options = options would be easier than this manual unpacking
         # for vars that don't have much 'logic' associated with them ...
-        self.timestr = options.time or '48:00:00'
-        try:
-            h,m,s = self.timestr.split(':')
-        except:
-            raise Exception("invalid (H)HH:MM:SS timestring: %s" % self.timestr)
-        self.job_lifetime = 3600 * int(h) + 60 * int(m) + int(s)
+        self.job_lifetime = timestr_to_secs(options.time or '48:00:00')
         self.mem = options.mem
         self.max_walltime = options.max_walltime
         self.min_walltime = options.min_walltime
@@ -54,7 +62,7 @@ class runOnQueueingSystem():
         self.uri_file = options.urifile
         if self.uri_file is None:
             self.uri_file = os.path.abspath(os.path.join(os.curdir, "uri"))
-        self.jobDir = os.path.join(os.environ["HOME"], "pbs-jobs")
+        self.jobDir = os.path.abspath(os.path.join(os.curdir, "pbs-jobs"))
         if not isdir(self.jobDir):
             mkdir(self.jobDir) 
         if self.arguments is None:
@@ -63,12 +71,15 @@ class runOnQueueingSystem():
             executablePath = os.path.abspath(self.arguments[0])
             self.jobName = basename(executablePath)
         self.prologue_file = options.prologue_file
-    def buildMainCommand(self, t):
+    def buildMainCommand(self):
         """Re-construct main command to be called in pbs script, adding --local flag"""
         reconstruct = ""
         if self.arguments:
-            reconstruct += ' '.join(remove_num_exec(self.arguments))
-        reconstruct += " --local --num-executors=0 " # + " --lifetime=%d " % t # TODO remove
+            reconstruct += ' '.join(remove_flags(['--num-exec', '--mem',
+                                                  '--time-to-seppuku'],
+                                                 self.arguments))
+        reconstruct += " --local --num-executors=1 --time-to-seppuku=%d " \
+                         % self.max_walltime
         return reconstruct
     def constructAndSubmitJobFile(self, identifier, time, isMainFile, after=None, afterany=None):
         """Construct the bulk of the pbs script to be submitted via qsub"""
@@ -106,20 +117,17 @@ class runOnQueueingSystem():
         """Constructs header and commands for pbs script, based on options input from calling program"""
         self.jobFile.write("#!/bin/bash\n")
         requestNodes = 1
-        execProcs = self.procs
         name = self.jobName
-        launchExecs = True   
+        launchExecs = not isMainFile
         if isMainFile:
             # Number of nodes used depends on:
             # 1) number of available processors per node
             # 2) number of processes per executor
             nodes = divmod(self.procs, self.ppn)
             if self.numexec == 0:
-                launchExecs = False
                 name += "-no-executors"
             elif self.numexec == 1:
                 name += "-all"
-                execProcs = self.procs
                 halfPpn = self.ppn/2
                 if nodes[1] <= halfPpn and nodes[0] != 0:
                     requestNodes = nodes[0]
@@ -127,7 +135,6 @@ class runOnQueueingSystem():
                     requestNodes = nodes[0] + 1               
             else:  
                 name += "-plus-exec" 
-                execProcs = self.procs
         else:
             name += "-executor"
         m,s = divmod(time,60)
@@ -148,18 +155,12 @@ class runOnQueueingSystem():
         # cd from $HOME into the submission directory:
         self.jobFile.write("cd $PBS_O_WORKDIR\n\n")
         if isMainFile:
-            self.jobFile.write(self.buildMainCommand(time))
+            self.jobFile.write(self.buildMainCommand())
             self.jobFile.write(" &\n\n")
         if launchExecs:
             self.jobFile.write("sleep %s\n" % SERVER_START_TIME)
             cmd = "pipeline_executor.py --local --num-executors=1 "
-            cmd += ' '.join(remove_num_exec(self.arguments[1:]))
-            # this is a hack to prevent the executor on the server
-            # machine from timing out, relying on the current behaviour
-            # of (config)argparse to use the rightmost value of a
-            # command-line argument which appears twice:
-            if isMainFile:
-                cmd += ' --time-to-seppuku=172800 '
+            cmd += ' '.join(remove_flags(['--num-exec'], self.arguments[1:]))
             cmd += ' &\n\n'
             self.jobFile.write(cmd)
     def completeJobFile(self):

@@ -1,12 +1,10 @@
 #!/usr/bin/env python
 
-import os
+from __future__ import print_function
 import argparse
 import signal
 
 signal.signal(signal.SIGPIPE, signal.SIG_DFL)
-
-# setup the log file name before importing the Pyro4 library
 
 import Pyro4
 
@@ -27,7 +25,7 @@ if __name__ == '__main__':
         serverURI = Pyro4.URI(uf.readline())
         uf.close()
     except:
-        print "There is a problem opening the specified uri file: %s" % uri_file
+        print("There is a problem opening the specified uri file: %s" % uri_file)
         raise
 
     proxyServer = Pyro4.Proxy(serverURI)
@@ -35,37 +33,37 @@ if __name__ == '__main__':
     # total number of stages in the pipeline:
     numStages = proxyServer.getTotalNumberOfStages()
     processedStages = proxyServer.getNumberProcessedStages()
-    print "Total number of stages in the pipeline: ", numStages
-    print "Number of stages already processed:     ", processedStages, "\n"
+    print("Total number of stages in the pipeline: ", numStages)
+    print("Number of stages already processed:     ", processedStages, "\n")
 
     # some info about executors
     runningClients = proxyServer.getNumberOfRunningClients()
     waitingClients = proxyServer.getNumberOfQueuedClients()
-    print "Number of active clients:               ", runningClients
-    print "Number of clients waiting in the queue: ", waitingClients, "\n"
+    print("Number of active clients:               ", runningClients)
+    print("Number of clients waiting in the queue: ", waitingClients, "\n")
 
     # stages currently running:
-    runningStagesList = proxyServer.getCurrentlyRunningStages()
-    print "Currently running stages: "
-    for stage in runningStagesList:
-        print stage, " ", proxyServer.getStageCommand(stage)
+    runningStages = proxyServer.getCurrentlyRunningStages()
+    print("Currently running stages (%d): " % len(runningStages))
+    for stage in runningStages:
+        print("%s\t%s\n" % (stage, proxyServer.getStageCommand(stage)))
 
     # currently runnable jobs:
     numberRunnableStages = proxyServer.getNumberRunnableStages()
-    print "\nNumber of runnable stages:               ", numberRunnableStages, "\n"
+    print("\nNumber of runnable stages:               ", numberRunnableStages, "\n")
 
     # number of failed stages:
     numberFailedStages = proxyServer.getNumberFailedStages()
-    print "\nNumber of failed stages:                 ", numberFailedStages
+    print("\nNumber of failed stages:                 ", numberFailedStages)
     # number of lost/died executors:
     numberFailedExecutors = proxyServer.getNumberFailedExecutors()
-    print "Number of failed/lost/dead executors:    ", numberFailedExecutors, "\n"
+    print("Number of failed/lost/dead executors:    ", numberFailedExecutors, "\n")
 
 
     # memory requirements for runnable stages:
     memArray = proxyServer.getMemoryRequirementsRunnable()
-    print "\nMemory requirement of runnable stages:   ", memArray
+    print("\nMemory requirement of runnable stages: %s" % memArray)
     # memory available in registered executors:
     memAvailable = proxyServer.getMemoryAvailableInClients()
-    print "Memory available in registered clients:  ", memAvailable, "\n"
-    
+    print("Memory available in registered clients: %s \n" %
+          map(lambda x: round(x, 4), memAvailable))

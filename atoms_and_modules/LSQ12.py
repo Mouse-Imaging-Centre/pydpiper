@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+from __future__ import print_function
 from pydpiper.application import AbstractApplication
 from pydpiper.pipeline import Pipeline, InputFile, OutputFile, LogFile, CmdStage
 from pydpiper.file_handling import createBaseName, logFromFile
@@ -62,7 +63,7 @@ class LSQ12Registration(AbstractApplication):
         options = self.options
         args = self.args
 
-        rf.checkThatInputFilesAreProvided(args)
+        rf.checkInputFiles(args)
         
         # Setup output directories for LSQ12 registration.        
         dirs = rf.setupDirectories(self.outputDir, options.pipeline_name, module="LSQ12")
@@ -88,8 +89,9 @@ class LSQ12Registration(AbstractApplication):
 
         
         #Iterative LSQ12 model building
-        lsq12 = FullLSQ12(inputFiles, 
-                          dirs.lsq12Dir, 
+        lsq12 = FullLSQ12(inputFiles,
+                          outputDir=dirs.lsq12Dir,
+                          queue_type=options.queue_type,
                           likeFile=likeFH,
                           maxPairs=options.lsq12_max_pairs, 
                           lsq12_protocol=options.lsq12_protocol, 
@@ -121,13 +123,15 @@ class FullLSQ12(object):
     """
     
     def __init__(self, inputArray, 
-                 outputDir, 
+                 outputDir,
+                 queue_type,
                  likeFile=None, 
                  maxPairs=None,
                  lsq12_protocol=None,
                  subject_matter=None,
                  resolution=None):
         self.p = Pipeline()
+        self.queue_type = queue_type
         """Initial inputs should be an array of fileHandlers with lastBasevol in lsq12 space"""
         self.inputs = inputArray
         """Output directory should be _nlin """
@@ -149,7 +153,7 @@ class FullLSQ12(object):
 
         """Create the blurring resolution from the file resolution"""
         if (subject_matter==None and resolution==None):
-            print "\nError: the FullLSQ12 module was called without specifying the resolution that it should be run at, and without specifying a subject matter. Please indicate one of the two. Exiting...\n"
+            print("\nError: the FullLSQ12 module was called without specifying the resolution that it should be run at, and without specifying a subject matter. Please indicate one of the two. Exiting...\n")
             sys.exit()
         elif (subject_matter and resolution):
             # subject matter has precedence over resolution
@@ -170,8 +174,8 @@ class FullLSQ12(object):
         self.generations = self.lsq12Params.generations
         
         # Create new lsq12 group for each input prior to registration
-        for input in self.inputs:
-            input.newGroup(groupName="lsq12")
+        for inputF in self.inputs:
+            inputF.newGroup(groupName="lsq12")
          
     def iterate(self):
         xfmsToAvg = {}
@@ -235,10 +239,10 @@ class FullLSQ12(object):
         """ mincAverage all resampled brains and put in lsq12Directory""" 
         self.lsq12Avg = abspath(self.lsq12Dir) + "/" + basename(self.lsq12Dir) + "-pairs.mnc" 
         self.lsq12AvgFH = RegistrationPipeFH(self.lsq12Avg, basedir=self.lsq12Dir)
-        avg = ma.mincAverage(inputs, 
-                             self.lsq12AvgFH, 
-                             output=self.lsq12Avg,
-                             defaultDir=self.lsq12Dir)
+        avg = ma.average(inputs, queue_type=self.queue_type,
+                         outputAvg=self.lsq12AvgFH,
+                         output=self.lsq12Avg,
+                         defaultDir=self.lsq12Dir)
         self.p.addStage(avg)
             
 class LSQ12(object):

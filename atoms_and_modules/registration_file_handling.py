@@ -1,11 +1,12 @@
 #!/usr/bin/env python
 
+from __future__ import print_function
 import pydpiper.file_handling as fh
-from os.path import abspath, join
+from os.path import abspath
 from os import curdir
 import sys
 
-class RegistrationGroupedFiles():
+class RegistrationGroupedFiles(object):
     """A class to keep together all bits for a RegistrationPipeFH stage"""
     def __init__(self, inputVolume, mask=None):
         self.basevol = inputVolume
@@ -43,15 +44,15 @@ class RegistrationGroupedFiles():
                 try:
                     blurToReturn = self.gradients[fwhm]
                 except:
-                    print "Error: the gradient file with fwhm ", fwhm, " does not exist for file ", self.basevol
-                    print "Unexpected error: ", sys.exc_info()
+                    print("Error: the gradient file with fwhm ", fwhm, " does not exist for file ", self.basevol)
+                    print("Unexpected error: ", sys.exc_info())
                     raise
             else:
                 try:
                     blurToReturn = self.blurs[fwhm]
                 except:
-                    print "Error: the blur file with fwhm ", fwhm, " does not exist for file ", self.basevol
-                    print "Unexpected error: ", sys.exc_info()
+                    print("Error: the blur file with fwhm ", fwhm, " does not exist for file ", self.basevol)
+                    print("Unexpected error: ", sys.exc_info())
                     raise
         return(blurToReturn)
 
@@ -63,7 +64,7 @@ class RegistrationGroupedFiles():
             self.gradients[fwhm] = gradient
             self.lastgradient = fwhm
 
-class RegistrationFHBase():
+class RegistrationFHBase(object):
     """
         Base class for providing file-handling support to registration pipelines
     """
@@ -120,7 +121,7 @@ class RegistrationFHBase():
             # if no newBaseVol is given, lastresampled is used
             if not newBaseVol:
                 if not self.groupedFiles[self.currentGroupIndex].lastresampled:
-                    print "Error: setLastBasevol called without a newBaseVol and no lastresampled file exists. Unable to determine which file to set as the LastBasevol."
+                    print("Error: setLastBasevol called without a newBaseVol and no lastresampled file exists. Unable to determine which file to set as the LastBasevol.")
                 else:
                     self.groupedFiles[self.currentGroupIndex].basevol = self.groupedFiles[self.currentGroupIndex].lastresampled
                     # update the mask if there is a resampled version around
@@ -182,6 +183,9 @@ class RegistrationPipeFH(RegistrationFHBase):
             to add a mask to it, you will have to explicitly set it using the mask
             parameter
         """
+        # There is actually an issue with the following line
+        # because it does not check whether the new group
+        # already exists or not...
         groupIndex = self.currentGroupIndex + 1
         if not inputVolume:
             inputVolume = self.getLastBasevol()

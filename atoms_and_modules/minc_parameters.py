@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+from __future__ import print_function
 from os.path import abspath
 import csv
 import sys
@@ -106,14 +107,14 @@ class setMincANTSParams(object):
                     self.useMask = self.regProtocol.useMask
                     self.memoryRequired = self.regProtocol.memoryRequired
                 except:
-                    print "The non-linear protocol you have specified is in an unrecognized form: \n%s\n Exiting..." % self.regProtocol
+                    print("The non-linear protocol you have specified is in an unrecognized form: \n%s\n Exiting..." % self.regProtocol)
                     sys.exit()
         else:
             if self.fileRes:
                 self.defaultParams()
             else:
-                print "Unable to set default registration parameters due to lack of file resolution."
-                print "Try specifying a non-linear protocol, or investigate why this is happening."
+                print("Unable to set default registration parameters due to lack of file resolution.")
+                print("Try specifying a non-linear protocol, or investigate why this is happening.")
                 sys.exit()
         self.generations = self.getGenerations()
 
@@ -220,8 +221,8 @@ class setMincANTSParams(object):
                    where i = 2 (for NxMxPx0 stages) or i = 3 (for highest res stages)"""
                 self.memoryRequired = (float(p[1]), float(p[2]), float(p[3]))
             else:
-                print "Improper parameter specified for mincANTS protocol: " + str(p[0])
-                print "Exiting..."
+                print("Improper parameter specified for mincANTS protocol: " + str(p[0]))
+                print("Exiting...")
                 sys.exit()
                 
     def getGenerations(self):
@@ -235,7 +236,7 @@ class setMincANTSParams(object):
             or len(self.regularization) != arrayLength
             or len(self.iterations) != arrayLength
             or len(self.useMask) != arrayLength):
-            print errorMsg
+            print(errorMsg)
             raise
         else:
             return arrayLength
@@ -272,6 +273,7 @@ class setNlinMinctraccParams(object):
         self.stiffness = []
         self.weight = []
         self.similarity = []
+        self.memory = []
         
         #Setup protocol
         self.setupProtocol()
@@ -298,14 +300,14 @@ class setNlinMinctraccParams(object):
                     self.weight = self.regProtocol.weight
                     self.stiffness = self.regProtocol.stiffness
                 except:
-                    print "The non-linear protocol you have specified is in an unrecognized form: \n%s\n Exiting..." % self.regProtocol
+                    print("The non-linear protocol you have specified is in an unrecognized form: \n%s\n Exiting..." % self.regProtocol)
                     sys.exit()
         else:
             if self.fileRes:
                 self.defaultParams()
             else:
-                print "Unable to set default registration parameters due to lack of file resolution."
-                print "Try specifying a non-linear protocol, or investigate why this is happening."
+                print("Unable to set default registration parameters due to lack of file resolution.")
+                print("Try specifying a non-linear protocol, or investigate why this is happening.")
                 sys.exit()
         
 
@@ -313,19 +315,29 @@ class setNlinMinctraccParams(object):
         """ Default minctracc parameters """
         
         #TODO: Rewrite this so it looks more like LSQ6 with matrices of factors
-        self.blurs = [self.fileRes*5.0, self.fileRes*(10.0/3.0), self.fileRes*(10.0/3.0),
-                      self.fileRes*(10.0/3.0), self.fileRes*(5.0/3.0), self.fileRes]
-        self.stepSize = [self.fileRes*(35.0/3.0), self.fileRes*10.0, self.fileRes*(25.0/3.0),
-                      self.fileRes*4.0, self.fileRes*2.0, self.fileRes]
-        self.iterations = [20,6,8,8,8,8]
-        self.simplex =    [5,2,2,2,2,2]
-        self.useGradient = [True, True, True, True, True, True]
-        self.optimization = ["-use_simplex", "-use_simplex", "-use_simplex", "-use_simplex", 
-                             "-use_simplex", "-use_simplex"]
-        self.w_translations = [0.4, 0.4, 0.4, 0.4, 0.4, 0.4 ]
-        self.stiffness  =     [0.98,0.98,0.98,0.98,0.98,0.98]
-        self.weight     =     [0.8, 0.8, 0.8, 0.8, 0.8, 0.8 ]
-        self.similarity =     [0.8, 0.8, 0.8, 0.8, 0.8, 0.8 ]
+        self.blurs = [self.fileRes*5.0, self.fileRes*5.0,
+                      self.fileRes*4.0, self.fileRes*4.0,
+                      self.fileRes*4.0, self.fileRes*4.0,
+                      self.fileRes*4.0, self.fileRes*4.0,
+                      self.fileRes*2.0, self.fileRes*2.0,
+                      self.fileRes, self.fileRes]
+        self.stepSize = [self.fileRes*11.0, self.fileRes*11.0,
+                         self.fileRes*10.0, self.fileRes*10.0,
+                         self.fileRes*8.0, self.fileRes*8.0,
+                         self.fileRes*4.0, self.fileRes*4.0, 
+                         self.fileRes*2.0,self.fileRes*2.0, 
+                         self.fileRes, self.fileRes]
+        self.iterations = [20,20,6,6,8,8,8,8,8,8,8,8]
+        self.simplex =    [5, 5, 2,2,2,2,2,2,2,2,2,2]
+        self.useGradient = [False,True,False,True,False,True,False,True,False,True,False,True]
+        self.optimization = ["-use_simplex","-use_simplex","-use_simplex","-use_simplex", 
+                             "-use_simplex","-use_simplex","-use_simplex","-use_simplex",
+                             "-use_simplex","-use_simplex","-use_simplex","-use_simplex"]
+        self.w_translations = [0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4]
+        self.stiffness  =     [0.98,0.98,0.98,0.98,0.98,0.98,0.98,0.98,0.98,0.98,0.98,0.98]
+        self.weight     =     [0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8]
+        self.similarity =     [0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8]
+        self.memory     =     [None] * 12   # set to, e.g., 40um defaults??
             
     def setParams(self):
         """Set parameters from specified protocol"""
@@ -401,9 +413,11 @@ class setNlinMinctraccParams(object):
                 """similarity is a minctracc weighting factor, should be float"""
                 for i in range(1,len(p)):
                     self.similarity.append(float(p[i]))
+            elif p[0] == "memory":
+                self.memory = map(float, p[1:])
             else:
-                print "Improper parameter specified for minctracc protocol: " + str(p[0])
-                print "Exiting..."
+                print("Improper parameter specified for minctracc protocol: " + str(p[0]))
+                print("Exiting...")
                 sys.exit()
         # set defaults that don't have to appear in the protocol
         if(not stiffness_found):
@@ -415,24 +429,19 @@ class setNlinMinctraccParams(object):
         if(not similarity_found):
             # default: 0.8 for each stage. Take length of stepSize list as reference for number of stages
             self.similarity = [0.8 for i in range(len(self.stepSize))]
+        if len(self.memory) == 0:
+            self.memory = [None for _ in self.stepSize]
 
       
     def getGenerations(self):
         arrayLength = len(self.blurs)
-        errorMsg = "Number of parameters in non-linear minctracc protocol is not consistent."
-        if (len(self.stepSize) != arrayLength 
-            or len(self.iterations) != arrayLength
-            or len(self.simplex) != arrayLength
-            or len(self.useGradient) != arrayLength
-            or len(self.w_translations) != arrayLength
-            or len(self.optimization) != arrayLength
-            or len(self.similarity) != arrayLength
-            or len(self.weight) != arrayLength
-            or len(self.stiffness) != arrayLength):
-            print errorMsg
-            sys.exit()
-        else:
-            return arrayLength
+        for x in [self.stepSize, self.iterations, self.simplex,
+                  self.useGradient, self.w_translations, self.optimization,
+                  self.similarity, self.weight, self.stiffness, self.memory]:
+            if len(x) != arrayLength:
+                print("Number of parameters in non-linear minctracc protocol is not consistent.")
+                sys.exit()
+        return arrayLength
         
 class setLSQ12MinctraccParams(setNlinMinctraccParams):
     def __init__(self, fileRes, subject_matter=None, reg_protocol=None):
@@ -474,7 +483,7 @@ class setLSQ12MinctraccParams(setNlinMinctraccParams):
             or len(self.useGradient) != arrayLength
             or len(self.simplex) != arrayLength
             or len(self.w_translations) != arrayLength):
-            print errorMsg
+            print(errorMsg)
             sys.exit()
         else:
             return arrayLength 
@@ -512,8 +521,8 @@ class setLSQ6MinctraccParams(setLSQ12MinctraccParams):
             gradientdefaults = [False,False,False,True,False]
             translations     = [0.4,0.4,0.4,0.4,0.4]
         else:
-            print "An improper initial transform was specified: " + str(self.initial_transform)
-            print "Exiting..."
+            print("An improper initial transform was specified: " + str(self.initial_transform))
+            print("Exiting...")
             sys.exit()
             
         self.blurs    = [i * self.fileRes for i in blurfactors]

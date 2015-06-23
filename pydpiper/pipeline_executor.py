@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+from __future__ import print_function
 import time
 import sys
 import os
@@ -15,7 +16,6 @@ import socket
 import signal
 import threading
 import Pyro4
-import re
 
 Pyro4.config.SERVERTYPE = "multiplex"
 
@@ -215,17 +215,30 @@ def runStage(serverURI, clientURI, i):
         executor. A child process is defined as a process that was 
         initiated by the executor
         """
-class ChildProcess():
+class ChildProcess(object):
     def __init__(self, stage, result, mem, procs):
         self.stage = stage
         self.result = result
         self.mem = mem
         self.procs = procs 
 
-class pipelineExecutor():
-    def __init__(self, options):
+class InsufficientResources(Exception):
+    pass
+
+class pipelineExecutor(object):
+    def __init__(self, options, memNeeded = None):
         # better: self.options = options ... ?
-        self.mem = options.mem
+        # TODO the additional argument `mem` represents the
+        # server's estimate of the amount of memory
+        # an executor may need to run available jobs
+        # -- perhaps options.mem should be renamed
+        # options.max_mem since this represents a per-node
+        # limit (or at least a per-executor limit)
+        logger.debug("memNeeded: %sG", memNeeded)
+        self.mem = memNeeded or options.mem
+        logger.debug("self.mem = %0.2fG", self.mem)
+        if self.mem > options.mem:
+            raise InsufficientResources("executor requesting %.2fG memory but maximum is %.2fG" % (options.mem, self.mem))
         self.procs = options.proc
         self.ppn = options.ppn
         self.queue_type = options.queue_type or options.queue
@@ -335,7 +348,7 @@ class pipelineExecutor():
         if self.queue_type == "sge":
             strprocs = str(self.procs) 
             # NOTE: sge_batch multiplies vf value by # of processors. 
-            # Since options.mem = total amount of memory needed, divide by self.procs to get value 
+            # Since options.mem = total amount of memory needed, divide by self.procs to get value
             memPerProc = float(self.mem)/float(self.procs)
             strmem = "vf=" + str(memPerProc) + "G" 
             jobname = ""
@@ -360,7 +373,8 @@ class pipelineExecutor():
             # Only one exec is launched at a time in this manner, so:
             cmd += ["--num-executors", str(1)]
             # send ALL args except --num-executors to the executor
-            cmd += q.remove_num_exec(sys.argv)
+            cmd += q.remove_flags(['--num-exec', '--mem'], sys.argv)
+            cmd += ['--mem', str(self.mem)]
             # FIXME huge hack -- shouldn't we just iterate over options,
             # possibly checking for membership in the executor option group?
             # The problem is that we can't easily check if an option is
@@ -572,9 +586,10 @@ if __name__ == "__main__":
     if options.local:
         local_launch(options)
     elif options.queue == "pbs" or options.queue_type == "pbs":
-        roq = q.runOnQueueingSystem(options)
+        roq = q.runOnQueueingSystem(options, sysArgs=sys.argv)
         for i in range(options.num_exec):
-            roq.createAndSubmitExecutorJobFile(i)
+            roq.createAndSubmitExecutorJobFile(i, after=None,
+                            time=q.timestr_to_secs(options.time))
     elif options.queue == "sge" or options.queue_type == "sge":
         for i in range(options.num_exec):
             pe = pipelineExecutor(options)

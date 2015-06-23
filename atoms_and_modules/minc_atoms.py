@@ -1,14 +1,15 @@
 #!/usr/bin/env python
 
-from pydpiper.pipeline import CmdStage, Pipeline
+from __future__ import print_function
+from pydpiper.pipeline import CmdStage, Pipeline, default_mem
 from atoms_and_modules.registration_functions import isFileHandler
 import atoms_and_modules.registration_functions as rf
 from pyminc.volumes.factory import volumeFromFile
+from collections import namedtuple
 from operator import mul
-from os.path import abspath, basename, splitext, join, isfile
+from os.path import abspath, basename, splitext
 from os import curdir
 import pydpiper.file_handling as fh
-import sys
 import fnmatch
 import re
 import copy
@@ -77,7 +78,7 @@ class mincANTS(CmdStage):
                 if self.useMask:
                     self.target_mask = target_mask
         except:
-            print "Failed in putting together mincANTS command; unexpected error: "
+            print("Failed in putting together mincANTS command; unexpected error: ")
             raise
         
         self.similarity_metric = similarity_metric
@@ -107,7 +108,7 @@ class mincANTS(CmdStage):
         else:
             mem_per_voxel = memoryCoeffs[2]
         voxels = reduce(mul, volumeFromFile(self.source[0]).getSizes())
-        self.setMem(base_memory + voxels * mem_per_voxel)
+        self.mem = max(default_mem, base_memory + voxels * mem_per_voxel)
 
     def setName(self):
         self.name = "mincANTS"
@@ -141,10 +142,15 @@ class mincANTS(CmdStage):
             or len(metric) != arrayLength
             or len(weight) != arrayLength
             or len(radius) != arrayLength):
-            print errorMsg
+            print(errorMsg)
             raise
         else:
             return
+
+MinctraccMemCfg = namedtuple('MinctraccMemCfg', ['base_mem', 'mem_per_voxel'])
+minctracc_default_mem_cfg = MinctraccMemCfg(base_mem = 3e-4, mem_per_voxel = 3.175e-10)
+# these coefficients assume we're at the native resolution, hence are conservative
+# for all sensible registrations
         
 class minctracc(CmdStage):
     def __init__(self, 
@@ -170,7 +176,8 @@ class minctracc(CmdStage):
                  w_shear=0.02,
                  simplex=1,
                  optimization="-use_simplex",
-                 useMask=True):
+                 useMask=True,
+                 memory=None):
         #MF TODO: Specify different w_translations, rotations, scales shear in each direction?
         # Now assumes same in all directions
         # Go to more general **kwargs?
@@ -229,7 +236,7 @@ class minctracc(CmdStage):
                     self.source_mask = source_mask
                     self.target_mask = target_mask 
         except:
-            print "Failed in putting together minctracc command; unexpected error: "
+            print("Failed in putting together minctracc command; unexpected error: ")
             raise
         
         self.linearparam = linearparam       
@@ -245,18 +252,33 @@ class minctracc(CmdStage):
         self.w_shear = str(w_shear)
         self.simplex = str(simplex)
         self.optimization = str(optimization)
+        self.gradient = gradient
 
         self.addDefaults()
         self.finalizeCommand()
         self.setTransform()
         self.setName()
         self.colour = "red"
+        if memory is not None:
+            self.mem = memory
+        else:
+            self.runnable_hooks.append(
+                lambda : self.setMemory(self.source, minctracc_default_mem_cfg))
+
+    def setMemory(self, source, cfg):
+        voxels = reduce(mul, volumeFromFile(source).getSizes())
+        self.mem = max(default_mem, cfg.base_mem + voxels * cfg.mem_per_voxel)
 
     def setName(self):
         if self.linearparam == "nlin":
             self.name = "minctracc nlin step: " + self.step 
         else:
             self.name = "minctracc" + self.linearparam + " "
+        
+        if self.gradient:
+            self.name = self.name + " dxyz"
+        else:
+            self.name = self.name + " blur"
     def addDefaults(self):
         self.cmd = ["minctracc",
                     "-clobber",
@@ -320,10 +342,19 @@ class minctracc(CmdStage):
                 _numCmd = "-" + self.linearparam
             self.cmd += ["-xcorr", _numCmd]
 
+
+MincblurMemCfg = namedtuple("MincblurMemCfg",
+                            ['base_mem', 'mem_per_voxel',
+                             'include_tmpdir', 'tmpdir_factor'])
+mincblur_default_mem_cfg = MincblurMemCfg(base_mem=1.25e-02, mem_per_voxel=5.9e-9,
+                                          tmpdir_factor=2.5, include_tmpdir=True)
+mincblur_mem_cfg = mincblur_default_mem_cfg
+# TODO add env var for this? or via normal options at stage runnable time via hooks
+
 class blur(CmdStage):
     def __init__(self, 
                  inFile, 
-                 fwhm, 
+                 fwhm,
                  defaultDir="tmp",
                  gradient=False):
         """calls mincblur with the specified 3D Gaussian kernel
@@ -365,7 +396,7 @@ class blur(CmdStage):
                     gradientBase = blurBase.replace("blur", "dxyz")
                     self.outputFiles += ["".join([gradientBase, ".mnc"])] 
         except:
-            print "Failed in putting together blur command; unexpected error: "
+            print("Failed in putting together blur command; unexpected error: ")
             raise
             
         self.cmd = ["mincblur", "-clobber", "-no_apodize", "-fwhm", str(fwhm),
@@ -383,6 +414,23 @@ class blur(CmdStage):
         # (this should and will be fixed at some point in the future), we'll exit here
         if len(self.outputFiles[0]) > 264:
             raise Exception("mincblur (potentially) has a hardcoded limit for the allowed length of the output file. The following command will not be able to run: \n\n%s\n\nPlease rename your input files/paths to make sure the filenames become shorter.\n" % self.cmd)
+        # TODO the hooks could take a config parameter from the pipeline
+        # in order to override the default cfg: lambda cfg: setMem(...cfg...)
+        if isinstance(inFile, str): # ick
+            vol = inFile
+        else:
+            # must do this now due to inFile mutation (ugh)
+            # otherwise we'll get filename of a future file
+            vol = inFile.getLastBasevol()
+        self.runnable_hooks.append(
+            lambda : self.setMemory(vol, mincblur_mem_cfg))
+
+    def setMemory(self, volname, mem_cfg):
+        voxels = reduce(mul, volumeFromFile(volname).getSizes())
+        self.mem = max(default_mem,
+                       (mem_cfg.base_mem + voxels * mem_cfg.mem_per_voxel) * \
+                       mem_cfg.tmpdir_factor if mem_cfg.include_tmpdir else 1)
+
 
 class autocrop(CmdStage):
     def __init__(self, 
@@ -416,7 +464,7 @@ class autocrop(CmdStage):
                     self.logFile = logFile
     
         except:
-            print "Failed in putting together autocrop command"
+            print("Failed in putting together autocrop command")
             raise
             
         self.addDefaults()
@@ -551,7 +599,7 @@ class mincresample(CmdStage):
                     if isFileHandler(likeFile):
                         self.likeFile = likeFile.getLastBasevol() 
                     else:
-                        print "likeFile must be RegistrationPipeFH or RegistrationFHBase."
+                        print("likeFile must be RegistrationPipeFH or RegistrationFHBase.")
                         raise 
                 invert = False
                 for cmd in self.cmd:
@@ -571,7 +619,7 @@ class mincresample(CmdStage):
                     self.outputLocation=inFile
                 else:
                     if not isFileHandler(self.outputLocation):
-                        print "outputLocation must be RegistrationPipeFH or RegistrationFHBase."
+                        print("outputLocation must be RegistrationPipeFH or RegistrationFHBase.")
                         raise
                 default = kwargs.pop("defaultDir", None)
                 if not default:
@@ -599,7 +647,7 @@ class mincresample(CmdStage):
                     self.logFile = logFile
     
         except:
-            print "Failed in putting together resample command; unexpected error: "
+            print("Failed in putting together resample command; unexpected error: ")
             raise
             
         self.addDefaults()
@@ -671,13 +719,7 @@ class mincresampleLabels(mincresample):
         endOfFile = "-" + funcargs["append"] + ".mnc"
         if self.setInputLabels:
             outBase = fh.removeBaseAndExtension(self.cxfm)
-            if fnmatch.fnmatch(outBase, "*_minctracc_*"):
-                outputName = outBase.split("_minctracc_")[0]
-            elif fnmatch.fnmatch(outBase, "*_ANTS_*"):
-                outputName = outBase.split("_ANTS_")[0]
-            else:
-                outputName = outBase
-            outBase = outputName + "-input"
+            outBase += "-input"
         else:
             labelsToResample = fh.removeBaseAndExtension(self.inFile)
             likeBaseVol = fh.removeBaseAndExtension(FH.getLastBasevol())
@@ -763,7 +805,7 @@ class mincAverage(CmdStage):
                     self.logFile = logFile
     
         except:
-            print "Failed in putting together mincaverage command; unexpected error: "
+            print("Failed in putting together mincaverage command; unexpected error: ")
             raise
             
         self.addDefaults()
@@ -776,7 +818,7 @@ class mincAverage(CmdStage):
         self.sd = splitext(self.output)[0] + "-sd.mnc"  
         self.outputFiles += [self.output, self.sd]       
         self.cmd += ["mincaverage",
-                     "-clobber", "-normalize", "-sdfile", self.sd, "-max_buffer_size_in_kb", str(409620)] 
+                     "-clobber", "-normalize", "-sdfile", self.sd, "-max_buffer_size_in_kb", str(409620)]
                  
     def finalizeCommand(self):
         for i in range(len(self.filesToAvg)):
@@ -788,7 +830,32 @@ class mincAverage(CmdStage):
         outDir = inFile.setOutputDirectory(defaultDir)
         outBase = (fh.removeBaseAndExtension(inFile.getLastBasevol()) + "_" + "avg.mnc")
         outputFile = fh.createBaseName(outDir, outBase)
-        return(outputFile)  
+        return(outputFile)
+
+class pMincAverage(mincAverage):
+    def addDefaults(self):
+        self.inputFiles.extend(self.filesToAvg)
+        self.outputFiles += [self.output]
+        self.cmd += ["pmincaverage", "--clobber=true"]  #not checked by pmincaverage!
+    #def finalizeCommand(self):
+    #    self.cmd.extend(self.filesToAvg)
+    #    self.cmd.append(self.output)
+    def setName(self):
+        self.name = "pmincaverage "
+
+def average(inputArray,
+            outputAvg,
+            queue_type,
+            output=None,
+            logFile=None,
+            defaultDir=None,
+            shell_cmd='mincaverage'):
+    if shell_cmd == 'pmincaverage' or queue_type == 'pbs':
+        stage = pMincAverage
+    else:
+        stage = mincAverage
+    return stage(inputArray, outputAvg=outputAvg, output=output,
+                 logFile=logFile, defaultDir=defaultDir)
 
 class mincAverageDisp(mincAverage):
     def __init__(self, 
@@ -871,7 +938,7 @@ class RotationalMinctracc(CmdStage):
                 self.source = inSource
                 self.target = inTarget
         except:
-            print "Failed in putting together RotationalMinctracc command; unexpected error:"
+            print("Failed in putting together RotationalMinctracc command; unexpected error:")
             raise
         
         # The resolution is used to determine the step size and 
@@ -935,7 +1002,7 @@ class RotationalMinctracc(CmdStage):
                     self.cmd += ["-m", mask]
                     self.inputFiles.append(mask)
             except:
-                print "Failed retrieving information about a mask for the target in RotationalMinctracc; unexpected error: "
+                print("Failed retrieving information about a mask for the target in RotationalMinctracc; unexpected error: ")
                 raise
 
 
@@ -1003,7 +1070,7 @@ class xfmInvert(CmdStage):
                     self.logFile = logFile
     
         except:
-            print "Failed in putting together xfminvert command; unexpected error: "
+            print("Failed in putting together xfminvert command; unexpected error: ")
             raise
                                                
         self.finalizeCommand()

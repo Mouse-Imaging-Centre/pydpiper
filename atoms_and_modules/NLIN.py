@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
-from os.path import abspath, isfile
+from __future__ import print_function
+from os.path import abspath
 from pydpiper.pipeline import Pipeline
 from pydpiper.file_handling import createBaseName, createLogFile, removeBaseAndExtension
 from pydpiper.application import AbstractApplication
@@ -84,6 +85,8 @@ class NonlinearRegistration(AbstractApplication):
     def run(self):
         options = self.options
         args = self.args
+        
+        rf.checkInputFiles(args)
        
         # Setup output directories for non-linear registration.        
         dirs = rf.setupDirectories(self.outputDir, options.pipeline_name, module="NLIN")
@@ -175,8 +178,8 @@ class initializeAndRunNLIN(object):
                     if self.targetMask:
                         self.initialTarget.setMask(self.targetMask)
             else:
-                print "You have passed a target average that is neither a string nor a file handler: " + str(self.targetAvg)
-                print "Exiting..."
+                print("You have passed a target average that is neither a string nor a file handler: " + str(self.targetAvg))
+                print("Exiting...")
         else:
             self.targetAvg = abspath(self.targetOutputDir) + "/" + "initial-target.mnc" 
             self.initialTarget = RegistrationPipeFH(self.targetAvg, 
@@ -238,9 +241,11 @@ class NLINBase(object):
         self.nlinAverages = [] 
         """Create the blurring resolution from the file resolution"""
         self.fileRes = resolution
+        # hack:
+        self.generations = 0
 
         if (nlin_protocol==None and resolution == None):
-            print "\nError: NLIN module was initialized without a protocol, and without a resolution for the registrations to be run at. Please specify one of the two. Exiting\n" 
+            print("\nError: NLIN module was initialized without a protocol, and without a resolution for the registrations to be run at. Please specify one of the two. Exiting\n") 
             sys.exit()
         if (nlin_protocol and resolution):
             # we should have the nlin_protocol be able to overwrite the given resolution:
@@ -250,7 +255,7 @@ class NLINBase(object):
         for i in range(len(self.inputs)):
             self.inputs[i].newGroup(groupName="nlin")
     
-    def addBlurStage(self):
+    def addBlurStage(self, _fh, _i):
         """
             Add blurs to pipeline. Because blurs are handled differently by
             parameter arrays in minctracc and mincANTS subclasses, they are added
@@ -258,7 +263,7 @@ class NLINBase(object):
         """
         pass
     
-    def regAndResample(self):
+    def regAndResample(self, *args):
         """Registration and resampling calls"""
         pass
     
@@ -386,6 +391,7 @@ class NLINminctracc(NLINBase):
         self.stiffness = self.nlinParams.stiffness
         self.weight = self.nlinParams.weight
         self.similarity = self.nlinParams.similarity
+        self.memory = self.nlinParams.memory
     
     
     def addBlurStage(self, FH, i):
@@ -404,41 +410,55 @@ class NLINminctracc(NLINBase):
                 registerOutput, resampleOutput = finalGenerationFileNames(inputFH)
         else:
             firstRegOutput = None
-            registerOutput = None
+            #registerOutput = None
             resampleOutput = None
-        """If self.useGradient is True, then we call minctracc twice: once
-            with a gradient and once without. Otherwise, we call only once
-            without a gradient. """
+        """ In order to make the behavior of different modules / registration
+            methods work in the same manner, the self.useGradient variable
+            will determine what the blurring kernel needs to be applied on:
+            either the image intensities (if self.useGradient = False),
+            or     the image gradients   (if self.useGradient = True).
+        """
+        useGradients = self.useGradient[i]
         mta = minctracc(inputFH, 
                         self.target, 
                         defaultDir="tmp",
                         output=firstRegOutput, 
                         blur=self.blurs[i],
-                        gradient=False,
+                        gradient=useGradients,
                         iterations=self.iterations[i],
                         step=self.stepSize[i],
                         weight=self.weight[i], 
                         stiffness=self.stiffness[i],
                         similarity=self.similarity[i],
                         w_translations = self.w_translations[i],
-                        simplex=self.simplex[i])
+                        simplex=self.simplex[i],
+                        memory=self.memory[i])
         self.p.addStage(mta)
-        if self.useGradient[i]:
-            mtb = minctracc(inputFH, 
-                            self.target, 
-                            output=registerOutput,
-                            defaultDir="tmp", 
-                            blur=self.blurs[i],
-                            gradient=True,
-                            iterations=self.iterations[i],
-                            step=self.stepSize[i],
-                            weight=self.weight[i], 
-                            stiffness=self.stiffness[i],
-                            similarity=self.similarity[i],
-                            simplex=self.simplex[i])
-            self.p.addStage(mtb)
-            """Need to set last xfm so that next generation will use it as the input transform"""
-            inputFH.setLastXfm(nlinFH, mtb.outputFiles[0])
+        # after each registration stage, we have to update
+        # the last transformation between the nlinFH and the input file
+        # TODO: we should definitely do something about this. This 
+        # assignment below is very cryptic (what is this nlinFH??), but
+        # I assume that with the new file handler classes coming up, this
+        # will all become more clear. 
+        inputFH.setLastXfm(nlinFH, mta.outputFiles[0])
+         
+        
+        #if self.useGradient[i]:
+        #    mtb = minctracc(inputFH, 
+        #                    self.target, 
+        #                    output=registerOutput,
+        #                    defaultDir="tmp", 
+        #                    blur=self.blurs[i],
+        #                    gradient=True,
+        #                    iterations=self.iterations[i],
+        #                    step=self.stepSize[i],
+        #                    weight=self.weight[i], 
+        #                    stiffness=self.stiffness[i],
+        #                    similarity=self.similarity[i],
+        #                    simplex=self.simplex[i])
+        #    self.p.addStage(mtb)
+        #    """Need to set last xfm so that next generation will use it as the input transform"""
+        #    inputFH.setLastXfm(nlinFH, mtb.outputFiles[0])
         rs = mincresample(inputFH, 
                           self.target, 
                           likeFile=self.target, 

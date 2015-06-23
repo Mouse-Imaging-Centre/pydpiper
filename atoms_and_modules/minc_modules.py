@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+from __future__ import print_function
 from pydpiper.pipeline import Pipeline, InputFile, OutputFile, LogFile, CmdStage
 import atoms_and_modules.LSQ12 as lsq12
 import atoms_and_modules.NLIN as nlin
@@ -192,6 +193,7 @@ class HierarchicalMinctracc:
                                      step=self.nlinParams.stepSize[i],
                                      w_translations=self.nlinParams.w_translations[i],
                                      simplex=self.nlinParams.simplex[i],
+                                     memory=self.nlinParams.memory[i] if self.nlinParams.memory else None,
                                      optimization=self.nlinParams.optimization[i])
             self.p.addStage(nlinStage)
 
@@ -199,13 +201,14 @@ class FullIterativeLSQ12Nlin:
     """Does a full iterative LSQ12 and NLIN. Basically iterative model building starting from LSQ6
        and without stats at the end. Designed to be called as part of a larger application. 
        Specifying an initModel is optional, all other arguments are mandatory."""
-    def __init__(self, inputs, dirs, options, avgPrefix=None, initModel=None):
+    def __init__(self, inputs, dirs, options, avgPrefix=None, initModel=None, fileResolution=None):
         self.inputs = inputs
         self.dirs = dirs
         self.options = options
         self.avgPrefix = avgPrefix
         self.initModel = initModel
         self.nlinFH = None
+        self.providedResolution = fileResolution
         
         self.p = Pipeline()
         
@@ -219,13 +222,20 @@ class FullIterativeLSQ12Nlin:
         elif self.options.lsq12_likeFile: 
             lsq12LikeFH = self.options.lsq12_likeFile 
         
-        if lsq12LikeFH == None and self.options.lsq12_subject_matter == None:
-            print "\nError: the FullIterativeLSQ12Nlin module was called without specifying either an initial model, nor an lsq12_subject_matter. Currently that means that the code can not determine the resolution at which the registrations should be run. Please specify one of the two. Exiting\n"
+        if lsq12LikeFH == None and self.options.lsq12_subject_matter == None and self.providedResolution == None:
+            print("\nError: the FullIterativeLSQ12Nlin module was called without specifying either an initial model, nor an lsq12_subject_matter. Currently that means that the code can not determine the resolution at which the registrations should be run. Please specify one of the two. Exiting\n")
             sys.exit()
         
         if not (lsq12LikeFH == None):
             resolutionForLSQ12 = rf.returnFinestResolution(lsq12LikeFH)
 
+        if resolutionForLSQ12 == None and self.providedResolution == None:
+            print("\nError: the resolution at which the LSQ12 and the NLIN registration should be run could not be determined from either the initial model nor the LSQ12 like file. Please provide the fileResolution to the FullIterativeLSQ12Nlin module. Exiting\n")
+            sys.exit()
+        
+        if resolutionForLSQ12 == None and self.providedResolution:
+            resolutionForLSQ12 = self.providedResolution
+        
         lsq12module = lsq12.FullLSQ12(self.inputs,
                                       self.dirs.lsq12Dir,
                                       likeFile=lsq12LikeFH,
@@ -295,7 +305,7 @@ class LongitudinalStatsConcatAndResample:
             for i in statsKernels.split(","):
                 self.blurs.append(float(i))
         else:
-            print "Improper type of blurring kernels specified for stats calculation: " + str(statsKernels)
+            print("Improper type of blurring kernels specified for stats calculation: " + str(statsKernels))
             sys.exit()
     
     def statsCalculation(self, inputFH, targetFH, xfm=None, useChainStats=True):
@@ -334,6 +344,18 @@ class LongitudinalStatsConcatAndResample:
             xtc = createBaseName(s[i].transformsDir, s[i].basename + "_to_" + self.commonName + ".xfm")
             xc = ma.xfmConcat(self.xfmToCommon, xtc, fh.logFromFile(s[i].logDir, xtc))
             self.p.addStage(xc)
+            # here in order to visually inspect the alignment with the common
+            # time point, we should resample this subject:
+            inputResampledToCommon = createBaseName(s[i].resampledDir, s[i].basename + "_to_" + self.commonName + ".mnc") 
+            logToCommon = fh.logFromFile(s[i].logDir, inputResampledToCommon)
+            resampleCmd = ma.mincresample(s[i],
+                                          self.nlinFH,
+                                          likeFile=self.nlinFH,
+                                          transform=xtc,
+                                          output=inputResampledToCommon,
+                                          logFile=logToCommon,
+                                          argArray=["-sinc"])
+            self.p.addStage(resampleCmd)
             s[i].addAndSetXfmToUse(self.nlinFH, xtc)
             self.statsCalculation(s[i], self.nlinFH, xfm=None, useChainStats=False)
         else:
@@ -350,27 +372,35 @@ class LongitudinalStatsConcatAndResample:
                in the group with the name "final". We need to use this group for to get the
                transform and do the stats calculation, and then reset to the current group.
                Calculate stats first from average to timepoint included in average"""
-               
-            currGroup = s[self.timePoint].currentGroupIndex
-            index = s[self.timePoint].getGroupIndex("final")
-            xfmToNlin = s[self.timePoint].getLastXfm(self.nlinFH, groupIndex=index)
+
+            if self.timePoint == -1:
+                # This means that we used the last file for each of the subjects
+                # to create the common average. This will be a variable time 
+                # point, so we have to determine it for each of the input files
+                timePointToUse = len(s) - 1
+            else:
+                timePointToUse = self.timePoint
+
+            currGroup = s[timePointToUse].currentGroupIndex
+            index = s[timePointToUse].getGroupIndex("final")
+            xfmToNlin = s[timePointToUse].getLastXfm(self.nlinFH, groupIndex=index)
             
             if xfmToNlin:
                 self.xfmToCommon = [xfmToNlin]
             else:
                 self.xfmToCommon = []
             if self.nlinFH:
-                s[self.timePoint].currentGroupIndex = index
-                self.statsCalculation(s[self.timePoint], self.nlinFH, xfm=None, useChainStats=False)
-                s[self.timePoint].currentGroupIndex = currGroup
+                s[timePointToUse].currentGroupIndex = index
+                self.statsCalculation(s[timePointToUse], self.nlinFH, xfm=None, useChainStats=False)
+                s[timePointToUse].currentGroupIndex = currGroup
             """Next: If timepoint included in average is NOT final timepoint, 
                also calculate i to i+1 stats."""
-            if count - self.timePoint > 1:
-                self.statsCalculation(s[self.timePoint], s[self.timePoint+1], xfm=xfmToNlin, useChainStats=True)
-            if not self.timePoint - 1 < 0:
+            if count - timePointToUse > 1:
+                self.statsCalculation(s[timePointToUse], s[timePointToUse+1], xfm=xfmToNlin, useChainStats=True)
+            if not timePointToUse - 1 < 0:
                 """ Average happened at time point other than first time point. 
                     Loop over points prior to average."""
-                for i in reversed(range(self.timePoint)): 
+                for i in reversed(range(timePointToUse)): 
                     self.statsAndConcat(s, i, count, beforeAvg=True)
                          
             # Loop over points after average. If average is at first time point, this loop
@@ -385,7 +415,7 @@ class LongitudinalStatsConcatAndResample:
                 self.xfmToCommon = [xfmToNlin]
             else:
                 self.xfmToCommon = []  
-            for i in range(self.timePoint + 1, count):
+            for i in range(timePointToUse + 1, count):
                 self.statsAndConcat(s, i, count, beforeAvg=False)
  
 def resampleToCommon(xfm, FH, statsGroup, statsKernels, nlinFH):
@@ -396,7 +426,7 @@ def resampleToCommon(xfm, FH, statsGroup, statsKernels, nlinFH):
         for i in statsKernels.split(","):
             blurs.append(float(i))
     else:
-        print "Improper type of blurring kernels specified for stats calculation: " + str(statsKernels)
+        print("Improper type of blurring kernels specified for stats calculation: " + str(statsKernels))
         sys.exit()
     pipeline = Pipeline()
     outputDirectory = FH.statsDir
@@ -440,22 +470,23 @@ class createQualityControlImages(object):
                  createMontage=True,
                  montageOutPut=None,
                  scalingFactor=20,
-                 stage="lsq6"):
+                 message="lsq6"):
         self.p = Pipeline()
         self.individualImages = []
-        self.stage = stage
+        self.individualImagesLabeled = [] 
+        self.message = message
 
         if createMontage and montageOutPut == None:
-            print "\nError: createMontage is specified in createQualityControlImages, but no output name for the montage is provided. Exiting...\n"
+            print("\nError: createMontage is specified in createQualityControlImages, but no output name for the montage is provided. Exiting...\n")
             sys.exit()
 
         # for each of the input files, run a mincpik call and create 
         # a triplane image.
-        for file in inputFiles:
-            if isFileHandler(file):
+        for inFile in inputFiles:
+            if isFileHandler(inFile):
                 # create command using last base vol
-                inputToMincpik = file.getLastBasevol()
-                outputMincpik = createBaseName(file.tmpDir,
+                inputToMincpik = inFile.getLastBasevol()
+                outputMincpik = createBaseName(inFile.tmpDir,
                                             removeBaseAndExtension(inputToMincpik) + "_QC_image.png")
                 cmd = ["mincpik", "-clobber",
                        "-scale", scalingFactor,
@@ -463,27 +494,38 @@ class createQualityControlImages(object):
                        InputFile(inputToMincpik),
                        OutputFile(outputMincpik)]
                 mincpik = CmdStage(cmd)
-                mincpik.setLogFile(LogFile(logFromFile(file.logDir, outputMincpik)))
+                mincpik.setLogFile(LogFile(logFromFile(inFile.logDir, outputMincpik)))
                 self.p.addStage(mincpik)
                 self.individualImages.append(outputMincpik)
+                # we should add a label to each of the individual images
+                # so it will be easier for the user to identify what
+                # which images potentially fail
+                outputConvert = createBaseName(inFile.tmpDir, 
+                                               removeBaseAndExtension(inputToMincpik) + "_QC_image_labeled.png")
+                cmdConvert = ["convert", "-label", inFile.basename,
+                              InputFile(outputMincpik),
+                              OutputFile(outputConvert)]
+                convertAddLabel = CmdStage(cmdConvert)
+                convertAddLabel.setLogFile(LogFile(logFromFile(inFile.logDir, outputConvert)))
+                self.p.addStage(convertAddLabel)
+                self.individualImagesLabeled.append(outputConvert)
 
         # if montageOutput is specified, create the overview image
         if createMontage:
             cmdmontage = ["montage", "-geometry", "+2+2"] \
-                         + map(InputFile, self.individualImages) + [OutputFile(montageOutPut)]
+                         + map(InputFile, self.individualImagesLabeled) + [OutputFile(montageOutPut)]
             montage = CmdStage(cmdmontage)
             montage.setLogFile(splitext(montageOutPut)[0] + ".log")
             message_to_print = "\n* * * * * * *\nPlease consider the following verification "
             message_to_print += "image, which shows a slice through all input "
-            message_to_print += "files after the %s alignment. If the " % self.stage
-            message_to_print += "files are ill aligned, consider stopping this "
-            message_to_print += "pipeline and changing the %s parameters \n%s\n" % (self.stage,montageOutPut)
+            message_to_print += "files %s. " % self.message
+            message_to_print += "\n%s\n" % (montageOutPut)
             message_to_print += "* * * * * * *\n"
             # the hook needs a return. Given that "print" does not return
             # anything, we need to encapsulate the print statement in a 
             # function (which in this case will return None, but that's fine)
             def printMessageForMontage():
-                print message_to_print
+                print(message_to_print)
             montage.finished_hooks.append(
                 lambda : printMessageForMontage())
             self.p.addStage(montage)
