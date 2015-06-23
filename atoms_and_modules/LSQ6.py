@@ -60,7 +60,9 @@ def addLSQ6ArgumentGroup(parser):
                      help="Run a 6 parameter alignment assuming that the input files are roughly "
                      "aligned: same space, similar orientation. Keep in mind that if you use an "
                      "initial model with both a standard and a native space, the assumption is "
-                     "that the input files are already roughly aligned to the native space [Default = %(default)s]")
+                     "that the input files are already roughly aligned to the native space. "
+                     "Three iterations are run: 1st is 17 times stepsize blur, 2nd is 9 times "
+                     "stepsize gradient, 3rd is 4 times stepsize blur. [Default = %(default)s]")
     group.add_argument("--lsq6-centre-estimation", dest="lsq6_method",
                      action="store_const", const="lsq6_centre_estimation",
                      help="Run a 6 parameter alignment assuming that the input files have a "
