@@ -273,6 +273,7 @@ class setNlinMinctraccParams(object):
         self.stiffness = []
         self.weight = []
         self.similarity = []
+        self.memory = []
         
         #Setup protocol
         self.setupProtocol()
@@ -336,7 +337,7 @@ class setNlinMinctraccParams(object):
         self.stiffness  =     [0.98,0.98,0.98,0.98,0.98,0.98,0.98,0.98,0.98,0.98,0.98,0.98]
         self.weight     =     [0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8]
         self.similarity =     [0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8]
-        self.memory = None # FIXME set to, e.g., 40um defaults??
+        self.memory     =     [None] * 12   # set to, e.g., 40um defaults??
             
     def setParams(self):
         """Set parameters from specified protocol"""
@@ -413,7 +414,7 @@ class setNlinMinctraccParams(object):
                 for i in range(1,len(p)):
                     self.similarity.append(float(p[i]))
             elif p[0] == "memory":
-                self.memory = map(int, p[1:])
+                self.memory = map(float, p[1:])
             else:
                 print("Improper parameter specified for minctracc protocol: " + str(p[0]))
                 print("Exiting...")
@@ -428,16 +429,17 @@ class setNlinMinctraccParams(object):
         if(not similarity_found):
             # default: 0.8 for each stage. Take length of stepSize list as reference for number of stages
             self.similarity = [0.8 for i in range(len(self.stepSize))]
+        if len(self.memory) == 0:
+            self.memory = [None for _ in self.stepSize]
 
       
     def getGenerations(self):
         arrayLength = len(self.blurs)
-        errorMsg = "Number of parameters in non-linear minctracc protocol is not consistent."
         for x in [self.stepSize, self.iterations, self.simplex,
                   self.useGradient, self.w_translations, self.optimization,
                   self.similarity, self.weight, self.stiffness, self.memory]:
             if len(x) != arrayLength:
-                print(errorMsg)
+                print("Number of parameters in non-linear minctracc protocol is not consistent.")
                 sys.exit()
         return arrayLength
         

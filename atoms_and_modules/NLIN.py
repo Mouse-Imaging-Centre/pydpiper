@@ -410,7 +410,7 @@ class NLINminctracc(NLINBase):
                 registerOutput, resampleOutput = finalGenerationFileNames(inputFH)
         else:
             firstRegOutput = None
-            registerOutput = None
+            #registerOutput = None
             resampleOutput = None
         """ In order to make the behavior of different modules / registration
             methods work in the same manner, the self.useGradient variable
@@ -432,7 +432,7 @@ class NLINminctracc(NLINBase):
                         similarity=self.similarity[i],
                         w_translations = self.w_translations[i],
                         simplex=self.simplex[i],
-                        memory=self.memory[i] if self.memory else None)
+                        memory=self.memory[i])
         self.p.addStage(mta)
         # after each registration stage, we have to update
         # the last transformation between the nlinFH and the input file

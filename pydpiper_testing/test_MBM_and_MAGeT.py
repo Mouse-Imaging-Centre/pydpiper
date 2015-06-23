@@ -49,11 +49,10 @@ subprocess.check_call("""MBM.py
 os.chdir(MAGeT_dir)
 MAGeT_name = "MAGeT_test"
 subprocess.check_call("""MAGeT.py 
-  --create-graph
+  --verbose --create-graph
   --registration-method=minctracc
   --pipeline-name={MAGeT_name}
   --num-executors={num_execs}
-  --verbose --create-graph
   --atlas-library={atlas_dir}
   --config-file={config_file}
   --lsq12-protocol={datadir}/default_linear_MAGeT_prot.csv
