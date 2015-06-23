@@ -1,3 +1,51 @@
+New in Version 1.14
+===================
+* the build model and registration chain applications now both create a
+  composite image of the input files and print a message to the user,
+  allowing them to check that the orientation is sufficiently similar
+  that the LSQ6 registration method chosen is likely to succeed
+* memory requirements for mincblur and nonlinear minctracc stages are now
+  estimated dynamically before such a stage runs.  The nlin minctracc protocol
+  now accepts a "memory" parameter allowing you to override the per-voxel
+  default (based on the native-resolution call) with a fixed amount in GB
+  per minctracc generation, e.g.: '"memory";0.5;1;1;1.5;2' dependending
+  on the particularities of your images or to get better estimates than those
+  based on the finest resolution
+* due to poor performance on SciNet, blur calls running on PBS queues now
+  use pmincaverage instead of mincaverage.  This adds a dependency on pyminc;
+  see the INSTALL file.
+* PydPiper's understanding of the "gradient" variable in the minctracc
+  nonlinear protocols and the internal `useGradient` variable have changed:
+  "FALSE"/False (resp.) causes the blurring to be applied to the image intensities;
+  "TRUE"/True causes it to be applied to the image gradients, vs. the previous
+  behaviour (True implied blurring of *both* the intensities and the gradient)
+* changes to the supplied minctracc nonlinear protocol, partly to reflect the
+  above gradient-related changes
+* the registration chain now allows you to specify --average-time-point=-1
+  to use the last set of scans for inter-subject registration
+* additional checking of input files
+* a test script which exercises the MBM and MAGeT applications is
+  now provided with instructions in pydpiper_testing/
+* SGE executors now request memory dynamically based on the requirements of
+  the runnable stages.  In this configuration, the --mem option now gives
+  a maximum amount allowed per executor.  The system exits if jobs require
+  more memory than this maximum.
+* on PBS, the remote server now writes its stdout to a text file in the working
+  directory, so the user needn't dig into, e.g., SciNet's /var to examine
+  it while the pipeline is still running
+* a few changes to defaults: default memory is now 1.75G/job rather than 2;
+  PBS executors wait for up to 3 minutes for the server to start instead of 50s;
+  a few changes to the supplied config files
+* better handling of csv files with extra commas in the registration chain
+* various bugfixes, in particular to the registration chain
+* some improved logic w.r.t. updating state of stages after failure of a
+  dependency
+* the internal queue has been changed to a set to support additional operations
+  related to scheduling and resource management (particularly the dynamic
+  executor memory requests; see above)
+* miscellaneous code improvements
+
+
 New in Version 1.13
 ===================
 * a composite image is now created after the LSQ6 stage and a message output,
