@@ -9,6 +9,10 @@ import atoms_and_modules.registration_file_handling as rfh
 import atoms_and_modules.minc_atoms as ma
 import atoms_and_modules.minc_parameters as mp
 from os.path import abspath
+from os.path import dirname
+from os.path import exists
+from os.path import basename
+import string
 import logging
 import sys
 
@@ -52,6 +56,16 @@ def addLSQ6ArgumentGroup(parser):
     group.add_argument("--bootstrap", dest="bootstrap",
                      action="store_true", default=False,
                      help="Use the first inputfile to the pipeline as the target for the 6 parameter alignment. [Default = %(default)s]")
+    group.add_argument("--lsq6-alternate-data-prefix", dest="lsq6_alternate_prefix",
+                     type=str, default=None,
+                     help="Specify a prefix for an augmented data set to use for the 6 parameter "
+                     "alignment. Assumptions: there is a matching alternate file for each regular input "
+                     "file, e.g. input files are: input_1.mnc input_2.mnc ... input_n.mnc. If the "
+                     "string provided for this flag is \"aug_\", then the following files should exists: "
+                     "aug_input_1.mnc aug_input_2.mnc ... aug_input_n.mnc. These files are assumed to be "
+                     "in the same orientation/location as the regular input files.  They will be used for "
+                     "for the 6 parameter alignment. The transformations will then be used to transform "
+                     "the regular input files, with which the pipeline will continue.")
     parser.set_defaults(lsq6_method="lsq6_large_rotations")
     parser.set_defaults(nuc=True)
     parser.set_defaults(inormalize=True)
@@ -282,6 +296,9 @@ class LSQ6NUCInorm(object):
                  options):
         self.p = Pipeline()
         self.inputFiles = inputFiles
+        if not (options.lsq6_alternate_prefix is None):
+            # we should use a separate data set for the 6 parameter alignment
+            self.alternateInputFiles = self.setAlternateInputFiles(inputFiles, options.lsq6_alternate_prefix)
         self.target = targetPipeFH
         self.initModel = initModel
         self.lsq6Dir = lsq6Directory
@@ -289,9 +306,73 @@ class LSQ6NUCInorm(object):
         self.lsq6Avg = None # add the average from the lsq6 module here
         
         self.setupPipeline()
-    
+
+
+    def setAlternateInputFiles(self, mainInputFiles, alternate_prefix):
+        # first make sure we have an alternate file for each of the 
+        # actual input files
+        alternateInputs = []
+        for i in range(len(mainInputFiles)):
+            alternate = dirname(mainInputFiles[i].inputFileName)
+            alternate += '/' + alternate_prefix
+            alternate += basename(mainInputFiles[i].inputFileName)
+            if(exists(alternate)):
+                alternateInputs.append(alternate)
+            else:
+                print "Error: could not find alternative input file for: %s" % mainInputFiles[i].inputFileName
+                raise
+        # create file handlers for the alternate input files, get the base directory
+        # from the first main input file
+        return rf.initializeInputFiles(alternateInputs, mainInputFiles[0].basedir)
+
+    """
+    This function is called when a separate set of input files is used to determine
+    the LSQ6 transformations. When those have been determined (in the alternateInputFiles)
+    they have to be assigned to the (main) inputFiles. For this the group "lsq6" needs to be
+    added to the inputFiles and we set the last transform based on the alternateInputFiles
+    """
+    def setGroupAndTransformsFromAlternateToMain(self):
+        # 1) create an lsq6 group for the mainInputs:
+        for i in range(len(self.inputFiles)):
+            self.inputFiles[i].newGroup(groupName="lsq6")
+            # 2) set the transforms for the main input files
+            found = 0
+            alternate_target = self.options.lsq6_alternate_prefix + basename(self.inputFiles[i].inputFileName)
+            for j in range(len(self.alternateInputFiles)):
+                if (basename(self.alternateInputFiles[j].inputFileName) == alternate_target):
+                    found = 1
+                    # because all future filenames are based on previous (input) filenames
+                    # it's better to create a symlink to the transform to be used for 
+                    # the main input file with the correct name (other wise all hell will
+                    # break loose later on when we are resampling files...)
+                    transformDir = self.inputFiles[i].transformsDir
+                    currentTransBase = basename(self.alternateInputFiles[j].getLastXfm(self.target))
+                    # only replace 1 occurence of the prefix in case it occurs more often...
+                    newTransBase = string.replace(currentTransBase, 
+                                                  self.options.lsq6_alternate_prefix,
+                                                  "", 1)
+                    newTrans = transformDir + '/' + newTransBase
+                    cmd = ["ln", "-s", 
+                           InputFile(self.alternateInputFiles[j].getLastXfm(self.target)), 
+                           OutputFile(newTrans)]
+                    lnCmd = CmdStage(cmd)
+                    lnCmd.setLogFile(LogFile(fh.logFromFile(self.inputFiles[i].logDir,newTrans)))
+                    self.p.addStage(lnCmd)
+                    self.inputFiles[i].setLastXfm(self.target,newTrans)
+            if not found:
+                print "Error: was not able to find a transform for: %s based on the alternate input files" % self.inputFiles[i].inputFileName
+                raise
+            
+
+
     def setupPipeline(self):
-        lsq6module = getLSQ6Module(self.inputFiles,
+        inputFilesForModule = self.inputFiles
+        # switch the input files when alternate files are provided. We will
+        # deal with the true input files after the alternate files have gone
+        # through the LSQ6 module
+        if not (self.options.lsq6_alternate_prefix is None):
+            inputFilesForModule = self.alternateInputFiles
+        lsq6module = getLSQ6Module(inputFilesForModule,
                                    self.target,
                                    options=self.options,
                                    lsq6Directory=self.lsq6Dir,
@@ -304,9 +385,38 @@ class LSQ6NUCInorm(object):
         # after the correct module has been set, get the transformation and
         # deal with resampling and potential model building
         lsq6module.createLSQ6Transformation()
-        lsq6module.finalize()
+        prefix_for_average = None
+        if not (self.options.lsq6_alternate_prefix is None):
+            prefix_for_average = self.options.lsq6_alternate_prefix
+        lsq6module.finalize(prefix_for_average)
         self.p.addPipeline(lsq6module.p)
+        # assign this average for now. If we are running alternate files
+        # we will overwrite self.lsq6Avg later on
         self.lsq6Avg = lsq6module.lsq6Avg
+
+        # if alternate files were provided for the 6 parameter alignment, 
+        # we will run through a similar procedure, but without creating the
+        # transformation. That will be transferred from the alternate files
+        if not (self.options.lsq6_alternate_prefix is None):
+            mainInputFiles = self.inputFiles
+            lsq6moduleForResampling = getLSQ6Module(mainInputFiles,
+                                                    self.target,
+                                                    self.lsq6Dir,
+                                                    initialTransform = self.options.lsq6_method,
+                                                    initModel        = self.initModel,
+                                                    lsq6Protocol     =  self.options.lsq6_protocol,
+                                                    largeRotationParameters = self.options.large_rotation_parameters,
+                                                    largeRotationRange      = self.options.large_rotation_range,
+                                                    largeRotationInterval   = self.options.large_rotation_interval)
+            # assign "lsq6" group and the transformations from the alternate inputs to the main inputs
+            self.setGroupAndTransformsFromAlternateToMain()
+            # this time we do not have to create the transformation, just resampling and averaging:
+            lsq6moduleForResampling.addNativeToStandardFromInitModel()
+            lsq6moduleForResampling.resampleInputFilesAndSetLastBasevol(self.options.lsq6_alternate_prefix)
+            lsq6moduleForResampling.createAverage()
+            self.p.addPipeline(lsq6moduleForResampling.p)
+            # update the average:
+            self.lsq6Avg = lsq6moduleForResampling.lsq6Avg
         
         if self.options.nuc:
             already_resample_to_LSQ6 = False
@@ -1005,7 +1115,7 @@ class LSQ6Base(object):
                                              newxfm,
                                              logFile))
     
-    def resampleInputFilesAndSetLastBasevol(self):
+    def resampleInputFilesAndSetLastBasevol(self, prefix_to_change_output = None):
         """
             resample input files using the last transformation, and then
             set the last basevolume for the inputfile to be the output
@@ -1030,12 +1140,19 @@ class LSQ6Base(object):
             inputfile.setLastBasevol() # pylint: disable=E1101
                 
 
-    def createAverage(self):
+    def createAverage(self, alternate_lsq6_average=None):
         """
             Create the lsq6 average if at least 2 input files have been given
         """
         if(len(self.filesToAvg) > 1):
-            lsq6AvgOutput = abspath(self.lsq6OutputDir) + "/" + "lsq6_average.mnc"
+            if alternate_lsq6_average is None:
+                lsq6AvgOutput = abspath(self.lsq6OutputDir) + "/" + "lsq6_average.mnc"
+            else:
+                # a different set of input files was used for the 6 parameter 
+                # alignment. An average will be created for these files, but 
+                # it's not the one we care about for the overall pipeline. Its
+                # name will reflect that:
+                lsq6AvgOutput = abspath(self.lsq6OutputDir) + "/" + alternate_lsq6_average + "lsq6_average.mnc"
             # TODO: fix mask issue
             lsq6FH = rfh.RegistrationPipeFH(lsq6AvgOutput, mask=None, basedir=self.lsq6OutputDir)
             logBase = fh.removeBaseAndExtension(lsq6AvgOutput)
@@ -1046,14 +1163,14 @@ class LSQ6Base(object):
             self.p.addStage(avg)
             self.lsq6Avg = lsq6FH
 
-    def finalize(self):
+    def finalize(self, alternate_lsq6_average=None):
         """
             Within one call, take care of the potential initial model transformation,
             the resampling of input files and create an average 
         """
         self.addNativeToStandardFromInitModel()
         self.resampleInputFilesAndSetLastBasevol()
-        self.createAverage()
+        self.createAverage(alternate_lsq6_average)
 
 class LSQ6RotationalMinctracc(LSQ6Base):
     """
