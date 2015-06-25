@@ -319,7 +319,7 @@ class LSQ6NUCInorm(object):
             if(exists(alternate)):
                 alternateInputs.append(alternate)
             else:
-                print "Error: could not find alternative input file for: %s" % mainInputFiles[i].inputFileName
+                print("Error: could not find alternative input file for: %s" % mainInputFiles[i].inputFileName)
                 raise
         # create file handlers for the alternate input files, get the base directory
         # from the first main input file
@@ -360,7 +360,7 @@ class LSQ6NUCInorm(object):
                     self.p.addStage(lnCmd)
                     self.inputFiles[i].setLastXfm(self.target,newTrans)
             if not found:
-                print "Error: was not able to find a transform for: %s based on the alternate input files" % self.inputFiles[i].inputFileName
+                print("Error: was not able to find a transform for: %s based on the alternate input files" % self.inputFiles[i].inputFileName)
                 raise
             
 
@@ -401,7 +401,8 @@ class LSQ6NUCInorm(object):
             mainInputFiles = self.inputFiles
             lsq6moduleForResampling = getLSQ6Module(mainInputFiles,
                                                     self.target,
-                                                    self.lsq6Dir,
+                                                    options=self.options,
+                                                    lsq6Directory=self.lsq6Dir,
                                                     initialTransform = self.options.lsq6_method,
                                                     initModel        = self.initModel,
                                                     lsq6Protocol     =  self.options.lsq6_protocol,
