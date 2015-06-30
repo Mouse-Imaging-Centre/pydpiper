@@ -7,8 +7,8 @@ import os
 from configargparse import ArgParser
 from datetime import datetime
 from multiprocessing import Process, Pool
-import subprocess as subprocess
-from shlex import split
+import subprocess
+import shlex
 import pydpiper.queueing as q
 import atoms_and_modules.registration_functions as rf
 import logging
@@ -70,6 +70,9 @@ def addExecutorArgumentGroup(parser):
     group.add_argument("--sge-queue-opts", dest="sge_queue_opts", 
                        type=str, default=None,
                        help="[DEPRECATED; use --queue-name instead.]  For --queue=sge, allows you to specify different queues. [Default = %(default)s]")
+    group.add_argument("--queue-opts", dest="queue_opts",
+                       type=str, default="",
+                       help="A string of extra arguments/flags to pass to qsub. [Default = %(default)s]")
     group.add_argument("--time-to-seppuku", dest="time_to_seppuku", 
                        type=int, default=1,
                        help="The number of minutes an executor is allowed to continuously sleep, i.e. wait for an available job, while active on a compute node/farm before it kills itself due to resource hogging. [Default = %(default)s]")
@@ -188,7 +191,7 @@ def runStage(serverURI, clientURI, i):
             of.write(command_to_run + "\n")
             of.flush()
             
-            args = split(command_to_run) 
+            args = shlex.split(command_to_run) 
             process = subprocess.Popen(args, stdout=of, stderr=of, shell=False)
             client.addPIDtoRunningList(process.pid)
             process.communicate()
@@ -247,6 +250,7 @@ class pipelineExecutor(object):
             logger.warn("--queue is deprecated; use --queue-type instead")
         if options.sge_queue_opts:
             logger.warn("--sge_queue_opts is deprecated; use --queue-name instead")
+        self.queue_opts = options.queue_opts
         self.ns = options.use_ns
         self.uri_file = options.urifile
         if self.uri_file is None:
@@ -346,11 +350,8 @@ class pipelineExecutor(object):
     def submitToQueue(self, programName=None):
         """Submits to sge queueing system using sge_batch script""" 
         if self.queue_type == "sge":
-            strprocs = str(self.procs) 
-            # NOTE: sge_batch multiplies vf value by # of processors. 
-            # Since options.mem = total amount of memory needed, divide by self.procs to get value
-            memPerProc = float(self.mem)/float(self.procs)
-            strmem = "vf=" + str(memPerProc) + "G" 
+            strprocs = str(self.procs)
+            strmem = "vf=%sG" % float(self.mem)
             jobname = ""
             if programName is not None:
                 executablePath = os.path.abspath(programName)
@@ -358,23 +359,23 @@ class pipelineExecutor(object):
             now = datetime.now().strftime("%Y-%m-%d-at-%H-%M-%S-%f")
             ident = "pipeline-executor-" + now
             jobname += ident
-            # Add options for sge_batch command
-            cmd = ["sge_batch", "-J", jobname, "-m", strprocs, "-l", strmem, "-k"]
-            # This is a bit ugly and we can't pass SGE_BATCH_LOGDIR to change logdir;
-            # the problem is sge_batch's '-o' and SGE_BATCH_LOGDIR conflate filename and dir,
-            # and we want to rename the log files to get rid of extra generated extensions,
-            # otherwise we could do something like:
-            #os.environ["SGE_BATCH_LOGDIR"] = os.environ.get("SGE_BATCH_LOGDIR") or os.getcwd()
-            cmd += [ "-o", os.path.join(os.getcwd(), ident + "-eo.log")]
-            if self.queue_name:
-                cmd += ["-q", self.queue_name]
-            cmd += ["pipeline_executor.py", "--local"]
+            queue_opts = ['-V', '-j', 'yes',
+                          '-N', jobname,
+                          '-l', strmem, '-pe', 'smp', strprocs,
+                          '-o', os.path.join(os.getcwd(),
+                                             ident + '-eo.log')] \
+                          + (['-q', self.queue_name]
+                             if self.queue_name else []) \
+                          + shlex.split(self.queue_opts)
+            qsub_cmd = ['qsub'] + queue_opts
+            cmd  = ["pipeline_executor.py", "--local"]
             cmd += ['--uri-file', self.uri_file]
             # Only one exec is launched at a time in this manner, so:
             cmd += ["--num-executors", str(1)]
             # send ALL args except --num-executors to the executor
             cmd += q.remove_flags(['--num-exec', '--mem'], sys.argv)
             cmd += ['--mem', str(self.mem)]
+            script = "#!/usr/bin/env bash\n%s\n" % ' '.join(cmd)
             # FIXME huge hack -- shouldn't we just iterate over options,
             # possibly checking for membership in the executor option group?
             # The problem is that we can't easily check if an option is
@@ -386,7 +387,8 @@ class pipelineExecutor(object):
             # also affects removal of --num-executors
             env = os.environ.copy()
             env['PYRO_LOGFILE'] = os.path.join(os.getcwd(), ident + ".log")
-            subprocess.call(cmd, env=env)
+            p = subprocess.Popen(qsub_cmd, stdin=subprocess.PIPE, shell=False, env=env)
+            p.communicate(script)
         else:
             logger.info("Specified queueing system is: %s" % (self.queue_type))
             logger.info("Only queue_type=sge or queue_type=None currently supports pipeline launching own executors.")
