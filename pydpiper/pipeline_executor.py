@@ -348,7 +348,7 @@ class pipelineExecutor(object):
             self.pyro_proxy_for_server.unregisterClient(self.clientURI)
         
     def submitToQueue(self, programName=None):
-        """Submits to sge queueing system using sge_batch script""" 
+        """Submits to sge queueing system using qsub""" 
         if self.queue_type == "sge":
             strprocs = str(self.procs)
             strmem = "vf=%sG" % float(self.mem)
