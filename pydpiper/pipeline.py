@@ -623,18 +623,25 @@ class Pipeline(object):
         logger.debug("Looping ...")
         executors_to_launch = self.numberOfExecutorsToLaunch()
         if executors_to_launch > 0:
+            # RAM needed to run a single job:
             memNeeded = self.executor_memory_required(self.runnable)
-            if memNeeded <= self.main_options.mem:
-                self.launchExecutorsFromServer(executors_to_launch, memNeeded)
-            else:
-                # we ought to set the stage to failed and run other available stages.
-                # However, usually the largest-memory stages run last and in parallel,
-                # so there's little benefit to doing so, and it makes sense to finish
-                # the running jobs and exit.
+            # RAM needed to run eight most expensive jobs (not the ideal choice):
+            memWanted = sorted(self.runnable, key=lambda i: -self.stages[i].mem)[0:self.main_options.proc-1]
+            if memNeeded > self.main_options.mem:
                 msg = "A stage requires %.2fG of memory to run, but max allowed is %.2fG" \
                         % (memNeeded, self.main_options.mem)
                 logger.error(msg)
                 print(msg)
+                        #self.main_options.mem if self.main_options.greedy \
+                        #    else self.executor_memory_required(self.runnable)
+            else:
+                if self.main_options.greedy:
+                    mem = self.main_options.mem
+                elif memWanted <= self.main_options.mem:
+                    mem = memWanted
+                else:
+                    mem = self.main_options.mem #memNeeded?
+                self.launchExecutorsFromServer(executors_to_launch, mem)
         if self.main_options.monitor_heartbeats:
             # look for dead clients and requeue their jobs
             t = time.time()

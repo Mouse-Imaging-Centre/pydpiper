@@ -57,6 +57,9 @@ def addExecutorArgumentGroup(parser):
     group.add_argument("--mem", dest="mem", 
                        type=float, default=6,
                        help="Total amount of requested memory (in GB) for all processes the executor runs. [Default = %(default)s].")
+    group.add_argument("--greedy", dest="greedy",
+                       action="store_true",
+                       help="Request the full amount of RAM specified by --mem rather than the (lesser) amount needed by runnable jobs.  Always use this if your executor is assigned a full node.")
     group.add_argument("--ppn", dest="ppn", 
                        type=int, default=8,
                        help="Number of processes per node. Used when --queue-type=pbs. [Default = %(default)s].")
