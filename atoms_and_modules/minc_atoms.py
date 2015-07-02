@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 from __future__ import print_function
-from pydpiper.pipeline import CmdStage, Pipeline, default_mem
+from pydpiper.pipeline import CmdStage, Pipeline
 from atoms_and_modules.registration_functions import isFileHandler
 import atoms_and_modules.registration_functions as rf
 from pyminc.volumes.factory import volumeFromFile
@@ -108,6 +108,7 @@ class mincANTS(CmdStage):
         else:
             mem_per_voxel = memoryCoeffs[2]
         voxels = reduce(mul, volumeFromFile(self.source[0]).getSizes())
+        default_mem = self.mem #hack; see pipeline.addStage method
         self.mem = max(default_mem, base_memory + voxels * mem_per_voxel)
 
     def setName(self):
@@ -267,6 +268,7 @@ class minctracc(CmdStage):
 
     def setMemory(self, source, cfg):
         voxels = reduce(mul, volumeFromFile(source).getSizes())
+        default_mem = self.mem #hack; see pipeline.addStage method
         self.mem = max(default_mem, cfg.base_mem + voxels * cfg.mem_per_voxel)
 
     def setName(self):
@@ -427,6 +429,7 @@ class blur(CmdStage):
 
     def setMemory(self, volname, mem_cfg):
         voxels = reduce(mul, volumeFromFile(volname).getSizes())
+        default_mem = self.mem #hack; see pipeline.addStage method
         self.mem = max(default_mem,
                        (mem_cfg.base_mem + voxels * mem_cfg.mem_per_voxel) * \
                        mem_cfg.tmpdir_factor if mem_cfg.include_tmpdir else 1)

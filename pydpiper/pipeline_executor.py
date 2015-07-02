@@ -85,6 +85,10 @@ def addExecutorArgumentGroup(parser):
             help="Min walltime (s) allowed by the queuing system [Default = %(default)s]")
     group.add_argument("--max-walltime", dest="max_walltime", type=int, default = None,
             help="Max walltime (s) allowed for jobs on the queuing system, or infinite if None [Default = %(default)s]")
+    group.add_argument("--default-job-mem", dest="default_job_mem",
+                       type=float, default = 1.75,
+                       help="Memory (in GB) to allocate to jobs which don't make a request. [Default=%(default)s]")
+
 
 def noExecSpecified(numExec):
     #Exit with helpful message if no executors are specified
