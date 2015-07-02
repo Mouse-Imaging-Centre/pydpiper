@@ -32,8 +32,6 @@ logger = logging.getLogger(__name__)
 
 sys.excepthook = Pyro4.util.excepthook
 
-default_mem = 1.75 #GB/job
-
 class PipelineFile(object):
     def __init__(self, filename):
         self.filename = filename
@@ -72,7 +70,7 @@ class ExecClient(object):
 
 class PipelineStage(object):
     def __init__(self):
-        self.mem = default_mem
+        self.mem = None # if not set, use pipeline default
         self.procs = 1 # default number of processors per stage
         self.inputFiles = [] # the input files for this stage
         self.outputFiles = [] # the output files for this stage
@@ -275,6 +273,10 @@ class Pipeline(object):
             # add the stage's index to the graph
             self.G.add_node(self.counter, label=stage.name,color=stage.colour)
             self.counter += 1
+        # huge hack since default isn't available in CmdStage() constructor
+        # (may get overridden later by a hook, hence may really be wrong ... ugh):
+        if stage.mem is None and self.main_options is not None:
+            stage.setMem(self.main_options.default_job_mem)
 
     def setBackupFileLocation(self, outputDir=None):
         """Sets location of backup files."""
