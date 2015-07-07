@@ -839,7 +839,7 @@ class pMincAverage(mincAverage):
     def addDefaults(self):
         self.inputFiles.extend(self.filesToAvg)
         self.outputFiles += [self.output]
-        self.cmd += ["pmincaverage", "--clobber=true"]  #not checked by pmincaverage!
+        self.cmd += ["pmincaverage", "--clobber"]
     #def finalizeCommand(self):
     #    self.cmd.extend(self.filesToAvg)
     #    self.cmd.append(self.output)
