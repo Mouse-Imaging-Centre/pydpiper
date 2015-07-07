@@ -9,8 +9,10 @@ from datetime import datetime
 from multiprocessing import Process, Pool
 import subprocess
 import shlex
-import pydpiper.queueing as q
-import atoms_and_modules.registration_functions as rf
+import pydpiper
+print(pydpiper)
+import pydpiper.execution.queueing as q
+import pydpiper.atoms_and_modules.registration_functions as rf
 import logging
 import socket
 import signal

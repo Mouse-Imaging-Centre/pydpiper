@@ -1,9 +1,8 @@
-from __future__ import print_function
 from configargparse import ArgParser
-from pydpiper.pipeline import Pipeline, pipelineDaemon
-from pydpiper.queueing import runOnQueueingSystem
-from pydpiper.file_handling import makedirsIgnoreExisting
-from pydpiper.pipeline_executor import addExecutorArgumentGroup, noExecSpecified
+from pydpiper.execution.pipeline import Pipeline, pipelineDaemon
+from pydpiper.execution.queueing import runOnQueueingSystem
+from pydpiper.execution.file_handling import makedirsIgnoreExisting
+from pydpiper.execution.pipeline_executor import addExecutorArgumentGroup, noExecSpecified
 from datetime import datetime
 import time # TODO why both datetime and time?
 from pkg_resources import get_distribution

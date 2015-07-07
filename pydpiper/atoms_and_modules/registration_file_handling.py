@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 from __future__ import print_function
-import pydpiper.file_handling as fh
+import pydpiper.execution.file_handling as fh
 from os.path import abspath
 from os import curdir
 import sys

@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 
 from __future__ import print_function
-import atoms_and_modules.registration_file_handling as rfh
-import pydpiper.file_handling as fh
+import pydpiper.atoms_and_modules.registration_file_handling as rfh
+import pydpiper.execution.file_handling as fh
 from os.path import abspath, exists, dirname, splitext, isfile, basename
 from os import curdir, walk
 from datetime import date

@@ -1,9 +1,11 @@
 #!/usr/bin/env/python
 
+import sys
 from setuptools import setup
+from setuptools.command.test import test as TestCommand
 
 setup(name='pydpiper',
-      version='1.14-beta',
+      version='2.0a1',
       license='Modified BSD',
       description='Python code for flexible pipeline control',
       long_description = 'Python code for flexible pipeline control', 
@@ -11,7 +13,9 @@ setup(name='pydpiper',
       maintainer_email='matthijs@mouseimaging.ca',
       url='https://github.com/Mouse-Imaging-Centre/pydpiper',
       platforms="any",
-      packages=['pydpiper', 'applications', 'atoms_and_modules'], 
+      packages=['pydpiper', 'pydpiper.core', 'pydpiper.minc', 'pydpiper.execution', 'pydpiper.atoms_and_modules', 'pydpiper.pipelines'],
       data_files=[('config', ['config/MICe.cfg','config/MICe_dev.cfg','config/SciNet.cfg','config/SciNet_debug.cfg'])],
-      scripts=['pydpiper/pipeline_executor.py', 'pydpiper/check_pipeline_status.py', 'applications/MAGeT.py', 'applications/MBM.py', 'applications/registration_chain.py',
-               'applications/twolevel_model_building.py', 'applications/pairwise_nlin.py', 'atoms_and_modules/NLIN.py', 'atoms_and_modules/LSQ12.py', 'atoms_and_modules/LSQ6.py'])
+      #scripts=['pydpiper/execution/pipeline_executor.py', 'pydpiper/execution/check_pipeline_status.py',
+      #         'atoms_and_modules/NLIN.py', 'atoms_and_modules/LSQ12.py', 'atoms_and_modules/LSQ6.py'],
+      tests_require=['pytest'])
+

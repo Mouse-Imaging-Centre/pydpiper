@@ -12,11 +12,12 @@ Pyro4 - http://pythonhosted.org/Pyro4
 NetworkX - http://networkx.lanl.gov/
 ConfigArgParse - https://pypi.python.org/pypi/ConfigArgParse
 Py.test - http://pytest.org/
+Traits - https://pypi.python.org/pypi/traits
+pyminc - https://github.com/Mouse-Imaging-Centre/pyminc
 graphviz - http://www.graphviz.org/
 pygraphviz - http://pygraphviz.github.io/
 minc-toolkit - https://github.com/BIC-MNI/minc-toolkit
 minc-stuffs - https://github.com/Mouse-Imaging-Centre/minc-stuffs
-pyminc - https://github.com/Mouse-Imaging-Centre/pyminc
 
 In Ubuntu (tested on 12.04), run: 
 	apt-get install python-networkx
