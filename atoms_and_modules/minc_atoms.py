@@ -410,11 +410,10 @@ class blur(CmdStage):
         # this is a temporary solution, but it's better to at least catch it
         # somewhere... In the mincblur code, there is a hardcoded limit for 
         # the length of the output file: full_outfilename[256]; (blur_volume.c)
-        # This is a limit for the basename. Added to that will be: _dxyz.mnc 
-        # or _blur.mnc. In total the output file names can not be longer than 264
-        # characters. Given that we don't know which version of mincblur is installed 
+        # This is a limit for the basename plus the _blur.mnc and _dxyz.mnc extension. 
+        # Given that we don't know which version of mincblur is installed 
         # (this should and will be fixed at some point in the future), we'll exit here
-        if len(self.outputFiles[0]) > 264:
+        if len(self.outputFiles[0]) > 256:
             raise Exception("mincblur (potentially) has a hardcoded limit for the allowed length of the output file. The following command will not be able to run: \n\n%s\n\nPlease rename your input files/paths to make sure the filenames become shorter.\n" % self.cmd)
         # TODO the hooks could take a config parameter from the pipeline
         # in order to override the default cfg: lambda cfg: setMem(...cfg...)
