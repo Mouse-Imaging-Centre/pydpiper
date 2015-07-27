@@ -238,6 +238,7 @@ class FullIterativeLSQ12Nlin:
         
         lsq12module = lsq12.FullLSQ12(self.inputs,
                                       self.dirs.lsq12Dir,
+                                      queue_type=self.options.queue_type,
                                       likeFile=lsq12LikeFH,
                                       maxPairs=self.options.lsq12_max_pairs,
                                       lsq12_protocol=self.options.lsq12_protocol,
