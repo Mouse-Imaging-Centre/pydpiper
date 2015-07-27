@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 from __future__ import print_function
-from pydpiper.pipeline import CmdStage, Pipeline, default_mem
+from pydpiper.pipeline import CmdStage, Pipeline
 from atoms_and_modules.registration_functions import isFileHandler
 import atoms_and_modules.registration_functions as rf
 from pyminc.volumes.factory import volumeFromFile
@@ -108,6 +108,7 @@ class mincANTS(CmdStage):
         else:
             mem_per_voxel = memoryCoeffs[2]
         voxels = reduce(mul, volumeFromFile(self.source[0]).getSizes())
+        default_mem = self.mem #hack; see pipeline.addStage method
         self.mem = max(default_mem, base_memory + voxels * mem_per_voxel)
 
     def setName(self):
@@ -267,6 +268,7 @@ class minctracc(CmdStage):
 
     def setMemory(self, source, cfg):
         voxels = reduce(mul, volumeFromFile(source).getSizes())
+        default_mem = self.mem #hack; see pipeline.addStage method
         self.mem = max(default_mem, cfg.base_mem + voxels * cfg.mem_per_voxel)
 
     def setName(self):
@@ -408,11 +410,10 @@ class blur(CmdStage):
         # this is a temporary solution, but it's better to at least catch it
         # somewhere... In the mincblur code, there is a hardcoded limit for 
         # the length of the output file: full_outfilename[256]; (blur_volume.c)
-        # This is a limit for the basename. Added to that will be: _dxyz.mnc 
-        # or _blur.mnc. In total the output file names can not be longer than 264
-        # characters. Given that we don't know which version of mincblur is installed 
+        # This is a limit for the basename plus the _blur.mnc and _dxyz.mnc extension. 
+        # Given that we don't know which version of mincblur is installed 
         # (this should and will be fixed at some point in the future), we'll exit here
-        if len(self.outputFiles[0]) > 264:
+        if len(self.outputFiles[0]) > 256:
             raise Exception("mincblur (potentially) has a hardcoded limit for the allowed length of the output file. The following command will not be able to run: \n\n%s\n\nPlease rename your input files/paths to make sure the filenames become shorter.\n" % self.cmd)
         # TODO the hooks could take a config parameter from the pipeline
         # in order to override the default cfg: lambda cfg: setMem(...cfg...)
@@ -427,6 +428,7 @@ class blur(CmdStage):
 
     def setMemory(self, volname, mem_cfg):
         voxels = reduce(mul, volumeFromFile(volname).getSizes())
+        default_mem = self.mem #hack; see pipeline.addStage method
         self.mem = max(default_mem,
                        (mem_cfg.base_mem + voxels * mem_cfg.mem_per_voxel) * \
                        mem_cfg.tmpdir_factor if mem_cfg.include_tmpdir else 1)
@@ -836,7 +838,7 @@ class pMincAverage(mincAverage):
     def addDefaults(self):
         self.inputFiles.extend(self.filesToAvg)
         self.outputFiles += [self.output]
-        self.cmd += ["pmincaverage", "--clobber=true"]  #not checked by pmincaverage!
+        self.cmd += ["pmincaverage", "--clobber"]
     #def finalizeCommand(self):
     #    self.cmd.extend(self.filesToAvg)
     #    self.cmd.append(self.output)

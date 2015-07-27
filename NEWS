@@ -44,6 +44,15 @@ New in Version 1.14
   related to scheduling and resource management (particularly the dynamic
   executor memory requests; see above)
 * miscellaneous code improvements
+* *** *** BETA 2 *** ***
+* fixed bug in determining the max filename length for mincblur
+* added the "alternate input" functionality (using a separate data set for
+  the LSQ6 stage, then apply the transformations to the original data set
+  and continue with that)
+* better handling of options for qsub
+* added ability to set stage memory default
+* added the --greedy flag to force executors to use the alloted memory
+* fixed pmincaverage call
 
 
 New in Version 1.13
