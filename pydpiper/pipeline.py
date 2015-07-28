@@ -625,15 +625,13 @@ class Pipeline(object):
         if executors_to_launch > 0:
             # RAM needed to run a single job:
             memNeeded = self.executor_memory_required(self.runnable)
-            # RAM needed to run eight most expensive jobs (not the ideal choice):
-            memWanted = sorted(self.runnable, key=lambda i: -self.stages[i].mem)[0:self.main_options.proc-1]
+            # RAM needed to run `proc` most expensive jobs (not the ideal choice):
+            memWanted = sum(sorted(self.runnable, key=lambda i: -self.stages[i].mem)[0:self.main_options.proc-1])
             if memNeeded > self.main_options.mem:
                 msg = "A stage requires %.2fG of memory to run, but max allowed is %.2fG" \
                         % (memNeeded, self.main_options.mem)
                 logger.error(msg)
                 print(msg)
-                        #self.main_options.mem if self.main_options.greedy \
-                        #    else self.executor_memory_required(self.runnable)
             else:
                 if self.main_options.greedy:
                     mem = self.main_options.mem

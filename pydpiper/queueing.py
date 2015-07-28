@@ -5,31 +5,37 @@ from datetime import datetime
 from os.path import isdir, basename
 from os import mkdir
 import os
-import re
 import subprocess
 
 # FIXME
 SERVER_START_TIME = 180
 
-# FIXME huge hack
+# FIXME huge hack around not being able to pretty-print
+# flags back out of a parsed representation
 # fix: form the parser from an iterable data structure of args
 # and consult this
-# TODO has terrible time complexity
+# FIXME ASSUMES EACH FLAG HAS A VALUE -- see commented hack
+# TODO has terrible performance/complexity
 def remove_flags(flags, args):
-    args = args[:] # copy for politeness
-    for ix, arg in enumerate(args):
+    new_args = args[:] # copy for politeness
+    for ix, arg in reversed(list(enumerate(new_args))):
         for flag in flags:
-            if re.search(flag, arg):
+            if flag in arg: #re.search(flag, arg):
                 # matches? (argparse uses prefix matching...try to catch -
                 # ideally we'd actually consult a table of legal arguments)
-                if re.search('=', arg):
+                if '=' in arg:
                     # sys.argv has form [..., '--num-executors=3', ...]
-                    args.pop(ix)
+                    new_args.pop(ix)
+                #elif (len(new_args) - 1 == ix
+                #    or new_args[ix+1][0] = '-'):
+                    # sys.argv has form [..., '--boolean-flag'] + (optional ['--other-flag', ...])
+                # ... hopefully another flag, not a negative number ...
+                    # new_args.pop(ix)
                 else:
                     # sys.argv has form [..., '--num-executors', '3', ...]
-                    args.pop(ix)
-                    args.pop(ix)
-    return args
+                    new_args.pop(ix)
+                    new_args.pop(ix)
+    return new_args
 
 def timestr_to_secs(ts):
     # TODO replace with a library function

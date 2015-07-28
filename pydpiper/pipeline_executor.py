@@ -244,7 +244,7 @@ class pipelineExecutor(object):
         # -- perhaps options.mem should be renamed
         # options.max_mem since this represents a per-node
         # limit (or at least a per-executor limit)
-        logger.debug("memNeeded: %sG", memNeeded)
+        logger.debug("memNeeded: %.3fG", memNeeded)
         self.mem = memNeeded or options.mem
         logger.debug("self.mem = %0.2fG", self.mem)
         if self.mem > options.mem:
@@ -379,8 +379,8 @@ class pipelineExecutor(object):
             cmd += ['--uri-file', self.uri_file]
             # Only one exec is launched at a time in this manner, so:
             cmd += ["--num-executors", str(1)]
-            # send ALL args except --num-executors to the executor
-            cmd += q.remove_flags(['--num-exec', '--mem'], sys.argv)
+            # pass most args to the executor
+            cmd += q.remove_flags(['--num-exec', '--mem'], sys.argv[1:])
             cmd += ['--mem', str(self.mem)]
             script = "#!/usr/bin/env bash\n%s\n" % ' '.join(cmd)
             # FIXME huge hack -- shouldn't we just iterate over options,
