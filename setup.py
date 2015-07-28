@@ -11,6 +11,13 @@ setup(name='pydpiper',
       maintainer_email='matthijs@mouseimaging.ca',
       url='https://github.com/Mouse-Imaging-Centre/pydpiper',
       platforms="any",
+      install_requires=[
+        'ConfigArgParse',
+        'networkx',
+        'pygraphviz',
+        'Pyro4',
+        'pytest'
+      ],
       packages=['pydpiper', 'applications', 'atoms_and_modules'], 
       data_files=[('config', ['config/MICe.cfg','config/MICe_dev.cfg','config/SciNet.cfg','config/SciNet_debug.cfg'])],
       scripts=['pydpiper/pipeline_executor.py', 'pydpiper/check_pipeline_status.py', 'applications/MAGeT.py', 'applications/MBM.py', 'applications/registration_chain.py',
