@@ -6,6 +6,8 @@ from os import makedirs
 
 """File handling methods for creating subdirectories/base file names as needed"""
 
+existing_dirs = set()
+
 def removeBaseAndExtension(filename):
     """removes path as well as extension from filename"""
     bname = basename(filename)
@@ -40,11 +42,13 @@ def createBackupDir(output, pipelineName):
     return(_backupDir)
 def makedirsIgnoreExisting(dirname):
     """os.makedirs which fails if dir exists"""
-    try:
-        newDir = abspath(dirname)
-        if not isdir(newDir):
-            makedirs(newDir)
-        return(newDir)
-    except:
-        print("Could not create directory " + str(dirname))
-        raise
+    newDir = abspath(dirname)
+    if newDir not in existing_dirs:
+        try:
+            if not isdir(newDir):
+                makedirs(newDir)
+            existing_dirs.add(newDir)
+        except:
+            print("Could not create directory " + str(dirname))
+            raise
+    return newDir
