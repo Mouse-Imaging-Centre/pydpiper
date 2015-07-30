@@ -175,7 +175,7 @@ class Pipeline(object):
         # hash to keep the output to stage association
         self.outputhash = {}
         # a hash per stage - computed from inputs and outputs or whole command
-        self.stagehash = {}
+        self.stage_dict = {}
         # an array containing stages that have been (successfully) processed
         self.processedStages = []
         self.failedStages = []
@@ -196,7 +196,7 @@ class Pipeline(object):
         # time to shut down, due to walltime or having completed all stages?
         # (use an event rather than a simple flag for shutdown notification
         # so that we can shut down even if a process is currently sleeping)
-        self.shutdown_ev = Event()
+        self.shutdown_ev = None # was Event(), but this is too slow
         self.programName = None
         self.skipped_stages = 0
         self.verbose = 0
@@ -259,11 +259,11 @@ class Pipeline(object):
         # check if stage exists - stage uniqueness defined by in- and outputs
         # for base stages and entire command for CmdStages
         h = stage.getHash()
-        if self.stagehash.has_key(h):
+        if self.stage_dict.has_key(h):
             self.skipped_stages += 1
             #stage already exists - nothing to be done
         else: #stage doesn't exist - add it
-            self.stagehash[h] = self.counter
+            self.stage_dict[h] = self.counter
             #self.statusArray[self.counter] = 'notstarted'
             self.stages.append(stage)
             self.nameArray.append(stage.name)
@@ -817,6 +817,9 @@ def launchServer(pipeline, options):
     # first follow up on the previously reported total number of 
     # stages in the pipeline with how many have already finished:
     pipeline.printNumberProcessedStages()
+
+    # expensive, so only create for pipelines that will actually run
+    pipeline.shutdown_ev = Event()
     
     # is the server going to be verbose or not?
     if options.verbose:
