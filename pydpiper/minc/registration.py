@@ -4,7 +4,7 @@ from   collections import namedtuple
 import os.path
 import shlex
 
-from atom.api import (Atom, Bool, Int, Float, Str,
+from atom.api import (Atom, Bool, Int, Float,
                       Enum, Tuple, Instance)
 
 from pydpiper.minc.files            import MincAtom

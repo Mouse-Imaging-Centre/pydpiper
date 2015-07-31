@@ -70,7 +70,7 @@ def MBM(imgs, conf):
     #for s in stats_stages:
     #    print(s.render())
 
-    all_stages = lsq6_stages lsq12_stages | nlin_stages | stats_stages # TODO just use one set of stages ?
+    all_stages = lsq6_stages | lsq12_stages | nlin_stages | stats_stages # TODO just use one set of stages ?
 
     return all_stages
     #TODO accumulate all stages and create a pipeline, directories, etc. -- actually, this is similar for all pipelines, so don't

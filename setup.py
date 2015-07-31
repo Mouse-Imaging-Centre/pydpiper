@@ -12,10 +12,18 @@ setup(name='pydpiper',
       author='Miriam Friedel, Matthijs van Eede, Jason Lerch, Jon Pipitone, Fraser MacDonald, Ben Darwin',
       maintainer_email='matthijs@mouseimaging.ca',
       url='https://github.com/Mouse-Imaging-Centre/pydpiper',
+      install_requires=[
+        'ConfigArgParse',
+        'networkx',
+        'pygraphviz',
+        'Pyro4',
+        'pytest'
+      ],
       platforms="any",
       packages=['pydpiper', 'pydpiper.core', 'pydpiper.minc', 'pydpiper.execution', 'pydpiper.atoms_and_modules', 'pydpiper.pipelines'],
       data_files=[('config', ['config/MICe.cfg','config/MICe_dev.cfg','config/SciNet.cfg','config/SciNet_debug.cfg'])],
       #scripts=['pydpiper/execution/pipeline_executor.py', 'pydpiper/execution/check_pipeline_status.py',
       #         'atoms_and_modules/NLIN.py', 'atoms_and_modules/LSQ12.py', 'atoms_and_modules/LSQ6.py'],
-      tests_require=['pytest'])
+      #tests_require=['pytest']
+      )
 

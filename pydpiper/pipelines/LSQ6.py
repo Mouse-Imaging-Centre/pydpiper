@@ -1,18 +1,21 @@
-import shlex
-from collections import namedtuple
+#import shlex
+from atom.api import Atom, Bool, Str, Enum
+
+#TODO s/MincAtom/MincFile/g
 
 from pydpiper.core.containers   import Result
 from pydpiper.core.stages       import CmdStage, Stages
 from pydpiper.core.util         import raise_
+from pydpiper.minc.files        import MincAtom
 from pydpiper.minc.registration import multilevel_minctracc, nu_correct, inormalize
 
-LSQ6Conf = namedtuple('LSQ6Conf',
-  ['initial_transform',
-   'init_model',
-   'nu_correct',
-   'inormalize'])
+class LSQ6Conf(Atom):
+    initial_transform = Enum(None, 'identity')
+    init_model = Str()
+    nu_correct = Bool(True)
+    inormalize = Bool(True)
 
-LSQ6_default_conf = LSQ6Conf(initial_transform=None)
+LSQ6_default_conf = LSQ6Conf(init_model="whatever")
 #TODO should this be a list of single-generation confs ?? less indexing once created ...
 #TODO many fields same as -lsq12 ... could use inheritance or whatever ...
 #TODO why even have a default when we can just make a default protocol? unless we
@@ -37,7 +40,7 @@ def lsq6_pipeline_part(options):
     # if we pass it in to several parts of the pipeline (LSQ6, LSQ12, etc.) it will be re-initialized ...
     # FIXME account in a nice/uniform way for possibility of transform supplied with initial model/lsq6 target
 
-    lsq6_target = MincFile(options.initial_model if options.initial_model else
+    lsq6_target = MincAtom(options.initial_model if options.initial_model else
                            options.lsq6_target   if options.lsq6_target   else
                            imgs[0]               if options.bootstrap     else
                            raise_(ValueError("No target for LSQ6 registration supplied (via options.{initial_model,lsq6_target,bootstrap})")))
