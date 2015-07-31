@@ -1,6 +1,5 @@
 #!/usr/bin/env python2.7
 
-import argparse #TODO switch to configargparse
 import os.path
 from operator import add
 

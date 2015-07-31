@@ -359,9 +359,9 @@ def mincANTS_NLIN(imgs, avg, confs):
     # TODO fold generations into conf; change number of iterations per generation
     s = Stages()
     avg_imgs = []
-    for conf in confs:
+    for i, conf in enumerate(confs):
         xfms = [s.defer(mincANTS(source=img, target=avg, conf=conf)) for img in imgs]
-        avg  = s.defer(mincaverage([xfm.resampled for xfm in xfms], name='nlin-%d' % g, output_dir='nlin'))
+        avg  = s.defer(mincaverage([xfm.resampled for xfm in xfms], name='nlin-%d' % i, output_dir='nlin'))
         avg_imgs.append(avg)
     return Result(stages=s, output=Registration(xfms=xfms, avg_img=avg, avg_imgs=avg_imgs))
 

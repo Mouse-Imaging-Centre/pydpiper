@@ -47,7 +47,7 @@ def MBM(imgs, conf):
     # in the old code, but maybe also with optional LSQ6 ?  Also used in, e.g., two-level code
 
     lsq12_stages = Stages()
-    lsq12_result = lsq12_stages.defer(m.lsq12(imgs, m.MinctraccConf(), curr_dir=pipeline_dir))
+    lsq12_result = lsq12_stages.defer(m.lsq12(imgs=[x.resampled for x in lsq6_result.xfms], conf=m.MinctraccConf(), curr_dir=pipeline_dir))
 
     for s in lsq12_stages:
         print(s.render())

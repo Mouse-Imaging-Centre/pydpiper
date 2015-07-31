@@ -4,7 +4,7 @@ from collections import namedtuple
 from pydpiper.core.containers   import Result
 from pydpiper.core.stages       import CmdStage, Stages
 from pydpiper.core.util         import raise_
-from pydpiper.minc.registration import multilevel_minctracc
+from pydpiper.minc.registration import multilevel_minctracc, nu_correct, inormalize
 
 LSQ6Conf = namedtuple('LSQ6Conf',
   ['initial_transform',
@@ -60,7 +60,7 @@ def lsq6(imgs, target, options): # [mnc], mnc, LSQ6Conf -> Result(..., output=??
         # TODO move to util module, add optional default, add wildcards, turn into preprocessor ...
         try:
             v = choices[k]
-        except KeyError as e:
+        except KeyError:
             raise SwitchError('unhandled case %s (no default supplied); valid: %s' % (k, choices.keys()))
         else:
             return v()
@@ -70,7 +70,7 @@ def lsq6(imgs, target, options): # [mnc], mnc, LSQ6Conf -> Result(..., output=??
       { 'lsq6_simple'            : lambda :  # TODO the options args shouldn't be string-indexed dictionaries but conf objects ...
           lsq6_hierarchical_minctracc(sources=imgs, target=lsq6_target, options={ 'initial_transform' : 'identity', 'lsq6_protocol' : NotImplemented }),
         'lsq6_centre_estimation' : lambda :
-          lsq6_hierarchical_minctracc(sources=imgs, target=lsq6_target, options={})
+          lsq6_hierarchical_minctracc(sources=imgs, target=lsq6_target, options={}),
         'lsq6_large_rotations'   : lambda :
           lsq6_rotational_minctracc(sources=imgs,   target=lsq6_target, options={})
       }))

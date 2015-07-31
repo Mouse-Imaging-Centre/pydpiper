@@ -19,7 +19,7 @@ def convertCmdStage(cmd_stage): # CmdStage -> old CmdStage
 
 def directories(stages):
     # TODO what about logfiles/logdirs?
-    ds = (os.path.dirname(g) for s in stages for o in s.outputs)
+    return (os.path.dirname(o) for s in stages for o in s.outputs)
 
 #def mk_directories(stages):
 #    for d in directories(stages):
