@@ -7,9 +7,6 @@ from os import mkdir
 import os
 import subprocess
 
-# FIXME
-SERVER_START_TIME = 180
-
 # FIXME huge hack around not being able to pretty-print
 # flags back out of a parsed representation
 # fix: form the parser from an iterable data structure of args
@@ -60,6 +57,7 @@ class runOnQueueingSystem():
         self.ppn = options.ppn
         self.queue_name = options.queue_name or options.queue
         self.queue_type = options.queue or options.queue_type
+        self.executor_start_delay = options.executor_start_delay
         # TODO use self.time to compute better time_to_accept_jobs?
         self.time_to_accept_jobs = options.time_to_accept_jobs
         self.arguments = sysArgs #sys.argv in calling program
@@ -164,7 +162,8 @@ class runOnQueueingSystem():
             self.jobFile.write(self.buildMainCommand())
             self.jobFile.write(" &\n\n")
         if launchExecs:
-            self.jobFile.write("sleep %s\n" % SERVER_START_TIME)
+            self.jobFile.write("sleep %s\n" %
+                               self.executor_start_delay)
             cmd = "pipeline_executor.py --local --num-executors=1 "
             cmd += ' '.join(remove_flags(['--num-exec'], self.arguments[1:]))
             cmd += ' &\n\n'

@@ -79,6 +79,8 @@ def addExecutorArgumentGroup(parser):
     group.add_argument("--queue-opts", dest="queue_opts",
                        type=str, default="",
                        help="A string of extra arguments/flags to pass to qsub. [Default = %(default)s]")
+    group.add_argument("--executor-start-delay", dest="executor_start_delay", type=int, default=180,
+                       help="Seconds before starting remote executors when running the server on the grid")
     group.add_argument("--time-to-seppuku", dest="time_to_seppuku", 
                        type=int, default=1,
                        help="The number of minutes an executor is allowed to continuously sleep, i.e. wait for an available job, while active on a compute node/farm before it kills itself due to resource hogging. [Default = %(default)s]")
