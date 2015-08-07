@@ -26,11 +26,10 @@ class ChainConf(Atom):
     common_time_point      = Int(None)
     common_time_point_name = Str("common")
     csv_file               = Str(None)
-    #field_names            = Str("subject,time,filename,is_common")
 
 class Subject(Atom):
-    intersubject_registration_time_pt = Instance(int)  # FIXME should be named registration_time_pt or similar
-    time_pt_dict   = Dict()    # FIXME validation (key=Int, value=Str) doesn't work? ...
+    intersubject_registration_time_pt = Instance(int)
+    time_pt_dict   = Dict()    # validation (key=Int, value=Str) doesn't work? ...
 
     def __eq__(self, other):
         return (self is other or
@@ -74,7 +73,8 @@ def parse_common(string):
     elif string in falsy_strings:
         return False
     else:
-        raise ValueError('Please use one of ' + fmt(truthy_strings)
+        raise ValueError('Unrecognized value %s; ' % string
+                         + 'Please use one of ' + fmt(truthy_strings)
                          + ' in the "is_common" field of your csv file ' 
                          + 'to use this file for intersubject registration, or '
                          + 'one of ' + fmt(falsy_strings) + 'to specify otherwise')
@@ -162,7 +162,7 @@ def parse_csv(rows, common_time_pt): # row iterator, int -> { subject_id(str) : 
 def chain(options):
 
     with open(options.csv_file, 'r') as f:
-        subject_info = parse_csv_file(f, options.common_time_point)
+        subject_info = parse_csv(f, options.common_time_point)
     
     s = Stages()
 
