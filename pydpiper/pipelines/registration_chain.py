@@ -25,15 +25,16 @@ class ChainConf(Atom):
     input_space            = Enum('native', 'lsq6', 'lsq12')
     common_time_point      = Int(None)
     common_time_point_name = Str("common")
+    csv_file               = Str(None)
     #field_names            = Str("subject,time,filename,is_common")
 
 class Subject(Atom):
-    common_time_pt = Instance(int)  # FIXME should be named registration_time_pt or similar
+    intersubject_registration_time_pt = Instance(int)  # FIXME should be named registration_time_pt or similar
     time_pt_dict   = Dict()    # FIXME validation (key=Int, value=Str) doesn't work? ...
 
     def __eq__(self, other):
         return (self is other or
-                (self.common_time_pt == other.common_time_pt
+                (self.intersubject_registration_time_pt == other.intersubject_registration_time_pt
                  and self.time_pt_dict == other.time_pt_dict
                  and self.__class__ == other.__class__)) # ugh
 
@@ -46,10 +47,10 @@ def map_data(f, d): # TODO find a new name for this
     the inner time_pt_dict of a { subject : Subject }
     
     >>> (map_data(lambda x: x[3],
-    ...          { 's1' : Subject(common_time_pt=4, time_pt_dict={3:'s1_3.mnc', 4:'s1_4.mnc'}),
-    ...            's2' : Subject(common_time_pt=4, time_pt_dict={4:'s2_4.mnc', 5:'s2_5.mnc'})} )
-    ...   == { 's1' : Subject(common_time_pt=4, time_pt_dict= {3:'3',4:'4'}),
-    ...        's2' : Subject(common_time_pt=4, time_pt_dict= {4:'4',5:'5'}) })
+    ...          { 's1' : Subject(intersubject_registration_time_pt=4, time_pt_dict={3:'s1_3.mnc', 4:'s1_4.mnc'}),
+    ...            's2' : Subject(intersubject_registration_time_pt=4, time_pt_dict={4:'s2_4.mnc', 5:'s2_5.mnc'})} )
+    ...   == { 's1' : Subject(intersubject_registration_time_pt=4, time_pt_dict= {3:'3',4:'4'}),
+    ...        's2' : Subject(intersubject_registration_time_pt=4, time_pt_dict= {4:'4',5:'5'}) })
     True
     """
     new_d = {}
@@ -57,19 +58,29 @@ def map_data(f, d): # TODO find a new name for this
         new_time_pt_dict = {}
         for t,x in subj.time_pt_dict.iteritems():
             new_time_pt_dict[t] = f(x)
-        new_subj = Subject(common_time_pt = subj.common_time_pt,
+        new_subj = Subject(intersubject_registration_time_pt = subj.intersubject_registration_time_pt,
                            time_pt_dict   = new_time_pt_dict)
         new_d[s_id] = new_subj
     return new_d
 
-# TODO need to mincify the filename ... but where will we have appropriate knowledge
-# of directory, etc. ??
-# TODO should timepts be ints? floats? ...
-# TODO should read_csv really take common_time_pt arg?  seems OK
-# TODO examples are getting too long for doctest
-# TODO what should happen if common_time_pt isn't specified?  Choose a default if
-#   not every subj has a specified time pt?
-# TODO common_time_pt -> regn_time_pt (can't be 'common' if used for only a single subj)?
+def parse_common(string):
+    truthy_strings = ['1','True','true','T','t']
+    falsy_strings  = ['','0','False','false','F','f']
+    def fmt(strs):
+        return "'" + "','".join(strs) + "'"
+    string = string.strip()
+    if string in truthy_strings:
+        return True
+    elif string in falsy_strings:
+        return False
+    else:
+        raise ValueError('Please use one of ' + fmt(truthy_strings)
+                         + ' in the "is_common" field of your csv file ' 
+                         + 'to use this file for intersubject registration, or '
+                         + 'one of ' + fmt(falsy_strings) + 'to specify otherwise')
+
+# TODO standardize on pt/point
+# TODO write some longer (non-doc)tests
 def parse_csv(rows, common_time_pt): # row iterator, int -> { subject_id(str) : Subject }
     """
     Read subject information from a csv file containing at least the columns
@@ -78,12 +89,13 @@ def parse_csv(rows, common_time_pt): # row iterator, int -> { subject_id(str) : 
     Return a map from subject IDs to a dict of timepoints and a specific timepoint
     to be used for inter-subject registration.
 
-    >>> csv_data = "subject_id,timepoint,filename,wt\\ns1,1,s1_1.mnc,1\\n".split('\\n')
+    >>> csv_data = "subject_id,timepoint,filename,genotype\\ns1,1,s1_1.mnc,1\\n".split('\\n')
     >>> (parse_csv(csv_data, common_time_pt=1)
-    ...   == { 's1' : Subject(common_time_pt=1, time_pt_dict={ 1 : 's1_1.mnc' })})
+    ...   == { 's1' : Subject(intersubject_registration_time_pt=1, time_pt_dict={ 1 : 's1_1.mnc' })})
     True
     """
     subject_info = defaultdict(Subject)
+    # Populate the subject -> Subject dictionary from the rows"""
     for row in csv.DictReader(rows):
         try:
             subj_id   = row['subject_id']
@@ -95,21 +107,26 @@ def parse_csv(rows, common_time_pt): # row iterator, int -> { subject_id(str) : 
                            "missing: %s" % e.message)
         else:
             subject_info[subj_id].time_pt_dict[timepoint] = filename
-            if row.get('is_common_field', None):
-                if subject_info[subj_id].common_time_pt is not None:
+            if parse_common(row.get('is_common', '')):
+                if subject_info[subj_id].intersubject_registration_time_pt is not None:
                     raise TimePointError(
                         "duplicate common time point specified for subject '%s'"
                         % subj_id)
                 else:
-                    subject_info[subj_id].common_time_pt = timepoint
+                    subject_info[subj_id].intersubject_registration_time_pt = timepoint
     # could make this part into a separate fn that copies input, returns updated version:
+    # Iterate through subjects, filling in intersubject-registration time points with the common
+    # time point if unspecified for a given subject, and raising an error if there's no timepoint
+    # available or no scan for the specified timepoint
     for s_id, s in subject_info.iteritems():
-        if s.common_time_pt is None:
+        if s.intersubject_registration_time_pt is None:
             if common_time_pt is None:
                 raise TimePointError("no subject-specific or default inter-subject "
                                      "time point provided for subject '%s'" % s_id)
             elif common_time_pt in s.time_pt_dict:
-                s.common_time_pt = common_time_pt
+                s.intersubject_registration_time_pt = common_time_pt
+            elif common_time_pt == -1:
+                s.intersubject_registration_time_pt = s.time_pt_dict[max(s.time_pt_dict.keys())]
             else:
                 raise TimePointError("subject '%s' didn't have a scan for "
                                      "the common time point specified (%d); "
@@ -118,11 +135,9 @@ def parse_csv(rows, common_time_pt): # row iterator, int -> { subject_id(str) : 
                                      "'is_common' column of your table"
                                      % (s_id, common_time_pt))
         else:
-            # At this point, we are overriding common_time_pt (if specified)
-            # with a (valid, since a relevant row exists!) time point for
-            # this specific subject, so everything is fine (though perhaps
-            # a warning?)
-            pass
+            if common_time_pt != s.intersubject_registration_time_pt:
+                print('note: overriding common_time_pt %d with time point %d for subject %s'
+                      % (common_time_pt, s.intersubject_registration_time_pt, s_id))
                     
     return subject_info
     
@@ -144,10 +159,19 @@ def parse_csv(rows, common_time_pt): # row iterator, int -> { subject_id(str) : 
 #    # call f...
 
 
-def chain(subject_info, options):
-    # { subject : Subject }, RegistrationChainConf -> stages, ...
+def chain(options):
 
+    with open(options.csv_file, 'r') as f:
+        subject_info = parse_csv_file(f, options.common_time_point)
+    
     s = Stages()
+
+    if options.input_space == 'native':
+        raise NotImplemented
+    elif options.input_space not in ['lsq6', 'lsq12']:
+        raise ValueError('unrecognized input space: %s; choices: %s' % ())
+
+    
     
     #all_imgs = {(s_id,t):img for s_id, subj in subject_info.iteritems()
     #            for (t,img) in subj.time_point_dict.iteritems()}
