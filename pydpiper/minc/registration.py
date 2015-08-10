@@ -435,11 +435,6 @@ def lsq12(imgs, conf, curr_dir=".", like=None):
     xfms = p.defer(multilevel_pairwise_minctracc(imgs=imgs, conf=conf, like=like, curr_dir=output_dir))
     avg_img  = p.defer(mincaverage([x.resampled for x in xfms], output_dir=output_dir))
     return Result(stages = p, output = Registration(avg_imgs=[avg_img], avg_img=avg_img, xfms=xfms))
-#cmd_stage(['minctracc', '-clobber', '-xcorr', '-' + conf.transform_type] \
-#                      + (['-transform', InputFile(transform.path)] if transform else [])    \
-#                      + (['-w_translations', conf.w_translations if conf.w_translations else []]) \
-#                      + (['-w_rotations', conf.w_rotations if conf.w_rotations else []) \
-#                      + [InputFile(source.path), InputFile(target.path), OutputFile(out_xfm.path)])
 
 def mincaverage(imgs, name="average", output_dir='.'):
     if len(imgs) == 0:

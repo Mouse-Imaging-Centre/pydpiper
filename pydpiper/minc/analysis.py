@@ -4,6 +4,9 @@ from pydpiper.minc.files import MincAtom
 from pydpiper.minc.containers import XfmHandler
 from pydpiper.minc.registration import concat, invert
 
+#TODO find the nicest API (currently determinants_at_fwhms, but still weird)
+#and write documentation indicating it
+
 def lin_from_nlin(xfm): # xfm -> xfm
     # TODO add dir argument
     out_xfm = xfm.xfm.newname_with_suffix("_linear_part")

@@ -3,6 +3,39 @@
 import os.path
 from operator import add
 
+def lift_to_keys(f):
+    """Take a length-preserving list->list function and lift to work on values
+    of a dict, preserving the 'shape' (easy to formalize). In fact, we (currently)
+    guarantee the stronger property that `f` gets the list ordered by keys,
+    but in applications the `f` given generally shouldn't care about the order
+    of the list (??? - what if it chooses a target based on 1st elt?)
+    so all we care about is that each key gets a new value from the same position in the
+    list as the old value.
+
+    >>> def f(l): return enumerate(l)
+    >>> (lift_to_keys(f)({'a':9, 'b':2, 'c':2, 'd':4})
+    ...   == {'a':(0,9), 'b':(1,2), 'c':(2,2), 'd':(3,4)})
+    True
+    """
+    def g(m):
+        l  = [(k,v) for k, v in sorted(m.iteritems())]
+        ks = [k for k, _ in l]
+        vs = [v for _, v in l]
+        return dict(zip(ks,f(vs)))
+    return g
+
+def unlift_to_list(f):
+    """Take a 'shape-preserving' function acting on a dictionary
+    (but preserving the keys) and convert it to one operating
+    on a list by making the indexing explicit.
+
+    # TODO doesn't have to be strictly 'elementwise' - make a better example
+    >>> def f(d): return dict([(k,v+1) for k,v in d.iteritems()])
+    >>> (unlift_to_list(f)([1,3,4,7,11]) == [2,4,5,8,12])
+    True
+    """
+    return lambda l: [v for _, v in sorted(f(dict(enumerate(l))).iteritems())]
+
 def raise_(err):
     """`raise` is a keyword and `raise e` isn't an expression, so can't be used freely"""
     raise err
