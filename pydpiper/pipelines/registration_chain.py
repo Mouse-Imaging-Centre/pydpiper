@@ -5,6 +5,7 @@ from collections import defaultdict
 from atom.api import Atom, Int, Str, Dict, Enum, Instance
 #import atom.api as atom
 
+from pydpiper.minc.analysis import determinants_at_fwhms
 from pydpiper.minc.registration import Stages
 from pydpiper.pipelines.LSQ6 import lsq6
 
@@ -35,7 +36,18 @@ class Subject(Atom):
         return (self is other or
                 (self.intersubject_registration_time_pt == other.intersubject_registration_time_pt
                  and self.time_pt_dict == other.time_pt_dict
-                 and self.__class__ == other.__class__)) # ugh
+                 and self.__class__ == other.__class__))
+    # ugh; also, should this be type(self) == ... ?
+
+    def get_intersubject_registration_image(self):
+        return self.time_pt_dict[subject.intersubjection_registration_time_pt]
+
+    intersubject_registration_image = property(get_intersubject_registration_image,
+                                               'intersubject_registration_image property')
+    
+# could be a method/property; unsure how well this works with Traits/Atom
+def intersubject_registration_image(subject):
+    return subject.time_pt_dict[subject.intersubjection_registration_time_pt]
 
 class TimePointError(Exception):
     pass
@@ -161,15 +173,16 @@ def parse_csv(rows, common_time_pt): # row iterator, int -> { subject_id(str) : 
 
 def chain(options):
 
+    s = Stages()
+    
     with open(options.csv_file, 'r') as f:
         subject_info = parse_csv(f, options.common_time_point)
     
-    s = Stages()
-
     if options.input_space == 'native':
         raise NotImplemented
     elif options.input_space not in ['lsq6', 'lsq12']:
         raise ValueError('unrecognized input space: %s; choices: %s' % ())
+    
 
     
     
@@ -183,7 +196,7 @@ def chain(options):
     # - rewrite LSQ6 to use such a (nested) map
     # - write conversion which creates a tagged array from the map, performs LSQ6,
     #   and converts back
-    # ... ?
+    # - write 'over' which takes a registration, a data structure, and 'get/set' fns ...?
 
     #all_imgs = [img for subj in subject_info.itervalues()
     #            for img in subj.time_point_dict.itervalues()]
@@ -191,14 +204,40 @@ def chain(options):
     # TODO how to associate images in the above dict with their xfm ??
     # put result of LSQ6 into a map img_name => xfm
     #lsq6_xfms = s.defer(LSQ6(all_imgs, options.lsq6_conf))
+
+
+    # LSQ12/NLIN registration of common-timepoint images:
+    
     
     #{ xfm.source : xfm for xfm in lsq6_xfms}
+
+    ## intersubject registration
+    intersubj_imgs = { s_id : subj.intersubject_registration_image
+                       for s_id, subj in subject_info.iteritems() }
+
+    # (map of) maps from each subject to average
+    # FIXME we're assuming lsq12_nlin works on (values of) dictionaries ...
+    intersubject_xfms = s.defer(lift_to_dict(lsq12_nlin)(intersubj_imgs))
+
+    ## within-subject registration
+    def intrasubject_registrations(subj):
+        # don't need if lsq12_nlin acts on a map with values being imgs
+        #timepts = sorted(((t,img) for t,img in subj.time_pt_dict.iteritems()))
+        timepts = subject_info[subj]
+        raise NotImplemented
     
+    chain_xfms = { s_id : s.defer(intrasubject_registrations(subj))
+                   for s_id, subj in subject_info.iteritems() }
+    
+
+    # TODO n
+
+    ## longitudinal registration
     #for subj_id, subj in subject_info.iteritems():
     #    pass
-        
-    #TODO input file/registration method checking that isn't done in reading fn
 
+    map_data(lambda xfm: determinants_at_fwhms(xfm, options.fwhms), subject_info)
+    
     raise NotImplemented
 
 
