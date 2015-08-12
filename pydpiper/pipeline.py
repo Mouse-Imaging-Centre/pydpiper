@@ -112,9 +112,8 @@ class PipelineStage(object):
 class CmdStage(PipelineStage):
     def __init__(self, argArray):
         PipelineStage.__init__(self)
-        self.argArray = argArray # the raw input array
         self.cmd = [] # the input array converted to strings
-        self.parseArgs()
+        self.parseArgs(argArray)
         self.checkLogFile()
         # functions to be called when the stage becomes runnable
         # (these might be called multiple times, so should be benign
@@ -122,16 +121,17 @@ class CmdStage(PipelineStage):
         self.runnable_hooks = []
         # functions to be called when a stage finishes
         self.finished_hooks = []
-    def parseArgs(self):
-        if self.argArray:
-            for a in self.argArray:
+    def parseArgs(self, argArray):
+        if argArray:
+            for a in argArray:
                 ft = getattr(a, "fileType", None)
+                s = intern(str(a))
                 if ft == "input":
-                    self.inputFiles.append(str(a))
+                    self.inputFiles.append(s)
                 elif ft == "output":
-                    self.outputFiles.append(str(a))
-                self.cmd.append(str(a))
-                self.name = self.cmd[0]
+                    self.outputFiles.append(s)
+                self.cmd.append(s)
+            self.name = self.cmd[0]
     def checkLogFile(self):
         if not self.logFile:
             self.logFile = self.name + "." + datetime.isoformat(datetime.now()) + ".log"
