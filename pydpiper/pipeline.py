@@ -74,7 +74,7 @@ class PipelineStage(object):
         self.procs = 1 # default number of processors per stage
         self.inputFiles = [] # the input files for this stage
         self.outputFiles = [] # the output files for this stage
-        self.logFile = None # each stage should have only one log file
+        self.logFile = None
         self.status = None
         self.name = ""
         self.colour = "black" # used when a graph is created of all stages to colour the nodes
@@ -110,11 +110,13 @@ class PipelineStage(object):
         self.number_retries += 1
 
 class CmdStage(PipelineStage):
+    pipeline_start_time = datetime.isoformat(datetime.now())
+    logfile_id = 0
     def __init__(self, argArray):
         PipelineStage.__init__(self)
         self.cmd = [] # the input array converted to strings
         self.parseArgs(argArray)
-        self.checkLogFile()
+        #self.checkLogFile()
         # functions to be called when the stage becomes runnable
         # (these might be called multiple times, so should be benign
         # in some sense)
@@ -132,9 +134,11 @@ class CmdStage(PipelineStage):
                     self.outputFiles.append(s)
                 self.cmd.append(s)
             self.name = self.cmd[0]
-    def checkLogFile(self):
+    def checkLogFile(self): # TODO silly, this is always called since called by __init__
+        global logfile_id
         if not self.logFile:
-            self.logFile = self.name + "." + datetime.isoformat(datetime.now()) + ".log"
+            self.logFile = self.name + "." + pipeline_start_time + '-' + str(logfile_id) + ".log"
+            logfile_id += 1
     def setLogFile(self, logFileName): 
         self.logFile = str(logFileName)
     def execStage(self):
