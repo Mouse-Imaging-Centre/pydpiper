@@ -19,11 +19,11 @@ import Pyro4
 
 Pyro4.config.SERVERTYPE = "multiplex"
 
+
+#TODO add these to executorArgumentGroup as options, pass into pipelineExecutor
 WAIT_TIMEOUT = 5.0
 HEARTBEAT_INTERVAL = 10.0
-LATENCY_TOLERANCE = 15.0
-# q.SERVER_START_TIME
-SHUTDOWN_TIME = WAIT_TIMEOUT + LATENCY_TOLERANCE
+#SHUTDOWN_TIME = WAIT_TIMEOUT + LATENCY_TOLERANCE
 
 logger = logging.getLogger(__name__)
 
@@ -36,8 +36,11 @@ def addExecutorArgumentGroup(parser):
                        type=str, default=None,
                        help="Location for uri file if NameServer is not used. If not specified, default is current working directory.")
     group.add_argument("--use-ns", dest="use_ns",
-                       action="store_true",
+                       action="store_true", default=False,
                        help="Use the Pyro NameServer to store object locations. Currently a Pyro nameserver must be started separately for this to work.")
+    group.add_argument("--latency-tolerance", dest="latency_tolerance",
+                       type=float, default=15.0,
+                       help="Allowed grace period by which an executor may miss a heartbeat tick before being considered failed [Default = %(default)s.")
     group.add_argument("--num-executors", dest="num_exec", 
                        type=int, default=-1, 
                        help="Number of independent executors to launch. [Default = %(default)s. Code will not run without an explicit number specified.]")
@@ -46,7 +49,7 @@ def addExecutorArgumentGroup(parser):
                       help="Maximum number of failed executors before we stop relaunching. [Default = %(default)s]")
     # TODO add corresponding --monitor-heartbeats
     group.add_argument("--no-monitor-heartbeats", dest="monitor_heartbeats",
-                      action="store_false",
+                      action="store_false", default=True,
                       help="Don't assume executors have died if they don't check in with the server (NOTE: this can hang your pipeline if an executor crashes).")
     group.add_argument("--time", dest="time", 
                        type=str, default=None,
@@ -61,7 +64,7 @@ def addExecutorArgumentGroup(parser):
                        type=str, default=None,
                        help="Name of the SGE pe, if any. [Default = %(default)s]")
     group.add_argument("--greedy", dest="greedy",
-                       action="store_true",
+                       action="store_true", default=False,
                        help="Request the full amount of RAM specified by --mem rather than the (lesser) amount needed by runnable jobs.  Always use this if your executor is assigned a full node.")
     group.add_argument("--ppn", dest="ppn", 
                        type=int, default=8,
@@ -87,7 +90,7 @@ def addExecutorArgumentGroup(parser):
     group.add_argument("--time-to-accept-jobs", dest="time_to_accept_jobs", 
                        type=int,
                        help="The number of minutes after which an executor will not accept new jobs anymore. This can be useful when running executors on a batch system where other (competing) jobs run for a limited amount of time. The executors can behave in a similar way by given them a rough end time. [Default = %(default)s]")
-    group.add_argument('--local', dest="local", action='store_true', help="Don't submit anything to any specified queueing system but instead run as a server/executor")
+    group.add_argument('--local', dest="local", action='store_true', default=False, help="Don't submit anything to any specified queueing system but instead run as a server/executor")
     group.add_argument("--config-file", type=str, metavar='config_file', is_config_file=True,
                        required=False, help='Config file location')
     group.add_argument("--prologue-file", type=str, metavar='file',

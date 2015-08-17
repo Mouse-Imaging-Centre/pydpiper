@@ -196,7 +196,7 @@ class Pipeline(object):
         self.failed_executors = 0
         # main option hash, needed for the pipeline (server) to launch additional
         # executors during run time
-        self.main_options = options
+        self.options = options
         # time to shut down, due to walltime or having completed all stages?
         # (use an event rather than a simple flag for shutdown notification
         # so that we can shut down even if a process is currently sleeping)
@@ -207,13 +207,13 @@ class Pipeline(object):
         # Handle to write out processed stages to
         self.finished_stages_fh = None
         
-        if self.main_options:
-            self.outputDir = self.main_options.output_directory 
+        if self.options:
+            self.outputDir = self.options.output_directory 
             if not self.outputDir:
                 self.outputDir = os.getcwd()
             # redirect the standard output to a text file
-            serverLogFile = os.path.join(self.outputDir,self.main_options.pipeline_name + '_server_log_in_text')
-            if self.main_options.queue_type == "pbs" and self.main_options.local:
+            serverLogFile = os.path.join(self.outputDir,self.options.pipeline_name + '_server_log_in_text')
+            if self.options.queue_type == "pbs" and self.options.local:
                 sys.stdout = open(serverLogFile, 'a', 1) # 1 => line buffering
         
     # expose methods to get/set shutdown_ev via Pyro (setter not needed):
@@ -279,8 +279,8 @@ class Pipeline(object):
             self.counter += 1
         # huge hack since default isn't available in CmdStage() constructor
         # (may get overridden later by a hook, hence may really be wrong ... ugh):
-        if stage.mem is None and self.main_options is not None:
-            stage.setMem(self.main_options.default_job_mem)
+        if stage.mem is None and self.options is not None:
+            stage.setMem(self.options.default_job_mem)
 
     def setBackupFileLocation(self, outputDir=None):
         """Sets location of backup files."""
@@ -288,9 +288,9 @@ class Pipeline(object):
             # set backups in current directory if directory doesn't currently exist
             outputDir = os.getcwd()
         # TODO don't need this dir since we have only one backup file?
-        #self.backupFileLocation = fh.createBackupDir(outputDir, self.main_options.pipeline_name)
+        #self.backupFileLocation = fh.createBackupDir(outputDir, self.options.pipeline_name)
         self.backupFileLocation = os.path.join(outputDir,
-                                    self.main_options.pipeline_name
+                                    self.options.pipeline_name
                                      + '_finished_stages')
     def addPipeline(self, p):
         if p.skipped_stages > 0:
@@ -578,7 +578,7 @@ class Pipeline(object):
         # 3) the number of lost executors has exceeded the number of allowed failed execturs
         if(len(self.runnable) > 0 and 
            (self.number_launched_and_waiting_clients + len(self.clients)) == 0 and 
-           self.failed_executors > self.main_options.max_failed_executors):             
+           self.failed_executors > self.options.max_failed_executors):             
             msg = "Error: %d executors have died. This is more than the number of allowed failed executors as set by the flag: --max-failed-executors. Can not spawn new ones. Exiting..." % self.failed_executors
             print(msg)
             logger.warn(msg)
@@ -592,7 +592,7 @@ class Pipeline(object):
           # the latter choice might lead to the system
           # running indefinitely with no jobs
           (self.number_launched_and_waiting_clients + len(self.clients) == 0 and
-          self.executor_memory_required(self.runnable) > self.main_options.mem)):
+          self.executor_memory_required(self.runnable) > self.options.mem)):
             msg = "Shutting down due to jobs which require more memory (%.2fG) than available anywhere." % self.executor_memory_required(self.runnable)
             print(msg)
             logger.warn(msg)
@@ -630,30 +630,30 @@ class Pipeline(object):
             # RAM needed to run a single job:
             memNeeded = self.executor_memory_required(self.runnable)
             # RAM needed to run `proc` most expensive jobs (not the ideal choice):
-            memWanted = sum(sorted(self.runnable, key=lambda i: -self.stages[i].mem)[0:self.main_options.proc-1])
-            if memNeeded > self.main_options.mem:
+            memWanted = sum(sorted(self.runnable, key=lambda i: -self.stages[i].mem)[0:self.options.proc-1])
+            if memNeeded > self.options.mem:
                 msg = "A stage requires %.2fG of memory to run, but max allowed is %.2fG" \
-                        % (memNeeded, self.main_options.mem)
+                        % (memNeeded, self.options.mem)
                 logger.error(msg)
                 print(msg)
             else:
-                if self.main_options.greedy:
-                    mem = self.main_options.mem
-                elif memWanted <= self.main_options.mem:
+                if self.options.greedy:
+                    mem = self.options.mem
+                elif memWanted <= self.options.mem:
                     mem = memWanted
                 else:
-                    mem = self.main_options.mem #memNeeded?
+                    mem = self.options.mem #memNeeded?
                 self.launchExecutorsFromServer(executors_to_launch, mem)
-        if self.main_options.monitor_heartbeats:
+        if self.options.monitor_heartbeats:
             # look for dead clients and requeue their jobs
             t = time.time()
             # copy() as unregisterClient mutates self.clients during iteration over the latter
             for uri,client in self.clients.copy().iteritems():
                 dt = t - client.timestamp
-                if dt > pe.HEARTBEAT_INTERVAL + pe.LATENCY_TOLERANCE:
+                if dt > pe.HEARTBEAT_INTERVAL + self.options.latency_tolerance:
                     logger.warn("Executor at %s has died (no contact for %.1f sec)!", client.clientURI, dt)
                     print("\nWarning: there has been no contact with %s, for %.1f seconds. Considering the executor as dead!\n" % (client.clientURI, dt))
-                    if self.failed_executors > self.main_options.max_failed_executors:
+                    if self.failed_executors > self.options.max_failed_executors:
                         logger.warn("Currently %d executors have died. This is more than the number of allowed failed executors as set by the flag: --max-failed-executors. Too many executors lost to spawn new ones" % self.failed_executors)
 
                     self.failed_executors += 1
@@ -666,29 +666,29 @@ class Pipeline(object):
         Returns an integer indicating the number of executors to launch
         
         This function first verifies whether the server can launch executors
-        on its own (self.main_options.nums_exec != 0). Then it checks to
+        on its own (self.options.nums_exec != 0). Then it checks to
         see whether the executors are able to kill themselves. If they are,
         it's possible that new executors need to be launched. This happens when
         there are runnable stages, but the number of active executors is smaller
         than the number of executors the server is able to launch
     """
     def numberOfExecutorsToLaunch(self):
-        if self.failed_executors > self.main_options.max_failed_executors:
+        if self.failed_executors > self.options.max_failed_executors:
             return 0
 
         if (len(self.runnable) > 0 and
-            self.executor_memory_required(self.runnable) > self.main_options.mem):
+            self.executor_memory_required(self.runnable) > self.options.mem):
             # we might still want to launch executors for the stages with smaller
             # requirements
             return 0
         
-        if self.main_options.num_exec != 0:
+        if self.options.num_exec != 0:
             # Server should launch executors itself
             # This should happen regardless of whether or not executors
             # can kill themselves, because the server is now responsible 
             # for the inital launches as well.
             active_executors = self.number_launched_and_waiting_clients + len(self.clients)
-            max_num_executors = self.main_options.num_exec
+            max_num_executors = self.options.num_exec
             executor_launch_room = max_num_executors - active_executors
             # there are runnable stages, and there is room to launch 
             # additional executors
@@ -701,7 +701,7 @@ class Pipeline(object):
             logger.info("Launching %i executors", number_to_launch)
             for i in range(number_to_launch):
                 p = Process(target=launchPipelineExecutor,
-                            args=(self.main_options, memNeeded, self.programName))
+                            args=(self.options, memNeeded, self.programName))
                 p.start()
                 self.incrementLaunchedClients()
         except:
@@ -856,6 +856,8 @@ def launchServer(pipeline, options):
     
     pipeline.setVerbosity(options.verbose)
 
+    shutdown_time = pe.WAIT_TIMEOUT + pipeline.options.latency_tolerance
+    
     try:
         # start Pyro server
         t = Process(target=daemon.requestLoop)
@@ -866,6 +868,8 @@ def launchServer(pipeline, options):
         # of the pipeline, so modifiying `pipeline` won't have any effect.  The exception is
         # communication through its multiprocessing.Event, which we use below to wait
         # for termination.
+        #FIXME does this leak the memory used by the old pipeline?
+        #if so, avoid doing this or at least `del` the old graph ...
 
         verboseprint("Daemon is running at: %s" % daemon.locationStr)
         logger.info("Daemon is running at: %s", daemon.locationStr)
@@ -908,7 +912,7 @@ def launchServer(pipeline, options):
 
             time_left = int(re.search('Walltime.Remaining = (\d*)', output).group(1))
             logger.debug("Time remaining: %d s" % time_left)
-            time_to_live = time_left - pe.SHUTDOWN_TIME
+            time_to_live = time_left - shutdown_time
         except:
             logger.info("I couldn't determine your remaining walltime from qstat.")
             time_to_live = None

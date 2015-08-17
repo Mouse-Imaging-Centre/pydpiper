@@ -150,7 +150,7 @@ class AbstractApplication(object):
         self.appName = self.setup_appName()
         self.setup_logger()
 
-        # NB this doesn't capture environment variables
+        # TODO this doesn't capture environment variables
         # or contents of any config file so isn't really complete
         self.reconstructCommand()
 
@@ -158,6 +158,9 @@ class AbstractApplication(object):
                       self.options.queue_type == "pbs") \
                      and not self.options.local
 
+        # --create-graph causes the pipeline to be constructed
+        # both at PBS submit time and on the grid; this may be an extremely
+        # expensive duplication
         if (self.options.execute and not pbs_submit) or self.options.create_graph:
             logger.debug("Calling `run`")
             self.run()
