@@ -182,7 +182,7 @@ class runOnQueueingSystem():
             cmd += ['-Wdepend=after:' + after]
         if afterany is not None:
             cmd += ['-Wdepend=afterany:' + afterany]
-        cmd += [self.jobFileName]
+        cmd += ['-Wumask=137', self.jobFileName]
         out = subprocess.check_output(cmd)
         jobId = out.strip()
         print(' '.join(cmd))
