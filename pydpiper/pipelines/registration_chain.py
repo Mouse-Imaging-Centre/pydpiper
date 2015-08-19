@@ -215,10 +215,14 @@ def chain(options):
     intersubj_imgs = { s_id : subj.intersubject_registration_image
                        for s_id, subj in subject_info.iteritems() }
 
-    # (map of) maps from each subject to average
-    # FIXME we're assuming lsq12_nlin works on (values of) dictionaries ...
-    intersubject_xfms = s.defer(lift_to_dict(lsq12_nlin)(intersubj_imgs))
+    conf = ....
+    lsq12_directory = ... {pipename}_{common_name}_lsq12
 
+    intersubj_xfms = lsq12_NLIN_build_model_on_dictionaries(imgs=intersubj_imgs,
+                                                            conf=conf,
+                                                            lsq12_dir=lsq12_directory
+                                                            #, like={atlas_from_init_model_at_this_tp}
+                                                            )
     ## within-subject registration
     def intrasubject_registrations(subj):
         # don't need if lsq12_nlin acts on a map with values being imgs

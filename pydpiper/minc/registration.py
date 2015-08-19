@@ -355,15 +355,29 @@ def mincANTS(source, target, conf, transform=None):
                                     xfm=xfm,
                                     resampled=resampled))
 
-def mincANTS_NLIN(imgs, avg, confs):
-    # TODO fold generations into conf; change number of iterations per generation
+def lsq12_NLIN_build_model(...):
+    raise NotImplemented
+
+def NLIN_build_model(imgs, initial_target, reg_method, nlin_dir, confs):
+    functions = { 'mincANTS'  : mincANTS_NLIN,
+                  'minctracc' : minctracc_NLIN }
+
+    function  = functions[reg_method]  #...[conf.nlin_reg_method] ???
+
+    return function(imgs=imgs, initial_target=initial_target, nlin_dir=nlin_dir, confs=confs)
+
+def mincANTS_NLIN_build_model(imgs, initial_target, nlin_dir, confs):
     s = Stages()
+    avg = initial_target
     avg_imgs = []
     for i, conf in enumerate(confs):
         xfms = [s.defer(mincANTS(source=img, target=avg, conf=conf)) for img in imgs]
         avg  = s.defer(mincaverage([xfm.resampled for xfm in xfms], name='nlin-%d' % i, output_dir='nlin'))
         avg_imgs.append(avg)
     return Result(stages=s, output=Registration(xfms=xfms, avg_img=avg, avg_imgs=avg_imgs))
+
+#def multilevel_registration(source, target, registration_function, conf, curr_dir, transform=None):
+#    ...
 
 def multilevel_minctracc(source, target, conf, curr_dir, transform=None):
     # TODO fold curr_dir into conf?
@@ -425,16 +439,33 @@ MinctraccConf = namedtuple('MinctraccConf', ['transform_type', 'w_translations',
 LSQ12_default_conf = MultilevelMinctraccConf(transform_type='lsq12', resolution = NotImplemented,
   single_gen_confs = [])
 
-"""Pairwise lsq12 registration, returning array of transforms and an average image"""
+""" Pairwise lsq12 registration, returning array of transforms and an average image
+    Assumption: given that this is a pairwise registration, we assume that all the input
+                files to this function have the same shape (i.e. resolution, and dimension sizes.
+                This allows us to use any of the input files as the likefile for resampling if
+                none is provided. """
 # TODO all this does is call multilevel_pairwise_minctracc and then return an average; fold into that procedure?
 # TODO eliminate/provide default val for resolutions, move resolutions into conf, finish conf ...
-def lsq12(imgs, conf, curr_dir=".", like=None):
+def lsq12_pairwise(imgs, conf, lsq12_dir, like=None):
     output_dir = os.path.join(curr_dir, 'lsq12')
     #conf.transform_type='-lsq12' # hack ... copy? or set external to lsq12 call ? might be better
     p = Stages()
     xfms = p.defer(multilevel_pairwise_minctracc(imgs=imgs, conf=conf, like=like, curr_dir=output_dir))
     avg_img  = p.defer(mincaverage([x.resampled for x in xfms], output_dir=output_dir))
     return Result(stages = p, output = Registration(avg_imgs=[avg_img], avg_img=avg_img, xfms=xfms))
+
+""" This is a direct copy of lsq12_pairwise, with the only difference being that
+    that takes dictionaries as input for the imgs, and returns the xfmhandlers as
+    dictionaries as well. This is necessary (amongst others) for the registration_chain
+    as using dictionaries is the easiest way to keep track of the input files. """
+def lsq12_pairwise_on_dictionaries(imgs, conf, lsq12_dir, like=None):
+    l  = [(k,v) for k, v in sorted(m.iteritems())]
+    ks = [k for k, _ in l]
+    vs = [v for _, v in l]
+    stages, outputs = lsq12(imgs=vs, conf=conf, curr_dir=curr_dir, like=like)
+    return Result(stages=stages, outputs=Registration(avg_imgs=outputs.avg_imgs,
+                                                      avg_img=outputs.avg_img,
+                                                      xfms=dict(zip(ks, outputs.xfms))))
 
 def mincaverage(imgs, name="average", output_dir='.'):
     if len(imgs) == 0:
