@@ -252,7 +252,7 @@ class pipelineExecutor(object):
         # -- perhaps options.mem should be renamed
         # options.max_mem since this represents a per-node
         # limit (or at least a per-executor limit)
-        logger.debug("memNeeded: %.3fG", memNeeded)
+        logger.debug("memNeeded: %s", memNeeded)
         self.mem = memNeeded or options.mem
         logger.debug("self.mem = %0.2fG", self.mem)
         if self.mem > options.mem:

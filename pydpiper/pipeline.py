@@ -9,6 +9,7 @@ import signal
 import socket
 import time
 import re
+import resource
 from datetime import datetime
 from subprocess import call, check_output
 from shlex import split
@@ -162,7 +163,7 @@ class Pipeline(object):
     # setting a bunch of instance variables after __init__ - the presence of a method
     # called `initialize` should be a hint that all is perhaps not well, but perhaps
     # there is indeed some information legitimately unavailable when we first construct
-    def __init__(self,options=None):
+    def __init__(self, options=None):
         # the core pipeline is stored in a directed graph. The graph is made
         # up of integer indices
         self.G = nx.DiGraph()
@@ -173,6 +174,10 @@ class Pipeline(object):
         self.runnable = set()
         # an array to keep track of stage memory requirements
         self.mem_req_for_runnable = []
+        # a hideous hack; the idea is that after constructing the underlying graph,
+        # a pipeline running executors locally will measure its own maxRSS (once)
+        # and subtract this from the amount of memory claimed available for use on the node
+        self.memAvail = None
         self.currently_running_stages = set()
         # the current stage counter
         self.counter = 0
@@ -212,7 +217,7 @@ class Pipeline(object):
             if not self.outputDir:
                 self.outputDir = os.getcwd()
             # redirect the standard output to a text file
-            serverLogFile = os.path.join(self.outputDir,self.options.pipeline_name + '_server_log_in_text')
+            serverLogFile = os.path.join(self.outputDir,self.options.pipeline_name + '_server_stdout.log')
             if self.options.queue_type == "pbs" and self.options.local:
                 sys.stdout = open(serverLogFile, 'a', 1) # 1 => line buffering
         
@@ -564,8 +569,8 @@ class Pipeline(object):
 
         # exit if there are still stages that need to be run, 
         # but when there are no runnable nor any running stages left
-        if (len(self.runnable) == 0 and
-            len(self.currently_running_stages) == 0
+        if (len(self.runnable) == 0
+            and len(self.currently_running_stages) == 0
             and len(self.failedStages) > 0):
             logger.info("ERROR: no more runnable stages, however not all stages have finished. Going to shut down.")
             print("\nERROR: no more runnable stages, however not all stages have finished. Going to shut down.\n")
@@ -592,7 +597,7 @@ class Pipeline(object):
           # the latter choice might lead to the system
           # running indefinitely with no jobs
           (self.number_launched_and_waiting_clients + len(self.clients) == 0 and
-          self.executor_memory_required(self.runnable) > self.options.mem)):
+          self.executor_memory_required(self.runnable) > self.memAvail)):
             msg = "Shutting down due to jobs which require more memory (%.2fG) than available anywhere." % self.executor_memory_required(self.runnable)
             print(msg)
             logger.warn(msg)
@@ -631,18 +636,18 @@ class Pipeline(object):
             memNeeded = self.executor_memory_required(self.runnable)
             # RAM needed to run `proc` most expensive jobs (not the ideal choice):
             memWanted = sum(sorted(self.runnable, key=lambda i: -self.stages[i].mem)[0:self.options.proc-1])
-            if memNeeded > self.options.mem:
+            if memNeeded > self.memAvail:
                 msg = "A stage requires %.2fG of memory to run, but max allowed is %.2fG" \
-                        % (memNeeded, self.options.mem)
+                        % (memNeeded, self.memAvail)
                 logger.error(msg)
                 print(msg)
             else:
                 if self.options.greedy:
-                    mem = self.options.mem
-                elif memWanted <= self.options.mem:
+                    mem = self.memAvail
+                elif memWanted <= self.memAvail:
                     mem = memWanted
                 else:
-                    mem = self.options.mem #memNeeded?
+                    mem = self.memAvail #memNeeded?
                 self.launchExecutorsFromServer(executors_to_launch, mem)
         if self.options.monitor_heartbeats:
             # look for dead clients and requeue their jobs
@@ -677,7 +682,7 @@ class Pipeline(object):
             return 0
 
         if (len(self.runnable) > 0 and
-            self.executor_memory_required(self.runnable) > self.options.mem):
+            self.executor_memory_required(self.runnable) > self.memAvail):
             # we might still want to launch executors for the stages with smaller
             # requirements
             return 0
@@ -824,6 +829,15 @@ def launchServer(pipeline, options):
 
     # expensive, so only create for pipelines that will actually run
     pipeline.shutdown_ev = Event()
+
+    # for ideological reasons this should be live in a method, but pipeline init is
+    # rather baroque anyway, and arguably launchServer/pipelineDaemon ought to a single method
+    # with cleaned-up initialization
+    executors_local = pipeline.options.local or (pipeline.options.queue_type is None)
+    if executors_local:
+        pipeline.memAvail = pipeline.options.mem - (float(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss) / 10**6)  # 2^20?
+    else:
+        pipeline.memAvail = pipeline.options.mem
     
     # is the server going to be verbose or not?
     if options.verbose:
@@ -893,6 +907,7 @@ def launchServer(pipeline, options):
         def loop():
             try:
                 logger.debug("Auxiliary loop started")
+                logger.debug("memory limit: %d; available after server overhead: %f" % (p.options.mem, p.memAvail))
                 while p.continueLoop():
                     p.manageExecutors()
                     pipeline.shutdown_ev.wait(LOOP_INTERVAL)
@@ -993,5 +1008,6 @@ def pipelineDaemon(pipeline, options, programName=None):
             launchServer(pipeline, options)
     except:
         logger.exception("Exception (=> quitting): ")
-    finally:
-        sys.exit(0)
+        raise
+    #finally:
+    #    sys.exit(0)
