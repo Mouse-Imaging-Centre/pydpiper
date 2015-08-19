@@ -28,6 +28,7 @@ Pyro4.config.SERVERTYPE = pe.Pyro4.config.SERVERTYPE
 
 LOOP_INTERVAL = 5
 STAGE_RETRY_INTERVAL = 1
+SUBDEBUG = 5
 
 logger = logging.getLogger(__name__)
 
@@ -464,7 +465,7 @@ class Pipeline(object):
                 if not s.isFinished():
                     canRun = False
                     break
-        logger.debug("Stage " + str(index) + " Runnable: " + str(canRun))
+        logger.log(SUBDEBUG, "Stage " + str(index) + " Runnable: " + str(canRun))
         return canRun
 
     def setStageFinished(self, index, clientURI, save_state = True, checking_pipeline_status = False):
@@ -474,7 +475,7 @@ class Pipeline(object):
         # in that case, we can not remove the stage from the list of running
         # jobs, because there is none.
         if checking_pipeline_status:
-            logger.debug("Already finished stage " + str(index))
+            logger.log(SUBDEBUG, "Already finished stage " + str(index))
             self.stages[index].status = "finished"
         else:
             logger.info("Finished Stage " + str(index) + ": " + str(self.stages[index]))
@@ -539,7 +540,7 @@ class Pipeline(object):
 
     def enqueue(self, i):
         """If stage cannot be run due to insufficient mem/procs, executor returns it to the runnable set"""
-        logger.debug("Queueing stage %d", i)
+        logger.log(SUBDEBUG, "Queueing stage %d", i)
         self.runnable.add(i)
         for f in self.stages[i].runnable_hooks:
             f()
@@ -907,7 +908,7 @@ def launchServer(pipeline, options):
         def loop():
             try:
                 logger.debug("Auxiliary loop started")
-                logger.debug("memory limit: %d; available after server overhead: %f" % (p.options.mem, p.memAvail))
+                logger.debug("memory limit: %dG; available after server overhead: %.4fG" % (pipeline.options.mem, pipeline.memAvail))
                 while p.continueLoop():
                     p.manageExecutors()
                     pipeline.shutdown_ev.wait(LOOP_INTERVAL)
