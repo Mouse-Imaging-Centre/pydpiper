@@ -159,6 +159,13 @@ class CmdStage(PipelineStage):
     def __repr__(self):
         return(" ".join(self.cmd))
 
+"""A graph with no edge information; see networkx/classes/digraph.py"""
+class ThinGraph(nx.DiGraph):
+    all_edge_dict = {'weight': 1}
+    def single_edge_dict(self):
+        return self.all_edge_dict
+        edge_attr_dict_factory = single_edge_dict
+    
 class Pipeline(object):
     # TODO the way we initialize a pipeline is currently a bit gross, e.g.,
     # setting a bunch of instance variables after __init__ - the presence of a method
@@ -167,7 +174,8 @@ class Pipeline(object):
     def __init__(self, options=None):
         # the core pipeline is stored in a directed graph. The graph is made
         # up of integer indices
-        self.G = nx.DiGraph()
+        self.G = ThinGraph()
+        self.unfinished_pred_counts = {}
         # an array of the actual stages (PipelineStage objects)
         self.stages = []
         self.nameArray = []
@@ -332,23 +340,10 @@ class Pipeline(object):
 
     def computeGraphHeads(self):
         """adds stages with no incomplete predecessors to the runnable queue"""
-        graphHeads = []
-        for i in self.G.nodes_iter():
-            if self.stages[i].isFinished() == False:
-                """ either it has 0 predecessors """
-                if len(self.G.predecessors(i)) == 0:
-                    self.enqueue(i)
-                    graphHeads.append(i)
-                """ or all of its predecessors are finished """
-                if len(self.G.predecessors(i)) != 0:
-                    predfinished = True
-                    for j in self.G.predecessors(i):
-                        if self.stages[j].isFinished() == False:
-                            predfinished = False
-                    if predfinished == True:
-                        self.enqueue(i)
-                        graphHeads.append(i)
+        graphHeads = filter(lambda n: self.unfinished_pred_counts[n] == 0,
+                            self.G.nodes_iter())
         logger.info("Graph heads: " + str(graphHeads))
+        return graphHeads # TODO call \ix -> self.enqueue ix on these
     def getStage(self, i):
         """given an index, return the actual pipelineStage object"""
         return(self.stages[i])
@@ -455,33 +450,41 @@ class Pipeline(object):
 
     def checkIfRunnable(self, index):
         """stage added to runnable set if all predecessors finished"""
-        canRun = True
         logger.debug("Checking if stage " + str(index) + " is runnable ...")
-        if self.stages[index].isFinished():
-            canRun = False
-        else:
-            for i in self.G.predecessors(index):              
-                s = self.getStage(i)
-                if not s.isFinished():
-                    canRun = False
-                    break
+        canRun = (not self.stages[index].isFinished()) \
+                 and self.unfinished_pred_counts[index] == 0
         logger.log(SUBDEBUG, "Stage " + str(index) + " Runnable: " + str(canRun))
         return canRun
 
-    def setStageFinished(self, index, clientURI, save_state = True, checking_pipeline_status = False):
+    def setStageFinished(self, index, clientURI, save_state = True,
+                         checking_pipeline_status = False):
         """given an index, sets corresponding stage to finished and adds successors to the runnable set"""
+
+        s = self.stages[index]
+        
+        # since we want to use refcounting (where a 'reference' is an
+        # unsatisfied dependency of a stage and 'collection' is
+        # adding to the set of runnable stages) to determine whether a stage's
+        # prerequisites have run, we make it an error for the same stage
+        # to finish more than once (alternately, we could merely avoid
+        # decrementing counts of previously finished stages, but
+        # this choice should expose bugs sooner)
+        if s.isFinished():
+            raise ValueError("Already finished stage %d" % index)
+        
         # this function can be called when a pipeline is restarted, and 
         # we go through all stages and set the finished ones to... finished... :-)
         # in that case, we can not remove the stage from the list of running
         # jobs, because there is none.
+
         if checking_pipeline_status:
             logger.log(SUBDEBUG, "Already finished stage " + str(index))
-            self.stages[index].status = "finished"
+            s.status = "finished"
         else:
             logger.info("Finished Stage " + str(index) + ": " + str(self.stages[index]))
             self.removeFromRunning(index, clientURI, new_status = "finished")
             # run any potential hooks now that the stage has finished:
-            for f in self.stages[index].finished_hooks:
+            for f in s.finished_hooks:
                 f()
         self.processedStages.append(index)
         # write out the (index, hash) pairs to disk.  We don't actually need the indices
@@ -490,6 +493,7 @@ class Pipeline(object):
         self.finished_stages_fh.write("%d,%s\n" % (index, self.stages[index].getHash()))
         self.finished_stages_fh.flush()
         for i in self.G.successors(index):
+            self.unfinished_pred_counts[i] -= 1
             if self.checkIfRunnable(i):
                 self.enqueue(i)
 
@@ -550,7 +554,14 @@ class Pipeline(object):
     def initialize(self):
         """called once all stages have been added - computes dependencies and adds graph heads to runnable set"""
         self.createEdges()
-        self.computeGraphHeads()
+        # could also set this on G itself ...
+        # FIXME use an array indexed by node ID to save space ...
+        self.unfinished_pred_counts = \
+          { n : len(filter(lambda i: not self.stages[i].isFinished(),
+                           self.G.predecessors(n)))
+            for n in self.G.nodes_iter() }
+        for n in self.computeGraphHeads():
+            self.enqueue(n)
         
     """
         Returns True unless all stages are finished, then False
