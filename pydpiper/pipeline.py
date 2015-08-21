@@ -450,7 +450,7 @@ class Pipeline(object):
 
     def checkIfRunnable(self, index):
         """stage added to runnable set if all predecessors finished"""
-        logger.debug("Checking if stage " + str(index) + " is runnable ...")
+        logger.log(SUBDEBUG, "Checking if stage " + str(index) + " is runnable ...")
         canRun = (not self.stages[index].isFinished()) \
                  and self.unfinished_pred_counts[index] == 0
         logger.log(SUBDEBUG, "Stage " + str(index) + " Runnable: " + str(canRun))
