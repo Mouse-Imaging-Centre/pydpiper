@@ -175,6 +175,8 @@ class Pipeline(object):
         # the core pipeline is stored in a directed graph. The graph is made
         # up of integer indices
         self.G = ThinGraph()
+        # a map from indices to the number of unfulfilled prerequisites
+        # of the corresponding graph node (will be populated later -- __init__ is a misnomer)
         self.unfinished_pred_counts = []
         # an array of the actual stages (PipelineStage objects)
         self.stages = []
@@ -194,8 +196,7 @@ class Pipeline(object):
         self.outputhash = {}
         # a hash per stage - computed from inputs and outputs or whole command
         self.stage_dict = {}
-        # an array containing stages that have been (successfully) processed
-        self.processedStages = []
+        self.num_finished_stages = 0
         self.failedStages = []
         # location of backup files for restart if needed
         self.backupFileLocation = None
@@ -247,7 +248,7 @@ class Pipeline(object):
         return len(self.stages)
 
     def getNumberProcessedStages(self):
-        return len(self.processedStages)
+        return self.num_finished_stages
 
     def getNumberOfRunningClients(self):
         return len(self.clients)
@@ -323,7 +324,7 @@ class Pipeline(object):
         print("Total number of stages in the pipeline: ", len(self.stages))
                  
     def printNumberProcessedStages(self):
-        print("Number of stages already processed:     ", len(self.processedStages))
+        print("Number of stages already processed:     ", self.num_finished_stages)
                   
     def createEdges(self):
         """computes stage dependencies by examining their inputs/outputs"""
@@ -412,7 +413,7 @@ class Pipeline(object):
             return ("run_stage", index)
 
     def allStagesCompleted(self): 
-        return len(self.processedStages) == len(self.stages) 
+        return self.num_finished_stages == len(self.stages) 
 
     def addRunningStageToClient(self, clientURI, index):
         try:
@@ -486,7 +487,7 @@ class Pipeline(object):
             # run any potential hooks now that the stage has finished:
             for f in s.finished_hooks:
                 f()
-        self.processedStages.append(index)
+        self.num_finished_stages += 1
         # write out the (index, hash) pairs to disk.  We don't actually need the indices
         # for anything (in fact, the restart code in skip_completed_stages is resilient 
         # against an arbitrary renumbering of stages), but a human-readable log is somewhat useful.
@@ -578,11 +579,14 @@ class Pipeline(object):
             logger.debug("Shutdown event is set ... quitting")
             return False
 
+        elif self.allStagesCompleted():
+            logger.info("All stages complete ... done")
+            return False
+
         # exit if there are still stages that need to be run, 
         # but when there are no runnable nor any running stages left
-        if (len(self.runnable) == 0
-            and len(self.currently_running_stages) == 0
-            and len(self.failedStages) > 0):
+        elif (len(self.runnable) == 0
+            and len(self.currently_running_stages) == 0):
             logger.info("ERROR: no more runnable stages, however not all stages have finished. Going to shut down.")
             print("\nERROR: no more runnable stages, however not all stages have finished. Going to shut down.\n")
             sys.stdout.flush()
@@ -592,16 +596,18 @@ class Pipeline(object):
         # 1) there are stages that can be run, and
         # 2) there are no running nor waiting executors, and
         # 3) the number of lost executors has exceeded the number of allowed failed execturs
-        if(len(self.runnable) > 0 and 
-           (self.number_launched_and_waiting_clients + len(self.clients)) == 0 and 
-           self.failed_executors > self.options.max_failed_executors):             
-            msg = "Error: %d executors have died. This is more than the number of allowed failed executors as set by the flag: --max-failed-executors. Can not spawn new ones. Exiting..." % self.failed_executors
+        elif (len(self.runnable) > 0 and 
+              (self.number_launched_and_waiting_clients + len(self.clients)) == 0 and 
+              self.failed_executors > self.options.max_failed_executors):             
+            msg = ("Error: %d executors have died. This is more than the number"
+                   "(%d) allowed by --max-failed-executors.  No executors remain; exiting..."
+                   % (self.failed_executors, self.options.max_failed_executors))
             print(msg)
             logger.warn(msg)
             return False
 
         # TODO combine with above clause?
-        if ((len(self.runnable) > 0) and
+        elif ((len(self.runnable) > 0) and
           # require no running jobs rather than no clients
           # since in some configurations (e.g., currently SciNet config has
           # the server-local executor shut down only when the server does)
@@ -612,10 +618,6 @@ class Pipeline(object):
             msg = "Shutting down due to jobs which require more memory (%.2fG) than available anywhere." % self.executor_memory_required(self.runnable)
             print(msg)
             logger.warn(msg)
-            return False
-
-        if self.allStagesCompleted():
-            logger.info("All stages complete ... done")
             return False
         else:
             return True
@@ -725,7 +727,7 @@ class Pipeline(object):
             raise
         
     def getProcessedStageCount(self):
-        return len(self.processedStages)
+        return self.num_finished_stages
 
     def registerClient(self, clientURI, maxmemory):
         # Adds new client (represented by a URI string)
@@ -770,7 +772,6 @@ class Pipeline(object):
         except:
             logger.info("Finished stages log doesn't exist or is corrupt.")
             return
-        # processedStages was read from finished_stages_fh, so:
         self.finished_stages_fh = open(self.backupFileLocation, 'w')
         runnable  = []
         completed = 0
@@ -1005,7 +1006,7 @@ def pipelineDaemon(pipeline, options, programName=None):
         sys.exit()
    
     logger.debug("Prior to starting server, total stages %i. Number processed: %i.", 
-                 len(pipeline.stages), len(pipeline.processedStages))
+                 len(pipeline.stages), pipeline.num_finished_stages)
     logger.debug("Number of stages in runnable queue: %i",
                  len(pipeline.runnable))
     
