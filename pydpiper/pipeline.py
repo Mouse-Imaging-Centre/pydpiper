@@ -648,7 +648,12 @@ class Pipeline(object):
             # RAM needed to run a single job:
             memNeeded = self.executor_memory_required(self.runnable)
             # RAM needed to run `proc` most expensive jobs (not the ideal choice):
-            memWanted = sum(sorted(self.runnable, key=lambda i: -self.stages[i].mem)[0:self.options.proc-1])
+            memWanted = sum(sorted(map(lambda i: self.stages[i].mem,
+                                       self.runnable),
+                                   key = lambda x: -x)[0:self.options.proc])
+            logger.debug("wanted: %s" % memWanted)
+            logger.debug("needed: %s" % memNeeded)
+                
             if memNeeded > self.memAvail:
                 msg = "A stage requires %.2fG of memory to run, but max allowed is %.2fG" \
                         % (memNeeded, self.memAvail)
@@ -842,9 +847,9 @@ def launchServer(pipeline, options):
     # expensive, so only create for pipelines that will actually run
     pipeline.shutdown_ev = Event()
 
-    # for ideological reasons this should be live in a method, but pipeline init is
-    # rather baroque anyway, and arguably launchServer/pipelineDaemon ought to a single method
-    # with cleaned-up initialization
+    # for ideological reasons this should live in a method, but pipeline init is
+    # rather baroque anyway, and arguably launchServer/pipelineDaemon ought to be
+    # a single method with cleaned-up initialization
     executors_local = pipeline.options.local or (pipeline.options.queue_type is None)
     if executors_local:
         pipeline.memAvail = pipeline.options.mem - (float(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss) / 10**6)  # 2^20?

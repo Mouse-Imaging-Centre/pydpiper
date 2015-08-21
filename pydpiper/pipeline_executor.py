@@ -65,7 +65,7 @@ def addExecutorArgumentGroup(parser):
                        help="Name of the SGE pe, if any. [Default = %(default)s]")
     group.add_argument("--greedy", dest="greedy",
                        action="store_true", default=False,
-                       help="Request the full amount of RAM specified by --mem rather than the (lesser) amount needed by runnable jobs.  Always use this if your executor is assigned a full node.")
+                       help="Request the full amount of RAM specified by --mem rather than the (lesser) amount needed by runnable jobs.  Always use this if your executor is assigned a full node.") #TODO mutually exclusive --non-greedy
     group.add_argument("--ppn", dest="ppn", 
                        type=int, default=8,
                        help="Number of processes per node. Used when --queue-type=pbs. [Default = %(default)s].")
