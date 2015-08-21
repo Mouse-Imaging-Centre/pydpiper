@@ -175,7 +175,7 @@ class Pipeline(object):
         # the core pipeline is stored in a directed graph. The graph is made
         # up of integer indices
         self.G = ThinGraph()
-        self.unfinished_pred_counts = {}
+        self.unfinished_pred_counts = []
         # an array of the actual stages (PipelineStage objects)
         self.stages = []
         self.nameArray = []
@@ -556,10 +556,9 @@ class Pipeline(object):
         self.createEdges()
         # could also set this on G itself ...
         # FIXME use an array indexed by node ID to save space ...
-        self.unfinished_pred_counts = \
-          { n : len(filter(lambda i: not self.stages[i].isFinished(),
-                           self.G.predecessors(n)))
-            for n in self.G.nodes_iter() }
+        self.unfinished_pred_counts = [ len(filter(lambda i: not self.stages[i].isFinished(),
+                                                   self.G.predecessors(n)))
+                                        for n in xrange(self.G.order()) ]
         for n in self.computeGraphHeads():
             self.enqueue(n)
         
