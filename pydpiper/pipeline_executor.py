@@ -89,7 +89,7 @@ def addExecutorArgumentGroup(parser):
                        help="The number of minutes an executor is allowed to continuously sleep, i.e. wait for an available job, while active on a compute node/farm before it kills itself due to resource hogging. [Default = %(default)s]")
     group.add_argument("--time-to-accept-jobs", dest="time_to_accept_jobs", 
                        type=int,
-                       help="The number of minutes after which an executor will not accept new jobs anymore. This can be useful when running executors on a batch system where other (competing) jobs run for a limited amount of time. The executors can behave in a similar way by given them a rough end time. [Default = %(default)s]")
+                       help="The number of minutes after which an executor will not accept new jobs anymore. This can be useful when running executors on a batch system where other (competing) jobs run for a limited amount of time. The executors can behave in a similar way by giving them a rough end time. [Default = %(default)s]")
     group.add_argument('--local', dest="local", action='store_true', default=False, help="Don't submit anything to any specified queueing system but instead run as a server/executor")
     group.add_argument("--config-file", type=str, metavar='config_file', is_config_file=True,
                        required=False, help='Config file location')
@@ -294,6 +294,7 @@ class pipelineExecutor(object):
         self.serverURI = None
         self.current_running_job_pids = []
         self.registered_with_server = False
+        self.heartbeat_thread_crashed = False
         # we associate an event with each executor which is set when jobs complete.
         # in the future it might also be set by the server, and we might have more
         # than one event (for reclaiming, server messages, ...)
@@ -475,8 +476,13 @@ class pipelineExecutor(object):
                 time.sleep(HEARTBEAT_INTERVAL)
         except:
             logger.exception("Heartbeat thread crashed: ")
-            # TODO should this take down the executor since globally Pydpiper
-            # is now in an inconsistent state?
+            # this will take down the executor to avoid the case
+            # where an executor wastes time processing jobs which the server
+            # considers lost; there might be a better way to do this
+            # (re-register/restart heartbeat and notify server of existing
+            # jobs? quite complicated ...), and it could be done
+            # 'atomically' using an event for better guarantees ...
+            self.heartbeat_thread_crashed = True
 
     # use an event set/timeout system to run the executor mainLoop -
     # we might want to pass some extra information in addition to waking the system
@@ -503,6 +509,10 @@ class pipelineExecutor(object):
         # (unless, in the future, we allow clients to connect to switch allegiances
         # to other servers)
         self.free_resources()
+
+        if self.heartbeat_thread_crashed:
+            logger.debug("Heartbeat thread crashed; quitting")
+            return False
 
         if self.idle():
             self.idle_time += self.current_time - self.prev_time

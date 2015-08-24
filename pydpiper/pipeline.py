@@ -556,7 +556,6 @@ class Pipeline(object):
         """called once all stages have been added - computes dependencies and adds graph heads to runnable set"""
         self.createEdges()
         # could also set this on G itself ...
-        # FIXME use an array indexed by node ID to save space ...
         self.unfinished_pred_counts = [ len(filter(lambda i: not self.stages[i].isFinished(),
                                                    self.G.predecessors(n)))
                                         for n in xrange(self.G.order()) ]
@@ -585,6 +584,8 @@ class Pipeline(object):
 
         # exit if there are still stages that need to be run, 
         # but when there are no runnable nor any running stages left
+        # (e.g., if some stages have repeatedly failed)
+        # TODO this might indicate a bug, so better reporting would be useful
         elif (len(self.runnable) == 0
             and len(self.currently_running_stages) == 0):
             logger.info("ERROR: no more runnable stages, however not all stages have finished. Going to shut down.")
@@ -850,8 +851,11 @@ def launchServer(pipeline, options):
     # for ideological reasons this should live in a method, but pipeline init is
     # rather baroque anyway, and arguably launchServer/pipelineDaemon ought to be
     # a single method with cleaned-up initialization
-    executors_local = pipeline.options.local or (pipeline.options.queue_type is None)
+    #executors_local = pipeline.options.local or (pipeline.options.queue_type is None)
+    executors_local = pipeline.options.queue_type in [None, 'pbs']
     if executors_local:
+        # measured once -- we assume that server memory usage will be
+        # roughly constant at this point
         pipeline.memAvail = pipeline.options.mem - (float(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss) / 10**6)  # 2^20?
     else:
         pipeline.memAvail = pipeline.options.mem
