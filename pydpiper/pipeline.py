@@ -164,7 +164,7 @@ class ThinGraph(nx.DiGraph):
     all_edge_dict = {'weight': 1}
     def single_edge_dict(self):
         return self.all_edge_dict
-        edge_attr_dict_factory = single_edge_dict
+    edge_attr_dict_factory = single_edge_dict
     
 class Pipeline(object):
     # TODO the way we initialize a pipeline is currently a bit gross, e.g.,
