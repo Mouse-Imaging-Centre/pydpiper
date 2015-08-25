@@ -9,7 +9,7 @@ from atoms_and_modules.registration_file_handling import RegistrationPipeFH
 import atoms_and_modules.registration_functions as rf
 from atoms_and_modules.registration_functions import returnFinestResolution
 import atoms_and_modules.minc_parameters as mp
-from atoms_and_modules.minc_atoms import blur, mincresample, mincANTS, mincAverage, minctracc
+from atoms_and_modules.minc_atoms import blur, mincresample, mincANTS, average, minctracc
 from atoms_and_modules.stats_tools import addStatsArguments, CalcStats
 import sys
 import logging
@@ -187,10 +187,12 @@ class initializeAndRunNLIN(object):
                                                     basedir=self.targetOutputDir)
             self.outputAvg = self.targetAvg
         if self.createAvg:
-            avg = mincAverage(self.inputFiles, 
-                              self.initialTarget, 
-                              output=self.outputAvg,
-                              defaultDir=self.targetOutputDir)
+            avg = average(self.inputFiles, 
+                          self.initialTarget, 
+                          output=self.outputAvg,
+                          defaultDir=self.targetOutputDir,
+                          shell_cmd='pmincaverage')
+                          #FIXME hard-coded pmincaverage
             self.p.addStage(avg)
             
     def initNlinModule(self):
@@ -288,7 +290,8 @@ class NLINBase(object):
             """
             logBase = removeBaseAndExtension(nlinOutput)
             avgLog = createLogFile(nlinFH.logDir, logBase)
-            avg = mincAverage(filesToAvg, nlinOutput, logFile=avgLog)
+            # FIXME hard-coded pmincaverage, hacked queue_type
+            avg = average(filesToAvg, nlinOutput, queue_type=None, logFile=avgLog, shell_cmd='pmincaverage')
             self.p.addStage(avg)
             """Reset target for next iteration and add to array"""
             self.target = nlinFH
