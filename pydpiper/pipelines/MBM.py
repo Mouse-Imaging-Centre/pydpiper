@@ -38,7 +38,7 @@ def MBM(imgs, conf):
     # for the kidney tips, etc...
     pipeline_dir = os.path.join('.', conf.pipeline_name)
     #curr_dir = os.path.join(os.getcwd(), conf.pipeline_name, '/processed')
-    imgs = map(lambda name: MincAtom(name, curr_dir=pipeline_dir_dir), images)
+    imgs = map(lambda name: MincAtom(name, curr_dir=pipeline_dir), images)
 
     lsq6_stages = Stages()
     lsq6_result = lsq6_stages.defer(lsq6(imgs, LSQ6_conf, curr_dir=pipeline_dir))

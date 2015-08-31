@@ -5,7 +5,20 @@ from traits.api import *
 from .util import explode, NotProvided
 
 class FileAtom(HasTraits):
-
+    """
+        What is stored:
+        self.orig_path -- true input file, full file name and path (/path/filename.ext), can be None
+        self.dir
+        self.filename_wo_ext
+        self.ext
+        
+        self.output_dir - in terms of the old code, this is the directory that will hold
+                          the resampled/, tmp/, stats-volume/ etc. directories.
+        
+        
+        
+    """
+    #TODO: change curr_dir and work_dir to output_dir
     def __init__(self, name, orig_name=NotProvided, curr_dir=None, work_dir=None):
         # NOTE curr_dir, work_dir: the idea here is that a pipeline function will need to know where
         # to locate its files, and this information needs to be passed 'down' from above.  The question
@@ -18,6 +31,7 @@ class FileAtom(HasTraits):
         # FIXME this isn't preserved by copy_with - could change self.name to a property
         # NB one reason to have the atoms be classes rather than fns is one could create an __init__ which
         # absolutizes/canonicalizes the directories ...
+        # TODO: self.dir, self.filename_wo_ext, self.ext = explode(os.path.abspath(name)) # and fix remaing code
         self._path_pieces = explode(os.path.abspath(name))
         # TODO clearly actual curr_dir, not curr_dir arg (or user will be confused), which is therefore probably misnamed
         if orig_name is NotProvided:
@@ -60,8 +74,10 @@ class FileAtom(HasTraits):
         # but no real extension (e.g., foo_fwhm0.056)
         _, name, _ = self._path_pieces
         return name
+    # this secretly means we have self.name
     name = property(get_name, "`name` property")
 
+    # TODO: rename newname_with_fn
     def newname_with(self, fn, ext=None, subdir=None):
         # TODO rename to something more descriptive/less similar to newname_with_suffix, e.g., newname_using, newname_from(_fn), *.with_suffix,* ...
         """Create a new FileAtom from one representing <dirs>/<file><.ext>

@@ -4,8 +4,8 @@ from   collections import namedtuple
 import os.path
 import shlex
 
-from atom.api import (Atom, Bool, Int, Float,
-                      Enum, Tuple, Instance)
+from atom.api import (Atom, Bool, Int, Float, List,
+                      Enum, Tuple, Instance, Str)
 
 from pydpiper.minc.files            import MincAtom
 from pydpiper.minc.containers       import XfmHandler, Registration
@@ -99,7 +99,7 @@ def concat(ts, extra_flags=[]): # TODO remove extra flags OR make ['-sinc'] defa
                                     xfm=t,
                                     resampled=res))
 
-def nu_estimate(src): # mnc -> result(..., mnc)
+def nu_estimate(src): # MincAtom -> Result(stages=Set(Stages), MincAtom)
     out = src.newname_with_suffix("_nu_estimate", ext=".imp")
 
     # TODO finish dealing with masking as per lines 436-448 of the old LSQ6.py.  (note: the 'singlemask' option there is never used)
@@ -137,7 +137,7 @@ def inormalize(src, conf): # mnc, INormalizeConf -> result(..., mnc)
     return Result(stages=Stages([cmd]), output=out)
 
 class RotationalMinctraccConf(Atom):
-    blur                = Float(None)
+    blur                = Instance(float)
     # these could also be floats, but then ints will be converted, hence printed with decimals ...
     # TODO we could subclass `Instance` to add a `default` field instead of using `factory`/`args`/...
     resample_step       = Instance((int, float)) # can use `factory=lambda : ...` to set default
@@ -178,35 +178,35 @@ def rotational_minctracc(source, target, conf):
 
 class MinctraccConf(Atom):
     step_sizes        = Tuple((int, float), default=None)
-    use_masks         = Bool(None)
-    is_nonlinear      = Bool(None)
+    use_masks         = Instance(bool)
+    is_nonlinear      = Instance(bool)
     # linear part
     simplex           = Instance((int, float))
     transform_type    = Enum(None, 'lsq3', 'lsq6', 'lsq7', 'lsq9', 'lsq10', 'lsq12', 'procrustes')
-    tolerance         = Float(None)
+    tolerance         = Instance(float)
     w_rotations       = Tuple(float, default=None) # TODO should be Tuple((int,float),d=...) to preserve format
     w_translations    = Tuple(float, default=None) # TODO define types R3, ZorR3 for this
     w_scales          = Tuple(float, default=None) # TODO add length=3 validation
     w_shear           = Tuple(float, default=None)
     # nonlinear options
-    iterations        = Int(None)
-    use_simplex       = Bool(None)
-    stiffness         = Float(None)
-    weight            = Float(None)
-    similarity        = Float(None)
+    iterations        = Instance(int)
+    use_simplex       = Instance(bool)
+    stiffness         = Instance(float)
+    weight            = Instance(float)
+    similarity        = Instance(float)
     objective         = Enum(None,'xcorr','diff','sqdiff','label',
                              'chamfer','corrcoeff','opticalflow')
     lattice_diameter  = Tuple(float, default=None)
-    sub_lattice       = Int(None)
+    sub_lattice       = Instance(int)
     max_def_magnitude = Tuple((int, float), default=None)
 
 class LinearMinctraccConf(Atom):
     """Generates a call to `minctracc` for linear registration only."""
-    step_sizes = Tuple((int, float), default=None)
-    use_masks  = Bool(None)
+    step_sizes        = Tuple((int, float), default=None)
+    use_masks         = Instance(bool)
     simplex           = Instance((int, float))
     transform_type    = Enum(None, 'lsq3', 'lsq6', 'lsq7', 'lsq9', 'lsq10', 'lsq12', 'procrustes')
-    tolerance         = Float(None)
+    tolerance         = Instance(float)
     w_rotations       = Tuple(float, default=None) # TODO should be Tuple((int,float),d=...) to preserve format
     w_translations    = Tuple(float, default=None) # TODO define types R3, ZorR3 for this
     w_scales          = Tuple(float, default=None) # TODO add length=3 validation
@@ -302,28 +302,35 @@ def minctracc(source, target, conf, transform=None):
               [InputFile(source.path), InputFile(target.path), OutputFile(out_xfm.path)]))
     return Result(stages=Stages([stage]), output=out_xfm)
 
-MincANTSConf = namedtuple('MincANTSConf',
-  ['transformation_model', 'regularization', 'iterations', 'gradient', 'use_mask',
-   'similarity_metric', 'weight', 'radius_or_histo', 'blurs'])
-mincANTS_default_conf = MincANTSConf(
-  #"""1st elt is for img, 2nd is for gradient - this representation is a bit silly"""
-  iterations = "100x100x100x150",
-  transformation_model = "'Syn[0.1]'",
-  regularization = "'Gauss[2,1]'",
-  similarity_metric = ['CC','CC'],
-  weight = [1,1],
-  blurs = [None, 0.056],
-  radius_or_histo = [3,3],
-  gradient = False, #TODO ???
-  use_mask = True)
+class SimilarityMetricConf(Atom):
+    metric             = Str("CC")
+    weight             = Float(1)
+    blur_resolution    = Instance(float)
+    radius_or_bins     = Int(3)
+    use_gradient_image = Bool(False)
+
+class MincANTSConf(Atom):
+    iterations           = Str("100x100x100x150")
+    transformation_model = Str("'Syn[0.1]'")
+    regularization       = Str("'Gauss[2,1]'")
+    use_mask             = Bool(True)
+    sim_metric_params    = List(item=SimilarityMetricConf,
+                                default = [SimilarityMetricConf(),
+                                           SimilarityMetricConf(blur_resolution=0.056,
+                                                                use_gradient_image=True)]) 
+    
+mincANTS_default_conf = MincANTSConf()
 
 def mincANTS(source, target, conf, transform=None):
     s = Stages()
     # TODO add a way to add _nlin_0 or whatever to name based on generation or whatever
     xfm = source.newname_with(lambda x: "%s_to_%s" % (source.name, target.name), ext='.xfm') #TODO fix dir, orig_name, ...
 
-    # hack:
-    subcmds = {}
+    similaritycmds = []
+    for similarity_element in conf.sim_metric_params:
+        similaritycmds.append("-m")
+        
+        subcmd = ""
     for ix, st in enumerate(['img', 'grad']):
     # no coherence enforced between 2-elt arrays and blur/grad ... make protocol/conf better e.g. parse into set or nested structure
         if conf.blurs[ix] is not None:
@@ -355,17 +362,20 @@ def mincANTS(source, target, conf, transform=None):
                                     xfm=xfm,
                                     resampled=resampled))
 
-def lsq12_NLIN_build_model(...):
-    raise NotImplemented
+#def lsq12_NLIN_build_model(...):
+#    raise NotImplemented
 
-def NLIN_build_model(imgs, initial_target, reg_method, nlin_dir, confs):
-    functions = { 'mincANTS'  : mincANTS_NLIN,
-                  'minctracc' : minctracc_NLIN }
+#def NLIN_build_model(imgs, initial_target, reg_method, nlin_dir, confs):
+#    functions = { 'mincANTS'  : mincANTS_NLIN,
+#                  'minctracc' : minctracc_NLIN }
+#
+#    function  = functions[reg_method]  #...[conf.nlin_reg_method] ???
+#
+#    return function(imgs=imgs, initial_target=initial_target, nlin_dir=nlin_dir, confs=confs)
 
-    function  = functions[reg_method]  #...[conf.nlin_reg_method] ???
-
-    return function(imgs=imgs, initial_target=initial_target, nlin_dir=nlin_dir, confs=confs)
-
+'''
+    
+'''
 def mincANTS_NLIN_build_model(imgs, initial_target, nlin_dir, confs):
     s = Stages()
     avg = initial_target
@@ -375,6 +385,30 @@ def mincANTS_NLIN_build_model(imgs, initial_target, nlin_dir, confs):
         avg  = s.defer(mincaverage([xfm.resampled for xfm in xfms], name='nlin-%d' % i, output_dir='nlin'))
         avg_imgs.append(avg)
     return Result(stages=s, output=Registration(xfms=xfms, avg_img=avg, avg_imgs=avg_imgs))
+
+
+def intrasubject_registrations(subj):
+    # don't need if lsq12_nlin acts on a map with values being imgs
+    # TODO temp configuration!!
+    test_conf = MincANTSConf(iterations = "40x30x20",
+                             transformation_model = mincANTS_default_conf.transformation_model,
+                             regularization = "'Gauss[5,1]'",
+                             similarity_metric = mincANTS_default_conf.similarity_metric,
+                             weight = mincANTS_default_conf.weight,
+                             blurs = mincANTS_default_conf.blurs,
+                             radius_or_histo = [4,4],
+                             gradient = mincANTS_default_conf.gradient,
+                             use_mask = False)
+    s = Stages()
+    timepts = list((t,img) for t,img in subj.time_pt_dict.iteritems())
+    for source_index in range(len(timepts) - 1):
+        print(timepts[source_index][1])
+        print(timepts[source_index + 1][1])
+        xfms = [s.defer(mincANTS(source=timepts[source_index][1],
+                                 target=timepts[source_index + 1][1],
+                                 conf=test_conf))]
+    return Result(stages=s, output=Registration(xfms=xfms, avg_img=None, avg_imgs=None))
+
 
 #def multilevel_registration(source, target, registration_function, conf, curr_dir, transform=None):
 #    ...
@@ -405,8 +439,24 @@ def multilevel_minctracc(source, target, conf, curr_dir, transform=None):
 #                      for (s,t) in zip(ss_blurred, transforms)]
 #    return Result(stages=p, output=transforms)
 
-"""Pairwise registration of all images"""
-def multilevel_pairwise_minctracc(imgs, conf, transforms=None, like=None, curr_dir="."):
+
+def multilevel_pairwise_minctracc(imgs, # list(MincAtom) 
+                                  conf, 
+                                  transforms=None, 
+                                  like=None, 
+                                  curr_dir="."): 
+    """
+    imgs -- should be array of MincAtoms
+    conf --
+    transforms -- 
+    Pairwise registration of all images"""
+    #check_valid_input_images(imgs)
+    #if type(imgs) != list:
+    #    raise something
+    #for element in imgs:
+    #    if element.__class__ != MincAtom
+    #        raise something
+    
     p = Stages()
     output_dir = os.path.join(curr_dir, 'pairs')
     def avg_xfm_from(src_img):
@@ -446,8 +496,8 @@ LSQ12_default_conf = MultilevelMinctraccConf(transform_type='lsq12', resolution 
                 none is provided. """
 # TODO all this does is call multilevel_pairwise_minctracc and then return an average; fold into that procedure?
 # TODO eliminate/provide default val for resolutions, move resolutions into conf, finish conf ...
-def lsq12_pairwise(imgs, conf, lsq12_dir, like=None):
-    output_dir = os.path.join(curr_dir, 'lsq12')
+def lsq12_pairwise(imgs, conf, lsq12_dir = pipeline_dir_names.lsq12, like=None):
+    output_dir = os.path.join(lsq12_dir, 'lsq12')
     #conf.transform_type='-lsq12' # hack ... copy? or set external to lsq12 call ? might be better
     p = Stages()
     xfms = p.defer(multilevel_pairwise_minctracc(imgs=imgs, conf=conf, like=like, curr_dir=output_dir))
@@ -459,11 +509,11 @@ def lsq12_pairwise(imgs, conf, lsq12_dir, like=None):
     dictionaries as well. This is necessary (amongst others) for the registration_chain
     as using dictionaries is the easiest way to keep track of the input files. """
 def lsq12_pairwise_on_dictionaries(imgs, conf, lsq12_dir, like=None):
-    l  = [(k,v) for k, v in sorted(m.iteritems())]
+    l  = [(k,v) for k, v in sorted(imgs.iteritems())]
     ks = [k for k, _ in l]
     vs = [v for _, v in l]
-    stages, outputs = lsq12(imgs=vs, conf=conf, curr_dir=curr_dir, like=like)
-    return Result(stages=stages, outputs=Registration(avg_imgs=outputs.avg_imgs,
+    stages, outputs = lsq12_pairwise(imgs=vs, conf=conf, curr_dir=lsq12_dir, like=like)
+    return Result(stages=stages, output=Registration(avg_imgs=outputs.avg_imgs,
                                                       avg_img=outputs.avg_img,
                                                       xfms=dict(zip(ks, outputs.xfms))))
 

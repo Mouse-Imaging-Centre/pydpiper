@@ -3,6 +3,7 @@ import os
 import sys
 
 from pydpiper.atoms_and_modules.LSQ12 import addLSQ12ArgumentGroup
+# TODO: remove the *! :-)
 from pydpiper.minc.registration import *
 from pydpiper.core.util import directories
 from pydpiper.minc.files import MincAtom

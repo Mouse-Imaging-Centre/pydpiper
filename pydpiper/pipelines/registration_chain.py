@@ -1,4 +1,6 @@
+#!/usr/bin/env python
 
+from   __future__ import print_function
 import csv
 from collections import defaultdict
 
@@ -6,8 +8,15 @@ from atom.api import Atom, Int, Str, Dict, Enum, Instance
 #import atom.api as atom
 
 from pydpiper.minc.analysis import determinants_at_fwhms
-from pydpiper.minc.registration import Stages
-from pydpiper.pipelines.LSQ6 import lsq6
+from pydpiper.minc.registration import Stages, mincANTS_NLIN_build_model, mincANTS_default_conf, MincANTSConf, mincANTS, intrasubject_registrations
+from pydpiper.minc.files import MincAtom
+#from pydpiper.pipelines.LSQ6 import lsq6
+
+# TODO: this might be temporary... currently only used 
+# to test the registration chain
+import sys
+# TODO: same thing here..
+import os
 
 # TODO (general for all option records, not just for the registration chain):
 # namedtuples are better than Argparse Namespaces for specification 
@@ -24,9 +33,11 @@ from pydpiper.pipelines.LSQ6 import lsq6
 
 class ChainConf(Atom):
     input_space            = Enum('native', 'lsq6', 'lsq12')
-    common_time_point      = Int(None)
+    common_time_point      = Instance(type(None),int)
     common_time_point_name = Str("common")
-    csv_file               = Str(None)
+    csv_file               = Instance(type(None), str)
+    # perhaps the following belongs in a different class...
+    stats_kernels          = Str("0.5,0.2,0.1") 
 
 class Subject(Atom):
     intersubject_registration_time_pt = Instance(int)
@@ -40,7 +51,7 @@ class Subject(Atom):
     # ugh; also, should this be type(self) == ... ?
 
     def get_intersubject_registration_image(self):
-        return self.time_pt_dict[subject.intersubjection_registration_time_pt]
+        return self.time_pt_dict[self.intersubject_registration_time_pt]
 
     intersubject_registration_image = property(get_intersubject_registration_image,
                                                'intersubject_registration_image property')
@@ -118,7 +129,8 @@ def parse_csv(rows, common_time_pt): # row iterator, int -> { subject_id(str) : 
                            "'subject_id', 'timepoint', 'filename' fields; "
                            "missing: %s" % e.message)
         else:
-            subject_info[subj_id].time_pt_dict[timepoint] = filename
+            subject_info[subj_id].time_pt_dict[timepoint] = MincAtom(name=filename,
+                                                                     orig_name=filename)
             if parse_common(row.get('is_common', '')):
                 if subject_info[subj_id].intersubject_registration_time_pt is not None:
                     raise TimePointError(
@@ -135,17 +147,17 @@ def parse_csv(rows, common_time_pt): # row iterator, int -> { subject_id(str) : 
             if common_time_pt is None:
                 raise TimePointError("no subject-specific or default inter-subject "
                                      "time point provided for subject '%s'" % s_id)
-            elif common_time_pt in s.time_pt_dict:
+            elif common_time_pt in s.time_pt_dict.keys():
                 s.intersubject_registration_time_pt = common_time_pt
-            elif common_time_pt == -1:
-                s.intersubject_registration_time_pt = s.time_pt_dict[max(s.time_pt_dict.keys())]
+            elif common_time_pt == -1 or common_time_pt == "-1":
+                s.intersubject_registration_time_pt = max(s.time_pt_dict.keys())
             else:
                 raise TimePointError("subject '%s' didn't have a scan for "
-                                     "the common time point specified (%d); "
+                                     "the common time point specified (%s); "
                                      "fix this or specify a different timepoint "
-                                     "for this subject by putting a value in an"
+                                     "for this subject by putting a value in an "
                                      "'is_common' column of your table"
-                                     % (s_id, common_time_pt))
+                                     % (s_id, str(common_time_pt)))
         else:
             if common_time_pt != s.intersubject_registration_time_pt:
                 print('note: overriding common_time_pt %d with time point %d for subject %s'
@@ -153,6 +165,13 @@ def parse_csv(rows, common_time_pt): # row iterator, int -> { subject_id(str) : 
                     
     return subject_info
     
+    #print(timepts)
+    
+    #timepts = subject_info[subj]
+    #print(timepts)
+    #raise NotImplementedError()
+
+
 # NOTE I've moved the optional lsq6 stuff outside this function to promote re-use;
 # actual call could look something like this:
 #def chain_with_optional_lsq6(inputs, options):
@@ -178,10 +197,11 @@ def chain(options):
     with open(options.csv_file, 'r') as f:
         subject_info = parse_csv(f, options.common_time_point)
     
+    if options.input_space not in ChainConf.input_space.items:
+        raise ValueError('unrecognized input space: %s; choices: %s' % (options.input_space, ChainConf.input_space.items))
+    
     if options.input_space == 'native':
-        raise NotImplemented
-    elif options.input_space not in ['lsq6', 'lsq12']:
-        raise ValueError('unrecognized input space: %s; choices: %s' % ())
+        raise NotImplementedError("We currently have not implemented the code for 'input space': %s" % options.input_space)
     
 
     
@@ -204,35 +224,68 @@ def chain(options):
     # TODO how to associate images in the above dict with their xfm ??
     # put result of LSQ6 into a map img_name => xfm
     #lsq6_xfms = s.defer(LSQ6(all_imgs, options.lsq6_conf))
-
-
-    # LSQ12/NLIN registration of common-timepoint images:
-    
     
     #{ xfm.source : xfm for xfm in lsq6_xfms}
 
-    ## intersubject registration
+    # Intersubject registration: LSQ12/NLIN registration of common-timepoint images
+    # The assumption here is that all these files are roughly aligned. Here is a toy
+    # schematic of what happens. In this example, the common timepoint is set timepoint 2: 
+    #
+    #                            ------------
+    # subject A    A_time_1   -> | A_time_2 | ->   A_time_3
+    # subject B    B_time_1   -> | B_time_2 | ->   B_time_3
+    # subject C    C_time_1   -> | C_time_2 | ->   C_time_3
+    #                            ------------
+    #                                 |
+    #                            group_wise registration on time point 2
+    #
     intersubj_imgs = { s_id : subj.intersubject_registration_image
                        for s_id, subj in subject_info.iteritems() }
-
-    conf = ....
-    lsq12_directory = ... {pipename}_{common_name}_lsq12
-
-    intersubj_xfms = lsq12_NLIN_build_model_on_dictionaries(imgs=intersubj_imgs,
-                                                            conf=conf,
-                                                            lsq12_dir=lsq12_directory
-                                                            #, like={atlas_from_init_model_at_this_tp}
-                                                            )
-    ## within-subject registration
-    def intrasubject_registrations(subj):
-        # don't need if lsq12_nlin acts on a map with values being imgs
-        #timepts = sorted(((t,img) for t,img in subj.time_pt_dict.iteritems()))
-        timepts = subject_info[subj]
-        raise NotImplemented
+    print("\nImages that are used for the intersubject registration:")
+    for subject in intersubj_imgs:
+        print("ID:   ", subject, "\nFile: ", intersubj_imgs[subject].orig_path) 
+    if options.input_space == 'lsq6':
+        raise NotImplementedError("We currently have not implemented the code for 'input space': %s" % options.input_space)
+        #intersubj_xfms = lsq12_NLIN_build_model_on_dictionaries(imgs=intersubj_imgs,
+        #                                                        conf=conf,
+        #                                                        lsq12_dir=lsq12_directory
+                                                                #, like={atlas_from_init_model_at_this_tp}
+        #                                                        )
+    elif options.input_space == 'lsq12':
+        some_temp_dir =  os.getcwd()  + "/nlin_dir_testing/"
+        test_conf = mincANTS_default_conf
+        intersubj_xfms = s.defer(mincANTS_NLIN_build_model(imgs=intersubj_imgs.values(),
+                                                   initial_target=intersubj_imgs.values()[0], # this doesn't make sense yet
+                                                   nlin_dir=some_temp_dir,
+                                                   confs=[test_conf]))
+    print("\n*** *** INTERSUBJECT STAGES *** ***\n")
+    for stage in s:
+        print(stage.to_string(),"\n")
     
+    ## within-subject registration
+    # In the toy scenario below: 
+    # subject A    A_time_1   ->   A_time_2   ->   A_time_3
+    # subject B    B_time_1   ->   B_time_2   ->   B_time_3
+    # subject C    C_time_1   ->   C_time_2   ->   C_time_3
+    # 
+    # The following registrations are run:
+    # 1) A_time_1   ->   A_time_2
+    # 2) A_time_2   ->   A_time_3
+    #
+    # 3) B_time_1   ->   B_time_2
+    # 4) B_time_2   ->   B_time_3
+    #
+    # 5) C_time_1   ->   C_time_2
+    # 6) C_time_2   ->   C_time_3    
     chain_xfms = { s_id : s.defer(intrasubject_registrations(subj))
                    for s_id, subj in subject_info.iteritems() }
     
+    print("\n*** *** INTRASUBJECT STAGES *** ***\n")
+    for stage in s:
+        print(stage.to_string(),"\n")
+    #for subject_cmd_stage in chain_xfms:
+    #    for cmd_stage in chain_xfms[subject_cmd_stage].stages:
+    #        print(cmd_stage.to_string(), "\n")
 
     # TODO n
 
@@ -240,8 +293,50 @@ def chain(options):
     #for subj_id, subj in subject_info.iteritems():
     #    pass
 
-    map_data(lambda xfm: determinants_at_fwhms(xfm, options.fwhms), subject_info)
+    # TODO temp, just to see if we now the transformation information we need
     
-    raise NotImplemented
+    print(intersubj_xfms)
+    print(chain_xfms)
+    
+    # this contains the information for all subjects
+    for s_id, subj in subject_info.iteritems():
+        print("Intersubj time point: %s" % subj.intersubject_registration_time_pt)
+        for subj_time_pt, subj_time_pt_file in subj.time_pt_dict.iteritems():
+            print("(File, timepoint): %s, %s" % (subj_time_pt_file.orig_path, subj_time_pt))
+            if subj_time_pt_file.orig_path == subj.intersubject_registration_image.orig_path:
+                # this file has the common time point transformation
+                for xfmhandler in intersubj_xfms.xfms:
+                    if xfmhandler.source == subj_time_pt_file:
+                        print(xfmhandler.xfm.get_path())
+        
+    map_data(lambda xfm: determinants_at_fwhms(xfm, options.stats_kernels), subject_info)
+    
+    #raise NotImplemented
 
 
+
+if __name__ == "__main__":
+    if len(sys.argv) < 4:
+        print("Error: running in testing mode. Provide the following: \n \n" \
+            "filename_spread.csv \n" \
+            "input_space (possibilities: native, lsq6, lsq12) \n" \
+            "string_with_blurs_for_stat_files (e.g. 0.5,0.2,0.1) \n" \
+            "(optionally) common_time_point \n")
+        sys.exit(1)
+    
+    options = ChainConf()
+    options.csv_file = sys.argv[1]
+    options.input_space = sys.argv[2]
+    options.stats_kernels = sys.argv[3]
+    if len(sys.argv) == 5:
+        options.common_time_point = int(sys.argv[4])
+    else:
+        options.common_time_point = -1
+    
+    chain(options)
+    
+    print("\nDone...\n")
+    
+    #print "Number of arguments: ", len(sys.argv)
+    #print "Argument list: ", str(sys.argv)
+    
