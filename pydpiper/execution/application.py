@@ -1,7 +1,7 @@
 from configargparse import ArgParser
 from datetime import datetime
 import time # TODO why both datetime and time?
-from pkg_resources import get_distribution
+import pkg_resources
 import logging
 import networkx as nx
 import sys
@@ -15,6 +15,9 @@ from pydpiper.core.conversion import directories
 
 from   atom.api import Atom
 import atom.api as atom
+
+PYDPIPER_VERSION = pkg_resources.get_distribution("pydpiper").version # pylint: disable=E1101
+print(PYDPIPER_VERSION)
 
 class ExecutionOptions(Atom):
     use_backup_files = Bool(True)
@@ -46,9 +49,7 @@ def addApplicationArgumentGroup(parser):
     group.add_argument("--no-execute", dest="execute",
                                action="store_false",
                                help="Opposite of --execute")
-    group.add_argument("--version", dest="show_version",
-                               action="store_true",
-                               help="Print the version number and exit.")
+    group.add_argument("--version", action='version', version='%(prog)s %s' % PYDPIPER_VERSION)
     group.add_argument("--verbose", dest="verbose",
                                action="store_true",
                                help="Be verbose in what is printed to the screen [default = %(default)s]")
