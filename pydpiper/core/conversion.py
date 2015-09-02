@@ -18,8 +18,13 @@ def convertCmdStage(cmd_stage): # CmdStage -> old CmdStage
     return c
 
 def directories(stages):
+    """Return a set of directories the pipeline must create.
+    No need to consider stage inputs - any input already exists
+    or is also the output of some previous stage."""
     # TODO what about logfiles/logdirs?
-    return (os.path.dirname(o) for s in stages for o in s.outputs)
+    # What if an output file IS a directory - should there be a special
+    # way of tagging this?
+    return set((os.path.dirname(o) for s in stages for o in s.outputs))
 
 #def mk_directories(stages):
 #    for d in directories(stages):
