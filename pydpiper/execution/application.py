@@ -11,7 +11,7 @@ from pydpiper.execution.pipeline import Pipeline, pipelineDaemon
 from pydpiper.execution.queueing import runOnQueueingSystem
 from pydpiper.execution.file_handling import makedirsIgnoreExisting
 from pydpiper.execution.pipeline_executor import addExecutorArgumentGroup, noExecSpecified
-from pydpiper.core.conversion import directories
+from pydpiper.core.util import output_directories
 
 from   atom.api import Atom
 import atom.api as atom
@@ -77,31 +77,33 @@ def create_parser():
     addApplicationArgumentGroup(parser)
     return parser
 
-def build_pipeline(stages, options):
-    p = Pipeline(options)
-    for s in stages:
-        p.addStage(s)
-    return p
-
 def ensure_outputs_distinct(stages):
     raise NotImplemented
 
+# TODO rename to `execute`?
 def start(stages, options):
-    """Basically just looks at the arguments and exits if `--version`, `--no-execute`, &c., are specified,
+    """Basically just looks at the arguments and exits if `--no-execute` is specified,
     otherwise calls `execute`."""
 
     logger = logging.getLogger(__name__)
 
+    # TODO should these move into Pipeline?
     ensure_outputs_distinct(stages)
+    create_directories(stages)
+    # TODO make a flag to disable this in case already created, wish to create later, etc.
 
-    pipeline = build_pipeline(stages, options)
+    pipeline = Pipeline(stages=stages, options=options)
+
 
     if options.create_graph:
         logger.debug("Writing dot file...")
         nx.write_dot(pipeline.G, str(options.pipeline_name) + "_labeled-tree.dot")
         logger.debug("Done.")
 
-    dirs = directories(stages)
+    execute(pipeline, options)
+
+def create_directories(stages):
+    dirs = output_directories(stages)
     # TODO should provide option to turn this off if already created
     for d in dirs:
         try:
@@ -109,8 +111,6 @@ def start(stages, options):
         except OSError as e:
             # FIXME check it's from the directory already existing
             pass
-
-    execute(pipeline, options)
 
 # The old AbstractApplication class has been removed due to its API being non-obvious.  Instead,
 # we currently provide an `execute` function and some helper functions for command-line parsing.
@@ -139,11 +139,6 @@ def reconstructCommand():
     pf.close()
  
 class AbstractApplication(object):
-    def _print_version(self):
-        if self.options.show_version:
-            print(self.__version__)
-            sys.exit()
-    
     # FIXME check that only one server is running with a given output directory
     def _setup_directories(self):
         """Output and backup directories setup here."""

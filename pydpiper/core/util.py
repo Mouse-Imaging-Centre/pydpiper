@@ -45,7 +45,12 @@ def ensure_nonnull_return(f):
     return g
 
 def output_directories(stages):
-    """Directories to be created (currently rather redundant in the presence of subdirectories)"""
+    """Directories to be created (currently rather redundant in the presence of subdirectories).
+    No need to consider stage inputs - any input already exists or is also the output
+    of some previous stage."""
+    # TODO what about logfiles/logdirs?
+    # What if an output file IS a directory - should there be a special
+    # way of tagging this?
     return { os.path.dirname(o) for c in stages for o in c.outputs }
 
 # this doesn't seem possible to do properly ... but we could turn a namespace into another type

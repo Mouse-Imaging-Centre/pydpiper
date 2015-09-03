@@ -171,7 +171,7 @@ class Pipeline(object):
     # setting a bunch of instance variables after __init__ - the presence of a method
     # called `initialize` should be a hint that all is perhaps not well, but perhaps
     # there is indeed some information legitimately unavailable when we first construct
-    def __init__(self, options=None):
+    def __init__(self, stages, options=None):
         # the core pipeline is stored in a directed graph. The graph is made
         # up of integer indices
         self.G = ThinGraph()
@@ -230,6 +230,9 @@ class Pipeline(object):
             serverLogFile = os.path.join(self.outputDir,self.options.pipeline_name + '_server_stdout.log')
             if self.options.queue_type == "pbs" and self.options.local:
                 sys.stdout = open(serverLogFile, 'a', 1) # 1 => line buffering
+
+        for s in stages:
+            self._add_stage(s)
         
     # expose methods to get/set shutdown_ev via Pyro (setter not needed):
     def set_shutdown_ev(self):
@@ -271,9 +274,12 @@ class Pipeline(object):
     def getMemoryAvailableInClients(self):
         return [c.maxmemory for _, c in self.clients.iteritems()]
 
-    def addStage(self, stage):
+    def _add_stage(self, stage):
         """adds a stage to the pipeline"""
         # check if stage already exists in pipeline - if so, don't bother
+
+        # TODO this logic is rather redundant and can be simplified assuming that the
+        # set of stages the pipeline is given has same equality relation as is used here
 
         # check if stage exists - stage uniqueness defined by in- and outputs
         # for base stages and entire command for CmdStages
@@ -307,11 +313,6 @@ class Pipeline(object):
         self.backupFileLocation = os.path.join(outputDir,
                                     self.options.pipeline_name
                                      + '_finished_stages')
-    def addPipeline(self, p):
-        if p.skipped_stages > 0:
-            self.skipped_stages += p.skipped_stages
-        for s in p.stages:
-            self.addStage(s)
 
     def printStages(self, name):
         """Prints stages to a file, stage info to stdout"""
@@ -1006,14 +1007,13 @@ def pipelineDaemon(pipeline, options, programName=None):
         logger.debug("Examining filesystem to determine skippable stages...")
         pipeline.skip_completed_stages()
 
-    #check for valid pipeline 
     if len(pipeline.runnable) == 0:
         print("Pipeline has no runnable stages. Exiting...")
         sys.exit()
    
     logger.debug("Prior to starting server, total stages %i. Number processed: %i.", 
                  len(pipeline.stages), pipeline.num_finished_stages)
-    logger.debug("Number of stages in runnable queue: %i",
+    logger.debug("Number of runnable stages: %i",
                  len(pipeline.runnable))
     
     pipeline.programName = programName
