@@ -165,13 +165,17 @@ class ThinGraph(nx.DiGraph):
     def single_edge_dict(self):
         return self.all_edge_dict
     edge_attr_dict_factory = single_edge_dict
+
+# TODO where should this live - util?
+def ensure_outputs_distinct(stages):
+    raise NotImplemented
     
 class Pipeline(object):
     # TODO the way we initialize a pipeline is currently a bit gross, e.g.,
     # setting a bunch of instance variables after __init__ - the presence of a method
     # called `initialize` should be a hint that all is perhaps not well, but perhaps
     # there is indeed some information legitimately unavailable when we first construct
-    def __init__(self, stages, options=None):
+    def __init__(self, stages, options):
         # the core pipeline is stored in a directed graph. The graph is made
         # up of integer indices
         self.G = ThinGraph()
@@ -222,18 +226,31 @@ class Pipeline(object):
         # Handle to write out processed stages to
         self.finished_stages_fh = None
         
-        if self.options:
-            self.outputDir = self.options.output_directory 
-            if not self.outputDir:
-                self.outputDir = os.getcwd()
-            # redirect the standard output to a text file
+        self.outputDir = self.options.output_directory 
+        if not self.outputDir:
+            self.outputDir = os.getcwd()
+        # redirect the standard output to a text file
+        if self.options.queue_type == "pbs" and self.options.local:
             serverLogFile = os.path.join(self.outputDir,self.options.pipeline_name + '_server_stdout.log')
-            if self.options.queue_type == "pbs" and self.options.local:
-                sys.stdout = open(serverLogFile, 'a', 1) # 1 => line buffering
+            sys.stdout = open(serverLogFile, 'a', 1) # 1 => line buffering
+
+        ensure_outputs_distinct(stages)
 
         for s in stages:
             self._add_stage(s)
-        
+
+        self.createEdges()
+        # could also set this on G itself ...
+        self.unfinished_pred_counts = [ len(filter(lambda i: not self.stages[i].isFinished(),
+                                                   self.G.predecessors(n)))
+                                        for n in xrange(self.G.order()) ]
+
+        graph_heads = filter(lambda n: self.unfinished_pred_counts[n] == 0,
+                             self.G.nodes_iter())
+        logger.info("Graph heads: " + str(graphHeads))
+        for n in graph_heads():
+            self.enqueue(n)
+
     # expose methods to get/set shutdown_ev via Pyro (setter not needed):
     def set_shutdown_ev(self):
         self.shutdown_ev.set()
@@ -278,11 +295,15 @@ class Pipeline(object):
         """adds a stage to the pipeline"""
         # check if stage already exists in pipeline - if so, don't bother
 
-        # TODO this logic is rather redundant and can be simplified assuming that the
-        # set of stages the pipeline is given has same equality relation as is used here
-
-        # check if stage exists - stage uniqueness defined by in- and outputs
+        # check if stage exists - stage uniqueness defined by in- and output
         # for base stages and entire command for CmdStages
+        # FIXME this logic is rather redundant and can be simplified
+        # (assuming that the set of stages the pipeline is given has
+        # the same equality relation as is used here)
+        # FIXME as getHash is called several times per stage, cache the hash in the stage.
+        # To save memory, we could make use of the fact that strings
+        # are actually interned, so it might be faster/cheaper
+        # just to store/compare the pointers.
         h = stage.getHash()
         if self.stage_dict.has_key(h):
             self.skipped_stages += 1
@@ -340,12 +361,6 @@ class Pipeline(object):
         endtime = time.time()
         logger.info("Create Edges time: " + str(endtime-starttime))
 
-    def computeGraphHeads(self):
-        """adds stages with no incomplete predecessors to the runnable queue"""
-        graphHeads = filter(lambda n: self.unfinished_pred_counts[n] == 0,
-                            self.G.nodes_iter())
-        logger.info("Graph heads: " + str(graphHeads))
-        return graphHeads # TODO call \ix -> self.enqueue ix on these
     def getStage(self, i):
         """given an index, return the actual pipelineStage object"""
         return(self.stages[i])
@@ -553,15 +568,6 @@ class Pipeline(object):
         # keep track of the memory requirements of the runnable jobs
         self.mem_req_for_runnable.append(self.stages[i].mem)
 
-    def initialize(self):
-        """called once all stages have been added - computes dependencies and adds graph heads to runnable set"""
-        self.createEdges()
-        # could also set this on G itself ...
-        self.unfinished_pred_counts = [ len(filter(lambda i: not self.stages[i].isFinished(),
-                                                   self.G.predecessors(n)))
-                                        for n in xrange(self.G.order()) ]
-        for n in self.computeGraphHeads():
-            self.enqueue(n)
         
     """
         Returns True unless all stages are finished, then False

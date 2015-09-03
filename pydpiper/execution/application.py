@@ -77,30 +77,35 @@ def create_parser():
     addApplicationArgumentGroup(parser)
     return parser
 
-def ensure_outputs_distinct(stages):
-    raise NotImplemented
-
-# TODO rename to `execute`?
-def start(stages, options):
+#TODO change this to ...(static_pipeline, options)?
+def execute(stages, options):
     """Basically just looks at the arguments and exits if `--no-execute` is specified,
-    otherwise calls `execute`."""
+    otherwise dispatch on backend type."""
 
     logger = logging.getLogger(__name__)
 
-    # TODO should these move into Pipeline?
-    ensure_outputs_distinct(stages)
-    create_directories(stages)
-    # TODO make a flag to disable this in case already created, wish to create later, etc.
-
     pipeline = Pipeline(stages=stages, options=options)
-
 
     if options.create_graph:
         logger.debug("Writing dot file...")
         nx.write_dot(pipeline.G, str(options.pipeline_name) + "_labeled-tree.dot")
         logger.debug("Done.")
 
-    execute(pipeline, options)
+    if not options.execute:
+        print("Not executing the command (--no-execute is specified).\nDone.")
+        return
+        
+    # TODO move calls to create_directories into execution functions
+    create_directories(stages)
+    # TODO make a flag to disable this in case already created, wish to create later, etc.
+
+    execution_proc = backend(options)
+    execution_proc(pipeline, options)
+
+execution_backends = { None : normal_execute, 'sge' : normal_execute, 'pbs' : grid_only_execute }
+
+def backend(options):
+    return normal_execute if options.local else execution_backends[options.queue_type]
 
 def create_directories(stages):
     dirs = output_directories(stages)
@@ -118,15 +123,25 @@ def create_directories(stages):
 # with a clearer interface than AbstractApplication.  This would be nice since the user wouldn't have
 # to remember to add the executor option group themselves, for example, but would have to be done tastefully.
 
-def execute(args):
-    """Convert a set of stages into a pipeline and execute it with the given options,
-    which should include those specified in applicationArgumentGroup, executorArgumentGroup."""
-    raise NotImplemented
-    #TODO dispatch on options.queue_type/options.local ...
+def normal_execute(pipeline, options):
+    # FIXME this is a trivial function; inline pipelineDaemon here
+    #pipelineDaemon runs pipeline, launches Pyro client/server and executors (if specified)
+    logger.info("Starting pipeline daemon...")
+    create_directories(pipeline.stages) # TODO or whatever
+    pipelineDaemon(pipeline, options, sys.argv[0])
+    logger.info("Server has stopped.  Quitting...")
+
+def grid_only_execute(pipeline, options):
+    #    if pbs_submit:
+    roq = runOnQueueingSystem(self.options, sys.argv)
+    roq.createAndSubmitPbsScripts()
+    # TODO make the local server create the directories (first time only) OR create them before submitting OR submit a separate stage?
+    # NOTE we can't add a stage to the pipeline at this point since the pipeline doesn't support any sort of incremental recomputation ...
+    logger.info("Finished submitting PBS job scripts...quitting")
 
 # TODO totally broken
 def reconstructCommand():
-    # TODO also write down the environment
+    # TODO also write down the environment, contents of config files
     reconstruct = ' '.join(sys.argv)
     logger.info("Command is: " + reconstruct)
     logger.info("Command version : " + self.__version__)
@@ -151,8 +166,6 @@ class AbstractApplication(object):
        
     def start(self):
         logger.info("Calling `start`")
-        self._setup_options()
-        self.setup_options()
         self.options = self.parser.parse_args()
         self.args = self.options.files
 
@@ -166,12 +179,7 @@ class AbstractApplication(object):
         self._setup_pipeline(self.options)
         self._setup_directories()
         
-        self.appName = self.setup_appName()
         self.setup_logger()
-
-        # NB this doesn't capture environment variables
-        # or contents of any config file so isn't really complete
-        self.reconstructCommand()
 
         pbs_submit = (self.options.queue == "pbs" or \
                       self.options.queue_type == "pbs") \
@@ -183,22 +191,8 @@ class AbstractApplication(object):
             logger.debug("Calling `initialize`")
             self.pipeline.initialize()
             self.pipeline.printStages(self.options.pipeline_name)
-        if not self.options.execute:
-            print("Not executing the command (--no-execute is specified).\nDone.")
-            return
-        
-        if pbs_submit:
-            roq = runOnQueueingSystem(self.options, sys.argv)
-            roq.createAndSubmitPbsScripts()
-            logger.info("Finished submitting PBS job scripts...quitting")
-            return 
-                
-        #pipelineDaemon runs pipeline, launches Pyro client/server and executors (if specified)
-        # if use_ns is specified, Pyro NameServer must be started. 
-        logger.info("Starting pipeline daemon...")
-        pipelineDaemon(self.pipeline, self.options, sys.argv[0])
-        logger.info("Server has stopped.  Quitting...")
-
+       
+               
     def setup_logger(self):
         """sets logging info specific to application"""
         FORMAT = '%(asctime)-15s %(name)s %(levelname)s %(process)d/%(threadName)s: %(message)s'
