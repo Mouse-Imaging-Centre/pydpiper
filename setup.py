@@ -22,8 +22,11 @@ setup(name='pydpiper',
       platforms="any",
       packages=['pydpiper', 'pydpiper.core', 'pydpiper.minc', 'pydpiper.execution', 'pydpiper.atoms_and_modules', 'pydpiper.pipelines'],
       data_files=[('config', ['config/MICe.cfg','config/MICe_dev.cfg','config/SciNet.cfg','config/SciNet_debug.cfg'])],
-      scripts=['pydpiper/execution/pipeline_executor.py', 'pydpiper/execution/check_pipeline_status.py',
-               'pydpiper/pipelines/LSQ12.py', 'pydpiper/pipelines/LSQ6.py'],
+      scripts=['pydpiper/execution/pipeline_executor.py', 
+               'pydpiper/execution/check_pipeline_status.py',
+               'pydpiper/pipelines/LSQ12.py', 
+               'pydpiper/pipelines/LSQ6.py',
+               'pydpiper/pipelines/registration_chain.py'],
       #tests_require=['pytest']
       )
 
