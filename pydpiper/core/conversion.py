@@ -1,7 +1,6 @@
 import os
 
-from pydpiper.execution.pipeline import Pipeline, CmdStage, InputFile, OutputFile
-from pydpiper.minc.files import MincAtom
+from pydpiper.execution.pipeline import CmdStage, InputFile, OutputFile
 
 def convertCmdStage(cmd_stage): # CmdStage -> old CmdStage
     def f(s):
@@ -16,20 +15,3 @@ def convertCmdStage(cmd_stage): # CmdStage -> old CmdStage
     c.runnable_hooks = cmd_stage.when_runnable_hooks
     c.finished_hooks = cmd_stage.when_finished_hooks
     return c
-
-def directories(stages):
-    # TODO what about logfiles/logdirs?
-    return (os.path.dirname(o) for s in stages for o in s.outputs)
-
-#def mk_directories(stages):
-#    for d in directories(stages):
-#        try:
-#            os.makedirs(d)
-#        except OSError:
-#            pass #ugh
-
-def pipeline(stages):
-    p = Pipeline()
-    for s in stages:
-        p.add(s)
-    return p

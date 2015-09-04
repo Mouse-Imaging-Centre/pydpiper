@@ -496,7 +496,8 @@ LSQ12_default_conf = MultilevelMinctraccConf(transform_type='lsq12', resolution 
                 none is provided. """
 # TODO all this does is call multilevel_pairwise_minctracc and then return an average; fold into that procedure?
 # TODO eliminate/provide default val for resolutions, move resolutions into conf, finish conf ...
-def lsq12_pairwise(imgs, conf, lsq12_dir, like=None):
+
+def lsq12_pairwise(imgs, conf, lsq12_dir, like=None): #lsq12_dir = pipeline_dir_names.lsq12, like=None):
     output_dir = os.path.join(lsq12_dir, 'lsq12')
     #conf.transform_type='-lsq12' # hack ... copy? or set external to lsq12 call ? might be better
     p = Stages()

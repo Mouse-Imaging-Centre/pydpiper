@@ -1,18 +1,29 @@
 from configargparse import ArgParser
-from pydpiper.execution.pipeline import Pipeline, pipelineDaemon
-from pydpiper.execution.queueing import runOnQueueingSystem
-from pydpiper.execution.file_handling import makedirsIgnoreExisting
-from pydpiper.execution.pipeline_executor import addExecutorArgumentGroup, noExecSpecified
 from datetime import datetime
 import time # TODO why both datetime and time?
-from pkg_resources import get_distribution
+import pkg_resources
 import logging
 import networkx as nx
 import sys
 import os
 
+from pydpiper.execution.pipeline import Pipeline, pipelineDaemon
+from pydpiper.execution.queueing import runOnQueueingSystem
+from pydpiper.execution.file_handling import makedirsIgnoreExisting
+from pydpiper.execution.pipeline_executor import addExecutorArgumentGroup, noExecSpecified
+from pydpiper.core.util import output_directories
 
-logger = logging.getLogger(__name__)
+from   atom.api import Atom
+import atom.api as atom
+
+PYDPIPER_VERSION = pkg_resources.get_distribution("pydpiper").version # pylint: disable=E1101
+print(PYDPIPER_VERSION)
+
+class ExecutionOptions(Atom):
+    use_backup_files = Bool(True)
+    create_graph     = Bool(False)
+    execute          = Bool(True)
+    # ... TODO put remainder of executor args, ..., here?
 
 def addApplicationArgumentGroup(parser):
     group = parser.add_argument_group("General application options", "General options for all pydpiper applications.")
@@ -38,9 +49,7 @@ def addApplicationArgumentGroup(parser):
     group.add_argument("--no-execute", dest="execute",
                                action="store_false",
                                help="Opposite of --execute")
-    group.add_argument("--version", dest="show_version",
-                               action="store_true",
-                               help="Print the version number and exit.")
+    group.add_argument("--version", action='version', version='%(prog)s %s' % PYDPIPER_VERSION)
     group.add_argument("--verbose", dest="verbose",
                                action="store_true",
                                help="Be verbose in what is printed to the screen [default = %(default)s]")
@@ -60,52 +69,91 @@ class MyParser(ArgParser):
             self.epilog = ""
         return self.epilog
 
-class AbstractApplication(object):
-    """Framework class for writing applications for PydPiper. 
-    
-       This class defines the default behaviour for accepting common command-line options, and executing the application
-       under various queueing systems. 
-       
-       Subclasses should extend the following methods:
-           setup_appName()
-           setup_logger() [optional, default method is defined here]
-           setup_options()
-           run()
-    
-       Usage: 
-          class MyApplication(AbstractApplication):
-                ... 
-           
-          if __name__ == "__main__":
-              application = MyApplication()
-              application.start()
-    """
-    def __init__(self):
-        # use an environment variable to look for a default config file
-        # Alternately, we could use a default location for the file
-        # (say `files = ['/etc/pydpiper.cfg', '~/pydpiper.cfg', './pydpiper.cfg']`)
-        default_config_file = os.getenv("PYDPIPER_CONFIG_FILE")
-        if default_config_file is not None:
-            files = [default_config_file]
-        else:
-            files = []
-        self.parser = MyParser(default_config_files=files)
-        self.__version__ = get_distribution("pydpiper").version  # pylint: disable=E1101
-    
-    def _setup_options(self):
-            # PydPiper options
-        addExecutorArgumentGroup(self.parser)
-        addApplicationArgumentGroup(self.parser)
-    
-    def _print_version(self):
-        if self.options.show_version:
-            print(self.__version__)
-            sys.exit()
-    
-    def _setup_pipeline(self, options):
-        self.pipeline = Pipeline(options)
-        #self.pipeline.main_options_hash = options
+def create_parser():
+    default_config_file = os.getenv("PYDPIPER_CONFIG_FILE")
+    files = [default_config_file] if default_config_file is not None else []
+    parser = MyParser(default_config_files=files)
+    addExecutorArgumentGroup(parser)
+    addApplicationArgumentGroup(parser)
+    return parser
 
+#TODO change this to ...(static_pipeline, options)?
+def execute(stages, options):
+    """Basically just looks at the arguments and exits if `--no-execute` is specified,
+    otherwise dispatch on backend type."""
+
+    logger = logging.getLogger(__name__)
+
+    pipeline = Pipeline(stages=stages, options=options)
+
+    if options.create_graph:
+        logger.debug("Writing dot file...")
+        nx.write_dot(pipeline.G, str(options.pipeline_name) + "_labeled-tree.dot")
+        logger.debug("Done.")
+
+    if not options.execute:
+        print("Not executing the command (--no-execute is specified).\nDone.")
+        return
+        
+    # TODO move calls to create_directories into execution functions
+    create_directories(stages)
+    # TODO make a flag to disable this in case already created, wish to create later, etc.
+
+    execution_proc = backend(options)
+    execution_proc(pipeline, options)
+
+execution_backends = { None : normal_execute, 'sge' : normal_execute, 'pbs' : grid_only_execute }
+
+def backend(options):
+    return normal_execute if options.local else execution_backends[options.queue_type]
+
+def create_directories(stages):
+    dirs = output_directories(stages)
+    # TODO should provide option to turn this off if already created
+    for d in dirs:
+        try:
+            os.makedirs(d)
+        except OSError as e:
+            # FIXME check it's from the directory already existing
+            pass
+
+# The old AbstractApplication class has been removed due to its API being non-obvious.  Instead,
+# we currently provide an `execute` function and some helper functions for command-line parsing.
+# In the future, we could also provide higher-order functions which invert control again, although
+# with a clearer interface than AbstractApplication.  This would be nice since the user wouldn't have
+# to remember to add the executor option group themselves, for example, but would have to be done tastefully.
+
+def normal_execute(pipeline, options):
+    # FIXME this is a trivial function; inline pipelineDaemon here
+    #pipelineDaemon runs pipeline, launches Pyro client/server and executors (if specified)
+    logger.info("Starting pipeline daemon...")
+    create_directories(pipeline.stages) # TODO or whatever
+    pipelineDaemon(pipeline, options, sys.argv[0])
+    logger.info("Server has stopped.  Quitting...")
+
+def grid_only_execute(pipeline, options):
+    #    if pbs_submit:
+    roq = runOnQueueingSystem(self.options, sys.argv)
+    roq.createAndSubmitPbsScripts()
+    # TODO make the local server create the directories (first time only) OR create them before submitting OR submit a separate stage?
+    # NOTE we can't add a stage to the pipeline at this point since the pipeline doesn't support any sort of incremental recomputation ...
+    logger.info("Finished submitting PBS job scripts...quitting")
+
+# TODO totally broken
+def reconstructCommand():
+    # TODO also write down the environment, contents of config files
+    reconstruct = ' '.join(sys.argv)
+    logger.info("Command is: " + reconstruct)
+    logger.info("Command version : " + self.__version__)
+    fileForCommandAndVersion = self.options.pipeline_name + "-command-and-version-" + time.strftime("%d-%m-%Y-at-%H-%m-%S") + ".sh"
+    pf = open(fileForCommandAndVersion, "w")
+    pf.write("#!/usr/bin/env bash\n")
+    pf.write("# Command version is: " + self.__version__ + "\n")
+    pf.write("# Command was: \n")
+    pf.write(reconstruct + '\n')
+    pf.close()
+ 
+class AbstractApplication(object):
     # FIXME check that only one server is running with a given output directory
     def _setup_directories(self):
         """Output and backup directories setup here."""
@@ -115,24 +163,9 @@ class AbstractApplication(object):
             self.outputDir = makedirsIgnoreExisting(self.options.output_directory)
         self.pipeline.setBackupFileLocation(self.outputDir)
 
-    def reconstructCommand(self):    
-        reconstruct = ' '.join(sys.argv)
-        logger.info("Command is: " + reconstruct)
-        logger.info("Command version : " + self.__version__)
-        # also, because this is probably a better file for it (also has similar
-        # naming conventions as the pipeline-stages.txt file:
-        fileForCommandAndVersion = os.path.abspath(os.curdir + "/" + self.options.pipeline_name + "-command-and-version-" + time.strftime("%d-%m-%Y-at-%H-%m-%S") + ".sh")
-        pf = open(fileForCommandAndVersion, "w")
-        pf.write("#!/usr/bin/env bash\n")
-        pf.write("# Command version is: " + self.__version__ + "\n")
-        pf.write("# Command was: \n")
-        pf.write(reconstruct + '\n')
-        pf.close()
-        
+       
     def start(self):
         logger.info("Calling `start`")
-        self._setup_options()
-        self.setup_options()
         self.options = self.parser.parse_args()
         self.args = self.options.files
 
@@ -146,12 +179,7 @@ class AbstractApplication(object):
         self._setup_pipeline(self.options)
         self._setup_directories()
         
-        self.appName = self.setup_appName()
         self.setup_logger()
-
-        # NB this doesn't capture environment variables
-        # or contents of any config file so isn't really complete
-        self.reconstructCommand()
 
         pbs_submit = (self.options.queue == "pbs" or \
                       self.options.queue_type == "pbs") \
@@ -163,45 +191,11 @@ class AbstractApplication(object):
             logger.debug("Calling `initialize`")
             self.pipeline.initialize()
             self.pipeline.printStages(self.options.pipeline_name)
-
-        if self.options.create_graph:
-            logger.debug("Writing dot file...")
-            nx.write_dot(self.pipeline.G, str(self.options.pipeline_name) + "_labeled-tree.dot")
-            logger.debug("Done.")
-
-        if not self.options.execute:
-            print("Not executing the command (--no-execute is specified).\nDone.")
-            return
-        
-        if pbs_submit:
-            roq = runOnQueueingSystem(self.options, sys.argv)
-            roq.createAndSubmitPbsScripts()
-            logger.info("Finished submitting PBS job scripts...quitting")
-            return 
-                
-        #pipelineDaemon runs pipeline, launches Pyro client/server and executors (if specified)
-        # if use_ns is specified, Pyro NameServer must be started. 
-        logger.info("Starting pipeline daemon...")
-        pipelineDaemon(self.pipeline, self.options, sys.argv[0])
-        logger.info("Server has stopped.  Quitting...")
-
-    def setup_appName(self):
-        """sets the name of the application"""
-        pass
-
+       
+               
     def setup_logger(self):
         """sets logging info specific to application"""
         FORMAT = '%(asctime)-15s %(name)s %(levelname)s %(process)d/%(threadName)s: %(message)s'
         now = datetime.now().strftime("%Y-%m-%d-at-%H:%M:%S")
         FILENAME = str(self.appName) + "-" + now + '-pid-' + str(os.getpid())  + ".log"
         logging.basicConfig(filename=FILENAME, format=FORMAT, level=logging.DEBUG)
-
-    def setup_options(self):
-        """Set up the self.options option parser with options this application needs."""
-        pass
-    
-    def run(self):
-        """Run this application.
-        
-           """
-        pass

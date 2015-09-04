@@ -9,6 +9,7 @@ import signal
 import socket
 import time
 import re
+import resource
 from datetime import datetime
 from subprocess import call, check_output
 from shlex import split
@@ -27,6 +28,7 @@ Pyro4.config.SERVERTYPE = pe.Pyro4.config.SERVERTYPE
 
 LOOP_INTERVAL = 5
 STAGE_RETRY_INTERVAL = 1
+SUBDEBUG = 5
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +76,7 @@ class PipelineStage(object):
         self.procs = 1 # default number of processors per stage
         self.inputFiles = [] # the input files for this stage
         self.outputFiles = [] # the output files for this stage
-        self.logFile = None # each stage should have only one log file
+        self.logFile = None
         self.status = None
         self.name = ""
         self.colour = "black" # used when a graph is created of all stages to colour the nodes
@@ -110,31 +112,35 @@ class PipelineStage(object):
         self.number_retries += 1
 
 class CmdStage(PipelineStage):
+    pipeline_start_time = datetime.isoformat(datetime.now())
+    logfile_id = 0
     def __init__(self, argArray):
         PipelineStage.__init__(self)
-        self.argArray = argArray # the raw input array
         self.cmd = [] # the input array converted to strings
-        self.parseArgs()
-        self.checkLogFile()
+        self.parseArgs(argArray)
+        #self.checkLogFile()
         # functions to be called when the stage becomes runnable
         # (these might be called multiple times, so should be benign
         # in some sense)
         self.runnable_hooks = []
         # functions to be called when a stage finishes
         self.finished_hooks = []
-    def parseArgs(self):
-        if self.argArray:
-            for a in self.argArray:
+    def parseArgs(self, argArray):
+        if argArray:
+            for a in argArray:
                 ft = getattr(a, "fileType", None)
+                s = intern(str(a))
                 if ft == "input":
-                    self.inputFiles.append(str(a))
+                    self.inputFiles.append(s)
                 elif ft == "output":
-                    self.outputFiles.append(str(a))
-                self.cmd.append(str(a))
-                self.name = self.cmd[0]
-    def checkLogFile(self):
+                    self.outputFiles.append(s)
+                self.cmd.append(s)
+            self.name = self.cmd[0]
+    def checkLogFile(self): # TODO silly, this is always called since called by __init__
+        global logfile_id
         if not self.logFile:
-            self.logFile = self.name + "." + datetime.isoformat(datetime.now()) + ".log"
+            self.logFile = self.name + "." + pipeline_start_time + '-' + str(logfile_id) + ".log"
+            logfile_id += 1
     def setLogFile(self, logFileName): 
         self.logFile = str(logFileName)
     def execStage(self):
@@ -153,15 +159,29 @@ class CmdStage(PipelineStage):
     def __repr__(self):
         return(" ".join(self.cmd))
 
+"""A graph with no edge information; see networkx/classes/digraph.py"""
+class ThinGraph(nx.DiGraph):
+    all_edge_dict = {'weight': 1}
+    def single_edge_dict(self):
+        return self.all_edge_dict
+    edge_attr_dict_factory = single_edge_dict
+
+# TODO where should this live - util?
+def ensure_outputs_distinct(stages):
+    raise NotImplemented
+    
 class Pipeline(object):
     # TODO the way we initialize a pipeline is currently a bit gross, e.g.,
     # setting a bunch of instance variables after __init__ - the presence of a method
     # called `initialize` should be a hint that all is perhaps not well, but perhaps
     # there is indeed some information legitimately unavailable when we first construct
-    def __init__(self,options=None):
+    def __init__(self, stages, options):
         # the core pipeline is stored in a directed graph. The graph is made
         # up of integer indices
-        self.G = nx.DiGraph()
+        self.G = ThinGraph()
+        # a map from indices to the number of unfulfilled prerequisites
+        # of the corresponding graph node (will be populated later -- __init__ is a misnomer)
+        self.unfinished_pred_counts = []
         # an array of the actual stages (PipelineStage objects)
         self.stages = []
         self.nameArray = []
@@ -169,15 +189,18 @@ class Pipeline(object):
         self.runnable = set()
         # an array to keep track of stage memory requirements
         self.mem_req_for_runnable = []
+        # a hideous hack; the idea is that after constructing the underlying graph,
+        # a pipeline running executors locally will measure its own maxRSS (once)
+        # and subtract this from the amount of memory claimed available for use on the node
+        self.memAvail = None
         self.currently_running_stages = set()
         # the current stage counter
         self.counter = 0
         # hash to keep the output to stage association
         self.outputhash = {}
         # a hash per stage - computed from inputs and outputs or whole command
-        self.stagehash = {}
-        # an array containing stages that have been (successfully) processed
-        self.processedStages = []
+        self.stage_dict = {}
+        self.num_finished_stages = 0
         self.failedStages = []
         # location of backup files for restart if needed
         self.backupFileLocation = None
@@ -192,7 +215,7 @@ class Pipeline(object):
         self.failed_executors = 0
         # main option hash, needed for the pipeline (server) to launch additional
         # executors during run time
-        self.main_options = options
+        self.options = options
         # time to shut down, due to walltime or having completed all stages?
         # (use an event rather than a simple flag for shutdown notification
         # so that we can shut down even if a process is currently sleeping)
@@ -203,15 +226,31 @@ class Pipeline(object):
         # Handle to write out processed stages to
         self.finished_stages_fh = None
         
-        if self.main_options:
-            self.outputDir = self.main_options.output_directory 
-            if not self.outputDir:
-                self.outputDir = os.getcwd()
-            # redirect the standard output to a text file
-            serverLogFile = os.path.join(self.outputDir,self.main_options.pipeline_name + '_server_log_in_text')
-            if self.main_options.queue_type == "pbs" and self.main_options.local:
-                sys.stdout = open(serverLogFile, 'a', 1) # 1 => line buffering
-        
+        self.outputDir = self.options.output_directory 
+        if not self.outputDir:
+            self.outputDir = os.getcwd()
+        # redirect the standard output to a text file
+        if self.options.queue_type == "pbs" and self.options.local:
+            serverLogFile = os.path.join(self.outputDir,self.options.pipeline_name + '_server_stdout.log')
+            sys.stdout = open(serverLogFile, 'a', 1) # 1 => line buffering
+
+        ensure_outputs_distinct(stages)
+
+        for s in stages:
+            self._add_stage(s)
+
+        self.createEdges()
+        # could also set this on G itself ...
+        self.unfinished_pred_counts = [ len(filter(lambda i: not self.stages[i].isFinished(),
+                                                   self.G.predecessors(n)))
+                                        for n in xrange(self.G.order()) ]
+
+        graph_heads = filter(lambda n: self.unfinished_pred_counts[n] == 0,
+                             self.G.nodes_iter())
+        logger.info("Graph heads: " + str(graphHeads))
+        for n in graph_heads():
+            self.enqueue(n)
+
     # expose methods to get/set shutdown_ev via Pyro (setter not needed):
     def set_shutdown_ev(self):
         self.shutdown_ev.set()
@@ -229,7 +268,7 @@ class Pipeline(object):
         return len(self.stages)
 
     def getNumberProcessedStages(self):
-        return len(self.processedStages)
+        return self.num_finished_stages
 
     def getNumberOfRunningClients(self):
         return len(self.clients)
@@ -252,18 +291,25 @@ class Pipeline(object):
     def getMemoryAvailableInClients(self):
         return [c.maxmemory for _, c in self.clients.iteritems()]
 
-    def addStage(self, stage):
+    def _add_stage(self, stage):
         """adds a stage to the pipeline"""
         # check if stage already exists in pipeline - if so, don't bother
 
-        # check if stage exists - stage uniqueness defined by in- and outputs
+        # check if stage exists - stage uniqueness defined by in- and output
         # for base stages and entire command for CmdStages
+        # FIXME this logic is rather redundant and can be simplified
+        # (assuming that the set of stages the pipeline is given has
+        # the same equality relation as is used here)
+        # FIXME as getHash is called several times per stage, cache the hash in the stage.
+        # To save memory, we could make use of the fact that strings
+        # are actually interned, so it might be faster/cheaper
+        # just to store/compare the pointers.
         h = stage.getHash()
-        if self.stagehash.has_key(h):
+        if self.stage_dict.has_key(h):
             self.skipped_stages += 1
             #stage already exists - nothing to be done
         else: #stage doesn't exist - add it
-            self.stagehash[h] = self.counter
+            self.stage_dict[h] = self.counter
             #self.statusArray[self.counter] = 'notstarted'
             self.stages.append(stage)
             self.nameArray.append(stage.name)
@@ -275,8 +321,8 @@ class Pipeline(object):
             self.counter += 1
         # huge hack since default isn't available in CmdStage() constructor
         # (may get overridden later by a hook, hence may really be wrong ... ugh):
-        if stage.mem is None and self.main_options is not None:
-            stage.setMem(self.main_options.default_job_mem)
+        if stage.mem is None and self.options is not None:
+            stage.setMem(self.options.default_job_mem)
 
     def setBackupFileLocation(self, outputDir=None):
         """Sets location of backup files."""
@@ -284,15 +330,10 @@ class Pipeline(object):
             # set backups in current directory if directory doesn't currently exist
             outputDir = os.getcwd()
         # TODO don't need this dir since we have only one backup file?
-        #self.backupFileLocation = fh.createBackupDir(outputDir, self.main_options.pipeline_name)
+        #self.backupFileLocation = fh.createBackupDir(outputDir, self.options.pipeline_name)
         self.backupFileLocation = os.path.join(outputDir,
-                                    self.main_options.pipeline_name
+                                    self.options.pipeline_name
                                      + '_finished_stages')
-    def addPipeline(self, p):
-        if p.skipped_stages > 0:
-            self.skipped_stages += p.skipped_stages
-        for s in p.stages:
-            self.addStage(s)
 
     def printStages(self, name):
         """Prints stages to a file, stage info to stdout"""
@@ -305,7 +346,7 @@ class Pipeline(object):
         print("Total number of stages in the pipeline: ", len(self.stages))
                  
     def printNumberProcessedStages(self):
-        print("Number of stages already processed:     ", len(self.processedStages))
+        print("Number of stages already processed:     ", self.num_finished_stages)
                   
     def createEdges(self):
         """computes stage dependencies by examining their inputs/outputs"""
@@ -320,25 +361,6 @@ class Pipeline(object):
         endtime = time.time()
         logger.info("Create Edges time: " + str(endtime-starttime))
 
-    def computeGraphHeads(self):
-        """adds stages with no incomplete predecessors to the runnable queue"""
-        graphHeads = []
-        for i in self.G.nodes_iter():
-            if self.stages[i].isFinished() == False:
-                """ either it has 0 predecessors """
-                if len(self.G.predecessors(i)) == 0:
-                    self.enqueue(i)
-                    graphHeads.append(i)
-                """ or all of its predecessors are finished """
-                if len(self.G.predecessors(i)) != 0:
-                    predfinished = True
-                    for j in self.G.predecessors(i):
-                        if self.stages[j].isFinished() == False:
-                            predfinished = False
-                    if predfinished == True:
-                        self.enqueue(i)
-                        graphHeads.append(i)
-        logger.info("Graph heads: " + str(graphHeads))
     def getStage(self, i):
         """given an index, return the actual pipelineStage object"""
         return(self.stages[i])
@@ -407,7 +429,7 @@ class Pipeline(object):
             return ("run_stage", index)
 
     def allStagesCompleted(self): 
-        return len(self.processedStages) == len(self.stages) 
+        return self.num_finished_stages == len(self.stages) 
 
     def addRunningStageToClient(self, clientURI, index):
         try:
@@ -445,41 +467,50 @@ class Pipeline(object):
 
     def checkIfRunnable(self, index):
         """stage added to runnable set if all predecessors finished"""
-        canRun = True
-        logger.debug("Checking if stage " + str(index) + " is runnable ...")
-        if self.stages[index].isFinished():
-            canRun = False
-        else:
-            for i in self.G.predecessors(index):              
-                s = self.getStage(i)
-                if not s.isFinished():
-                    canRun = False
-                    break
-        logger.debug("Stage " + str(index) + " Runnable: " + str(canRun))
+        logger.log(SUBDEBUG, "Checking if stage " + str(index) + " is runnable ...")
+        canRun = (not self.stages[index].isFinished()) \
+                 and self.unfinished_pred_counts[index] == 0
+        logger.log(SUBDEBUG, "Stage " + str(index) + " Runnable: " + str(canRun))
         return canRun
 
-    def setStageFinished(self, index, clientURI, save_state = True, checking_pipeline_status = False):
+    def setStageFinished(self, index, clientURI, save_state = True,
+                         checking_pipeline_status = False):
         """given an index, sets corresponding stage to finished and adds successors to the runnable set"""
+
+        s = self.stages[index]
+        
+        # since we want to use refcounting (where a 'reference' is an
+        # unsatisfied dependency of a stage and 'collection' is
+        # adding to the set of runnable stages) to determine whether a stage's
+        # prerequisites have run, we make it an error for the same stage
+        # to finish more than once (alternately, we could merely avoid
+        # decrementing counts of previously finished stages, but
+        # this choice should expose bugs sooner)
+        if s.isFinished():
+            raise ValueError("Already finished stage %d" % index)
+        
         # this function can be called when a pipeline is restarted, and 
         # we go through all stages and set the finished ones to... finished... :-)
         # in that case, we can not remove the stage from the list of running
         # jobs, because there is none.
+
         if checking_pipeline_status:
-            logger.debug("Already finished stage " + str(index))
-            self.stages[index].status = "finished"
+            logger.log(SUBDEBUG, "Already finished stage " + str(index))
+            s.status = "finished"
         else:
             logger.info("Finished Stage " + str(index) + ": " + str(self.stages[index]))
             self.removeFromRunning(index, clientURI, new_status = "finished")
             # run any potential hooks now that the stage has finished:
-            for f in self.stages[index].finished_hooks:
+            for f in s.finished_hooks:
                 f()
-        self.processedStages.append(index)
+        self.num_finished_stages += 1
         # write out the (index, hash) pairs to disk.  We don't actually need the indices
         # for anything (in fact, the restart code in skip_completed_stages is resilient 
         # against an arbitrary renumbering of stages), but a human-readable log is somewhat useful.
         self.finished_stages_fh.write("%d,%s\n" % (index, self.stages[index].getHash()))
         self.finished_stages_fh.flush()
         for i in self.G.successors(index):
+            self.unfinished_pred_counts[i] -= 1
             if self.checkIfRunnable(i):
                 self.enqueue(i)
 
@@ -530,17 +561,13 @@ class Pipeline(object):
 
     def enqueue(self, i):
         """If stage cannot be run due to insufficient mem/procs, executor returns it to the runnable set"""
-        logger.debug("Queueing stage %d", i)
+        logger.log(SUBDEBUG, "Queueing stage %d", i)
         self.runnable.add(i)
         for f in self.stages[i].runnable_hooks:
             f()
         # keep track of the memory requirements of the runnable jobs
         self.mem_req_for_runnable.append(self.stages[i].mem)
 
-    def initialize(self):
-        """called once all stages have been added - computes dependencies and adds graph heads to runnable set"""
-        self.createEdges()
-        self.computeGraphHeads()
         
     """
         Returns True unless all stages are finished, then False
@@ -558,11 +585,16 @@ class Pipeline(object):
             logger.debug("Shutdown event is set ... quitting")
             return False
 
+        elif self.allStagesCompleted():
+            logger.info("All stages complete ... done")
+            return False
+
         # exit if there are still stages that need to be run, 
         # but when there are no runnable nor any running stages left
-        if (len(self.runnable) == 0 and
-            len(self.currently_running_stages) == 0
-            and len(self.failedStages) > 0):
+        # (e.g., if some stages have repeatedly failed)
+        # TODO this might indicate a bug, so better reporting would be useful
+        elif (len(self.runnable) == 0
+            and len(self.currently_running_stages) == 0):
             logger.info("ERROR: no more runnable stages, however not all stages have finished. Going to shut down.")
             print("\nERROR: no more runnable stages, however not all stages have finished. Going to shut down.\n")
             sys.stdout.flush()
@@ -572,30 +604,28 @@ class Pipeline(object):
         # 1) there are stages that can be run, and
         # 2) there are no running nor waiting executors, and
         # 3) the number of lost executors has exceeded the number of allowed failed execturs
-        if(len(self.runnable) > 0 and 
-           (self.number_launched_and_waiting_clients + len(self.clients)) == 0 and 
-           self.failed_executors > self.main_options.max_failed_executors):             
-            msg = "Error: %d executors have died. This is more than the number of allowed failed executors as set by the flag: --max-failed-executors. Can not spawn new ones. Exiting..." % self.failed_executors
+        elif (len(self.runnable) > 0 and 
+              (self.number_launched_and_waiting_clients + len(self.clients)) == 0 and 
+              self.failed_executors > self.options.max_failed_executors):             
+            msg = ("Error: %d executors have died. This is more than the number"
+                   "(%d) allowed by --max-failed-executors.  No executors remain; exiting..."
+                   % (self.failed_executors, self.options.max_failed_executors))
             print(msg)
             logger.warn(msg)
             return False
 
         # TODO combine with above clause?
-        if ((len(self.runnable) > 0) and
+        elif ((len(self.runnable) > 0) and
           # require no running jobs rather than no clients
           # since in some configurations (e.g., currently SciNet config has
           # the server-local executor shut down only when the server does)
           # the latter choice might lead to the system
           # running indefinitely with no jobs
           (self.number_launched_and_waiting_clients + len(self.clients) == 0 and
-          self.executor_memory_required(self.runnable) > self.main_options.mem)):
+          self.executor_memory_required(self.runnable) > self.memAvail)):
             msg = "Shutting down due to jobs which require more memory (%.2fG) than available anywhere." % self.executor_memory_required(self.runnable)
             print(msg)
             logger.warn(msg)
-            return False
-
-        if self.allStagesCompleted():
-            logger.info("All stages complete ... done")
             return False
         else:
             return True
@@ -625,33 +655,36 @@ class Pipeline(object):
         if executors_to_launch > 0:
             # RAM needed to run a single job:
             memNeeded = self.executor_memory_required(self.runnable)
-            # RAM needed to run eight most expensive jobs (not the ideal choice):
-            memWanted = sorted(self.runnable, key=lambda i: -self.stages[i].mem)[0:self.main_options.proc-1]
-            if memNeeded > self.main_options.mem:
+            # RAM needed to run `proc` most expensive jobs (not the ideal choice):
+            memWanted = sum(sorted(map(lambda i: self.stages[i].mem,
+                                       self.runnable),
+                                   key = lambda x: -x)[0:self.options.proc])
+            logger.debug("wanted: %s" % memWanted)
+            logger.debug("needed: %s" % memNeeded)
+                
+            if memNeeded > self.memAvail:
                 msg = "A stage requires %.2fG of memory to run, but max allowed is %.2fG" \
-                        % (memNeeded, self.main_options.mem)
+                        % (memNeeded, self.memAvail)
                 logger.error(msg)
                 print(msg)
-                        #self.main_options.mem if self.main_options.greedy \
-                        #    else self.executor_memory_required(self.runnable)
             else:
-                if self.main_options.greedy:
-                    mem = self.main_options.mem
-                elif memWanted <= self.main_options.mem:
+                if self.options.greedy:
+                    mem = self.memAvail
+                elif memWanted <= self.memAvail:
                     mem = memWanted
                 else:
-                    mem = self.main_options.mem #memNeeded?
+                    mem = self.memAvail #memNeeded?
                 self.launchExecutorsFromServer(executors_to_launch, mem)
-        if self.main_options.monitor_heartbeats:
+        if self.options.monitor_heartbeats:
             # look for dead clients and requeue their jobs
             t = time.time()
             # copy() as unregisterClient mutates self.clients during iteration over the latter
             for uri,client in self.clients.copy().iteritems():
                 dt = t - client.timestamp
-                if dt > pe.HEARTBEAT_INTERVAL + pe.LATENCY_TOLERANCE:
+                if dt > pe.HEARTBEAT_INTERVAL + self.options.latency_tolerance:
                     logger.warn("Executor at %s has died (no contact for %.1f sec)!", client.clientURI, dt)
                     print("\nWarning: there has been no contact with %s, for %.1f seconds. Considering the executor as dead!\n" % (client.clientURI, dt))
-                    if self.failed_executors > self.main_options.max_failed_executors:
+                    if self.failed_executors > self.options.max_failed_executors:
                         logger.warn("Currently %d executors have died. This is more than the number of allowed failed executors as set by the flag: --max-failed-executors. Too many executors lost to spawn new ones" % self.failed_executors)
 
                     self.failed_executors += 1
@@ -664,29 +697,29 @@ class Pipeline(object):
         Returns an integer indicating the number of executors to launch
         
         This function first verifies whether the server can launch executors
-        on its own (self.main_options.nums_exec != 0). Then it checks to
+        on its own (self.options.nums_exec != 0). Then it checks to
         see whether the executors are able to kill themselves. If they are,
         it's possible that new executors need to be launched. This happens when
         there are runnable stages, but the number of active executors is smaller
         than the number of executors the server is able to launch
     """
     def numberOfExecutorsToLaunch(self):
-        if self.failed_executors > self.main_options.max_failed_executors:
+        if self.failed_executors > self.options.max_failed_executors:
             return 0
 
         if (len(self.runnable) > 0 and
-            self.executor_memory_required(self.runnable) > self.main_options.mem):
+            self.executor_memory_required(self.runnable) > self.memAvail):
             # we might still want to launch executors for the stages with smaller
             # requirements
             return 0
         
-        if self.main_options.num_exec != 0:
+        if self.options.num_exec != 0:
             # Server should launch executors itself
             # This should happen regardless of whether or not executors
             # can kill themselves, because the server is now responsible 
             # for the inital launches as well.
             active_executors = self.number_launched_and_waiting_clients + len(self.clients)
-            max_num_executors = self.main_options.num_exec
+            max_num_executors = self.options.num_exec
             executor_launch_room = max_num_executors - active_executors
             # there are runnable stages, and there is room to launch 
             # additional executors
@@ -699,7 +732,7 @@ class Pipeline(object):
             logger.info("Launching %i executors", number_to_launch)
             for i in range(number_to_launch):
                 p = Process(target=launchPipelineExecutor,
-                            args=(self.main_options, memNeeded, self.programName))
+                            args=(self.options, memNeeded, self.programName))
                 p.start()
                 self.incrementLaunchedClients()
         except:
@@ -707,7 +740,7 @@ class Pipeline(object):
             raise
         
     def getProcessedStageCount(self):
-        return len(self.processedStages)
+        return self.num_finished_stages
 
     def registerClient(self, clientURI, maxmemory):
         # Adds new client (represented by a URI string)
@@ -752,7 +785,6 @@ class Pipeline(object):
         except:
             logger.info("Finished stages log doesn't exist or is corrupt.")
             return
-        # processedStages was read from finished_stages_fh, so:
         self.finished_stages_fh = open(self.backupFileLocation, 'w')
         runnable  = []
         completed = 0
@@ -819,6 +851,18 @@ def launchServer(pipeline, options):
     # first follow up on the previously reported total number of 
     # stages in the pipeline with how many have already finished:
     pipeline.printNumberProcessedStages()
+
+    # for ideological reasons this should live in a method, but pipeline init is
+    # rather baroque anyway, and arguably launchServer/pipelineDaemon ought to be
+    # a single method with cleaned-up initialization
+    #executors_local = pipeline.options.local or (pipeline.options.queue_type is None)
+    executors_local = pipeline.options.queue_type in [None, 'pbs']
+    if executors_local:
+        # measured once -- we assume that server memory usage will be
+        # roughly constant at this point
+        pipeline.memAvail = pipeline.options.mem - (float(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss) / 10**6)  # 2^20?
+    else:
+        pipeline.memAvail = pipeline.options.mem
     
     # is the server going to be verbose or not?
     if options.verbose:
@@ -851,6 +895,8 @@ def launchServer(pipeline, options):
     
     pipeline.setVerbosity(options.verbose)
 
+    shutdown_time = pe.WAIT_TIMEOUT + pipeline.options.latency_tolerance
+    
     try:
         # start Pyro server
         t = Process(target=daemon.requestLoop)
@@ -861,6 +907,8 @@ def launchServer(pipeline, options):
         # of the pipeline, so modifiying `pipeline` won't have any effect.  The exception is
         # communication through its multiprocessing.Event, which we use below to wait
         # for termination.
+        #FIXME does this leak the memory used by the old pipeline?
+        #if so, avoid doing this or at least `del` the old graph ...
 
         verboseprint("Daemon is running at: %s" % daemon.locationStr)
         logger.info("Daemon is running at: %s", daemon.locationStr)
@@ -884,6 +932,7 @@ def launchServer(pipeline, options):
         def loop():
             try:
                 logger.debug("Auxiliary loop started")
+                logger.debug("memory limit: %dG; available after server overhead: %.4fG" % (pipeline.options.mem, pipeline.memAvail))
                 while p.continueLoop():
                     p.manageExecutors()
                     pipeline.shutdown_ev.wait(LOOP_INTERVAL)
@@ -903,7 +952,7 @@ def launchServer(pipeline, options):
 
             time_left = int(re.search('Walltime.Remaining = (\d*)', output).group(1))
             logger.debug("Time remaining: %d s" % time_left)
-            time_to_live = time_left - pe.SHUTDOWN_TIME
+            time_to_live = time_left - shutdown_time
         except:
             logger.info("I couldn't determine your remaining walltime from qstat.")
             time_to_live = None
@@ -964,14 +1013,13 @@ def pipelineDaemon(pipeline, options, programName=None):
         logger.debug("Examining filesystem to determine skippable stages...")
         pipeline.skip_completed_stages()
 
-    #check for valid pipeline 
     if len(pipeline.runnable) == 0:
         print("Pipeline has no runnable stages. Exiting...")
         sys.exit()
    
     logger.debug("Prior to starting server, total stages %i. Number processed: %i.", 
-                 len(pipeline.stages), len(pipeline.processedStages))
-    logger.debug("Number of stages in runnable queue: %i",
+                 len(pipeline.stages), pipeline.num_finished_stages)
+    logger.debug("Number of runnable stages: %i",
                  len(pipeline.runnable))
     
     pipeline.programName = programName
@@ -984,5 +1032,6 @@ def pipelineDaemon(pipeline, options, programName=None):
             launchServer(pipeline, options)
     except:
         logger.exception("Exception (=> quitting): ")
-    finally:
-        sys.exit(0)
+        raise
+    #finally:
+    #    sys.exit(0)
