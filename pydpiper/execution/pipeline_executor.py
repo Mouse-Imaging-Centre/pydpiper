@@ -10,7 +10,6 @@ from multiprocessing import Process, Pool
 import subprocess
 import shlex
 import pydpiper
-print(pydpiper)
 import pydpiper.execution.queueing as q
 import pydpiper.atoms_and_modules.registration_functions as rf
 import logging

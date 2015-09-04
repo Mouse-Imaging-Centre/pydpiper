@@ -31,10 +31,11 @@ class CmdStage(object):
     # the Input(...), Output(...) idea used in the old-style CmdStage is also OK, at the expense
     # of heterogeneous arrays (and problems with object equality/hashing/reading/printing/...)
     # Using a property, one could write stage.cmd instead of stage.cmd()
+    #TODO: not very clear what render means?
     def render(self):
         #return self.render_fn(self.conf, self.inputs, self.outputs)
-        return self.to_string()
-    def to_string(self):
+        return self.cmd_to_string()
+    def cmd_to_string(self):
         return ' '.join(self._cmd)
     def to_array(self):
         """Form usable for Python subprocess call."""
