@@ -25,7 +25,8 @@ WAIT_TIMEOUT = 5.0
 HEARTBEAT_INTERVAL = 10.0
 #SHUTDOWN_TIME = WAIT_TIMEOUT + LATENCY_TOLERANCE
 
-logger = logging.getLogger(__name__)
+logger = logging
+#logger = logging.getLogger(__name__)
 
 sys.excepthook = Pyro4.util.excepthook
 
@@ -42,7 +43,7 @@ def addExecutorArgumentGroup(parser):
                        type=float, default=15.0,
                        help="Allowed grace period by which an executor may miss a heartbeat tick before being considered failed [Default = %(default)s.")
     group.add_argument("--num-executors", dest="num_exec", 
-                       type=int, default=-1, 
+                       type=int, default=None, 
                        help="Number of independent executors to launch. [Default = %(default)s. Code will not run without an explicit number specified.]")
     group.add_argument("--max-failed-executors", dest="max_failed_executors",
                       type=int, default=2,
@@ -81,7 +82,7 @@ def addExecutorArgumentGroup(parser):
                        help="[DEPRECATED; use --queue-name instead.]  For --queue=sge, allows you to specify different queues. [Default = %(default)s]")
     group.add_argument("--queue-opts", dest="queue_opts",
                        type=str, default="",
-                       help="A string of extra arguments/flags to pass to qsub. [Default = %(default)s]")
+                       help="A string of extra arguments/flags to pass to qsub. [Default = '%(default)s']")
     group.add_argument("--executor-start-delay", dest="executor_start_delay", type=int, default=180,
                        help="Seconds before starting remote executors when running the server on the grid")
     group.add_argument("--time-to-seppuku", dest="time_to_seppuku", 
@@ -103,14 +104,12 @@ def addExecutorArgumentGroup(parser):
                        type=float, default = 1.75,
                        help="Memory (in GB) to allocate to jobs which don't make a request. [Default=%(default)s]")
 
-
-def noExecSpecified(numExec):
-    #Exit with helpful message if no executors are specified
-    if numExec < 0:
-        logger.info("You need to specify some executors for this pipeline to run. Please use the --num-executors command line option. Exiting...")
-        print("You need to specify some executors for this pipeline to run. Please use the --num-executors command line option. Exiting...")
-        sys.exit()
-
+def ensure_exec_specified(numExec):
+    if not numExec:
+        msg = "You need to specify some executors for this pipeline to run. Please use the --num-executors command line option. Exiting..."
+        logger.info(msg)
+        print(msg)
+        sys.exit(1)
 
 def launchExecutor(executor):
     # Start executor that will run pipeline stages
@@ -601,7 +600,7 @@ if __name__ == "__main__":
     options = parser.parse_known_args()[0]
 
     #Check to make sure some executors have been specified. 
-    noExecSpecified(options.num_exec)
+    ensure_exec_specified(options.num_exec)
 
     def local_launch(options):
         pe = pipelineExecutor(options)

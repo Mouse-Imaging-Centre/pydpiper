@@ -17,9 +17,17 @@ from multiprocessing import Process, Event
 import logging
 
 # TODO move this and Pyro4 imports down into launchServer where pipeline name is available?
-os.environ["PYRO_LOGLEVEL"] = os.getenv("PYRO_LOGLEVEL", "INFO")
-os.environ["PYRO_LOGFILE"]  = os.path.splitext(os.path.basename(__file__))[0] + ".log"
+#os.environ["PYRO_LOGLEVEL"] = os.getenv("PYRO_LOGLEVEL", "INFO")
+#os.environ["PYRO_LOGFILE"]  = os.path.splitext(os.path.basename(__file__))[0] + ".log"
 # TODO name the server logfile more descriptively
+
+logger = logging
+#logger = logging.getLogger(__name__)
+logger.basicConfig(filename="pipeline.log", level=logging.os.getenv("PYDPIPER_LOGLEVEL", "INFO"),
+                   datefmt="%Y-%m-%d %H:%M:%S",
+                   format="[%(asctime)s.%(msecs)03d,%(name)s,%(levelname)s] %(message)s")
+                
+logger.warn("I'm here")
 
 import Pyro4
 import pipeline_executor as pe
@@ -29,8 +37,6 @@ Pyro4.config.SERVERTYPE = pe.Pyro4.config.SERVERTYPE
 LOOP_INTERVAL = 5
 STAGE_RETRY_INTERVAL = 1
 SUBDEBUG = 5
-
-logger = logging.getLogger(__name__)
 
 sys.excepthook = Pyro4.util.excepthook
 
@@ -317,7 +323,7 @@ class Pipeline(object):
             for o in stage.outputFiles:
                 self.outputhash[o] = self.counter
             # add the stage's index to the graph
-            self.G.add_node(self.counter, label=stage.name,color=stage.colour)
+            self.G.add_node(self.counter, label=stage.name, color=stage.colour)
             self.counter += 1
         # huge hack since default isn't available in CmdStage() constructor
         # (may get overridden later by a hook, hence may really be wrong ... ugh):
@@ -329,8 +335,6 @@ class Pipeline(object):
         if outputDir is None:
             # set backups in current directory if directory doesn't currently exist
             outputDir = os.getcwd()
-        # TODO don't need this dir since we have only one backup file?
-        #self.backupFileLocation = fh.createBackupDir(outputDir, self.options.pipeline_name)
         self.backupFileLocation = os.path.join(outputDir,
                                     self.options.pipeline_name
                                      + '_finished_stages')
@@ -557,10 +561,9 @@ class Pipeline(object):
             self.failedStages.append(index)
             for i in nx.dfs_successors(self.G, index).keys():
                 self.failedStages.append(i)
-                
 
     def enqueue(self, i):
-        """If stage cannot be run due to insufficient mem/procs, executor returns it to the runnable set"""
+        """Update pipeline data structures and run relevant hooks when a stage becomes runnable."""
         logger.log(SUBDEBUG, "Queueing stage %d", i)
         self.runnable.add(i)
         for f in self.stages[i].runnable_hooks:

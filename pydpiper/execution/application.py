@@ -1,6 +1,5 @@
 from configargparse import ArgParser
-from datetime import datetime
-import time # TODO why both datetime and time?
+import time
 import pkg_resources
 import logging
 import networkx as nx
@@ -10,20 +9,21 @@ import os
 from pydpiper.execution.pipeline import Pipeline, pipelineDaemon
 from pydpiper.execution.queueing import runOnQueueingSystem
 from pydpiper.execution.file_handling import makedirsIgnoreExisting
-from pydpiper.execution.pipeline_executor import addExecutorArgumentGroup, noExecSpecified
+from pydpiper.execution.pipeline_executor import addExecutorArgumentGroup, ensure_exec_specified
 from pydpiper.core.util import output_directories
 
-from   atom.api import Atom
+from   atom.api import Atom, Bool
 import atom.api as atom
 
 PYDPIPER_VERSION = pkg_resources.get_distribution("pydpiper").version # pylint: disable=E1101
-print(PYDPIPER_VERSION)
+
+logger = logging.getLogger(__name__)
 
 class ExecutionOptions(Atom):
     use_backup_files = Bool(True)
     create_graph     = Bool(False)
     execute          = Bool(True)
-    # ... TODO put remainder of executor args, ..., here?
+    # ... TODO: put remainder of executor args, ..., here?
 
 def addApplicationArgumentGroup(parser):
     group = parser.add_argument_group("General application options", "General options for all pydpiper applications.")
@@ -32,7 +32,7 @@ def addApplicationArgumentGroup(parser):
                                help="Restart pipeline using backup files. [default = %(default)s]")
     group.add_argument("--no-restart", dest="restart", 
                                action="store_false", help="Opposite of --restart")
-    # TODO instead of prefixing all subdirectories (logs, backups, processed, ...)
+    # TODO: instead of prefixing all subdirectories (logs, backups, processed, ...)
     # with the pipeline name/date, we could create one identifying directory
     # and put these other directories inside
     group.add_argument("--output-dir", dest="output_directory",
@@ -77,14 +77,17 @@ def create_parser():
     addApplicationArgumentGroup(parser)
     return parser
 
-#TODO change this to ...(static_pipeline, options)?
+#TODO: change this to ...(static_pipeline, options)?
 def execute(stages, options):
     """Basically just looks at the arguments and exits if `--no-execute` is specified,
     otherwise dispatch on backend type."""
 
-    logger = logging.getLogger(__name__)
 
+
+    # TODO: logger.info('Constructing pipeline...')
     pipeline = Pipeline(stages=stages, options=options)
+
+    # TODO: print/log version
 
     if options.create_graph:
         logger.debug("Writing dot file...")
@@ -94,22 +97,22 @@ def execute(stages, options):
     if not options.execute:
         print("Not executing the command (--no-execute is specified).\nDone.")
         return
-        
-    # TODO move calls to create_directories into execution functions
+
+    reconstruct_command(options)
+    
+    # TODO: should create_directories be added as a method to Pipeline?
+    # TODO: move calls to create_directories into execution functions
     create_directories(stages)
-    # TODO make a flag to disable this in case already created, wish to create later, etc.
 
     execution_proc = backend(options)
     execution_proc(pipeline, options)
-
-execution_backends = { None : normal_execute, 'sge' : normal_execute, 'pbs' : grid_only_execute }
 
 def backend(options):
     return normal_execute if options.local else execution_backends[options.queue_type]
 
 def create_directories(stages):
     dirs = output_directories(stages)
-    # TODO should provide option to turn this off if already created
+    # TODO: should provide option to turn this off if already created
     for d in dirs:
         try:
             os.makedirs(d)
@@ -127,28 +130,30 @@ def normal_execute(pipeline, options):
     # FIXME this is a trivial function; inline pipelineDaemon here
     #pipelineDaemon runs pipeline, launches Pyro client/server and executors (if specified)
     logger.info("Starting pipeline daemon...")
-    create_directories(pipeline.stages) # TODO or whatever
+    # TODO: make a flag to disable this in case already created, wish to create later, etc.
+    create_directories(pipeline.stages) # TODO: or whatever
     pipelineDaemon(pipeline, options, sys.argv[0])
     logger.info("Server has stopped.  Quitting...")
 
 def grid_only_execute(pipeline, options):
     #    if pbs_submit:
-    roq = runOnQueueingSystem(self.options, sys.argv)
+    roq = runOnQueueingSystem(options, sys.argv)
     roq.createAndSubmitPbsScripts()
-    # TODO make the local server create the directories (first time only) OR create them before submitting OR submit a separate stage?
+    # TODO: make the local server create the directories (first time only) OR create them before submitting OR submit a separate stage?
     # NOTE we can't add a stage to the pipeline at this point since the pipeline doesn't support any sort of incremental recomputation ...
     logger.info("Finished submitting PBS job scripts...quitting")
 
-# TODO totally broken
-def reconstructCommand():
-    # TODO also write down the environment, contents of config files
+execution_backends = { None : normal_execute, 'sge' : normal_execute, 'pbs' : grid_only_execute }
+
+def reconstruct_command(options):
+    # TODO: also write down the environment, contents of config files
     reconstruct = ' '.join(sys.argv)
     logger.info("Command is: " + reconstruct)
-    logger.info("Command version : " + self.__version__)
-    fileForCommandAndVersion = self.options.pipeline_name + "-command-and-version-" + time.strftime("%d-%m-%Y-at-%H-%m-%S") + ".sh"
+    logger.info("Command version : " + PYDPIPER_VERSION)
+    fileForCommandAndVersion = options.pipeline_name + "-command-and-version-" + time.strftime("%d-%m-%Y-at-%H-%m-%S") + ".sh"
     pf = open(fileForCommandAndVersion, "w")
     pf.write("#!/usr/bin/env bash\n")
-    pf.write("# Command version is: " + self.__version__ + "\n")
+    pf.write("# Command version is: " + PYDPIPER_VERSION + "\n")
     pf.write("# Command was: \n")
     pf.write(reconstruct + '\n')
     pf.close()
@@ -165,37 +170,13 @@ class AbstractApplication(object):
 
        
     def start(self):
-        logger.info("Calling `start`")
-        self.options = self.parser.parse_args()
-        self.args = self.options.files
-
-        self._print_version()
-
         # Check to make sure some executors have been specified if we are 
         # actually going to run:
         if self.options.execute:
-            noExecSpecified(self.options.num_exec)
+            ensure_exec_specified(self.options.num_exec)
              
         self._setup_pipeline(self.options)
         self._setup_directories()
         
-        self.setup_logger()
-
-        pbs_submit = (self.options.queue == "pbs" or \
-                      self.options.queue_type == "pbs") \
-                     and not self.options.local
-
         if (self.options.execute and not pbs_submit) or self.options.create_graph:
-            logger.debug("Calling `run`")
-            self.run()
-            logger.debug("Calling `initialize`")
-            self.pipeline.initialize()
             self.pipeline.printStages(self.options.pipeline_name)
-       
-               
-    def setup_logger(self):
-        """sets logging info specific to application"""
-        FORMAT = '%(asctime)-15s %(name)s %(levelname)s %(process)d/%(threadName)s: %(message)s'
-        now = datetime.now().strftime("%Y-%m-%d-at-%H:%M:%S")
-        FILENAME = str(self.appName) + "-" + now + '-pid-' + str(os.getpid())  + ".log"
-        logging.basicConfig(filename=FILENAME, format=FORMAT, level=logging.DEBUG)
