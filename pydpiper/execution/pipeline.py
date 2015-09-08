@@ -25,7 +25,8 @@ logger = logging
 #logger = logging.getLogger(__name__)
 logger.basicConfig(filename="pipeline.log", level=logging.os.getenv("PYDPIPER_LOGLEVEL", "INFO"),
                    datefmt="%Y-%m-%d %H:%M:%S",
-                   format="[%(asctime)s.%(msecs)03d,%(name)s,%(levelname)s] %(message)s")
+                   format="[%(asctime)s.%(msecs)03d,"
+                          +__name__+",%(levelname)s] %(message)s")
                 
 logger.warn("I'm here")
 

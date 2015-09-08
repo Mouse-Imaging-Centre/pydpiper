@@ -314,7 +314,7 @@ class MincANTSConf(Atom):
     transformation_model = Str("'Syn[0.1]'")
     regularization       = Str("'Gauss[2,1]'")
     use_mask             = Bool(True)
-    sim_metric_params    = List(item=SimilarityMetricConf,
+    sim_metric_confs     = List(item=SimilarityMetricConf,
                                 default = [SimilarityMetricConf(),
                                            SimilarityMetricConf(blur_resolution=0.056,
                                                                 use_gradient_image=True)]) 
@@ -322,38 +322,34 @@ class MincANTSConf(Atom):
 mincANTS_default_conf = MincANTSConf()
 
 def mincANTS(source, target, conf, transform=None):
+    """Construct a single call to mincANTS.
+    Also does blurring according to the specified options
+    since the cost function might use these."""
     s = Stages()
     # TODO add a way to add _nlin_0 or whatever to name based on generation or whatever
     xfm = source.newname_with_fn(lambda x: "%s_to_%s" % (source.filename_wo_ext, target.filename_wo_ext), ext='.xfm') #TODO fix dir, orig_name, ...
 
-    similaritycmds = []
-    for similarity_element in conf.sim_metric_params:
-        similaritycmds.append("-m")
-        
-        subcmd = ""
-    subcmds = {}
-    for ix, st in enumerate(['img', 'grad']):
-    # no coherence enforced between 2-elt arrays and blur/grad ... make protocol/conf better e.g. parse into set or nested structure
-        # TODO: fix this!!
-        #if conf.blurs[ix] is not None:
-        #    src  = s.defer(mincblur(source, fwhm=conf.blurs[ix], gradient=True))
-        #    dest = s.defer(mincblur(target, fwhm=conf.blurs[ix], gradient=True))
-        #else:
-        src  = source
-        dest = target
-        #TODO: fix this whole mincANTSConf thing...
-        #inner = ','.join([src.get_path(), dest.get_path(), str(conf.weight[ix]), str(conf.radius_or_histo[ix])])
-        inner = ','.join([src.get_path(), dest.get_path(), str(1), str(3)])
-        subcmds[st] = "'" + "".join(['CC', '[', inner, ']']) + "'"
-    # /hack
+    similarity_cmds = []
+    for conf in conf.sim_metric_confs:
+        if conf.blur_resolution is not None:
+            src  = s.defer(mincblur(source, fwhm=conf.blur_resolution,
+                                    gradient=conf.use_gradient_image))
+            dest = s.defer(mincblur(target, fwhm=conf.blur_resolution,
+                                    gradient=conf.use_gradient_image))
+        else:
+            src  = source
+            dest = target
+        inner = ','.join([src.get_path(), dest.get_path(),
+                          conf.weight, conf.radius_or_bins])
+        subcmd = "'" + "".join([conf.metric, '[', inner, ']']) + "'"
+        similarity_cmds.extend(["-m", subcmd])
     stage = CmdStage(inputs = [source.get_path(), target.get_path()] + ([target.mask.get_path()] if target.mask else []),
                      # hard to use cmd_stage wrapper here due to complicated subcmds ...
                      outputs = [xfm],
                      cmd = ['mincANTS', '3',
-                            '--number-of-affine-iterations', '0',
-                            '-m', subcmds['img'],
-                            '-m', subcmds['grad'],
-                            '-t', conf.transformation_model,
+                            '--number-of-affine-iterations', '0']
+                         + similarity_cmds \
+                         + ['-t', conf.transformation_model,
                             '-r', conf.regularization,
                             '-i', conf.iterations,
                             '-o', xfm.get_path()] \
