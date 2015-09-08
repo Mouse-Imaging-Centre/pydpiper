@@ -1,16 +1,19 @@
 #!/usr/bin/env python
 
 from   __future__ import print_function
+from __future__ import absolute_import
 import csv
 from collections import defaultdict
-
 from atom.api import Atom, Int, Str, Dict, Enum, Instance
-#import atom.api as atom
-
 from pydpiper.minc.analysis import determinants_at_fwhms
 from pydpiper.minc.registration import Stages, mincANTS_NLIN_build_model, mincANTS_default_conf, MincANTSConf, mincANTS, intrasubject_registrations
 from pydpiper.minc.files import MincAtom
 #from pydpiper.pipelines.LSQ6 import lsq6
+from configargparse import ArgParser
+from pkg_resources import get_distribution
+from pydpiper.core.arguments import addApplicationArgumentGroup, \
+    addGeneralRegistrationArgumentGroup, addExecutorArgumentGroup, \
+    addRegistrationChainArgumentGroup, addStatsArgumentGroup
 
 # TODO: this might be temporary... currently only used 
 # to test the registration chain
@@ -194,6 +197,14 @@ def chain(options):
 
     s = Stages()
     
+    if not options.csv_file:
+        #TODO: how do we want to standardize things? Should we always raise some
+        #sort of error, or is it okay to print an error message and exit with a 
+        #non-zero value?
+        print("Error: no csv_file with the mapping of the input data was provided. "
+              "Use the --csv-file flag to specify.")
+        sys.exit(1)
+    
     with open(options.csv_file, 'r') as f:
         subject_info = parse_csv(f, options.common_time_point)
     
@@ -260,7 +271,7 @@ def chain(options):
                                                    confs=[test_conf]))
     print("\n*** *** INTERSUBJECT STAGES *** ***\n")
     for stage in s:
-        print(stage.to_string(),"\n")
+        print(stage.cmd_to_string(),"\n")
     
     ## within-subject registration
     # In the toy scenario below: 
@@ -282,10 +293,10 @@ def chain(options):
     
     print("\n*** *** INTRASUBJECT STAGES *** ***\n")
     for stage in s:
-        print(stage.to_string(),"\n")
+        print(stage.cmd_to_string(),"\n")
     #for subject_cmd_stage in chain_xfms:
     #    for cmd_stage in chain_xfms[subject_cmd_stage].stages:
-    #        print(cmd_stage.to_string(), "\n")
+    #        print(cmd_stage.cmd_to_string(), "\n")
 
     # TODO n
 
@@ -308,30 +319,60 @@ def chain(options):
                 for xfmhandler in intersubj_xfms.xfms:
                     if xfmhandler.source == subj_time_pt_file:
                         print(xfmhandler.xfm.get_path())
-        
-    map_data(lambda xfm: determinants_at_fwhms(xfm, options.stats_kernels), subject_info)
+     
+    #TODO: this is way too mysterious...   
+    #map_data(lambda xfm: determinants_at_fwhms(xfm, options.stats_kernels), subject_info)
     
     #raise NotImplemented
 
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 4:
-        print("Error: running in testing mode. Provide the following: \n \n" \
-            "filename_spread.csv \n" \
-            "input_space (possibilities: native, lsq6, lsq12) \n" \
-            "string_with_blurs_for_stat_files (e.g. 0.5,0.2,0.1) \n" \
-            "(optionally) common_time_point \n")
-        sys.exit(1)
+    # TODO: the following can be captured in some sort of initialization 
+    # function to make it easier to write/create a new application
     
-    options = ChainConf()
-    options.csv_file = sys.argv[1]
-    options.input_space = sys.argv[2]
-    options.stats_kernels = sys.argv[3]
-    if len(sys.argv) == 5:
-        options.common_time_point = int(sys.argv[4])
+    # *** *** *** *** *** *** *** *** ***
+    # use an environment variable to look for a default config file
+    default_config_file = os.getenv("PYDPIPER_CONFIG_FILE")
+    if default_config_file is not None:
+        config_files = [default_config_file]
     else:
-        options.common_time_point = -1
+        config_files = []
+    parser = ArgParser(default_config_files=config_files)
+    pydpiper_version = get_distribution("pydpiper").version # pylint: disable=E1101
+
+    addApplicationArgumentGroup(parser)
+    addExecutorArgumentGroup(parser)
+    addGeneralRegistrationArgumentGroup(parser)
+    addRegistrationChainArgumentGroup(parser)
+    addStatsArgumentGroup(parser)
+    
+    options = parser.parse_args()
+    
+    
+    if options.show_version:
+        print("Pydpiper version: %s" % pydpiper_version)
+        sys.exit(0)
+    
+    # *** *** *** *** *** *** *** *** ***
+
+
+    #if len(sys.argv) < 4:
+    #    print("Error: running in testing mode. Provide the following: \n \n" \
+    #        "filename_spread.csv \n" \
+    #        "input_space (possibilities: native, lsq6, lsq12) \n" \
+    #        "string_with_blurs_for_stat_files (e.g. 0.5,0.2,0.1) \n" \
+    #        "(optionally) common_time_point \n")
+    #    sys.exit(1)
+    
+    #options = ChainConf()
+    #options.csv_file = sys.argv[1]
+    #options.input_space = sys.argv[2]
+    #options.stats_kernels = sys.argv[3]
+    #if len(sys.argv) == 5:
+    #    options.common_time_point = int(sys.argv[4])
+    #else:
+    #    options.common_time_point = -1
     
     chain(options)
     

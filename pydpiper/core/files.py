@@ -7,33 +7,15 @@ from .util import explode, NotProvided
 class FileAtom(HasTraits):
     """
         What is stored:
-        self.orig_path -- true input file, full file name and path (/path/filename.ext), can be None
+        self.orig_path -- original input file, full file name and path (/path/filename.ext), can be None
         self.dir
         self.filename_wo_ext
         self.ext
-        
         self.output_dir - in terms of the old code, this is the directory that will hold
                           the resampled/, tmp/, stats-volume/ etc. directories.
-        
-        
-        
     """
-    #TODO: change curr_dir and work_dir to output_dir
-    def __init__(self, name, orig_name=NotProvided, curr_dir=None, work_dir=None):
-        # NOTE curr_dir, work_dir: the idea here is that a pipeline function will need to know where
-        # to locate its files, and this information needs to be passed 'down' from above.  The question
-        # is whether a function should receive the name of the directory to locate its files or the name
-        # of the enclosing directory.  The latter choice is probably better since a function call shouldn't look like
-        # ... = lsq12(..., dir=...+'lsq12'); this is redundant.
-        # TODO rename some stuff ... path -> fullpath? name -> basename? (conflicts with standard usage?)
-        # INVARIANT self.path is absolute/normalized.
-        # TODO maybe this isn't smart - can't relocate pipeline ???
-        # FIXME this isn't preserved by copy_with - could change self.name to a property
-        # NB one reason to have the atoms be classes rather than fns is one could create an __init__ which
-        # absolutizes/canonicalizes the directories ...
-        # TODO: self.dir, self.filename_wo_ext, self.ext = explode(os.path.abspath(name)) # and fix remaing code
-        self._path_pieces = explode(os.path.abspath(name))
-        # TODO clearly actual curr_dir, not curr_dir arg (or user will be confused), which is therefore probably misnamed
+    def __init__(self, name, orig_name=NotProvided, output_dir=None):
+        self.dir, self.filename_wo_ext, self.ext = explode(os.path.abspath(name))
         if orig_name is NotProvided:
             self.orig_path = self.path
         elif orig_name is None:
@@ -52,64 +34,46 @@ class FileAtom(HasTraits):
         #self.work_dir  = os.path.join(os.path.abspath(work_dir) if work_dir else os.getcwd(), self.name)  # was sort of working ...
         # FIXME the problem here is that work_dir internally means something different from work_dir in the __init__ call,
         # which is more like a cwd, so the work_dir will be created inside it
-        if work_dir is not None:
-            self.work_dir = os.path.abspath(work_dir)
-        elif curr_dir is not None: # TODO assert both aren't None
-            self.work_dir = os.path.join(os.path.abspath(curr_dir), self.name)
+        if output_dir is not None:
+            self.output_dir = os.path.abspath(output_dir)
         else:
-            self.work_dir = os.path.join(os.getcwd(), self.name)
+            #TODO: is this what we want...?
+            self.output_dir = os.path.join(os.getcwd(), self.filename_wo_ext)
         #self.work_dir = os.path.join(curr_dir if curr_dir else os.getcwd(), self.name) #work_dir if work_dir else os.path.join(os.getcwd(), self.name)
 
     def get_path(self):
-        (d,n,e) = self._path_pieces
+        #TODO: in order to avoid storing duplicate information, is this what we want? 
+        (d,n,e) = (self.dir, self.filename_wo_ext, self.ext)
         return os.path.join(d, n + e)
-    path = property(get_path, "`path` property")
 
-    def get_name(self):  # TODO should this be ...{short,base,...}name?
-        """A view on the filename sans base or extension
-        >>> FileAtom(name='img_1.mnc').get_name()
-        'img_1'
-        """
-        # FIXME this explode is dangerous if we somehow have a filename with a '.'
-        # but no real extension (e.g., foo_fwhm0.056)
-        _, name, _ = self._path_pieces
-        return name
-    # this secretly means we have self.name
-    name = property(get_name, "`name` property")
-
-    # TODO: rename newname_with_fn
-    def newname_with(self, fn, ext=None, subdir=None):
-        # TODO rename to something more descriptive/less similar to newname_with_suffix, e.g., newname_using, newname_from(_fn), *.with_suffix,* ...
+    def newname_with_fn(self, fn, ext=None, subdir=None):
         """Create a new FileAtom from one representing <dirs>/<file><.ext>
-        now representing <original file's work_dir>/[<subdir>]/f(<file>)<.ext>.
+        now representing <original file's output_dir>/[<subdir>]/f(<file>)<.ext>.
 
         This isn't particularly general since one might want the result in a completely
         different location, but in this case one can just call the constructor again,
         since other properties (especially of subclasses like MincAtom) are likely to
         change as well in this case.  Similarly, we don't yet provide an option to
-        override the workdir.  It seems that this situation isn't optimal since,
-        whether one calls newname_with or creates a FileAtom by hand, the API doesn't force
+        override the output_dir.  It seems that this situation isn't optimal since,
+        whether one calls newname_with_fn or creates a FileAtom by hand, the API doesn't force
         one to consider which properties should be cloned, set by hand, or reset to some defaults.
         One could in principle write a copy_with method specifying exactly how things should go,
         but it's not clear this would work well with subclassing (e.g.,
         no reuse might be possible).
        
         # (we use absolute paths so the tests are deterministic without requiring postprocessing)
-        >>> f1 = FileAtom(name='/project/images/img_1.mnc', curr_dir="/scratch/pipeline/")
-        >>> f2 = f1.newname_with(fn=lambda n: n + '_fwhm0.056')
+        >>> f1 = FileAtom(name='/project/images/img_1.mnc', output_dir="/scratch/pipeline/")
+        >>> f2 = f1.newname_with_fn(fn=lambda n: n + '_fwhm0.056')
         >>> f2.path
-        '/scratch/pipeline/img_1/img_1_fwhm0.056.mnc'
+        '/scratch/pipeline/img_1_fwhm0.056.mnc'
         >>> f1.path
         '/project/images/img_1.mnc'
         """
 
-        #_dir, name, old_ext = explode(self.path)
-        _dir, name, old_ext = self._path_pieces
-        work_dir = self.work_dir
-        #if subdir:
-        #    work_dir = os.path.join(work_dir, subdir)
+        _dir, name, old_ext = (self.dir, self.filename_wo_ext, self.ext)
+        output_dir = self.output_dir
         ext  = ext or old_ext
-        name = os.path.join(os.path.join(work_dir, subdir) if subdir else work_dir, fn(name) + ext) # was: self.work_dir; added: inner `join`
+        name = os.path.join(os.path.join(output_dir, subdir) if subdir else output_dir, fn(name) + ext)
         # FIXME should return something of the same class, but can't call self.__class__.__init__(...)
         # here as init fn may have different signature => need to copy and set attrs and/or override
         # this method/make it abstract
@@ -119,7 +83,7 @@ class FileAtom(HasTraits):
         # call init with this dict, suitably overriden
         # could use locals() but this seems like a huge hack and will probably break
         # I feel there's no proper way to do this since we have no idea what additional behaviour/data subclasses may define
-        return FileAtom(name=name, orig_name=self.orig_path, work_dir=work_dir)
+        return FileAtom(name=name, orig_name=self.orig_path, output_dir=output_dir)
 
     def newname_with_suffix(self, suffix, ext=None, subdir=None):
         """Create a FileAtom representing <dirs>/<file><suffix><.ext>
