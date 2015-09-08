@@ -51,7 +51,7 @@ def output_directories(stages):
     # TODO what about logfiles/logdirs?
     # What if an output file IS a directory - should there be a special
     # way of tagging this?
-    return { os.path.dirname(o) for c in stages for o in c.outputs }
+    return { os.path.dirname(o.get_path()) for c in stages for o in c.outputFiles }
 
 # this doesn't seem possible to do properly ... but we could turn a namespace into another type
 # and use that as a default object, say

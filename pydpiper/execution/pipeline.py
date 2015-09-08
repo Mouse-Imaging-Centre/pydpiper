@@ -241,7 +241,7 @@ class Pipeline(object):
             serverLogFile = os.path.join(self.outputDir,self.options.pipeline_name + '_server_stdout.log')
             sys.stdout = open(serverLogFile, 'a', 1) # 1 => line buffering
 
-        ensure_outputs_distinct(stages)
+        #ensure_outputs_distinct(stages)
 
         for s in stages:
             self._add_stage(s)
@@ -254,8 +254,8 @@ class Pipeline(object):
 
         graph_heads = filter(lambda n: self.unfinished_pred_counts[n] == 0,
                              self.G.nodes_iter())
-        logger.info("Graph heads: " + str(graphHeads))
-        for n in graph_heads():
+        logger.info("Graph heads: " + str(graph_heads))
+        for n in graph_heads:
             self.enqueue(n)
 
     # expose methods to get/set shutdown_ev via Pyro (setter not needed):

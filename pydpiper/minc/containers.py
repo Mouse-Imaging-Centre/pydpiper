@@ -8,7 +8,14 @@ class XfmHandler(object):
     will use an XfmHandler containing the transform together with the resampled image produced.
     (The initial image may be used, for instance, in a later resampling.)
     TODO give invariants such a quadruple should satisfy - e.g., may replace the images
-    but in a manner which changes only intensity, not geometry."""
+    but in a manner which changes only intensity, not geometry.
+    
+    source -- MincAtom
+    TODO: how do we store the actual transformation file?
+    xfm -- MincAtom (change this? a transformation doesn't have a mask etc.)
+    target -- MincAtom
+    
+    """
     # MincAtom^4 -> XfmHandler
     def __init__(self, source, xfm, target, resampled = None):
         self.source     = source

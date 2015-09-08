@@ -11,6 +11,7 @@ from pydpiper.execution.queueing import runOnQueueingSystem
 from pydpiper.execution.file_handling import makedirsIgnoreExisting
 from pydpiper.execution.pipeline_executor import addExecutorArgumentGroup, ensure_exec_specified
 from pydpiper.core.util import output_directories
+from pydpiper.core.conversion import convertCmdStage
 
 from   atom.api import Atom, Bool
 import atom.api as atom
@@ -85,7 +86,7 @@ def execute(stages, options):
 
 
     # TODO: logger.info('Constructing pipeline...')
-    pipeline = Pipeline(stages=stages, options=options)
+    pipeline = Pipeline(stages=map(convertCmdStage, stages), options=options)
 
     # TODO: print/log version
 

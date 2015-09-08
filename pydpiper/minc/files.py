@@ -16,3 +16,5 @@ class MincAtom(FileAtom):
     # TODO should newname_with be overloaded with new behaviour for mask/labels???  We could get a different
     # behaviour for free if the FileAtom.newname_with used copy.copy() internally
     # some operations (blurring) preserve mask/labels, but others don't (resampling) ... add a preserve_labels=<bool> arg?
+
+    #TODO: when newname_with_* is called, the super class will always create a FileAtom...

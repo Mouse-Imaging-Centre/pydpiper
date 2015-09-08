@@ -44,10 +44,13 @@ def mincresample_simple(img, xfm, like, extra_flags): # mnc -> mnc
     """Resample an image, ignoring mask/labels"""
     outf = img.newname_with_fn(lambda _old: xfm.filename_wo_ext + '-resampled', subdir='resampled') # TODO update the mask/labels here
     #outf = MincAtom(name=xname + '-resampled' + '.mnc', subdir='resampled')
-    stage = cmd_stage(['mincresample', '-clobber', '-2',
-                       '-transform %s' % InputFile(xfm.get_path()),
-                       '-like %s' % InputFile(like.get_path()),
-                       InputFile(img.get_path()), OutputFile(outf.get_path())] + extra_flags)
+    stage = CmdStage(
+              inputs = [xfm, like, img], 
+              outputs = [outf],
+              cmd = ['mincresample', '-clobber', '-2',
+                     '-transform %s' % xfm.get_path(),
+                     '-like %s' % like.get_path(),
+                     img.get_path(), outf.get_path()] + extra_flags)
     return Result(stages=Stages([stage]), output=outf)
 
 # TODO mincresample_simple could easily be replaced by a recursive call to mincresample
@@ -330,20 +333,20 @@ def mincANTS(source, target, conf, transform=None):
     xfm = source.newname_with_fn(lambda x: "%s_to_%s" % (source.filename_wo_ext, target.filename_wo_ext), ext='.xfm') #TODO fix dir, orig_name, ...
 
     similarity_cmds = []
-    for conf in conf.sim_metric_confs:
-        if conf.blur_resolution is not None:
-            src  = s.defer(mincblur(source, fwhm=conf.blur_resolution,
-                                    gradient=conf.use_gradient_image))
-            dest = s.defer(mincblur(target, fwhm=conf.blur_resolution,
-                                    gradient=conf.use_gradient_image))
+    for sim_metric_conf in conf.sim_metric_confs:
+        if sim_metric_conf.blur_resolution is not None:
+            src  = s.defer(mincblur(source, fwhm=sim_metric_conf.blur_resolution,
+                                    gradient=sim_metric_conf.use_gradient_image))
+            dest = s.defer(mincblur(target, fwhm=sim_metric_conf.blur_resolution,
+                                    gradient=sim_metric_conf.use_gradient_image))
         else:
             src  = source
             dest = target
         inner = ','.join([src.get_path(), dest.get_path(),
-                          conf.weight, conf.radius_or_bins])
-        subcmd = "'" + "".join([conf.metric, '[', inner, ']']) + "'"
+                          str(sim_metric_conf.weight), str(sim_metric_conf.radius_or_bins)])
+        subcmd = "'" + "".join([sim_metric_conf.metric, '[', inner, ']']) + "'"
         similarity_cmds.extend(["-m", subcmd])
-    stage = CmdStage(inputs = [source.get_path(), target.get_path()] + ([target.mask.get_path()] if target.mask else []),
+    stage = CmdStage(inputs = [source, target] + ([target.mask] if target.mask else []),
                      # hard to use cmd_stage wrapper here due to complicated subcmds ...
                      outputs = [xfm],
                      cmd = ['mincANTS', '3',

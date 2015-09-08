@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-from   __future__ import print_function
+from __future__ import print_function
 from __future__ import absolute_import
 import csv
 from collections import defaultdict
@@ -8,6 +8,7 @@ from atom.api import Atom, Int, Str, Dict, Enum, Instance
 from pydpiper.minc.analysis import determinants_at_fwhms
 from pydpiper.minc.registration import Stages, mincANTS_NLIN_build_model, mincANTS_default_conf, MincANTSConf, mincANTS, intrasubject_registrations
 from pydpiper.minc.files import MincAtom
+from pydpiper.execution.application import execute
 #from pydpiper.pipelines.LSQ6 import lsq6
 from configargparse import ArgParser
 from pkg_resources import get_distribution
@@ -324,6 +325,7 @@ def chain(options):
     #map_data(lambda xfm: determinants_at_fwhms(xfm, options.stats_kernels), subject_info)
     
     #raise NotImplemented
+    return s
 
 
 
@@ -374,7 +376,9 @@ if __name__ == "__main__":
     #else:
     #    options.common_time_point = -1
     
-    chain(options)
+    chain_stages = chain(options)
+    
+    execute(chain_stages, options)
     
     print("\nDone...\n")
     

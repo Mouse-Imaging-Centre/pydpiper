@@ -92,7 +92,7 @@ class FileAtom(HasTraits):
         >>> os.path.basename(FileAtom(name='img_1.mnc').newname_with_suffix(suffix='_fwhm0.056').path)
         'img_1_fwhm0.056.mnc'
         """
-        return self.newname_with(lambda n: n + suffix, ext=ext, subdir=subdir)
+        return self.newname_with_fn(lambda n: n + suffix, ext=ext, subdir=subdir)
 
     # TODO merge into __init__ making name optional and taking base and/or a copy/clone method ?? e.g.
     #def __init__(self, name=None, orig_atom=None, suffix=None, update_fn=None, orig_name=None):

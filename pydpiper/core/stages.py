@@ -45,9 +45,14 @@ class CmdStage(object):
 
 def cmd_stage(cmd): # [string|InputFile|OutputFile] -> CmdStage
     """'Smart constructor' for command stages using heterogeneous list API of the old command stage"""
-    inputs  = [s.filename for s in cmd if isinstance(s, InputFile)]
-    outputs = [s.filename for s in cmd if isinstance(s, OutputFile)]
-    cmd = [(s.filename if isinstance(s, PipelineFile) else s) for s in cmd]
+    inputs  = [s for s in cmd if isinstance(s, InputFile)]
+    outputs = [s for s in cmd if isinstance(s, OutputFile)]
+    # we used to store strings/filenames in PipelineFiles (and the InputFile
+    # and OutputFile children). Currently what we store are FileAtoms and
+    # MincAtoms. So it might seem strange in the next line to see s.filename, 
+    # but that is where we currently store those File/MincAtoms. This will
+    # eventually all go away.
+    cmd = [(s.filename.get_path() if isinstance(s, PipelineFile) else s) for s in cmd]
     return CmdStage(inputs = inputs, outputs = outputs, cmd = cmd)
 
 class Stages(set):
