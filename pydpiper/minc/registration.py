@@ -35,19 +35,19 @@ def mincblur(img, fwhm, gradient=False, subdir='tmp'): # mnc -> mnc  #, output_d
     stage = CmdStage(
               inputs = [img], outputs = [outf],
               #this used to a function render_fn : conf, inf, outf -> string
-              cmd = shlex.split('mincblur -clobber -no_apodize -fwhm %s %s %s' % (fwhm, img.path, outf.path)) \
+              cmd = shlex.split('mincblur -clobber -no_apodize -fwhm %s %s %s' % (fwhm, img.get_path(), outf.get_path())) \
                   + (['-gradient'] if gradient else []))
     return Result(stages=Stages([stage]), output=outf)
 
 def mincresample_simple(img, xfm, like, extra_flags): # mnc -> mnc
     #TODO should extra_args (might contain -invert or -sinc) be(/be part of a conf object/list/dict/... ?
     """Resample an image, ignoring mask/labels"""
-    outf = img.newname_with(lambda _old: xfm.name + '-resampled', subdir='resampled') # TODO update the mask/labels here
+    outf = img.newname_with_fn(lambda _old: xfm.filename_wo_ext + '-resampled', subdir='resampled') # TODO update the mask/labels here
     #outf = MincAtom(name=xname + '-resampled' + '.mnc', subdir='resampled')
     stage = cmd_stage(['mincresample', '-clobber', '-2',
-                       '-transform %s' % InputFile(xfm.path),
-                       '-like %s' % InputFile(like.path),
-                       InputFile(img.path), OutputFile(outf.path)] + extra_flags)
+                       '-transform %s' % InputFile(xfm.get_path()),
+                       '-like %s' % InputFile(like.get_path()),
+                       InputFile(img.get_path()), OutputFile(outf.get_path())] + extra_flags)
     return Result(stages=Stages([stage]), output=outf)
 
 # TODO mincresample_simple could easily be replaced by a recursive call to mincresample
@@ -78,11 +78,11 @@ def xfmconcat(xfms): # [xfm] -> xfm
     elif len(xfms) == 1:
         return Result(stages=Stages(), output=xfms[0])
     else:
-        outf = xfms[0].newname_with(
+        outf = xfms[0].newname_with_fn(
             lambda orig: "concat_of_%s" % "_and_".join([x.name for x in xfms])) #could do names[1:] if dirname contains names[0]?
         stage = CmdStage(
             inputs = xfms, outputs = [outf],
-            cmd = shlex.split('xfmconcat %s %s' % (' '.join([x.path for x in xfms]), outf.path)))
+            cmd = shlex.split('xfmconcat %s %s' % (' '.join([x.get_path() for x in xfms]), outf.get_path())))
         return Result(stages=Stages([stage]), output=outf)
 
 """xfmconcat lifted to work on XfmHandlers instead of MincAtoms"""
@@ -106,13 +106,13 @@ def nu_estimate(src): # MincAtom -> Result(stages=Set(Stages), MincAtom)
     # (currently we don't allow for a single mask or using the initial model's mask if the inputs don't have them)
     cmd = CmdStage(inputs = [src], outputs = [out],
                    cmd = shlex.split("nu_estimate -clobber -distance 8 -iterations 100 -stop 0.001 -fwhm 0.15 -shrink 4 -lambda 5.0e-02")
-                       + (['-mask', src.mask.path] if src.mask else []) + [src.path, out.path])
+                       + (['-mask', src.mask.get_path()] if src.mask else []) + [src.get_path(), out.get_path()])
     return Result(stages=Stages([cmd]), output=out)
 
 def nu_evaluate(img, field): #mnc, file -> result(..., mnc)
     out = img.newname_with_suffix("_nuc")
     cmd = CmdStage(inputs = [img, field], outputs = [out],
-                   cmd = ['nu_evaluate', '-clobber', '-mapping', field.path, img.path, out.path])
+                   cmd = ['nu_evaluate', '-clobber', '-mapping', field.get_path(), img.get_path(), out.get_path()])
     return Result(stages=Stages([cmd]), output=out)
 
 def nu_correct(src): # mnc -> result(..., mnc)
@@ -129,11 +129,11 @@ class INormalizeConf(Atom):
     # and create default objects?
 
 def inormalize(src, conf): # mnc, INormalizeConf -> result(..., mnc)
-    out = src.newname_with('_inorm')
+    out = src.newname_with_suffix('_inorm')
     cmd = CmdStage(inputs = [src], outputs = [out],
                    cmd = shlex.split('inormalize -clobber -const %s -%s' % (conf.const, conf.method))
-                       + (['-mask', src.mask.path] if src.mask else [])
-                       + [src.path, out.path])
+                       + (['-mask', src.mask.get_path()] if src.mask else [])
+                       + [src.get_path(), out.get_path()])
     return Result(stages=Stages([cmd]), output=out)
 
 class RotationalMinctraccConf(Atom):
@@ -170,10 +170,10 @@ def rotational_minctracc(source, target, conf):
                "-g", str(conf.registration_step),
                "-r", str(conf.rotational_range),
                "-i", str(conf.rotational_interval),
-               source.path,
-               target.path,
-               out.path,
-               "/dev/null"] + (['-m', source.mask.path] if source.mask else []))
+               source.get_path(),
+               target.get_path(),
+               out.get_path(),
+               "/dev/null"] + (['-m', source.mask.get_path()] if source.mask else []))
     return Result(stages=Stages([cmd]), output=out)
 
 class MinctraccConf(Atom):
@@ -273,13 +273,13 @@ def minctracc(source, target, conf, transform=None):
     #    raise ValueError("minctracc: invalid transform type %s" % conf.transform_type) # not needed if MinctraccConfig(Atom) given
     # FIXME this line should produce a MincAtom (or FileAtom?? doesn't matter if
     # we use only structural properties) with null mask/labels
-    out_xfm = source.newname_with(lambda x: "%s_to_%s" % (x, target.name), ext='.xfm') #TODO destroy orig_name?
+    out_xfm = source.newname_with_fn(lambda x: "%s_to_%s" % (x, target.name), ext='.xfm') #TODO destroy orig_name?
     #outf = MincAtom(name = "%s_to_%s.xfm" % (source.name, target.name))            #TODO don't get an orig_name
     stage = cmd_stage(flatten(
               ['minctracc', '-clobber', '-debug', '-xcorr'],
               #TODO remove -xcorr in nonlinear case?
               #TODO remove -debug in purely linear case?
-              (['-transformation', InputFile(transform.path)] if transform else []),
+              (['-transformation', InputFile(transform.get_path())] if transform else []),
               (['-' + conf.transform_type] if conf.transform_type else []),
               (['-use_simplex'] if conf.use_simplex is not None else []),
               # FIXME add -est_centre, -est_translations/-identity if not transform (else add transform) !!
@@ -297,9 +297,9 @@ def minctracc(source, target, conf, transform=None):
                 ['-sub_lattice',           conf.sub_lattice],
                ]))),
               (['-nonlinear %s' % (conf.objective if conf.objective else '')] if conf.is_nonlinear else []),
-              (['-source_mask', InputFile(source.mask.path)] if source.mask and conf.use_masks else []),
-              (['-model_mask',  InputFile(target.mask.path)] if target.mask and conf.use_masks else []),
-              [InputFile(source.path), InputFile(target.path), OutputFile(out_xfm.path)]))
+              (['-source_mask', InputFile(source.mask.get_path())] if source.mask and conf.use_masks else []),
+              (['-model_mask',  InputFile(target.mask.get_path())] if target.mask and conf.use_masks else []),
+              [InputFile(source.get_path()), InputFile(target.get_path()), OutputFile(out_xfm.get_path())]))
     return Result(stages=Stages([stage]), output=out_xfm)
 
 class SimilarityMetricConf(Atom):
@@ -324,25 +324,29 @@ mincANTS_default_conf = MincANTSConf()
 def mincANTS(source, target, conf, transform=None):
     s = Stages()
     # TODO add a way to add _nlin_0 or whatever to name based on generation or whatever
-    xfm = source.newname_with(lambda x: "%s_to_%s" % (source.name, target.name), ext='.xfm') #TODO fix dir, orig_name, ...
+    xfm = source.newname_with_fn(lambda x: "%s_to_%s" % (source.filename_wo_ext, target.filename_wo_ext), ext='.xfm') #TODO fix dir, orig_name, ...
 
     similaritycmds = []
     for similarity_element in conf.sim_metric_params:
         similaritycmds.append("-m")
         
         subcmd = ""
+    subcmds = {}
     for ix, st in enumerate(['img', 'grad']):
     # no coherence enforced between 2-elt arrays and blur/grad ... make protocol/conf better e.g. parse into set or nested structure
-        if conf.blurs[ix] is not None:
-            src  = s.defer(mincblur(source, fwhm=conf.blurs[ix], gradient=True))
-            dest = s.defer(mincblur(target, fwhm=conf.blurs[ix], gradient=True))
-        else:
-            src  = source
-            dest = target
-        inner = ','.join([src.path, dest.path, str(conf.weight[ix]), str(conf.radius_or_histo[ix])])
-        subcmds[st] = "'" + "".join([conf.similarity_metric[ix], '[', inner, ']']) + "'"
+        # TODO: fix this!!
+        #if conf.blurs[ix] is not None:
+        #    src  = s.defer(mincblur(source, fwhm=conf.blurs[ix], gradient=True))
+        #    dest = s.defer(mincblur(target, fwhm=conf.blurs[ix], gradient=True))
+        #else:
+        src  = source
+        dest = target
+        #TODO: fix this whole mincANTSConf thing...
+        #inner = ','.join([src.get_path(), dest.get_path(), str(conf.weight[ix]), str(conf.radius_or_histo[ix])])
+        inner = ','.join([src.get_path(), dest.get_path(), str(1), str(3)])
+        subcmds[st] = "'" + "".join(['CC', '[', inner, ']']) + "'"
     # /hack
-    stage = CmdStage(inputs = [source.path, target.path] + ([target.mask.path] if target.mask else []),
+    stage = CmdStage(inputs = [source.get_path(), target.get_path()] + ([target.mask.get_path()] if target.mask else []),
                      # hard to use cmd_stage wrapper here due to complicated subcmds ...
                      outputs = [xfm],
                      cmd = ['mincANTS', '3',
@@ -352,8 +356,8 @@ def mincANTS(source, target, conf, transform=None):
                             '-t', conf.transformation_model,
                             '-r', conf.regularization,
                             '-i', conf.iterations,
-                            '-o', xfm.path] \
-                         + (['-x', target.mask.path] if conf.use_mask and target.mask else []))
+                            '-o', xfm.get_path()] \
+                         + (['-x', target.mask.get_path()] if conf.use_mask and target.mask else []))
     s.add(stage)
     resampled = s.defer(mincresample(img=source, xfm=xfm, like=target, extra_flags=['-sinc']))
     return Result(stages=s,
@@ -390,15 +394,16 @@ def mincANTS_NLIN_build_model(imgs, initial_target, nlin_dir, confs):
 def intrasubject_registrations(subj):
     # don't need if lsq12_nlin acts on a map with values being imgs
     # TODO temp configuration!!
-    test_conf = MincANTSConf(iterations = "40x30x20",
-                             transformation_model = mincANTS_default_conf.transformation_model,
-                             regularization = "'Gauss[5,1]'",
-                             similarity_metric = mincANTS_default_conf.similarity_metric,
-                             weight = mincANTS_default_conf.weight,
-                             blurs = mincANTS_default_conf.blurs,
-                             radius_or_histo = [4,4],
-                             gradient = mincANTS_default_conf.gradient,
-                             use_mask = False)
+    test_conf = MincANTSConf()
+    #test_conf = MincANTSConf(iterations = "40x30x20",
+    #                         transformation_model = mincANTS_default_conf.transformation_model,
+    #                         regularization = "'Gauss[5,1]'",
+    #                         similarity_metric = mincANTS_default_conf.similarity_metric,
+    #                         weight = mincANTS_default_conf.weight,
+    #                         blurs = mincANTS_default_conf.blurs,
+    #                         radius_or_histo = [4,4],
+    #                         gradient = mincANTS_default_conf.gradient,
+    #                         use_mask = False)
     s = Stages()
     timepts = list((t,img) for t,img in subj.time_pt_dict.iteritems())
     for source_index in range(len(timepts) - 1):
@@ -529,7 +534,7 @@ def mincaverage(imgs, name="average", output_dir='.'):
     s = CmdStage(inputs=imgs, outputs=[avg, sdfile],
           cmd = ['mincaverage', '-clobber', '-normalize',
                  '-max-buffer-size-in-kb', '409620',
-                 '-sdfile', sdfile.path] + [img.path for img in imgs] + [avg.path])
+                 '-sdfile', sdfile.get_path()] + [img.get_path() for img in imgs] + [avg.get_path()])
     return Result(stages=Stages([s]), output=avg)
 
 def xfmaverage(xfms, output_dir): #mnc -> mnc
@@ -539,13 +544,13 @@ def xfmaverage(xfms, output_dir): #mnc -> mnc
     #outf.orig_path = None #ugh
     outf  = MincAtom(name=os.path.join(output_dir, 'average'), orig_name=None)
     stage = CmdStage(inputs=xfms, outputs=[outf],
-                     cmd=["xfmaverage"] + [x.xfm.path for x in xfms] + [outf.path])
+                     cmd=["xfmaverage"] + [x.xfm.get_path() for x in xfms] + [outf.get_path()])
     return Result(stages=Stages([stage]), output=outf)
 
 def xfminvert(xfm): #mnc -> mnc #TODO find a new naming scheme for lifted/unlifted operations?
     inv_xfm = xfm.newname_with_suffix('_inverted')
     s = CmdStage(inputs=[xfm], outputs=[inv_xfm],
-                 cmd=['xfminvert', '-clobber', xfm.path, inv_xfm.path])
+                 cmd=['xfminvert', '-clobber', xfm.get_path(), inv_xfm.get_path()])
     return Result(stages=Stages([s]), output=inv_xfm)
 
 def invert(xfm): #xfm -> xfm

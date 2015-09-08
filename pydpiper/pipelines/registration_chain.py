@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 from   __future__ import print_function
+from __future__ import absolute_import
 import csv
 from collections import defaultdict
 from atom.api import Atom, Int, Str, Dict, Enum, Instance
@@ -10,7 +11,9 @@ from pydpiper.minc.files import MincAtom
 #from pydpiper.pipelines.LSQ6 import lsq6
 from configargparse import ArgParser
 from pkg_resources import get_distribution
-from pydpiper.core.arguments import addApplicationArgumentGroup, addExecutorArgumentGroup
+from pydpiper.core.arguments import addApplicationArgumentGroup, \
+    addGeneralRegistrationArgumentGroup, addExecutorArgumentGroup, \
+    addRegistrationChainArgumentGroup, addStatsArgumentGroup
 
 # TODO: this might be temporary... currently only used 
 # to test the registration chain
@@ -194,6 +197,14 @@ def chain(options):
 
     s = Stages()
     
+    if not options.csv_file:
+        #TODO: how do we want to standardize things? Should we always raise some
+        #sort of error, or is it okay to print an error message and exit with a 
+        #non-zero value?
+        print("Error: no csv_file with the mapping of the input data was provided. "
+              "Use the --csv-file flag to specify.")
+        sys.exit(1)
+    
     with open(options.csv_file, 'r') as f:
         subject_info = parse_csv(f, options.common_time_point)
     
@@ -308,8 +319,9 @@ def chain(options):
                 for xfmhandler in intersubj_xfms.xfms:
                     if xfmhandler.source == subj_time_pt_file:
                         print(xfmhandler.xfm.get_path())
-        
-    map_data(lambda xfm: determinants_at_fwhms(xfm, options.stats_kernels), subject_info)
+     
+    #TODO: this is way too mysterious...   
+    #map_data(lambda xfm: determinants_at_fwhms(xfm, options.stats_kernels), subject_info)
     
     #raise NotImplemented
 
@@ -318,8 +330,9 @@ def chain(options):
 if __name__ == "__main__":
     # TODO: the following can be captured in some sort of initialization 
     # function to make it easier to write/create a new application
-    # use an environment variable to look for a default config file
     
+    # *** *** *** *** *** *** *** *** ***
+    # use an environment variable to look for a default config file
     default_config_file = os.getenv("PYDPIPER_CONFIG_FILE")
     if default_config_file is not None:
         config_files = [default_config_file]
@@ -330,6 +343,9 @@ if __name__ == "__main__":
 
     addApplicationArgumentGroup(parser)
     addExecutorArgumentGroup(parser)
+    addGeneralRegistrationArgumentGroup(parser)
+    addRegistrationChainArgumentGroup(parser)
+    addStatsArgumentGroup(parser)
     
     options = parser.parse_args()
     
@@ -338,6 +354,7 @@ if __name__ == "__main__":
         print("Pydpiper version: %s" % pydpiper_version)
         sys.exit(0)
     
+    # *** *** *** *** *** *** *** *** ***
 
 
     #if len(sys.argv) < 4:
@@ -357,7 +374,7 @@ if __name__ == "__main__":
     #else:
     #    options.common_time_point = -1
     
-    #chain(options)
+    chain(options)
     
     print("\nDone...\n")
     

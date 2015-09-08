@@ -34,12 +34,11 @@ class FileAtom(HasTraits):
         #self.work_dir  = os.path.join(os.path.abspath(work_dir) if work_dir else os.getcwd(), self.name)  # was sort of working ...
         # FIXME the problem here is that work_dir internally means something different from work_dir in the __init__ call,
         # which is more like a cwd, so the work_dir will be created inside it
-        if work_dir is not None:
-            self.work_dir = os.path.abspath(work_dir)
-        elif curr_dir is not None: # TODO assert both aren't None
-            self.work_dir = os.path.join(os.path.abspath(curr_dir), self.name)
+        if output_dir is not None:
+            self.output_dir = os.path.abspath(output_dir)
         else:
-            self.work_dir = os.path.join(os.getcwd(), self.name)
+            #TODO: is this what we want...?
+            self.output_dir = os.path.join(os.getcwd(), self.filename_wo_ext)
         #self.work_dir = os.path.join(curr_dir if curr_dir else os.getcwd(), self.name) #work_dir if work_dir else os.path.join(os.getcwd(), self.name)
 
     def get_path(self):

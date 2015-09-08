@@ -4,8 +4,31 @@ by PydPiper applications. Some option groups might be mandatory/highly
 recommended to add to your application: e.g. the arguments that deal
 with the execution of your application.
 '''
+import time
+
+# TODO: most (if not all) of the following options don't do anything yet
+# we should come up with a good way to deal with all this. Given that
+# Jason wants to be able to connect each of the applications together
+# in new code (e.g., by simply calling chain(...args...) or MBM(,,,args...)
+# there needs to be another way to create the options hash? So that you could
+# write applications that require little to no command line arguments?
+
+
 
 def addApplicationArgumentGroup(parser):
+    """
+    The arguments that all applications share:
+    --restart
+    --no-restart
+    --output-dir
+    --create-graph
+    --execute
+    --no-execute
+    --version
+    --verbose
+    --no-verbose
+    files (left over arguments (0 or more is allowed)
+    """
     group = parser.add_argument_group("General application options", "General options for all pydpiper applications.")
     group.add_argument("--restart", dest="restart", 
                                action="store_false", default=True,
@@ -58,7 +81,7 @@ def addExecutorArgumentGroup(parser):
     group.add_argument("--max-failed-executors", dest="max_failed_executors",
                       type=int, default=2,
                       help="Maximum number of failed executors before we stop relaunching. [Default = %(default)s]")
-    # TODO add corresponding --monitor-heartbeats
+    # TODO: add corresponding --monitor-heartbeats
     group.add_argument("--no-monitor-heartbeats", dest="monitor_heartbeats",
                       action="store_false",
                       help="Don't assume executors have died if they don't check in with the server (NOTE: this can hang your pipeline if an executor crashes).")
@@ -81,12 +104,6 @@ def addExecutorArgumentGroup(parser):
                        help="Name of the queue, e.g., all.q (MICe) or batch (SciNet)")
     group.add_argument("--queue-type", dest="queue_type", type=str, default=None,
                        help="""Queue type to submit jobs, i.e., "sge" or "pbs".  [Default = %(default)s]""")
-    group.add_argument("--queue", dest="queue", 
-                       type=str, default=None,
-                       help="[DEPRECATED; use --queue-type instead.]  Use specified queueing system to submit jobs. Default is None.")              
-    group.add_argument("--sge-queue-opts", dest="sge_queue_opts", 
-                       type=str, default=None,
-                       help="[DEPRECATED; use --queue-name instead.]  For --queue=sge, allows you to specify different queues. [Default = %(default)s]")
     group.add_argument("--queue-opts", dest="queue_opts",
                        type=str, default="",
                        help="A string of extra arguments/flags to pass to qsub. [Default = %(default)s]")
@@ -109,6 +126,53 @@ def addExecutorArgumentGroup(parser):
                        type=float, default = 1.75,
                        help="Memory (in GB) to allocate to jobs which don't make a request. [Default=%(default)s]")
 
+def addGeneralRegistrationArgumentGroup(parser):
+    group = parser.add_argument_group("General registration options",
+                         "General options for running various types of registrations.")
+    group.add_argument("--pipeline-name", dest="pipeline_name", type=str,
+                       default=time.strftime("pipeline-%d-%m-%Y-at-%H-%m-%S"),
+                       help="Name of pipeline and prefix for models.")
+    group.add_argument("--input-space", dest="input_space",
+                       type=str, default="native", 
+                       help="Option to specify space of input-files. Can be native (default), lsq6, lsq12. "
+                            "Native means that there is no prior formal alignent between the input files " 
+                            "yet. lsq6 means that the input files have been aligned using translations "
+                            "and rotations; the code will continue with a 12 parameter alignment. lsq12 " 
+                            "means that the input files are fully linearly aligned. Only non linear "
+                            "registrations are performed.")
+
+def addStatsArgumentGroup(parser):
+    group = parser.add_argument_group("Statistics options", 
+                          "Options for calculating statistics.")
+    group.add_argument("--stats-kernels", dest="stats_kernels",
+                       type=str, default="0.5,0.2,0.1", 
+                       help="comma separated list of blurring kernels for analysis. Default is: 0.5,0.2,0.1")
 
 
+def addRegistrationChainArgumentGroup(parser):
+    group = parser.add_argument_group("Registration chain options",
+                        "Options for processing longitudinal data.")
+    group.add_argument("--csv-file", dest="csv_file",
+                       type=str, default=None,
+                       help="The spreadsheet with information about your input data. "
+                            "For the registration chain you are required to have the "
+                            "following columns in your csv file: \" subject_id\", "
+                            "\"timepoint\", and \"filename\". Optionally you can have "
+                            "a column called \"is_common\" that indicates that a subject "
+                            "is to be used for the common time point using a 1, and 0 "
+                            "otherwise.")
+    group.add_argument("--common-time-point", dest="common_time_point",
+                       type=int, default=None,
+                       help="The time point at which the inter-subject registration will be "
+                            "performed. I.e., the time point that will link the subjects together. "
+                            "If you want to use the last time point from each of your input files, "
+                            "(they might differ per input file) specify -1. If the common time "
+                            "is not specified, the assumption is that the spreadsheet contains "
+                            "the mapping using the \"is_common\" column. [Default = %(default)s]")
+    group.add_argument("--common-time-point-name", dest="common_name",
+                       type=str, default="common", 
+                       help="Option to specify a name for the common time point. This is useful for the "
+                            "creation of more readable output file names. Default is \"common\". Note "
+                            "that the common time point is the one created by an iterative group-wise " 
+                            "registration (inter-subject).")
 
