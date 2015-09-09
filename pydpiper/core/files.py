@@ -1,10 +1,8 @@
 import os
 
-from traits.api import *
-
 from .util import explode, NotProvided
 
-class FileAtom(HasTraits):
+class FileAtom(object):
     """
         What is stored:
         self.orig_path -- original input file, full file name and path (/path/filename.ext), can be None
