@@ -3,6 +3,7 @@ import time
 import pkg_resources
 import logging
 import networkx as nx
+import re
 import sys
 import os
 
@@ -102,9 +103,7 @@ def execute(stages, options):
         print("Not executing the command (--no-execute is specified).\nDone.")
         return
 
-    out_dir = output_dir(options)
-    pipeline.setBackupFileLocation(out_dir)
-       
+    ensure_exec_specified(options.num_exec)
 
     # TODO: should create_directories be added as a method to Pipeline?
     # TODO: move calls to create_directories into execution functions
@@ -124,8 +123,8 @@ def create_directories(stages):
         try:
             os.makedirs(d)
         except OSError as e:
-            # FIXME check it's from the directory already existing
-            pass
+            if not re.match('File exists', e.strerror):
+                raise
 
 # The old AbstractApplication class has been removed due to its API being non-obvious.  Instead,
 # we currently provide an `execute` function and some helper functions for command-line parsing.
@@ -165,16 +164,3 @@ def reconstruct_command(options):
     pf.write(reconstruct + '\n')
     pf.close()
  
-class AbstractApplication(object):
-    # FIXME check that only one server is running with a given output directory
-    def start(self):
-        # Check to make sure some executors have been specified if we are 
-        # actually going to run:
-        if self.options.execute:
-            ensure_exec_specified(self.options.num_exec)
-             
-        self._setup_pipeline(self.options)
-        self._setup_directories()
-        
-        if (self.options.execute and not pbs_submit) or self.options.create_graph:
-            self.pipeline.printStages(self.options.pipeline_name)

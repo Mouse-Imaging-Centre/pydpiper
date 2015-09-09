@@ -8,7 +8,7 @@ from pydpiper.minc.registration import *
 
 @pytest.fixture()
 def img(mask, labels):
-    return MincAtom('/images/img_1.mnc', curr_dir='/scratch', mask=mask, labels=labels)
+    return MincAtom('/images/img_1.mnc', output_dir='/scratch', mask=mask, labels=labels)
 
 @pytest.fixture()
 def mask():

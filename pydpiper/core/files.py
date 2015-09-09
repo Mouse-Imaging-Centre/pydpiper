@@ -1,3 +1,4 @@
+import copy
 import os
 
 from .util import explode, NotProvided
@@ -15,7 +16,7 @@ class FileAtom(object):
     def __init__(self, name, orig_name=NotProvided, output_dir=None):
         self.dir, self.filename_wo_ext, self.ext = explode(os.path.abspath(name))
         if orig_name is NotProvided:
-            self.orig_path = self.path
+            self.orig_path = self.get_path()
         elif orig_name is None:
             # is this case even needed? if no orig file, when _isn't_ file itself the orig file?
             self.orig_path = None
@@ -41,8 +42,7 @@ class FileAtom(object):
 
     def get_path(self):
         #TODO: in order to avoid storing duplicate information, is this what we want? 
-        (d,n,e) = (self.dir, self.filename_wo_ext, self.ext)
-        return os.path.join(d, n + e)
+        return os.path.join(self.dir, self.filename_wo_ext + self.ext)
 
     def newname_with_fn(self, fn, ext=None, subdir=None):
         """Create a new FileAtom from one representing <dirs>/<file><.ext>
@@ -62,16 +62,15 @@ class FileAtom(object):
         # (we use absolute paths so the tests are deterministic without requiring postprocessing)
         >>> f1 = FileAtom(name='/project/images/img_1.mnc', output_dir="/scratch/pipeline/")
         >>> f2 = f1.newname_with_fn(fn=lambda n: n + '_fwhm0.056')
-        >>> f2.path
+        >>> f2.get_path()
         '/scratch/pipeline/img_1_fwhm0.056.mnc'
-        >>> f1.path
+        >>> f1.get_path()
         '/project/images/img_1.mnc'
         """
 
-        _dir, name, old_ext = (self.dir, self.filename_wo_ext, self.ext)
         output_dir = self.output_dir
-        ext  = ext or old_ext
-        name = os.path.join(os.path.join(output_dir, subdir) if subdir else output_dir, fn(name) + ext)
+        ext  = ext or self.ext
+        filename_wo_ext = fn(self.filename_wo_ext) #os.path.join(os.path.join(output_dir, subdir) if subdir else output_dir, fn(name) + ext)
         # FIXME should return something of the same class, but can't call self.__class__.__init__(...)
         # here as init fn may have different signature => need to copy and set attrs and/or override
         # this method/make it abstract
@@ -81,13 +80,18 @@ class FileAtom(object):
         # call init with this dict, suitably overriden
         # could use locals() but this seems like a huge hack and will probably break
         # I feel there's no proper way to do this since we have no idea what additional behaviour/data subclasses may define
-        return FileAtom(name=name, orig_name=self.orig_path, output_dir=output_dir)
+        fa = copy.copy(self)
+        fa.filename_wo_ext = filename_wo_ext
+        fa.output_dir = output_dir
+        fa.orig_path  = self.orig_path
+        return fa
+        #return FileAtom(name=name, orig_name=self.orig_path, output_dir=output_dir)
 
     def newname_with_suffix(self, suffix, ext=None, subdir=None):
         """Create a FileAtom representing <dirs>/<file><suffix><.ext>
         from one representing <dirs>/<file><.ext>
 
-        >>> os.path.basename(FileAtom(name='img_1.mnc').newname_with_suffix(suffix='_fwhm0.056').path)
+        >>> os.path.basename(FileAtom(name='img_1.mnc').newname_with_suffix(suffix='_fwhm0.056').get_path())
         'img_1_fwhm0.056.mnc'
         """
         return self.newname_with_fn(lambda n: n + suffix, ext=ext, subdir=subdir)
