@@ -1,3 +1,4 @@
+import copy
 import os
 
 from .util import explode, NotProvided
@@ -67,10 +68,9 @@ class FileAtom(object):
         '/project/images/img_1.mnc'
         """
 
-        _dir, name, old_ext = (self.dir, self.filename_wo_ext, self.ext)
         output_dir = self.output_dir
-        ext  = ext or old_ext
-        name = os.path.join(os.path.join(output_dir, subdir) if subdir else output_dir, fn(name) + ext)
+        ext  = ext or self.ext
+        filename_wo_ext = fn(self.filename_wo_ext) #os.path.join(os.path.join(output_dir, subdir) if subdir else output_dir, fn(name) + ext)
         # FIXME should return something of the same class, but can't call self.__class__.__init__(...)
         # here as init fn may have different signature => need to copy and set attrs and/or override
         # this method/make it abstract
@@ -80,7 +80,12 @@ class FileAtom(object):
         # call init with this dict, suitably overriden
         # could use locals() but this seems like a huge hack and will probably break
         # I feel there's no proper way to do this since we have no idea what additional behaviour/data subclasses may define
-        return FileAtom(name=name, orig_name=self.orig_path, output_dir=output_dir)
+        fa = copy.copy(self)
+        fa.filename_wo_ext = filename_wo_ext
+        fa.output_dir = output_dir
+        fa.orig_path  = self.orig_path
+        return fa
+        #return FileAtom(name=name, orig_name=self.orig_path, output_dir=output_dir)
 
     def newname_with_suffix(self, suffix, ext=None, subdir=None):
         """Create a FileAtom representing <dirs>/<file><suffix><.ext>
