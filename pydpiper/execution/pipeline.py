@@ -28,8 +28,6 @@ logger.basicConfig(filename="pipeline.log", level=logging.os.getenv("PYDPIPER_LO
                    format="[%(asctime)s.%(msecs)03d,"
                           +__name__+",%(levelname)s] %(message)s")
                 
-logger.warn("I'm here")
-
 import Pyro4
 import pipeline_executor as pe
 

@@ -8,7 +8,6 @@ import os
 
 from pydpiper.execution.pipeline import Pipeline, pipelineDaemon
 from pydpiper.execution.queueing import runOnQueueingSystem
-from pydpiper.execution.file_handling import makedirsIgnoreExisting
 from pydpiper.execution.pipeline_executor import addExecutorArgumentGroup, ensure_exec_specified
 from pydpiper.core.util import output_directories
 from pydpiper.core.conversion import convertCmdStage
@@ -78,18 +77,22 @@ def create_parser():
     addApplicationArgumentGroup(parser)
     return parser
 
+
+def output_dir(options):
+    return options.output_directory if options.output_directory else os.getcwd()
+
 #TODO: change this to ...(static_pipeline, options)?
 def execute(stages, options):
     """Basically just looks at the arguments and exits if `--no-execute` is specified,
     otherwise dispatch on backend type."""
-
-
 
     # TODO: logger.info('Constructing pipeline...')
     pipeline = Pipeline(stages=map(convertCmdStage, stages), options=options)
 
     # TODO: print/log version
 
+    reconstruct_command(options)
+    
     if options.create_graph:
         logger.debug("Writing dot file...")
         nx.write_dot(pipeline.G, str(options.pipeline_name) + "_labeled-tree.dot")
@@ -99,14 +102,17 @@ def execute(stages, options):
         print("Not executing the command (--no-execute is specified).\nDone.")
         return
 
-    reconstruct_command(options)
-    
+    out_dir = output_dir(options)
+    pipeline.setBackupFileLocation(out_dir)
+       
+
     # TODO: should create_directories be added as a method to Pipeline?
     # TODO: move calls to create_directories into execution functions
-    create_directories(stages)
+    #create_directories(stages)
 
     execution_proc = backend(options)
     execution_proc(pipeline, options)
+
 
 def backend(options):
     return normal_execute if options.local else execution_backends[options.queue_type]
@@ -161,15 +167,6 @@ def reconstruct_command(options):
  
 class AbstractApplication(object):
     # FIXME check that only one server is running with a given output directory
-    def _setup_directories(self):
-        """Output and backup directories setup here."""
-        if not self.options.output_directory:
-            self.outputDir = os.getcwd()
-        else:
-            self.outputDir = makedirsIgnoreExisting(self.options.output_directory)
-        self.pipeline.setBackupFileLocation(self.outputDir)
-
-       
     def start(self):
         # Check to make sure some executors have been specified if we are 
         # actually going to run:
