@@ -4,7 +4,6 @@ from collections import namedtuple
 import os.path
 
 from pydpiper.core.stages     import Stages
-from pydpiper.core.conversion       import pipeline
 #from ..core.containers import Result
 #TODO fix up imports, naming, stuff in registration vs. pipelines, ...
 from pydpiper.minc.files            import MincAtom
@@ -38,16 +37,16 @@ def MBM(imgs, conf):
     # for the kidney tips, etc...
     pipeline_dir = os.path.join('.', conf.pipeline_name)
     #curr_dir = os.path.join(os.getcwd(), conf.pipeline_name, '/processed')
-    imgs = map(lambda name: MincAtom(name, curr_dir=pipeline_dir), images)
+    imgs = map(lambda name: MincAtom(name, output_dir=pipeline_dir), images)
 
     lsq6_stages = Stages()
-    lsq6_result = lsq6_stages.defer(lsq6(imgs, LSQ6_conf, curr_dir=pipeline_dir))
+    lsq6_result = lsq6_stages.defer(lsq6(imgs, LSQ6_conf, output_dir=pipeline_dir))
 
     #TODO factor out some of this standard model-building stuff into a procedure, similar to FullIterativeLSQ12NLIN
     # in the old code, but maybe also with optional LSQ6 ?  Also used in, e.g., two-level code
 
     lsq12_stages = Stages()
-    lsq12_result = lsq12_stages.defer(m.lsq12(imgs=[x.resampled for x in lsq6_result.xfms], conf=m.MinctraccConf(), curr_dir=pipeline_dir))
+    lsq12_result = lsq12_stages.defer(m.lsq12(imgs=[x.resampled for x in lsq6_result.xfms], conf=m.MinctraccConf(), output_dir=pipeline_dir))
 
     for s in lsq12_stages:
         print(s.render())
@@ -73,9 +72,6 @@ def MBM(imgs, conf):
     all_stages = lsq6_stages | lsq12_stages | nlin_stages | stats_stages # TODO just use one set of stages ?
 
     return all_stages
-    #TODO accumulate all stages and create a pipeline, directories, etc. -- actually, this is similar for all pipelines, so don't
-    #p = pipeline(all_stages)
-    #return p
 
 if __name__ == "__main__":
     MBM(['images/img_%d.mnc' % i for i in range(1,4)], conf=MBM_test_conf)

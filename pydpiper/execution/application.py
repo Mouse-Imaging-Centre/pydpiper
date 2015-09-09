@@ -124,8 +124,8 @@ def create_directories(stages):
         try:
             os.makedirs(d)
         except OSError as e:
-            # FIXME check it's from the directory already existing
-            pass
+            if not re.match('File exists', e.strerror):
+                raise
 
 # The old AbstractApplication class has been removed due to its API being non-obvious.  Instead,
 # we currently provide an `execute` function and some helper functions for command-line parsing.

@@ -2,8 +2,7 @@ import argparse
 import os
 import sys
 
-from pydpiper.minc.registration import lsq12
-from pydpiper.core.util import directories
+from pydpiper.minc.registration import lsq12_pairwise
 from pydpiper.minc.files import MincAtom
 
 def addLSQ12ArgumentGroup(parser):
@@ -33,19 +32,13 @@ def LSQ12_pipeline(options):
     conf = None
     # could add a hook to print a message announcing completion, output files,
     # add more stages here to make a CSV
-    return lsq12(imgs, conf, curr_dir=options.pipeline_directory or os.getcwd())
+    return lsq12_pairwise(imgs, conf, output_dir=options.pipeline_directory or os.getcwd())
 
 def main(args):
     parser = argparse.ArgumentParser() # TODO setup arguments
     addLSQ12ArgumentGroup(parser)
     options = parser.parse_args(args[1:])
     stages, _ = LSQ12_pipeline(options)
-    for d in directories(stages):
-        try:
-            os.mkdir(d)
-        except OSError as e:  # Python2 hack for exists_ok=True
-            if not re.match('File exists', e.strerror):
-                raise
     execute(stages, options)
 
 if __name__ == '__main__':

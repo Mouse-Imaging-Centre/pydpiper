@@ -15,7 +15,7 @@ class FileAtom(object):
     def __init__(self, name, orig_name=NotProvided, output_dir=None):
         self.dir, self.filename_wo_ext, self.ext = explode(os.path.abspath(name))
         if orig_name is NotProvided:
-            self.orig_path = self.path
+            self.orig_path = self.get_path()
         elif orig_name is None:
             # is this case even needed? if no orig file, when _isn't_ file itself the orig file?
             self.orig_path = None
@@ -41,8 +41,7 @@ class FileAtom(object):
 
     def get_path(self):
         #TODO: in order to avoid storing duplicate information, is this what we want? 
-        (d,n,e) = (self.dir, self.filename_wo_ext, self.ext)
-        return os.path.join(d, n + e)
+        return os.path.join(self.dir, self.filename_wo_ext + self.ext)
 
     def newname_with_fn(self, fn, ext=None, subdir=None):
         """Create a new FileAtom from one representing <dirs>/<file><.ext>
@@ -62,9 +61,9 @@ class FileAtom(object):
         # (we use absolute paths so the tests are deterministic without requiring postprocessing)
         >>> f1 = FileAtom(name='/project/images/img_1.mnc', output_dir="/scratch/pipeline/")
         >>> f2 = f1.newname_with_fn(fn=lambda n: n + '_fwhm0.056')
-        >>> f2.path
+        >>> f2.get_path()
         '/scratch/pipeline/img_1_fwhm0.056.mnc'
-        >>> f1.path
+        >>> f1.get_path()
         '/project/images/img_1.mnc'
         """
 
@@ -87,7 +86,7 @@ class FileAtom(object):
         """Create a FileAtom representing <dirs>/<file><suffix><.ext>
         from one representing <dirs>/<file><.ext>
 
-        >>> os.path.basename(FileAtom(name='img_1.mnc').newname_with_suffix(suffix='_fwhm0.056').path)
+        >>> os.path.basename(FileAtom(name='img_1.mnc').newname_with_suffix(suffix='_fwhm0.056').get_path())
         'img_1_fwhm0.056.mnc'
         """
         return self.newname_with_fn(lambda n: n + suffix, ext=ext, subdir=subdir)
