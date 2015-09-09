@@ -259,12 +259,8 @@ class pipelineExecutor(object):
         self.procs = options.proc
         self.ppn = options.ppn
         self.pe  = options.pe
-        self.queue_type = options.queue_type or options.queue
-        self.queue_name = options.queue_name or options.sge_queue_opts
-        if options.queue:
-            logger.warn("--queue is deprecated; use --queue-type instead")
-        if options.sge_queue_opts:
-            logger.warn("--sge_queue_opts is deprecated; use --queue-name instead")
+        self.queue_type = options.queue_type
+        self.queue_name = options.queue_name
         self.queue_opts = options.queue_opts
         self.ns = options.use_ns
         self.uri_file = options.urifile
@@ -614,12 +610,12 @@ if __name__ == "__main__":
 
     if options.local:
         local_launch(options)
-    elif options.queue == "pbs" or options.queue_type == "pbs":
+    elif options.queue_type == "pbs":
         roq = q.runOnQueueingSystem(options, sysArgs=sys.argv)
         for i in range(options.num_exec):
             roq.createAndSubmitExecutorJobFile(i, after=None,
                             time=q.timestr_to_secs(options.time))
-    elif options.queue == "sge" or options.queue_type == "sge":
+    elif options.queue_type == "sge":
         for i in range(options.num_exec):
             pe = pipelineExecutor(options)
             pe.submitToQueue()

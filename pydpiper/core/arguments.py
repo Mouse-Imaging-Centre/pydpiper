@@ -75,6 +75,9 @@ def addExecutorArgumentGroup(parser):
     group.add_argument("--use-ns", dest="use_ns",
                        action="store_true",
                        help="Use the Pyro NameServer to store object locations. Currently a Pyro nameserver must be started separately for this to work.")
+    group.add_argument("--latency-tolerance", dest="latency_tolerance",
+                       type=float, default=15.0,
+                       help="Allowed grace period by which an executor may miss a heartbeat tick before being considered failed [Default = %(default)s.")
     group.add_argument("--num-executors", dest="num_exec", 
                        type=int, default=-1, 
                        help="Number of independent executors to launch. [Default = %(default)s. Code will not run without an explicit number specified.]")
@@ -94,6 +97,9 @@ def addExecutorArgumentGroup(parser):
     group.add_argument("--mem", dest="mem", 
                        type=float, default=6,
                        help="Total amount of requested memory (in GB) for all processes the executor runs. [Default = %(default)s].")
+    group.add_argument("--pe", dest="pe",
+                       type=str, default=None,
+                       help="Name of the SGE pe, if any. [Default = %(default)s]")
     group.add_argument("--greedy", dest="greedy",
                        action="store_true",
                        help="Request the full amount of RAM specified by --mem rather than the (lesser) amount needed by runnable jobs.  Always use this if your executor is assigned a full node.")
@@ -107,6 +113,8 @@ def addExecutorArgumentGroup(parser):
     group.add_argument("--queue-opts", dest="queue_opts",
                        type=str, default="",
                        help="A string of extra arguments/flags to pass to qsub. [Default = %(default)s]")
+    group.add_argument("--executor-start-delay", dest="executor_start_delay", type=int, default=180,
+                       help="Seconds before starting remote executors when running the server on the grid")
     group.add_argument("--time-to-seppuku", dest="time_to_seppuku", 
                        type=int, default=1,
                        help="The number of minutes an executor is allowed to continuously sleep, i.e. wait for an available job, while active on a compute node/farm before it kills itself due to resource hogging. [Default = %(default)s]")

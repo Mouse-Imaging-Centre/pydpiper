@@ -123,7 +123,6 @@ class CmdStage(PipelineStage):
         PipelineStage.__init__(self)
         self.cmd = [] # the input array converted to strings
         self.parseArgs(argArray)
-        #self.checkLogFile()
         # functions to be called when the stage becomes runnable
         # (these might be called multiple times, so should be benign
         # in some sense)
@@ -141,11 +140,10 @@ class CmdStage(PipelineStage):
                     self.outputFiles.append(s)
                 self.cmd.append(s)
             self.name = self.cmd[0]
-    def checkLogFile(self): # TODO silly, this is always called since called by __init__
-        global logfile_id
+    def checkLogFile(self):
         if not self.logFile:
-            self.logFile = self.name + "." + pipeline_start_time + '-' + str(logfile_id) + ".log"
-            logfile_id += 1
+            self.logFile = self.name + "." + CmdStage.pipeline_start_time + '-' + str(CmdStage.logfile_id) + ".log"
+            CmdStage.logfile_id += 1
     def setLogFile(self, logFileName): 
         self.logFile = str(logFileName)
     def execStage(self):
@@ -844,7 +842,7 @@ class Pipeline(object):
 def launchPipelineExecutor(options, memNeeded, programName=None):
     """Launch pipeline executor directly from pipeline"""
     pipelineExecutor = pe.pipelineExecutor(options, memNeeded)
-    if options.queue_type == "sge" or options.queue == "sge":
+    if options.queue_type == "sge":
         pipelineExecutor.submitToQueue(programName)
     else:
         pe.launchExecutor(pipelineExecutor)
