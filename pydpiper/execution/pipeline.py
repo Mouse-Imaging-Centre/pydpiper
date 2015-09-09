@@ -181,6 +181,11 @@ class Pipeline(object):
     def __init__(self, stages, options):
         # the core pipeline is stored in a directed graph. The graph is made
         # up of integer indices
+        # main set of options, needed since (a) we don't bother unpacking
+        # every single option into `self`, (b) since (most of) the option set
+        # is needed to launch new executors at run time
+        self.options = options
+
         self.G = ThinGraph()
         # a map from indices to the number of unfulfilled prerequisites
         # of the corresponding graph node (will be populated later -- __init__ is a misnomer)
@@ -206,7 +211,7 @@ class Pipeline(object):
         self.num_finished_stages = 0
         self.failedStages = []
         # location of backup files for restart if needed
-        self.backupFileLocation = None
+        self.backupFileLocation = self._backup_file_location()
         # table of registered clients (using ExecClient class instances) indexed by URI
         self.clients = {}
         # number of clients (executors) that have been launched by the server
@@ -216,9 +221,6 @@ class Pipeline(object):
         self.number_launched_and_waiting_clients = 0
         # clients we've lost contact with due to crash, etc.
         self.failed_executors = 0
-        # main option hash, needed for the pipeline (server) to launch additional
-        # executors during run time
-        self.options = options
         # time to shut down, due to walltime or having completed all stages?
         # (use an event rather than a simple flag for shutdown notification
         # so that we can shut down even if a process is currently sleeping)
@@ -232,10 +234,12 @@ class Pipeline(object):
         self.outputDir = self.options.output_directory 
         if not self.outputDir:
             self.outputDir = os.getcwd()
-        # redirect the standard output to a text file
+
         if self.options.queue_type == "pbs" and self.options.local:
+            # redirect the standard output to a text file
             serverLogFile = os.path.join(self.outputDir,self.options.pipeline_name + '_server_stdout.log')
-            sys.stdout = open(serverLogFile, 'a', 1) # 1 => line buffering
+            LINE_BUFFERING = 1
+            sys.stdout = open(serverLogFile, 'a', LINE_BUFFERING)
 
         #ensure_outputs_distinct(stages)
 
@@ -327,14 +331,10 @@ class Pipeline(object):
         if stage.mem is None and self.options is not None:
             stage.setMem(self.options.default_job_mem)
 
-    def setBackupFileLocation(self, outputDir=None):
-        """Sets location of backup files."""
-        if outputDir is None:
-            # set backups in current directory if directory doesn't currently exist
-            outputDir = os.getcwd()
-        self.backupFileLocation = os.path.join(outputDir,
-                                    self.options.pipeline_name
-                                     + '_finished_stages')
+    def _backup_file_location(self, outputDir=None):
+        loc = os.path.join(outputDir or os.getcwd(),
+                           self.options.pipeline_name + '_finished_stages')
+        return loc
 
     def printStages(self, name):
         """Prints stages to a file, stage info to stdout"""
@@ -848,8 +848,7 @@ def launchPipelineExecutor(options, memNeeded, programName=None):
         pe.launchExecutor(pipelineExecutor)
         
 def launchServer(pipeline, options):
-    # first follow up on the previously reported total number of 
-    # stages in the pipeline with how many have already finished:
+    pipeline.printStages(options.pipeline_name)
     pipeline.printNumberProcessedStages()
 
     # for ideological reasons this should live in a method, but pipeline init is
