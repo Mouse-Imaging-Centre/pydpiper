@@ -196,14 +196,19 @@ def parse_csv(rows, common_time_pt): # row iterator, int -> { subject_id(str) : 
 
 def chain(options):
 
+    # TODO:
+    # one overall question for this entire piece of code is how
+    # we are going to make sure that we can concatenate/add all
+    # the transformations together. Many of the sub-registrations
+    # that are performed (inter-subject registration, lsq6 using
+    # multiple initial models) are applied to subsets of the entire 
+    # data, making it harder to keep the mapping simple/straightforward
+
     s = Stages()
     
     if not options.csv_file:
-        #TODO: how do we want to standardize things? Should we always raise some
-        #sort of error, or is it okay to print an error message and exit with a 
-        #non-zero value?
         print("Error: no csv_file with the mapping of the input data was provided. "
-              "Use the --csv-file flag to specify.")
+              "Use the --csv-file flag to specify.", file=sys.stderr)
         sys.exit(1)
     
     with open(options.csv_file, 'r') as f:
@@ -214,12 +219,15 @@ def chain(options):
     
     if options.input_space == 'native':
         raise NotImplementedError("We currently have not implemented the code for 'input space': %s" % options.input_space)
-    
-
-    
-    
-    #all_imgs = {(s_id,t):img for s_id, subj in subject_info.iteritems()
-    #            for (t,img) in subj.time_point_dict.iteritems()}
+        
+        # TODO:
+        # what should be done here is the LSQ6 registration, options:
+        # - bootstrap
+        # - lsq6-target
+        # - initial model
+        # - "pride" of initial models (different targets for different time points)
+        
+        
 
     # NB currently LSQ6 expects an array of files, but we have a map.
     # possibilities:
@@ -229,15 +237,7 @@ def chain(options):
     # - write conversion which creates a tagged array from the map, performs LSQ6,
     #   and converts back
     # - write 'over' which takes a registration, a data structure, and 'get/set' fns ...?
-
-    #all_imgs = [img for subj in subject_info.itervalues()
-    #            for img in subj.time_point_dict.itervalues()]
-
-    # TODO how to associate images in the above dict with their xfm ??
-    # put result of LSQ6 into a map img_name => xfm
-    #lsq6_xfms = s.defer(LSQ6(all_imgs, options.lsq6_conf))
     
-    #{ xfm.source : xfm for xfm in lsq6_xfms}
 
     # Intersubject registration: LSQ12/NLIN registration of common-timepoint images
     # The assumption here is that all these files are roughly aligned. Here is a toy
@@ -251,12 +251,22 @@ def chain(options):
     #                                 |
     #                            group_wise registration on time point 2
     #
-    intersubj_imgs = { s_id : subj.intersubject_registration_image
-                       for s_id, subj in subject_info.iteritems() }
-    print("\nImages that are used for the intersubject registration:")
-    for subject in intersubj_imgs:
-        print("ID:   ", subject, "\nFile: ", intersubj_imgs[subject].orig_path) 
-    if options.input_space == 'lsq6':
+    if options.input_space == 'lsq6' or options.input_space == 'lsq12':
+        intersubj_imgs = { s_id : subj.intersubject_registration_image
+                          for s_id, subj in subject_info.iteritems() }
+    else:
+        # TODO: the intersubj_imgs should now be extracted from the
+        # lsq6 aligned images
+        raise NotImplementedError("We currently have not implemented the code for 'input space': %s" % options.input_space)
+    
+    if options.verbose:
+        print("\nImages that are used for the inter-subject registration:")
+        for subject in intersubj_imgs:
+            print("ID:   ", subject, "\nFile: ", intersubj_imgs[subject].orig_path)  
+    
+    # input files that started off in native space have been aligned rigidly 
+    # by this point in the code (i.e., lsq6)
+    if options.input_space == 'lsq6' or options.input_space == 'native':
         raise NotImplementedError("We currently have not implemented the code for 'input space': %s" % options.input_space)
         #intersubj_xfms = lsq12_NLIN_build_model_on_dictionaries(imgs=intersubj_imgs,
         #                                                        conf=conf,
@@ -264,12 +274,18 @@ def chain(options):
                                                                 #, like={atlas_from_init_model_at_this_tp}
         #                                                        )
     elif options.input_space == 'lsq12':
+        #TODO: where do we get the full pipeline directory layout from?
         some_temp_dir =  os.getcwd()  + "/nlin_dir_testing/"
+        #TODO: be able to get this from the command line. Also, create
+        #a better default set (using the parameters found using the 
+        #latest SciNet tests)
         test_conf = mincANTS_default_conf
+        first_level = MincANTSConf(iterations="100x100x100x0")
+        full_hierarchy = [first_level, test_conf]
         intersubj_xfms = s.defer(mincANTS_NLIN_build_model(imgs=intersubj_imgs.values(),
                                                    initial_target=intersubj_imgs.values()[0], # this doesn't make sense yet
                                                    nlin_dir=some_temp_dir,
-                                                   confs=[test_conf]))
+                                                   confs=full_hierarchy))
     print("\n*** *** INTERSUBJECT STAGES *** ***\n")
     for stage in s:
         print(stage.cmd_to_string(),"\n")
@@ -292,23 +308,18 @@ def chain(options):
     chain_xfms = { s_id : s.defer(intrasubject_registrations(subj))
                    for s_id, subj in subject_info.iteritems() }
     
-    print("\n*** *** INTRASUBJECT STAGES *** ***\n")
-    for stage in s:
-        print(stage.cmd_to_string(),"\n")
+    #print("\n*** *** INTRASUBJECT STAGES *** ***\n")
+    #for stage in s:
+    #    print(stage.cmd_to_string(),"\n")
+    
+    
     #for subject_cmd_stage in chain_xfms:
     #    for cmd_stage in chain_xfms[subject_cmd_stage].stages:
     #        print(cmd_stage.cmd_to_string(), "\n")
 
-    # TODO n
-
     ## longitudinal registration
     #for subj_id, subj in subject_info.iteritems():
     #    pass
-
-    # TODO temp, just to see if we now the transformation information we need
-    
-    print(intersubj_xfms)
-    print(chain_xfms)
     
     # this contains the information for all subjects
     for s_id, subj in subject_info.iteritems():
@@ -358,30 +369,11 @@ if __name__ == "__main__":
     
     # *** *** *** *** *** *** *** *** ***
 
-
-    #if len(sys.argv) < 4:
-    #    print("Error: running in testing mode. Provide the following: \n \n" \
-    #        "filename_spread.csv \n" \
-    #        "input_space (possibilities: native, lsq6, lsq12) \n" \
-    #        "string_with_blurs_for_stat_files (e.g. 0.5,0.2,0.1) \n" \
-    #        "(optionally) common_time_point \n")
-    #    sys.exit(1)
-    
-    #options = ChainConf()
-    #options.csv_file = sys.argv[1]
-    #options.input_space = sys.argv[2]
-    #options.stats_kernels = sys.argv[3]
-    #if len(sys.argv) == 5:
-    #    options.common_time_point = int(sys.argv[4])
-    #else:
-    #    options.common_time_point = -1
     
     chain_stages = chain(options)
     
-    execute(chain_stages, options)
+    #execute(chain_stages, options)
     
     print("\nDone...\n")
-    
-    #print "Number of arguments: ", len(sys.argv)
-    #print "Argument list: ", str(sys.argv)
+
     

@@ -375,17 +375,25 @@ def mincANTS(source, target, conf, transform=None):
 #    function  = functions[reg_method]  #...[conf.nlin_reg_method] ???
 #
 #    return function(imgs=imgs, initial_target=initial_target, nlin_dir=nlin_dir, confs=confs)
-
-'''
     
-'''
+    
 def mincANTS_NLIN_build_model(imgs, initial_target, nlin_dir, confs):
+    """
+    This functions runs a hierarchical mincANTS registration on the input
+    images (imgs) creating an unbiased average.
+    The mincANTS configuration (confs) that is passed in, should be 
+    passed in an array of configurations for each of the levels/generations.
+    After each round of registrations, an average is created out of the 
+    resampled input files, which is then used as the target for the next
+    round of registrations. 
+    """
     s = Stages()
     avg = initial_target
     avg_imgs = []
     for i, conf in enumerate(confs):
         xfms = [s.defer(mincANTS(source=img, target=avg, conf=conf)) for img in imgs]
-        avg  = s.defer(mincaverage([xfm.resampled for xfm in xfms], name='nlin-%d' % i, output_dir='nlin'))
+        # number the generations starting at 1, enumerate will start at 0
+        avg  = s.defer(mincaverage([xfm.resampled for xfm in xfms], name_wo_ext='nlin-%d' % (i+1), output_dir=nlin_dir))
         avg_imgs.append(avg)
     return Result(stages=s, output=Registration(xfms=xfms, avg_img=avg, avg_imgs=avg_imgs))
 
@@ -406,8 +414,6 @@ def intrasubject_registrations(subj):
     s = Stages()
     timepts = list((t,img) for t,img in subj.time_pt_dict.iteritems())
     for source_index in range(len(timepts) - 1):
-        print(timepts[source_index][1])
-        print(timepts[source_index + 1][1])
         xfms = [s.defer(mincANTS(source=timepts[source_index][1],
                                  target=timepts[source_index + 1][1],
                                  conf=test_conf))]
@@ -522,18 +528,28 @@ def lsq12_pairwise_on_dictionaries(imgs, conf, lsq12_dir, like=None):
                                                       avg_img=outputs.avg_img,
                                                       xfms=dict(zip(ks, outputs.xfms))))
 
-def mincaverage(imgs, name="average", output_dir='.'):
+def mincaverage(imgs, name_wo_ext="average", output_dir='.', copy_header_from_first_input=False):
+    """
+    By default mincaverage only copies header information over to the output
+    file that is shared by all input files (xspace, yspace, zspace information etc.)
+    In some cases however, you might want to have some of the non-standard header
+    information. Use the copy_header_from_first_input argument for this, and it
+    will add the -copy_header flag to mincaverage
+    """
     if len(imgs) == 0:
         raise ValueError("`mincaverage` arg `imgs` is empty (can't average zero files)")
-    # TODO propagate masks/labels??
-    avg = MincAtom(name = os.path.join(output_dir, '%s.mnc' % name), orig_name = None)
-    #avg = imgs[0].copy_with(name = "average", orig_name = None); imgs.work_dir=...
-    sdfile = MincAtom(name = os.path.join(output_dir, '%s_sd.mnc' % name), orig_name = None)
-    #sdfile = outf.newname_with(fn = lambda x: x + '_sd')
+    # TODO: propagate masks/labels??
+    avg = MincAtom(name = os.path.join(output_dir, '%s.mnc' % name_wo_ext), orig_name = None)
+    sdfile = MincAtom(name = os.path.join(output_dir, '%s_sd.mnc' % name_wo_ext), orig_name = None)
+    additional_flags = []
+    if copy_header_from_first_input:
+        additional_flags = ['-copy_header']
     s = CmdStage(inputs=imgs, outputs=[avg, sdfile],
           cmd = ['mincaverage', '-clobber', '-normalize',
-                 '-max-buffer-size-in-kb', '409620',
-                 '-sdfile', sdfile.get_path()] + [img.get_path() for img in imgs] + [avg.get_path()])
+                 '-max-buffer-size-in-kb', '409620'] + additional_flags +
+                 ['-sdfile', sdfile.get_path()] + 
+                 [img.get_path() for img in imgs] + 
+                 [avg.get_path()])
     return Result(stages=Stages([s]), output=avg)
 
 def xfmaverage(xfms, output_dir): #mnc -> mnc
