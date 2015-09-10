@@ -200,7 +200,7 @@ def runStage(serverURI, clientURI, i):
             command_logfile = p.getStageLogfile(i)
             
             # log file for the stage
-            of = open(command_logfile, 'a')
+            of = open(os.path.join(p.get_log_dir(), command_logfile), 'a')
             of.write("Stage " + str(i) + " running on " + socket.gethostname() + " at " + datetime.isoformat(datetime.now(), " ") + ":\n")
             of.write(command_to_run + "\n")
             of.flush()
