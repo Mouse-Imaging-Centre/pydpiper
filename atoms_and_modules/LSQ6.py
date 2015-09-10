@@ -69,6 +69,7 @@ def addLSQ6ArgumentGroup(parser):
     parser.set_defaults(lsq6_method="lsq6_large_rotations")
     parser.set_defaults(nuc=True)
     parser.set_defaults(inormalize=True)
+    parser.set_defaults(copy_header_info=False)
     group.add_argument("--lsq6-simple", dest="lsq6_method",
                      action="store_const", const="lsq6_simple",
                      help="Run a 6 parameter alignment assuming that the input files are roughly "
@@ -115,6 +116,13 @@ def addLSQ6ArgumentGroup(parser):
     group.add_argument("--no-inormalize", dest="inormalize",
                       action="store_false", 
                       help="If specified, do not perform intensity normalization. Opposite of --inormalize.")
+    group.add_argument("--copy-header-info-to-average", dest="copy_header_info",
+                      action="store_true", 
+                      help="Copy the MINC header information of the first input file into the "
+                      "average that is created. [Default = %(default)s] ")
+    group.add_argument("--no-copy-header-info-to-average", dest="copy_header_info",
+                      action="store_false", 
+                      help="Opposite of --copy-header-info-to-average.")
     group.add_argument("--lsq6-protocol", dest="lsq6_protocol",
                       type=str, default=None,
                       help="Specify an lsq6 protocol that overrides the default setting for stages in "
@@ -1160,7 +1168,8 @@ class LSQ6Base(object):
             avgLog = fh.createLogFile(lsq6FH.logDir, logBase)
             # Note: We are calling mincAverage here with filenames rather than file handlers
             avg = ma.average(self.filesToAvg, outputAvg=lsq6AvgOutput, logFile=avgLog,
-                             queue_type=self.options.queue_type)
+                             queue_type=self.options.queue_type, 
+                             copyHeaderInfo=self.options.copy_header_info)
             self.p.addStage(avg)
             self.lsq6Avg = lsq6FH
 

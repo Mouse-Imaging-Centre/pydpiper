@@ -16,7 +16,8 @@ setup(name='pydpiper',
         'networkx',
         'pygraphviz',
         'Pyro4',
-        'pytest'
+        'pytest',
+        'pydot'
       ],
       packages=['pydpiper', 'applications', 'atoms_and_modules'], 
       data_files=[('config', ['config/MICe.cfg','config/MICe_dev.cfg','config/SciNet.cfg','config/SciNet_debug.cfg'])],

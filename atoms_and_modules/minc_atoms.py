@@ -781,7 +781,8 @@ class mincAverage(CmdStage):
                  inputArray, 
                  outputAvg,
                  output=None, 
-                 logFile=None, 
+                 logFile=None,
+                 copyHeaderInfo=False, 
                  defaultDir="tmp"):
         CmdStage.__init__(self, None)
         
@@ -810,17 +811,22 @@ class mincAverage(CmdStage):
             print("Failed in putting together mincaverage command; unexpected error: ")
             raise
             
-        self.addDefaults()
+        self.addDefaults(copyHeaderInfo)
         self.finalizeCommand()
         self.setName()
         
-    def addDefaults(self):
+    def addDefaults(self, copyHeaderInfo=False):
         for i in range(len(self.filesToAvg)):
             self.inputFiles.append(self.filesToAvg[i]) 
         self.sd = splitext(self.output)[0] + "-sd.mnc"  
-        self.outputFiles += [self.output, self.sd]       
+        self.outputFiles += [self.output, self.sd]
+        additionalFlags = []
+        if copyHeaderInfo:
+            additionalFlags = ["-copy_header"]
         self.cmd += ["mincaverage",
-                     "-clobber", "-normalize", "-sdfile", self.sd, "-max_buffer_size_in_kb", str(409620)]
+                     "-clobber", "-normalize", 
+                     "-sdfile", self.sd, 
+                     "-max_buffer_size_in_kb", str(409620)] +  additionalFlags
                  
     def finalizeCommand(self):
         for i in range(len(self.filesToAvg)):
@@ -835,7 +841,7 @@ class mincAverage(CmdStage):
         return(outputFile)
 
 class pMincAverage(mincAverage):
-    def addDefaults(self):
+    def addDefaults(self, copyHeaderInfo=False):
         self.inputFiles.extend(self.filesToAvg)
         self.outputFiles += [self.output]
         self.cmd += ["pmincaverage", "--clobber"]
@@ -851,13 +857,15 @@ def average(inputArray,
             output=None,
             logFile=None,
             defaultDir=None,
-            shell_cmd='mincaverage'):
+            shell_cmd='mincaverage',
+            copyHeaderInfo=False):
     if shell_cmd == 'pmincaverage' or queue_type == 'pbs':
         stage = pMincAverage
     else:
         stage = mincAverage
     return stage(inputArray, outputAvg=outputAvg, output=output,
-                 logFile=logFile, defaultDir=defaultDir)
+                 logFile=logFile, defaultDir=defaultDir,
+                 copyHeaderInfo=copyHeaderInfo)
 
 class mincAverageDisp(mincAverage):
     def __init__(self, 
@@ -867,7 +875,7 @@ class mincAverageDisp(mincAverage):
                  defaultDir=None):
         mincAverage.__init__(self, inputArray,output,logFile=logFile,defaultDir=defaultDir)
         
-    def addDefaults(self):
+    def addDefaults(self, copyHeaderInfo=False):
         for i in range(len(self.filesToAvg)):
             self.inputFiles.append(self.filesToAvg[i]) 
         self.outputFiles += [self.output]       
