@@ -333,6 +333,7 @@ def mincANTS(source, target, conf, transform=None):
     xfm = source.newname_with_fn(lambda x: "%s_to_%s" % (source.filename_wo_ext, target.filename_wo_ext), ext='.xfm') #TODO fix dir, orig_name, ...
 
     similarity_cmds = []
+    similarity_inputs = set()
     for sim_metric_conf in conf.sim_metric_confs:
         if sim_metric_conf.blur_resolution is not None:
             src  = s.defer(mincblur(source, fwhm=sim_metric_conf.blur_resolution,
@@ -342,11 +343,13 @@ def mincANTS(source, target, conf, transform=None):
         else:
             src  = source
             dest = target
+        similarity_inputs.add(src)
+        similarity_inputs.add(dest)
         inner = ','.join([src.get_path(), dest.get_path(),
                           str(sim_metric_conf.weight), str(sim_metric_conf.radius_or_bins)])
         subcmd = "'" + "".join([sim_metric_conf.metric, '[', inner, ']']) + "'"
         similarity_cmds.extend(["-m", subcmd])
-    stage = CmdStage(inputs = [source, target] + ([target.mask] if target.mask else []),
+    stage = CmdStage(inputs = [source, target] + ([target.mask] if target.mask else []) + list(similarity_inputs),
                      # hard to use cmd_stage wrapper here due to complicated subcmds ...
                      outputs = [xfm],
                      cmd = ['mincANTS', '3',

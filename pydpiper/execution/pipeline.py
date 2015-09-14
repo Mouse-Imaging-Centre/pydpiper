@@ -273,9 +273,10 @@ class Pipeline(object):
             ensure_outputs_distinct(stages)
         except ValueError as e:
             print("Uh-oh - some files appear as outputs of multiple stages (bye!):", file=sys.stderr)
-            bad_items = e[1]
-            for o, ss in bad_outputs.iteritems():
-                print("output: %s, stages: %s" % (o,','.join(ss)), file=sys.stderr)
+            bad_outputs = e[1]
+            print(e[1])
+            #for o, ss in bad_outputs: #.iteritems():
+            #    print("output: %s, stages: %s" % (o,','.join(ss)), file=sys.stderr)
             sys.exit()
 
         for s in stages:
