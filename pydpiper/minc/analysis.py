@@ -28,7 +28,7 @@ def minc_displacement(xfm): # xfm -> mnc
 def mincblob(op, grid): # str, mnc -> mnc
     """
     Low-level mincblob wrapper -- use `determinant` instead to actually compute a determinant ...
-    >>> stages = mincblob('determinant', MincAtom("/images/img_1.mnc", output_dir="/tmp")).stages
+    >>> stages = mincblob('determinant', MincAtom("/images/img_1.mnc", pipeline_sub_dir="/tmp")).stages
     >>> stages.pop().render()
     'mincblob -clobber -determinant /images/img_1.mnc /tmp/img_1/img_1_determinant.mnc'
     """

@@ -118,7 +118,7 @@ def parse_csv(rows, common_time_pt): # row iterator, int -> { subject_id(str) : 
 
     >>> csv_data = "subject_id,timepoint,filename,genotype\\ns1,1,s1_1.mnc,1\\n".split('\\n')
     >>> (parse_csv(csv_data, common_time_pt=1)
-    ...   == { 's1' : Subject(intersubject_registration_time_pt=1, time_pt_dict={ 1 : 's1_1.mnc' })})
+    ...   == { 's1' : Subject(intersubject_registration_time_pt=1, time_pt_dict={ 1 : MincAtom(name='s1_1.mnc',orig_name='s1_1.mnc') })})
     True
     """
     subject_info = defaultdict(Subject)

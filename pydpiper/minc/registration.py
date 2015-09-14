@@ -24,12 +24,12 @@ from pydpiper.core.conversion import InputFile, OutputFile
 # TODO output_dir (work_dir?) isn't used but could be useful; assert not(subdir and output_dir)?
 def mincblur(img, fwhm, gradient=False, subdir='tmp'): # mnc -> mnc  #, output_dir='.'):
     """
-    >>> img = MincAtom(name='/images/img_1.mnc', output_dir='/scratch')
+    >>> img = MincAtom(name='/images/img_1.mnc', pipeline_sub_dir='/scratch/some_pipeline_processed/')
     >>> img_blur = mincblur(img=img, fwhm='0.056')
     >>> img_blur.output.get_path()
-    '/scratch/img_1/tmp/img_1_fwhm0.056.mnc'
+    '/scratch/some_pipeline_processed/img_1/tmp/img_1_fwhm0.056.mnc'
     >>> [i.render() for i in img_blur.stages]
-    ['mincblur -clobber -no_apodize -fwhm 0.056 /images/img_1.mnc /scratch/img_1/tmp/img_1_fwhm0.056.mnc']
+    ['mincblur -clobber -no_apodize -fwhm 0.056 /images/img_1.mnc /scratch/some_pipeline_processed/img_1/tmp/img_1_fwhm0.056.mnc']
     """
     outf  = img.newname_with_suffix("_fwhm%s" % fwhm + ("_dxyz" if gradient else ""), subdir=subdir)
     stage = CmdStage(
@@ -72,7 +72,7 @@ def mincresample(img, xfm, like, extra_flags): # mnc -> mnc
 
 def xfmconcat(xfms): # [xfm] -> xfm
     """
-    >>> stages, xfm = xfmconcat([MincAtom('/tmp/%s' % i, output_dir='/scratch') for i in ['t1.xfm', 't2.xfm']])
+    >>> stages, xfm = xfmconcat([MincAtom('/tmp/%s' % i, pipeline_sub_dir='/scratch') for i in ['t1.xfm', 't2.xfm']])
     >>> stages.pop().render()
     'xfmconcat /tmp/t1.xfm /tmp/t2.xfm /scratch/t1/concat_of_t1_and_t2.xfm'
     """
