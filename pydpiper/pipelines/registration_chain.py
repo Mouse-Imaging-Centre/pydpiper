@@ -372,7 +372,7 @@ if __name__ == "__main__":
     
     chain_stages = chain(options)
     
-    #execute(chain_stages, options)
+    execute(chain_stages, options)
     
     print("\nDone...\n")
 

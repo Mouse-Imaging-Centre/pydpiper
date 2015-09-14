@@ -10,6 +10,7 @@ import socket
 import time
 import re
 import resource
+from collections import defaultdict
 from datetime import datetime
 from subprocess import call, check_output
 from shlex import split
@@ -169,10 +170,33 @@ class ThinGraph(nx.DiGraph):
         return self.all_edge_dict
     edge_attr_dict_factory = single_edge_dict
 
-# TODO where should this live - util?
+def counts(xs):
+    d = defaultdict(int)
+    for x in xs:
+        d[x] += 1
+    return d
+
+class DuplicateOutputError(ValueError): pass
+# TODO: where should this live - util?
+# TODO: write some tests to check that this might be working
+# TODO: could generalize to 'distinctOn' but nobody would ever use ...
 def ensure_outputs_distinct(stages):
-    raise NotImplemented
-    
+    """
+    TODO: move this doctest to a proper test in test/
+    >>> ensure_outputs_distinct([CmdStage(argArray=["touch", OutputFile("/tmp/foo.txt")]),
+    ...                          CmdStage(argArray=[">",     OutputFile("/tmp/foo.txt")])])
+    Traceback (most recent call last):
+      ...
+    DuplicateOutputError: ...
+    """
+    m = ((o, s) for s in stages for o in s.outputFiles)
+    d = defaultdict(set)
+    for o,s in m:
+        d[o].add(s)
+    bad_outputs = filter(lambda (o,ss): len(ss) > 1, d.iteritems())
+    if len(bad_outputs) > 0:
+        raise DuplicateOutputError("some outputs aren't distinct", bad_outputs)
+
 class Pipeline(object):
     # TODO the way we initialize a pipeline is currently a bit gross, e.g.,
     # setting a bunch of instance variables after __init__ - the presence of a method
@@ -245,7 +269,14 @@ class Pipeline(object):
             LINE_BUFFERING = 1
             sys.stdout = open(serverLogFile, 'a', LINE_BUFFERING)
 
-        #ensure_outputs_distinct(stages)
+        try:
+            ensure_outputs_distinct(stages)
+        except ValueError as e:
+            print("Uh-oh - some files appear as outputs of multiple stages (bye!):", file=sys.stderr)
+            bad_items = e[1]
+            for o, ss in bad_outputs.iteritems():
+                print("output: %s, stages: %s" % (o,','.join(ss)), file=sys.stderr)
+            sys.exit()
 
         for s in stages:
             self._add_stage(s)

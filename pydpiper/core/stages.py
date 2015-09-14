@@ -1,7 +1,5 @@
 import shlex
 
-from traits.api import *
-
 from pydpiper.execution.pipeline import PipelineFile, InputFile, OutputFile
 
 class CmdStage(object):
@@ -11,16 +9,17 @@ class CmdStage(object):
     in part because it avoids many empty fields for stages which never
     become part of a `live` pipeline."""
     def __init__(self, inputs, outputs, cmd, memory=None):  #, conf, cmd):
-        self.inputs  = inputs
+        # TODO: rather than having separate cmd_stage fn, might want to make inputs/outputs optional here
+        self.inputs  = inputs  # TODO: might be better to derefence inputs -> inputs.get_path() here to save mem
         self.outputs = outputs
         #self.conf    = conf            # not needed at present -- see note on render_fn
         self._cmd    = cmd
 
-        self.when_runnable_hooks = []  # TODO make the hooks accessible via the constructor
+        self.when_runnable_hooks = []  # TODO: make the hooks accessible via the constructor
         self.when_finished_hooks = []
         self.memory = memory
     # NB: __hash__ and __eq__ ignore hooks, memory
-    # Also, we assume cmd determines inputs, outputs
+    # Also, we assume cmd determines inputs, outputs so ignore it in hash/eq calculations
     def __hash__(self):
         return hash(str(self._cmd))
     def __eq__(self, c):

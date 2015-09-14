@@ -14,7 +14,7 @@ from pydpiper.core.util import output_directories
 from pydpiper.core.conversion import convertCmdStage
 
 from   atom.api import Atom, Bool
-import atom.api as atom
+#import atom.api as atom
 
 PYDPIPER_VERSION = pkg_resources.get_distribution("pydpiper").version # pylint: disable=E1101
 
