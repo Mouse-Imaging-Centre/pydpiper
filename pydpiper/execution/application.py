@@ -10,7 +10,7 @@ import os
 from pydpiper.execution.pipeline import Pipeline, pipelineDaemon
 from pydpiper.execution.queueing import runOnQueueingSystem
 from pydpiper.execution.pipeline_executor import addExecutorArgumentGroup, ensure_exec_specified
-from pydpiper.core.util import output_directories
+from pydpiper.core.util import output_directories, mkdir_p
 from pydpiper.core.conversion import convertCmdStage
 
 from   atom.api import Atom, Bool
@@ -118,13 +118,8 @@ def backend(options):
 
 def create_directories(stages):
     dirs = output_directories(stages)
-    # TODO: should provide option to turn this off if already created
     for d in dirs:
-        try:
-            os.makedirs(d)
-        except OSError as e:
-            if not re.match('File exists', e.strerror):
-                raise
+        mkdir_p(d)
 
 # The old AbstractApplication class has been removed due to its API being non-obvious.  Instead,
 # we currently provide an `execute` function and some helper functions for command-line parsing.

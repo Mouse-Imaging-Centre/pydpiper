@@ -17,6 +17,8 @@ from shlex import split
 from multiprocessing import Process, Event
 import logging
 
+from pydpiper.core.util import mkdir_p
+
 # TODO move this and Pyro4 imports down into launchServer where pipeline name is available?
 #os.environ["PYRO_LOGLEVEL"] = os.getenv("PYRO_LOGLEVEL", "INFO")
 #os.environ["PYRO_LOGFILE"]  = os.path.splitext(os.path.basename(__file__))[0] + ".log"
@@ -176,26 +178,23 @@ def counts(xs):
         d[x] += 1
     return d
 
-class DuplicateOutputError(ValueError): pass
 # TODO: where should this live - util?
 # TODO: write some tests to check that this might be working
-# TODO: could generalize to 'distinctOn' but nobody would ever use ...
-def ensure_outputs_distinct(stages):
+# TODO: could generalize to '(non)distinctOn' but nobody would ever use ...
+def nondistinct_outputs(stages):
     """
     TODO: move this doctest to a proper test in test/
-    >>> ensure_outputs_distinct([CmdStage(argArray=["touch", OutputFile("/tmp/foo.txt")]),
-    ...                          CmdStage(argArray=[">",     OutputFile("/tmp/foo.txt")])])
-    Traceback (most recent call last):
-      ...
-    DuplicateOutputError: ...
+    >>> c1 = CmdStage(argArray=["touch", OutputFile("/tmp/foo.txt")])
+    >>> c2 = CmdStage(argArray=[">",     OutputFile("/tmp/foo.txt")])
+    >>> nondistinct_outputs([c1, c2]) == { '/tmp/foo.txt' : set([c1,c2]) }
+    True
     """
     m = ((o, s) for s in stages for o in s.outputFiles)
     d = defaultdict(set)
     for o,s in m:
         d[o].add(s)
-    bad_outputs = filter(lambda (o,ss): len(ss) > 1, d.iteritems())
-    if len(bad_outputs) > 0:
-        raise DuplicateOutputError("some outputs aren't distinct", bad_outputs)
+    bad_outputs = dict(filter(lambda (o,ss): len(ss) > 1, d.iteritems()))
+    return bad_outputs
 
 class Pipeline(object):
     # TODO the way we initialize a pipeline is currently a bit gross, e.g.,
@@ -258,10 +257,7 @@ class Pipeline(object):
         self.outputDir = self.options.output_directory or os.getcwd()
 
         self.log_dir = os.path.join(self.outputDir, 'logs')
-        try:
-            os.makedirs(self.log_dir)
-        except OSError: # TODO: fix this hack
-            pass
+        makedir_p(self.log_dir)
 
         if self.options.queue_type == "pbs" and self.options.local:
             # redirect the standard output to a text file
@@ -269,15 +265,15 @@ class Pipeline(object):
             LINE_BUFFERING = 1
             sys.stdout = open(serverLogFile, 'a', LINE_BUFFERING)
 
-        try:
-            ensure_outputs_distinct(stages)
-        except ValueError as e:
-            print("Uh-oh - some files appear as outputs of multiple stages (bye!):", file=sys.stderr)
-            bad_outputs = e[1]
-            print(e[1])
-            #for o, ss in bad_outputs: #.iteritems():
-            #    print("output: %s, stages: %s" % (o,','.join(ss)), file=sys.stderr)
-            sys.exit()
+        bad_outputs = nondistinct_outputs(stages)
+        if len(bad_outputs) > 1:
+            print("Uh-oh - some files appear as outputs of multiple stages, to wit:", file=sys.stderr)
+            for o, ss in bad_outputs:
+                print("output: %s\nstages:\n" % o, file=sys.stderr)
+                for s in ss:
+                    print(ss, file=sys.stderr)
+            print("Bye", file=sys.stderr)
+            sys.exit(1)
 
         for s in stages:
             self._add_stage(s)

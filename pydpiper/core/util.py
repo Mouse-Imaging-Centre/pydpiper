@@ -44,6 +44,14 @@ def ensure_nonnull_return(f):
             return result
     return g
 
+def mkdir_p(path): # race-safe Python2 solution; see http://stackoverflow.com/questions/600268/mkdir-p-functionality-in-python
+    try:
+        os.makedirs(path)
+    except OSError as exc: # Python >2.5
+        if exc.errno == errno.EEXIST and os.path.isdir(path):
+            pass
+        else: raise
+
 def output_directories(stages):
     """Directories to be created (currently rather redundant in the presence of subdirectories).
     No need to consider stage inputs - any input already exists or is also the output
