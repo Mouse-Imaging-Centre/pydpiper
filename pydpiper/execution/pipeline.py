@@ -257,7 +257,7 @@ class Pipeline(object):
         self.outputDir = self.options.output_directory or os.getcwd()
 
         self.log_dir = os.path.join(self.outputDir, 'logs')
-        makedir_p(self.log_dir)
+        mkdir_p(self.log_dir)
 
         if self.options.queue_type == "pbs" and self.options.local:
             # redirect the standard output to a text file
