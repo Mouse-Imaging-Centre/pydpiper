@@ -400,11 +400,12 @@ def mincANTS_NLIN_build_model(imgs, initial_target, nlin_dir, confs):
         avg_imgs.append(avg)
     return Result(stages=s, output=Registration(xfms=xfms, avg_img=avg, avg_imgs=avg_imgs))
 
+def LSQ12_NLIN(source, target, conf):
+    raise NotImplementedException
 
-def intrasubject_registrations(subj):
-    # don't need if lsq12_nlin acts on a map with values being imgs
-    # TODO temp configuration!!
-    test_conf = MincANTSConf()
+def intrasubject_registrations(subj, conf): # Subject, lsq12_nlin_conf -> Result(..., (Registration)(xfms))
+    # don't need if LSQ12_NLIN acts on a map with values being imgs
+    #test_conf = MincANTSConf()
     #test_conf = MincANTSConf(iterations = "40x30x20",
     #                         transformation_model = mincANTS_default_conf.transformation_model,
     #                         regularization = "'Gauss[5,1]'",
@@ -415,11 +416,11 @@ def intrasubject_registrations(subj):
     #                         gradient = mincANTS_default_conf.gradient,
     #                         use_mask = False)
     s = Stages()
-    timepts = list((t,img) for t,img in subj.time_pt_dict.iteritems())
+    timepts = sorted((t,img) for t,img in subj.time_pt_dict.iteritems())
     for source_index in range(len(timepts) - 1):
-        xfms = [s.defer(mincANTS(source=timepts[source_index][1],
-                                 target=timepts[source_index + 1][1],
-                                 conf=test_conf))]
+        xfms = [s.defer(LSQ12_NLIN(source=timepts[source_index][1],
+                                   target=timepts[source_index + 1][1],
+                                   conf=conf))]
     return Result(stages=s, output=Registration(xfms=xfms, avg_img=None, avg_imgs=None))
 
 
