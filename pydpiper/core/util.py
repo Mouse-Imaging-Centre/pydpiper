@@ -1,6 +1,8 @@
 #!/usr/bin/env python2.7
 
-import os.path
+import errno
+import os
+#import os.path
 from operator import add
 
 def raise_(err):
@@ -47,7 +49,7 @@ def ensure_nonnull_return(f):
 def mkdir_p(path): # race-safe Python2 solution; see http://stackoverflow.com/questions/600268/mkdir-p-functionality-in-python
     try:
         os.makedirs(path)
-    except OSError as exc: # Python >2.5
+    except OSError as exc:
         if exc.errno == errno.EEXIST and os.path.isdir(path):
             pass
         else: raise
