@@ -5,13 +5,13 @@ from __future__ import absolute_import
 import csv
 from collections import defaultdict
 from atom.api import Atom, Int, Str, Dict, Enum, Instance
-from pydpiper.minc.analysis import determinants_at_fwhms
-from pydpiper.minc.registration import Stages, mincANTS_NLIN_build_model, mincANTS_default_conf, MincANTSConf, mincANTS, intrasubject_registrations
+from pydpiper.minc.analysis import determinants_at_fwhms, invert
+from pydpiper.minc.registration import (Stages, mincANTS_NLIN_build_model, mincANTS_default_conf,
+                                        MincANTSConf, mincANTS, intrasubject_registrations, mincaverage, concat)
 from pydpiper.minc.files import MincAtom
 from pydpiper.execution.application import execute
 #from pydpiper.pipelines.LSQ6 import lsq6
 from configargparse import ArgParser
-from pkg_resources import get_distribution
 from pydpiper.core.arguments import addApplicationArgumentGroup, \
     addGeneralRegistrationArgumentGroup, addExecutorArgumentGroup, \
     addRegistrationChainArgumentGroup, addStatsArgumentGroup
@@ -44,6 +44,11 @@ class ChainConf(Atom):
     stats_kernels          = Str("0.5,0.2,0.1") 
 
 class Subject(Atom):
+    """
+    A Subject contains the intersubject_registration_time_pt and a dictionary
+    that maps timepoints to scans/data related to this Subject. (these can be
+    stored for instance as string, FileAtoms/MincAtoms or XfmHandler) 
+    """
     intersubject_registration_time_pt = Instance(int)
     time_pt_dict   = Dict()    # validation (key=Int, value=Str) doesn't work? ...
 
@@ -60,6 +65,10 @@ class Subject(Atom):
     intersubject_registration_image = property(get_intersubject_registration_image,
                                                'intersubject_registration_image property')
     
+    def __repr__(self):
+        return "Subject(inter_sub_time_pt: %s, time_pt_dict keys: %s ... (values not shown))" % (self.intersubject_registration_time_pt,
+                                                                 self.time_pt_dict.keys())
+    
 # could be a method/property; unsure how well this works with Traits/Atom
 def intersubject_registration_image(subject):
     return subject.time_pt_dict[subject.intersubjection_registration_time_pt]
@@ -67,12 +76,11 @@ def intersubject_registration_image(subject):
 class TimePointError(Exception):
     pass
                  
-def map_data(f, d): # TODO find a new name for this
-    # TODO this is probably too big to be a doctest ...
+def map_over_time_pt_dict_in_Subject(f, d):
     """Map `f` non-destructively (if `f` is) over (the values of)
     the inner time_pt_dict of a { subject : Subject }
     
-    >>> (map_data(lambda x: x[3],
+    >>> (map_over_time_pt_dict_in_Subject(lambda x: x[3],
     ...          { 's1' : Subject(intersubject_registration_time_pt=4, time_pt_dict={3:'s1_3.mnc', 4:'s1_4.mnc'}),
     ...            's2' : Subject(intersubject_registration_time_pt=4, time_pt_dict={4:'s2_4.mnc', 5:'s2_5.mnc'})} )
     ...   == { 's1' : Subject(intersubject_registration_time_pt=4, time_pt_dict= {3:'3',4:'4'}),
@@ -113,12 +121,12 @@ def parse_csv(rows, common_time_pt): # row iterator, int -> { subject_id(str) : 
     Read subject information from a csv file containing at least the columns
     'subject_id', 'timepoint', and 'filename', and optionally a 'bitfield' column
     'is_common' containing one 1 per subject and 0 or empty fields for the other scans.
-    Return a map from subject IDs to a dict of timepoints and a specific timepoint
-    to be used for inter-subject registration.
+    
+    Return a dictionary from subject IDs to `Subject`s.
 
     >>> csv_data = "subject_id,timepoint,filename,genotype\\ns1,1,s1_1.mnc,1\\n".split('\\n')
     >>> (parse_csv(csv_data, common_time_pt=1)
-    ...   == { 's1' : Subject(intersubject_registration_time_pt=1, time_pt_dict={ 1 : MincAtom(name='s1_1.mnc',orig_name='s1_1.mnc') })})
+    ...   == { 's1' : Subject(intersubject_registration_time_pt=1, time_pt_dict={ 1 : 's1_1.mnc'})})
     True
     """
     subject_info = defaultdict(Subject)
@@ -133,8 +141,7 @@ def parse_csv(rows, common_time_pt): # row iterator, int -> { subject_id(str) : 
                            "'subject_id', 'timepoint', 'filename' fields; "
                            "missing: %s" % e.message)
         else:
-            subject_info[subj_id].time_pt_dict[timepoint] = MincAtom(name=filename,
-                                                                     orig_name=filename)
+            subject_info[subj_id].time_pt_dict[timepoint] = filename
             if parse_common(row.get('is_common', '')):
                 if subject_info[subj_id].intersubject_registration_time_pt is not None:
                     raise TimePointError(
@@ -168,12 +175,6 @@ def parse_csv(rows, common_time_pt): # row iterator, int -> { subject_id(str) : 
                       % (common_time_pt, s.intersubject_registration_time_pt, s_id))
                     
     return subject_info
-    
-    #print(timepts)
-    
-    #timepts = subject_info[subj]
-    #print(timepts)
-    #raise NotImplementedError()
 
 
 # NOTE I've moved the optional lsq6 stuff outside this function to promote re-use;
@@ -193,6 +194,53 @@ def parse_csv(rows, common_time_pt): # row iterator, int -> { subject_id(str) : 
 #                         (options.input_space, ','.join(map(str,fns.keys()))))
 #    # call f...
 
+
+def create_dict_from_subj_to_xfm(registration_output):
+    """
+    Given a Registration input, this will return a dictionary that
+    maps MincAtoms from the 
+    """
+
+def get_final_transforms_reg_chain(pipeline_subject_info, intersubj_xfms_dict, chain_xfms_dict):
+    """
+    This function takes a subject mapping (with timepoints to MincAtoms) and returns a
+    subject mapping of timepoints to `XfmHandler`s. Those transformations for
+    each subject will contain the non-rigid transformation to the common time point average
+    
+    chain_xfms_dict maps subject_ids to a tuple containing a list of tuples (time_point, transformation) 
+    and the index to the common time point in that list
+    """
+    s = Stages()
+    new_d = {}
+    for s_id, subj in pipeline_subject_info.iteritems():
+        # this time point dictionary will hold a mapping
+        # of time points to transformations to the final
+        # common average (and it will have the inter_sub_time_pt)
+        new_time_pt_dict = {}
+        # the transformation for the common time point is easy:
+        new_time_pt_dict[subj.intersubject_registration_time_pt] = \
+            intersubj_xfms_dict[subj.intersubject_registration_image]        
+        chain_transforms, index_of_common_time_pt = chain_xfms_dict[s_id]
+        
+        # will hold the XfmHandler from current to average of common time pt
+        current_xfm_to_common = intersubj_xfms_dict[subj.intersubject_registration_image]
+        # we start at the common time point and are going forward at this point
+        # so we will assign the concatenated transform to the target of each 
+        # transform we are adding 
+        for time_pt, transform in chain_transforms[index_of_common_time_pt:]:
+            current_xfm_to_common = s.defer(concat([s.defer(invert(transform)),current_xfm_to_common]))
+            new_time_pt_dict[time_pt] = current_xfm_to_common
+        # we need to do something similar moving backwards: make sure to reset
+        # the current_xfm_to_common here!
+        current_xfm_to_common = intersubj_xfms_dict[subj.intersubject_registration_image]
+        for time_pt, transform in chain_transforms[index_of_common_time_pt-1::-1]:
+            current_xfm_to_common = s.defer(concat([transform,current_xfm_to_common]))
+            new_time_pt_dict[time_pt] = current_xfm_to_common
+        
+        new_subj = Subject(intersubject_registration_time_pt = subj.intersubject_registration_time_pt,
+                           time_pt_dict   = new_time_pt_dict)
+        new_d[s_id] = new_subj
+    return new_d
 
 def chain(options):
 
@@ -214,6 +262,14 @@ def chain(options):
     with open(options.csv_file, 'r') as f:
         subject_info = parse_csv(f, options.common_time_point)
     
+    pipeline_processed_dir = os.path.join(options.output_directory, options.pipeline_name + "_processed")
+    pipeline_lsq12_common_dir = os.path.join(options.output_directory, options.pipeline_name + "_lsq12_" + options.common_name)
+    pipeline_nlin_common_dir = os.path.join(options.output_directory, options.pipeline_name + "_nlin_" + options.common_name)
+    
+    pipeline_subject_info = map_over_time_pt_dict_in_Subject(
+                                     lambda subj_str:  MincAtom(name=subj_str, pipeline_sub_dir=pipeline_processed_dir),
+                                     subject_info)
+    
     if options.input_space not in ChainConf.input_space.items:
         raise ValueError('unrecognized input space: %s; choices: %s' % (options.input_space, ChainConf.input_space.items))
     
@@ -228,6 +284,7 @@ def chain(options):
         # - "pride" of initial models (different targets for different time points)
         
         
+    some_temp_target = None
 
     # NB currently LSQ6 expects an array of files, but we have a map.
     # possibilities:
@@ -251,9 +308,10 @@ def chain(options):
     #                                 |
     #                            group_wise registration on time point 2
     #
+    dict_intersubj_atom_to_xfm = {}
     if options.input_space == 'lsq6' or options.input_space == 'lsq12':
         intersubj_imgs = { s_id : subj.intersubject_registration_image
-                          for s_id, subj in subject_info.iteritems() }
+                          for s_id, subj in pipeline_subject_info.iteritems() }
     else:
         # TODO: the intersubj_imgs should now be extracted from the
         # lsq6 aligned images
@@ -274,22 +332,20 @@ def chain(options):
                                                                 #, like={atlas_from_init_model_at_this_tp}
         #                                                        )
     elif options.input_space == 'lsq12':
-        #TODO: where do we get the full pipeline directory layout from?
-        some_temp_dir =  os.getcwd()  + "/nlin_dir_testing/"
-        #TODO: be able to get this from the command line. Also, create
-        #a better default set (using the parameters found using the 
-        #latest SciNet tests)
+        #TODO: write reader that creates a mincANTS configuration out of an input protocol 
+        if not some_temp_target:
+            some_temp_target = s.defer(mincaverage(imgs=intersubj_imgs.values(),
+                                           name_wo_ext="avg_of_input_files",
+                                           output_dir=pipeline_nlin_common_dir))
         test_conf = mincANTS_default_conf
         first_level = MincANTSConf(iterations="100x100x100x0")
         full_hierarchy = [first_level, test_conf]
         intersubj_xfms = s.defer(mincANTS_NLIN_build_model(imgs=intersubj_imgs.values(),
-                                                   initial_target=intersubj_imgs.values()[0], # this doesn't make sense yet
-                                                   nlin_dir=some_temp_dir,
+                                                   initial_target=some_temp_target, # this doesn't make sense yet
+                                                   nlin_dir=pipeline_nlin_common_dir,
                                                    confs=full_hierarchy))
-    print("\n*** *** INTERSUBJECT STAGES *** ***\n")
-    for stage in s:
-        print(stage.cmd_to_string(),"\n")
-    
+        dict_intersubj_atom_to_xfm = {xfm.source: xfm for xfm in intersubj_xfms.xfms} 
+
     ## within-subject registration
     # In the toy scenario below: 
     # subject A    A_time_1   ->   A_time_2   ->   A_time_3
@@ -305,35 +361,19 @@ def chain(options):
     #
     # 5) C_time_1   ->   C_time_2
     # 6) C_time_2   ->   C_time_3    
-    chain_xfms = { s_id : s.defer(intrasubject_registrations(subj))
-                   for s_id, subj in subject_info.iteritems() }
     
-    #print("\n*** *** INTRASUBJECT STAGES *** ***\n")
-    #for stage in s:
-    #    print(stage.cmd_to_string(),"\n")
+    chain_xfms = { s_id : s.defer(intrasubject_registrations(subj, MincANTSConf()))
+                   for s_id, subj in pipeline_subject_info.iteritems() }
     
-    
-    #for subject_cmd_stage in chain_xfms:
-    #    for cmd_stage in chain_xfms[subject_cmd_stage].stages:
-    #        print(cmd_stage.cmd_to_string(), "\n")
-
-    ## longitudinal registration
-    #for subj_id, subj in subject_info.iteritems():
-    #    pass
-    
-    # this contains the information for all subjects
-    for s_id, subj in subject_info.iteritems():
-        print("Intersubj time point: %s" % subj.intersubject_registration_time_pt)
-        for subj_time_pt, subj_time_pt_file in subj.time_pt_dict.iteritems():
-            print("(File, timepoint): %s, %s" % (subj_time_pt_file.orig_path, subj_time_pt))
-            if subj_time_pt_file.orig_path == subj.intersubject_registration_image.orig_path:
-                # this file has the common time point transformation
-                for xfmhandler in intersubj_xfms.xfms:
-                    if xfmhandler.source == subj_time_pt_file:
-                        print(xfmhandler.xfm.get_path())
+    # create transformation from each subject to the final common time point average
+    final_non_rigid_xfms = get_final_transforms_reg_chain(pipeline_subject_info,
+                                                          dict_intersubj_atom_to_xfm,
+                                                          chain_xfms)
      
-    #TODO: this is way too mysterious...   
-    #map_data(lambda xfm: determinants_at_fwhms(xfm, options.stats_kernels), subject_info)
+    
+    subject_determinants = map_over_time_pt_dict_in_Subject(lambda xfm: s.defer(determinants_at_fwhms(s.defer(invert(xfm)), 
+                                                                    options.stats_kernels)), 
+                                                                    final_non_rigid_xfms)
     
     #raise NotImplemented
     return s
@@ -352,24 +392,16 @@ if __name__ == "__main__":
     else:
         config_files = []
     parser = ArgParser(default_config_files=config_files)
-    pydpiper_version = get_distribution("pydpiper").version # pylint: disable=E1101
 
-    addApplicationArgumentGroup(parser)
     addExecutorArgumentGroup(parser)
+    addApplicationArgumentGroup(parser)
     addGeneralRegistrationArgumentGroup(parser)
     addRegistrationChainArgumentGroup(parser)
     addStatsArgumentGroup(parser)
     
-    options = parser.parse_args()
-    
-    
-    if options.show_version:
-        print("Pydpiper version: %s" % pydpiper_version)
-        sys.exit(0)
-    
+    options = parser.parse_args()    
     # *** *** *** *** *** *** *** *** ***
 
-    
     chain_stages = chain(options)
     
     execute(chain_stages, options)

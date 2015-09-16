@@ -51,32 +51,43 @@ def det_and_log_det(displacement_grid, fwhm):
 
 def nlin_part(xfm, inv_xfm=None): # xfm -> xfm
     """Compute the nonlinear part of a transform as follows:
-    go backwards across xfm (by first calculating the inverse or using the one supplied)
-    and then forwards across only the linear part.  Finally, use minc_displacement
-    to compute the resulting gridfile of the purely nonlinear part.
+    go forwards across xfm and then backwards across the linear part
+    of the inverse xfm (by first calculating the inverse or using the one supplied) 
+    Finally, use minc_displacement to compute the resulting gridfile of the purely 
+    nonlinear part.
 
     The optional inv_xfm (which must be the inverse!) is an optimization -
     we don't go looking for an inverse by filename munging and don't programmatically
     keep a log of operations applied, so any preexisting inverse must be supplied explicitly."""
     s = Stages()
-    lin_part = s.defer(lin_from_nlin(xfm))
     inv_xfm = inv_xfm or s.defer(invert(xfm))
-    xfm = s.defer(concat([inv_xfm, lin_part]))
+    inv_lin_part = s.defer(lin_from_nlin(inv_xfm)) 
+    xfm = s.defer(concat([xfm, inv_lin_part]))
     return Result(stages=s, output=xfm)
 
 def nlin_displacement(xfm, inv_xfm=None): # xfm -> mnc
     # "minc_displacement <=< nlin_part"
+    
     s = Stages()
     return Result(stages=s, output=s.defer(minc_displacement(s.defer(nlin_part(xfm, inv_xfm)))))
 
 def determinants_at_fwhms(xfm, blur_fwhms):
+    """
+    This function takes transformations (xfm) containing
+    both lsq12 (scaling and shearing, the main
+    rotations/translations should not be part of this) and
+    non-linear parts of a subject to a common/shared average
+    and returns the determinants of both the (forward) non linear
+    part of the xfm at the given fwhms as well as the determinats
+    of the full (forward) transformation
+    """
     # "(nlin_displacement, minc_displacement) <=< invert"
     s = Stages()
 
     inv_xfm = s.defer(invert(xfm))
 
-    nlin_disp = s.defer(nlin_displacement(xfm=inv_xfm, inv_xfm=xfm))
-    full_disp = s.defer(minc_displacement(inv_xfm))
+    nlin_disp = s.defer(nlin_displacement(xfm=xfm, inv_xfm=inv_xfm))
+    full_disp = s.defer(minc_displacement(xfm))
     # TODO add the option to add additional xfm?  (do we even need this? used in mbm etc but might be trivial)
     
     #for blur in blur_fwhms: # throws away the results
@@ -92,12 +103,17 @@ def determinants_at_fwhms(xfm, blur_fwhms):
     return Result(stages=s, output=(nlin_dets, full_dets))
     
 def mincmath(op, vols, const=None, new_name=None):
-    """Low-level/stupid interface to mincmath"""
+    """
+    Low-level/stupid interface to mincmath
+    
+    Assumption: vols is provided as a list
+    """
     const = str(const) if const is not None else None
     name = new_name if new_name else \
-      ('_' + op + '_' + ((const + '_') if const else '') + '_'.join([vol.name for vol in vols]))
+      ('_' + op + '_' + ((const + '_') if const else '') + 
+       '_'.join([vol.filename_wo_ext for vol in vols]))
     outf = vols[0].newname_with_suffix(name)
-    s = CmdStage(inputs=[vols], outputs=[outf],
+    s = CmdStage(inputs=vols, outputs=[outf],
                  cmd=['mincmath', '-clobber', '-2'] \
                  + (['-const', const] if const else []) \
                  + ['-' + op] + [v.path for v in vols])

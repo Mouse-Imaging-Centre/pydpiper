@@ -5,6 +5,8 @@ recommended to add to your application: e.g. the arguments that deal
 with the execution of your application.
 '''
 import time
+import os
+from pkg_resources import get_distribution
 
 # TODO: most (if not all) of the following options don't do anything yet
 # we should come up with a good way to deal with all this. Given that
@@ -31,36 +33,36 @@ def addApplicationArgumentGroup(parser):
     """
     group = parser.add_argument_group("General application options", "General options for all pydpiper applications.")
     group.add_argument("--restart", dest="restart", 
-                               action="store_false", default=True,
-                               help="Restart pipeline using backup files. [default = %(default)s]")
+                       action="store_false", default=True,
+                       help="Restart pipeline using backup files. [default = %(default)s]")
     group.add_argument("--no-restart", dest="restart", 
-                               action="store_false", help="Opposite of --restart")
+                        action="store_false", help="Opposite of --restart")
     # TODO instead of prefixing all subdirectories (logs, backups, processed, ...)
     # with the pipeline name/date, we could create one identifying directory
     # and put these other directories inside
     group.add_argument("--output-dir", dest="output_directory",
-                               type=str, default=None,
-                               help="Directory where output data and backups will be saved.")
+                       type=str, default=os.getcwd(),
+                       help="Directory where output data and backups will be saved.")
     group.add_argument("--create-graph", dest="create_graph",
-                               action="store_true", default=False,
-                               help="Create a .dot file with graphical representation of pipeline relationships [default = %(default)s]")
+                       action="store_true", default=False,
+                       help="Create a .dot file with graphical representation of pipeline relationships [default = %(default)s]")
     parser.set_defaults(execute=True)
     parser.set_defaults(verbose=False)
     group.add_argument("--execute", dest="execute",
-                               action="store_true",
-                               help="Actually execute the planned commands [default = %(default)s]")
+                       action="store_true",
+                       help="Actually execute the planned commands [default = %(default)s]")
     group.add_argument("--no-execute", dest="execute",
-                               action="store_false",
-                               help="Opposite of --execute")
-    group.add_argument("--version", dest="show_version",
-                               action="store_true",
-                               help="Print the version number and exit.")
+                       action="store_false",
+                       help="Opposite of --execute")
+    group.add_argument("--version", action="version",
+                       version="%(prog)s ("+get_distribution("pydpiper").version+")", # pylint: disable=E1101                
+                       help="Print the version number and exit.")
     group.add_argument("--verbose", dest="verbose",
-                               action="store_true",
-                               help="Be verbose in what is printed to the screen [default = %(default)s]")
+                       action="store_true",
+                       help="Be verbose in what is printed to the screen [default = %(default)s]")
     group.add_argument("--no-verbose", dest="verbose",
-                               action="store_false",
-                               help="Opposite of --verbose [default]")
+                       action="store_false",
+                       help="Opposite of --verbose [default]")
     group.add_argument("files", type=str, nargs='*', metavar='file',
                         help='Files to process')
 

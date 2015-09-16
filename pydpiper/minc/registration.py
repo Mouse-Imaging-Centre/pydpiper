@@ -404,6 +404,17 @@ def LSQ12_NLIN(source, target, conf):
     raise NotImplementedException
 
 def intrasubject_registrations(subj, conf): # Subject, lsq12_nlin_conf -> Result(..., (Registration)(xfms))
+    """
+    TODO: more to be added
+    
+    This function returns a dictionary mapping a time point to a transformation
+    {time_pt_1 : transform_from_1_to_2, ..., time_pt_n-1 : transform_from_n-1_to_n}
+    and as such the dictionary is one element smaller than the number of time points
+    """
+    # TODO: somehow the output of this function should provide us with
+    # easy access from a MincAtom to an XfmHandler from time_pt N to N+1 
+    # either here or in the chain() function 
+    
     # don't need if LSQ12_NLIN acts on a map with values being imgs
     #test_conf = MincANTSConf()
     #test_conf = MincANTSConf(iterations = "40x30x20",
@@ -416,12 +427,18 @@ def intrasubject_registrations(subj, conf): # Subject, lsq12_nlin_conf -> Result
     #                         gradient = mincANTS_default_conf.gradient,
     #                         use_mask = False)
     s = Stages()
-    timepts = sorted((t,img) for t,img in subj.time_pt_dict.iteritems())
+    timepts = sorted(subj.time_pt_dict.iteritems())
+    timepts_indices = [index for index,subj_atom in timepts]
+    # we need to find the index of the common time point and for that we
+    # should only look at the first element of the tuples stored in timepts
+    index_of_common_time_pt = timepts_indices.index(subj.intersubject_registration_time_pt)
+    time_pt_to_xfms = []
     for source_index in range(len(timepts) - 1):
-        xfms = [s.defer(LSQ12_NLIN(source=timepts[source_index][1],
-                                   target=timepts[source_index + 1][1],
-                                   conf=conf))]
-    return Result(stages=s, output=Registration(xfms=xfms, avg_img=None, avg_imgs=None))
+        time_pt_to_xfms.append((timepts_indices[source_index],
+                               s.defer(mincANTS(source=timepts[source_index][1],
+                                                target=timepts[source_index + 1][1],
+                                                conf=conf))))
+    return Result(stages=s, output=(time_pt_to_xfms,index_of_common_time_pt))
 
 
 #def multilevel_registration(source, target, registration_function, conf, curr_dir, transform=None):

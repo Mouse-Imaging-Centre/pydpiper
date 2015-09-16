@@ -25,6 +25,9 @@ class XfmHandler(object):
     # We thought about including an inverse transform which could be generated automagically (when/how??)
     # although p.defer(XfmHandler(...)) to collect the relevant stages is a bit nasty ...
 
+    def __repr__(self):
+        return "%s(xfm=%s)" % (self.__class__,self.xfm.get_path()) 
+
     # convenience accesor to allow `xfm.path` instead of `xfm.xfm.path`:
     path = property(lambda self: self.xfm.path, "`path` property")
 
