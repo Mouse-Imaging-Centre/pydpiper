@@ -26,7 +26,7 @@ class XfmHandler(object):
     # although p.defer(XfmHandler(...)) to collect the relevant stages is a bit nasty ...
 
     def __repr__(self):
-        return "%s(xfm=%s)" % (self.__class__,self.xfm.get_path()) 
+        return "%s(xfm=%s)" % (self.__class__,self.xfm.path) 
 
     # convenience accesor to allow `xfm.path` instead of `xfm.xfm.path`:
     path = property(lambda self: self.xfm.path, "`path` property")

@@ -26,7 +26,7 @@ def mincblur(img, fwhm, gradient=False, subdir='tmp'): # mnc -> mnc  #, output_d
     """
     >>> img = MincAtom(name='/images/img_1.mnc', pipeline_sub_dir='/scratch/some_pipeline_processed/')
     >>> img_blur = mincblur(img=img, fwhm='0.056')
-    >>> img_blur.output.get_path()
+    >>> img_blur.output.path
     '/scratch/some_pipeline_processed/img_1/tmp/img_1_fwhm0.056.mnc'
     >>> [i.render() for i in img_blur.stages]
     ['mincblur -clobber -no_apodize -fwhm 0.056 /images/img_1.mnc /scratch/some_pipeline_processed/img_1/tmp/img_1_fwhm0.056.mnc']
@@ -35,7 +35,7 @@ def mincblur(img, fwhm, gradient=False, subdir='tmp'): # mnc -> mnc  #, output_d
     stage = CmdStage(
               inputs = [img], outputs = [outf],
               #this used to a function render_fn : conf, inf, outf -> string
-              cmd = shlex.split('mincblur -clobber -no_apodize -fwhm %s %s %s' % (fwhm, img.get_path(), outf.get_path())) \
+              cmd = shlex.split('mincblur -clobber -no_apodize -fwhm %s %s %s' % (fwhm, img.path, outf.path)) \
                   + (['-gradient'] if gradient else []))
     return Result(stages=Stages([stage]), output=outf)
 
@@ -48,9 +48,9 @@ def mincresample_simple(img, xfm, like, extra_flags): # mnc -> mnc
               inputs = [xfm, like, img], 
               outputs = [outf],
               cmd = ['mincresample', '-clobber', '-2',
-                     '-transform %s' % xfm.get_path(),
-                     '-like %s' % like.get_path(),
-                     img.get_path(), outf.get_path()] + extra_flags)
+                     '-transform %s' % xfm.path,
+                     '-like %s' % like.path,
+                     img.path, outf.path] + extra_flags)
     return Result(stages=Stages([stage]), output=outf)
 
 # TODO mincresample_simple could easily be replaced by a recursive call to mincresample
@@ -85,7 +85,7 @@ def xfmconcat(xfms): # [xfm] -> xfm
             lambda orig: "concat_of_%s" % "_and_".join([x.filename_wo_ext for x in xfms])) #could do names[1:] if dirname contains names[0]?
         stage = CmdStage(
             inputs = xfms, outputs = [outf],
-            cmd = shlex.split('xfmconcat %s %s' % (' '.join([x.get_path() for x in xfms]), outf.get_path())))
+            cmd = shlex.split('xfmconcat %s %s' % (' '.join([x.path for x in xfms]), outf.path)))
         return Result(stages=Stages([stage]), output=outf)
 
 """xfmconcat lifted to work on XfmHandlers instead of MincAtoms"""
@@ -109,13 +109,13 @@ def nu_estimate(src): # MincAtom -> Result(stages=Set(Stages), MincAtom)
     # (currently we don't allow for a single mask or using the initial model's mask if the inputs don't have them)
     cmd = CmdStage(inputs = [src], outputs = [out],
                    cmd = shlex.split("nu_estimate -clobber -distance 8 -iterations 100 -stop 0.001 -fwhm 0.15 -shrink 4 -lambda 5.0e-02")
-                       + (['-mask', src.mask.get_path()] if src.mask else []) + [src.get_path(), out.get_path()])
+                       + (['-mask', src.mask.path] if src.mask else []) + [src.path, out.path])
     return Result(stages=Stages([cmd]), output=out)
 
 def nu_evaluate(img, field): #mnc, file -> result(..., mnc)
     out = img.newname_with_suffix("_nuc")
     cmd = CmdStage(inputs = [img, field], outputs = [out],
-                   cmd = ['nu_evaluate', '-clobber', '-mapping', field.get_path(), img.get_path(), out.get_path()])
+                   cmd = ['nu_evaluate', '-clobber', '-mapping', field.path, img.path, out.path])
     return Result(stages=Stages([cmd]), output=out)
 
 def nu_correct(src): # mnc -> result(..., mnc)
@@ -135,8 +135,8 @@ def inormalize(src, conf): # mnc, INormalizeConf -> result(..., mnc)
     out = src.newname_with_suffix('_inorm')
     cmd = CmdStage(inputs = [src], outputs = [out],
                    cmd = shlex.split('inormalize -clobber -const %s -%s' % (conf.const, conf.method))
-                       + (['-mask', src.mask.get_path()] if src.mask else [])
-                       + [src.get_path(), out.get_path()])
+                       + (['-mask', src.mask.path] if src.mask else [])
+                       + [src.path, out.path])
     return Result(stages=Stages([cmd]), output=out)
 
 class RotationalMinctraccConf(Atom):
@@ -173,10 +173,10 @@ def rotational_minctracc(source, target, conf):
                "-g", str(conf.registration_step),
                "-r", str(conf.rotational_range),
                "-i", str(conf.rotational_interval),
-               source.get_path(),
-               target.get_path(),
-               out.get_path(),
-               "/dev/null"] + (['-m', source.mask.get_path()] if source.mask else []))
+               source.path,
+               target.path,
+               out.path,
+               "/dev/null"] + (['-m', source.mask.path] if source.mask else []))
     return Result(stages=Stages([cmd]), output=out)
 
 class MinctraccConf(Atom):
@@ -282,7 +282,7 @@ def minctracc(source, target, conf, transform=None):
               ['minctracc', '-clobber', '-debug', '-xcorr'],
               #TODO remove -xcorr in nonlinear case?
               #TODO remove -debug in purely linear case?
-              (['-transformation', InputFile(transform.get_path())] if transform else []),
+              (['-transformation', InputFile(transform.path)] if transform else []),
               (['-' + conf.transform_type] if conf.transform_type else []),
               (['-use_simplex'] if conf.use_simplex is not None else []),
               # FIXME add -est_centre, -est_translations/-identity if not transform (else add transform) !!
@@ -300,9 +300,9 @@ def minctracc(source, target, conf, transform=None):
                 ['-sub_lattice',           conf.sub_lattice],
                ]))),
               (['-nonlinear %s' % (conf.objective if conf.objective else '')] if conf.is_nonlinear else []),
-              (['-source_mask', InputFile(source.mask.get_path())] if source.mask and conf.use_masks else []),
-              (['-model_mask',  InputFile(target.mask.get_path())] if target.mask and conf.use_masks else []),
-              [InputFile(source.get_path()), InputFile(target.get_path()), OutputFile(out_xfm.get_path())]))
+              (['-source_mask', InputFile(source.mask.path)] if source.mask and conf.use_masks else []),
+              (['-model_mask',  InputFile(target.mask.path)] if target.mask and conf.use_masks else []),
+              [InputFile(source.path), InputFile(target.path), OutputFile(out_xfm.path)]))
     return Result(stages=Stages([stage]), output=out_xfm)
 
 class SimilarityMetricConf(Atom):
@@ -345,7 +345,7 @@ def mincANTS(source, target, conf, transform=None):
             dest = target
         similarity_inputs.add(src)
         similarity_inputs.add(dest)
-        inner = ','.join([src.get_path(), dest.get_path(),
+        inner = ','.join([src.path, dest.path,
                           str(sim_metric_conf.weight), str(sim_metric_conf.radius_or_bins)])
         subcmd = "'" + "".join([sim_metric_conf.metric, '[', inner, ']']) + "'"
         similarity_cmds.extend(["-m", subcmd])
@@ -358,8 +358,8 @@ def mincANTS(source, target, conf, transform=None):
                          + ['-t', conf.transformation_model,
                             '-r', conf.regularization,
                             '-i', conf.iterations,
-                            '-o', xfm.get_path()] \
-                         + (['-x', target.mask.get_path()] if conf.use_mask and target.mask else []))
+                            '-o', xfm.path] \
+                         + (['-x', target.mask.path] if conf.use_mask and target.mask else []))
     s.add(stage)
     resampled = s.defer(mincresample(img=source, xfm=xfm, like=target, extra_flags=['-sinc']))
     return Result(stages=s,
@@ -568,9 +568,9 @@ def mincaverage(imgs, name_wo_ext="average", output_dir='.', copy_header_from_fi
     s = CmdStage(inputs=imgs, outputs=[avg, sdfile],
           cmd = ['mincaverage', '-clobber', '-normalize',
                  '-max-buffer-size-in-kb', '409620'] + additional_flags +
-                 ['-sdfile', sdfile.get_path()] + 
-                 [img.get_path() for img in imgs] + 
-                 [avg.get_path()])
+                 ['-sdfile', sdfile.path] + 
+                 [img.path for img in imgs] + 
+                 [avg.path])
     return Result(stages=Stages([s]), output=avg)
 
 def xfmaverage(xfms, output_dir): #mnc -> mnc
@@ -580,13 +580,13 @@ def xfmaverage(xfms, output_dir): #mnc -> mnc
     #outf.orig_path = None #ugh
     outf  = MincAtom(name=os.path.join(output_dir, 'average'), orig_name=None)
     stage = CmdStage(inputs=xfms, outputs=[outf],
-                     cmd=["xfmaverage"] + [x.xfm.get_path() for x in xfms] + [outf.get_path()])
+                     cmd=["xfmaverage"] + [x.xfm.path for x in xfms] + [outf.path])
     return Result(stages=Stages([stage]), output=outf)
 
 def xfminvert(xfm): #mnc -> mnc #TODO find a new naming scheme for lifted/unlifted operations?
     inv_xfm = xfm.newname_with_suffix('_inverted')
     s = CmdStage(inputs=[xfm], outputs=[inv_xfm],
-                 cmd=['xfminvert', '-clobber', xfm.get_path(), inv_xfm.get_path()])
+                 cmd=['xfminvert', '-clobber', xfm.path, inv_xfm.path])
     return Result(stages=Stages([s]), output=inv_xfm)
 
 def invert(xfm): #xfm -> xfm

@@ -194,13 +194,6 @@ def parse_csv(rows, common_time_pt): # row iterator, int -> { subject_id(str) : 
 #                         (options.input_space, ','.join(map(str,fns.keys()))))
 #    # call f...
 
-
-def create_dict_from_subj_to_xfm(registration_output):
-    """
-    Given a Registration input, this will return a dictionary that
-    maps MincAtoms from the 
-    """
-
 def get_final_transforms_reg_chain(pipeline_subject_info, intersubj_xfms_dict, chain_xfms_dict):
     """
     This function takes a subject mapping (with timepoints to MincAtoms) and returns a
@@ -375,7 +368,6 @@ def chain(options):
                                                                     options.stats_kernels)), 
                                                                     final_non_rigid_xfms)
     
-    #raise NotImplemented
     return s
 
 
@@ -403,9 +395,5 @@ if __name__ == "__main__":
     # *** *** *** *** *** *** *** *** ***
 
     chain_stages = chain(options)
-    
-    execute(chain_stages, options)
-    
-    print("\nDone...\n")
 
-    
+    execute(chain_stages, options)

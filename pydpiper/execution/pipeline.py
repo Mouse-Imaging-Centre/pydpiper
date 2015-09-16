@@ -394,6 +394,7 @@ class Pipeline(object):
         endtime = time.time()
         logger.info("Create Edges time: " + str(endtime-starttime))
 
+
     def getStage(self, i):
         """given an index, return the actual pipelineStage object"""
         return(self.stages[i])

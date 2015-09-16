@@ -3,7 +3,6 @@ import time
 import pkg_resources
 import logging
 import networkx as nx
-import re
 import sys
 import os
 

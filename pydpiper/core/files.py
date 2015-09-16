@@ -47,15 +47,15 @@ class FileAtom(object):
                  and self.__class__ == other.__class__))
     
     def __repr__(self):
-        return "%s(path=%s)" % (self.__class__,self.get_path()) 
-
+        return "%s(path=%s, ...)" % (self.__class__,self.get_path()) 
 
     def get_path(self): 
         return os.path.join(self.dir, self.filename_wo_ext + self.ext)
+
     path = property(get_path, "`path` property")
     
     def get_basename(self):
-        return (self.filename_wo_ext + self.ext)
+        return self.filename_wo_ext + self.ext
 
     def newname_with_fn(self, fn, ext=None, subdir=None):
         """Create a new FileAtom from one which has:

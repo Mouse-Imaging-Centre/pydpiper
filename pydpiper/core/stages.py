@@ -10,7 +10,7 @@ class CmdStage(object):
     become part of a `live` pipeline."""
     def __init__(self, inputs, outputs, cmd, memory=None):  #, conf, cmd):
         # TODO: rather than having separate cmd_stage fn, might want to make inputs/outputs optional here
-        self.inputs  = inputs  # TODO: might be better to derefence inputs -> inputs.get_path() here to save mem
+        self.inputs  = inputs  # TODO: might be better to derefence inputs -> inputs.path here to save mem
         self.outputs = outputs
         #self.conf    = conf            # not needed at present -- see note on render_fn
         self._cmd    = cmd
@@ -51,7 +51,7 @@ def cmd_stage(cmd): # [string|InputFile|OutputFile] -> CmdStage
     # MincAtoms. So it might seem strange in the next line to see s.filename, 
     # but that is where we currently store those File/MincAtoms. This will
     # eventually all go away.
-    cmd = [(s.filename.get_path() if isinstance(s, PipelineFile) else s) for s in cmd]
+    cmd = [(s.filename.path if isinstance(s, PipelineFile) else s) for s in cmd]
     return CmdStage(inputs = inputs, outputs = outputs, cmd = cmd)
 
 class Stages(set):

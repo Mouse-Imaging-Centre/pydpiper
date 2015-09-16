@@ -37,7 +37,7 @@ def mincblob(op, grid): # str, mnc -> mnc
         raise ValueError('mincblob: invalid operation %s' % op)
     out_grid = grid.newname_with_suffix('_' + op)
     s = CmdStage(inputs=[grid], outputs=[out_grid],
-                 cmd=['mincblob', '-clobber', '-' + op, grid.get_path(), out_grid.get_path()])
+                 cmd=['mincblob', '-clobber', '-' + op, grid.path, out_grid.path])
     return Result(stages=Stages([s]), output=out_grid)
     #TODO add a 'before' to newname_with, e.g., before="grid" -> disp._grid.mnc
 
