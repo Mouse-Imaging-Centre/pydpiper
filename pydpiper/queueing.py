@@ -56,7 +56,7 @@ class runOnQueueingSystem():
         self.procs = options.proc
         self.ppn = options.ppn
         self.queue_name = options.queue_name or options.queue
-        self.queue_type = options.queue or options.queue_type
+        self.queue_type = options.queue_type
         self.executor_start_delay = options.executor_start_delay
         # TODO use self.time to compute better time_to_accept_jobs?
         self.time_to_accept_jobs = options.time_to_accept_jobs

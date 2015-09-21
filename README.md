@@ -20,4 +20,7 @@ When your pipeline is running, you can verify the state of your pipeline using t
 
 check_pipeline_status.py uri
 
+*** *** ***
+Run a somewhat comprehensive test of the software:
 
+https://wiki.mouseimaging.ca/display/MICePub/Pydpiper#Pydpiper-Pydpipertesting-MBMandMAGeT

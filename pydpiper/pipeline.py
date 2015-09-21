@@ -835,7 +835,7 @@ class Pipeline(object):
 def launchPipelineExecutor(options, memNeeded, programName=None):
     """Launch pipeline executor directly from pipeline"""
     pipelineExecutor = pe.pipelineExecutor(options, memNeeded)
-    if options.queue_type == "sge" or options.queue == "sge":
+    if options.queue_type == "sge":
         pipelineExecutor.submitToQueue(programName)
     else:
         pe.launchExecutor(pipelineExecutor)

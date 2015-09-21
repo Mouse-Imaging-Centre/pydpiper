@@ -63,6 +63,9 @@ def addExecutorArgumentGroup(parser):
     group.add_argument("--pe", dest="pe",
                        type=str, default=None,
                        help="Name of the SGE pe, if any. [Default = %(default)s]")
+    group.add_argument("--mem-request-variable", dest="mem_request_variable",
+                       type=str, default="vf",
+                       help="Name of the SGE memory request variable to use. [Default = %(default)s]")
     group.add_argument("--greedy", dest="greedy",
                        action="store_true", default=False,
                        help="Request the full amount of RAM specified by --mem rather than the (lesser) amount needed by runnable jobs.  Always use this if your executor is assigned a full node.") #TODO mutually exclusive --non-greedy
@@ -72,13 +75,7 @@ def addExecutorArgumentGroup(parser):
     group.add_argument("--queue-name", dest="queue_name", type=str, default=None,
                        help="Name of the queue, e.g., all.q (MICe) or batch (SciNet)")
     group.add_argument("--queue-type", dest="queue_type", type=str, default=None,
-                       help="""Queue type to submit jobs, i.e., "sge" or "pbs".  [Default = %(default)s]""")
-    group.add_argument("--queue", dest="queue", 
-                       type=str, default=None,
-                       help="[DEPRECATED; use --queue-type instead.]  Use specified queueing system to submit jobs. Default is None.")              
-    group.add_argument("--sge-queue-opts", dest="sge_queue_opts", 
-                       type=str, default=None,
-                       help="[DEPRECATED; use --queue-name instead.]  For --queue=sge, allows you to specify different queues. [Default = %(default)s]")
+                       help="""Queue type to submit jobs, i.e., "sge" or "pbs".  [Default = %(default)s]""")              
     group.add_argument("--queue-opts", dest="queue_opts",
                        type=str, default="",
                        help="A string of extra arguments/flags to pass to qsub. [Default = %(default)s]")
@@ -260,12 +257,9 @@ class pipelineExecutor(object):
         self.procs = options.proc
         self.ppn = options.ppn
         self.pe  = options.pe
-        self.queue_type = options.queue_type or options.queue
-        self.queue_name = options.queue_name or options.sge_queue_opts
-        if options.queue:
-            logger.warn("--queue is deprecated; use --queue-type instead")
-        if options.sge_queue_opts:
-            logger.warn("--sge_queue_opts is deprecated; use --queue-name instead")
+        self.mem_request_variable = options.mem_request_variable
+        self.queue_type = options.queue_type
+        self.queue_name = options.queue_name
         self.queue_opts = options.queue_opts
         self.ns = options.use_ns
         self.uri_file = options.urifile
@@ -368,7 +362,7 @@ class pipelineExecutor(object):
         """Submits to sge queueing system using qsub""" 
         if self.queue_type == "sge":
             strprocs = str(self.procs)
-            strmem = "vf=%sG" % float(self.mem)
+            strmem = "%s=%sG" % (self.mem_request_variable,float(self.mem))
             jobname = ""
             if programName is not None:
                 executablePath = os.path.abspath(programName)
@@ -615,12 +609,12 @@ if __name__ == "__main__":
 
     if options.local:
         local_launch(options)
-    elif options.queue == "pbs" or options.queue_type == "pbs":
+    elif options.queue_type == "pbs":
         roq = q.runOnQueueingSystem(options, sysArgs=sys.argv)
         for i in range(options.num_exec):
             roq.createAndSubmitExecutorJobFile(i, after=None,
                             time=q.timestr_to_secs(options.time))
-    elif options.queue == "sge" or options.queue_type == "sge":
+    elif options.queue_type == "sge":
         for i in range(options.num_exec):
             pe = pipelineExecutor(options)
             pe.submitToQueue()

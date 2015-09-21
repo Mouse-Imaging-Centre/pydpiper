@@ -154,8 +154,7 @@ class AbstractApplication(object):
         # or contents of any config file so isn't really complete
         self.reconstructCommand()
 
-        pbs_submit = (self.options.queue == "pbs" or \
-                      self.options.queue_type == "pbs") \
+        pbs_submit = self.options.queue_type == "pbs" \
                      and not self.options.local
 
         # --create-graph causes the pipeline to be constructed
