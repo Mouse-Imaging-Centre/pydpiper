@@ -82,17 +82,19 @@ def setupDirectories(outputDir, pipeName, module):
     #    pipeName = str(date.today()) + "_pipeline"
     
     #initialize directories class:
-    dirs = StandardMBMDirectories() 
+    dirs = StandardMBMDirectories()
+
+    fh.makedirsIgnoreExisting(outputDir)
     
     #create subdirectories based on which module is being run. _processed always created 
-    dirs.processedDir = fh.createSubDir(outputDir, pipeName + "_processed")
+    dirs.processedDir = fh.createSubDir(outputDir, pipeName + "_processed", ensure_parent_exists=False)
     
     if (module == "ALL") or (module=="LSQ6"):
-        dirs.lsq6Dir = fh.createSubDir(outputDir, pipeName + "_lsq6")
+        dirs.lsq6Dir = fh.createSubDir(outputDir, pipeName + "_lsq6", ensure_parent_exists=False)
     if (module == "ALL") or (module=="LSQ12"):
-        dirs.lsq12Dir = fh.createSubDir(outputDir, pipeName + "_lsq12")
+        dirs.lsq12Dir = fh.createSubDir(outputDir, pipeName + "_lsq12", ensure_parent_exists=False)
     if (module == "ALL") or (module=="NLIN"):
-        dirs.nlinDir = fh.createSubDir(outputDir, pipeName + "_nlin")
+        dirs.nlinDir = fh.createSubDir(outputDir, pipeName + "_nlin", ensure_parent_exists=False)
     
     return dirs
     

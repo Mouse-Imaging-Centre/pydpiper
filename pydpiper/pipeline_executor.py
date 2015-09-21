@@ -19,11 +19,11 @@ import Pyro4
 
 Pyro4.config.SERVERTYPE = "multiplex"
 
+
+#TODO add these to executorArgumentGroup as options, pass into pipelineExecutor
 WAIT_TIMEOUT = 5.0
 HEARTBEAT_INTERVAL = 10.0
-LATENCY_TOLERANCE = 15.0
-# q.SERVER_START_TIME
-SHUTDOWN_TIME = WAIT_TIMEOUT + LATENCY_TOLERANCE
+#SHUTDOWN_TIME = WAIT_TIMEOUT + LATENCY_TOLERANCE
 
 logger = logging.getLogger(__name__)
 
@@ -36,8 +36,11 @@ def addExecutorArgumentGroup(parser):
                        type=str, default=None,
                        help="Location for uri file if NameServer is not used. If not specified, default is current working directory.")
     group.add_argument("--use-ns", dest="use_ns",
-                       action="store_true",
+                       action="store_true", default=False,
                        help="Use the Pyro NameServer to store object locations. Currently a Pyro nameserver must be started separately for this to work.")
+    group.add_argument("--latency-tolerance", dest="latency_tolerance",
+                       type=float, default=15.0,
+                       help="Allowed grace period by which an executor may miss a heartbeat tick before being considered failed [Default = %(default)s.")
     group.add_argument("--num-executors", dest="num_exec", 
                        type=int, default=-1, 
                        help="Number of independent executors to launch. [Default = %(default)s. Code will not run without an explicit number specified.]")
@@ -46,7 +49,7 @@ def addExecutorArgumentGroup(parser):
                       help="Maximum number of failed executors before we stop relaunching. [Default = %(default)s]")
     # TODO add corresponding --monitor-heartbeats
     group.add_argument("--no-monitor-heartbeats", dest="monitor_heartbeats",
-                      action="store_false",
+                      action="store_false", default=True,
                       help="Don't assume executors have died if they don't check in with the server (NOTE: this can hang your pipeline if an executor crashes).")
     group.add_argument("--time", dest="time", 
                        type=str, default=None,
@@ -57,32 +60,34 @@ def addExecutorArgumentGroup(parser):
     group.add_argument("--mem", dest="mem", 
                        type=float, default=6,
                        help="Total amount of requested memory (in GB) for all processes the executor runs. [Default = %(default)s].")
+    group.add_argument("--pe", dest="pe",
+                       type=str, default=None,
+                       help="Name of the SGE pe, if any. [Default = %(default)s]")
+    group.add_argument("--mem-request-variable", dest="mem_request_variable",
+                       type=str, default="vf",
+                       help="Name of the SGE memory request variable to use. [Default = %(default)s]")
     group.add_argument("--greedy", dest="greedy",
-                       action="store_true",
-                       help="Request the full amount of RAM specified by --mem rather than the (lesser) amount needed by runnable jobs.  Always use this if your executor is assigned a full node.")
+                       action="store_true", default=False,
+                       help="Request the full amount of RAM specified by --mem rather than the (lesser) amount needed by runnable jobs.  Always use this if your executor is assigned a full node.") #TODO mutually exclusive --non-greedy
     group.add_argument("--ppn", dest="ppn", 
                        type=int, default=8,
                        help="Number of processes per node. Used when --queue-type=pbs. [Default = %(default)s].")
     group.add_argument("--queue-name", dest="queue_name", type=str, default=None,
                        help="Name of the queue, e.g., all.q (MICe) or batch (SciNet)")
     group.add_argument("--queue-type", dest="queue_type", type=str, default=None,
-                       help="""Queue type to submit jobs, i.e., "sge" or "pbs".  [Default = %(default)s]""")
-    group.add_argument("--queue", dest="queue", 
-                       type=str, default=None,
-                       help="[DEPRECATED; use --queue-type instead.]  Use specified queueing system to submit jobs. Default is None.")              
-    group.add_argument("--sge-queue-opts", dest="sge_queue_opts", 
-                       type=str, default=None,
-                       help="[DEPRECATED; use --queue-name instead.]  For --queue=sge, allows you to specify different queues. [Default = %(default)s]")
+                       help="""Queue type to submit jobs, i.e., "sge" or "pbs".  [Default = %(default)s]""")              
     group.add_argument("--queue-opts", dest="queue_opts",
                        type=str, default="",
                        help="A string of extra arguments/flags to pass to qsub. [Default = %(default)s]")
+    group.add_argument("--executor-start-delay", dest="executor_start_delay", type=int, default=180,
+                       help="Seconds before starting remote executors when running the server on the grid")
     group.add_argument("--time-to-seppuku", dest="time_to_seppuku", 
                        type=int, default=1,
                        help="The number of minutes an executor is allowed to continuously sleep, i.e. wait for an available job, while active on a compute node/farm before it kills itself due to resource hogging. [Default = %(default)s]")
     group.add_argument("--time-to-accept-jobs", dest="time_to_accept_jobs", 
                        type=int,
-                       help="The number of minutes after which an executor will not accept new jobs anymore. This can be useful when running executors on a batch system where other (competing) jobs run for a limited amount of time. The executors can behave in a similar way by given them a rough end time. [Default = %(default)s]")
-    group.add_argument('--local', dest="local", action='store_true', help="Don't submit anything to any specified queueing system but instead run as a server/executor")
+                       help="The number of minutes after which an executor will not accept new jobs anymore. This can be useful when running executors on a batch system where other (competing) jobs run for a limited amount of time. The executors can behave in a similar way by giving them a rough end time. [Default = %(default)s]")
+    group.add_argument('--local', dest="local", action='store_true', default=False, help="Don't submit anything to any specified queueing system but instead run as a server/executor")
     group.add_argument("--config-file", type=str, metavar='config_file', is_config_file=True,
                        required=False, help='Config file location')
     group.add_argument("--prologue-file", type=str, metavar='file',
@@ -244,19 +249,17 @@ class pipelineExecutor(object):
         # -- perhaps options.mem should be renamed
         # options.max_mem since this represents a per-node
         # limit (or at least a per-executor limit)
-        logger.debug("memNeeded: %sG", memNeeded)
+        logger.debug("memNeeded: %s", memNeeded)
         self.mem = memNeeded or options.mem
         logger.debug("self.mem = %0.2fG", self.mem)
         if self.mem > options.mem:
             raise InsufficientResources("executor requesting %.2fG memory but maximum is %.2fG" % (options.mem, self.mem))
         self.procs = options.proc
         self.ppn = options.ppn
-        self.queue_type = options.queue_type or options.queue
-        self.queue_name = options.queue_name or options.sge_queue_opts
-        if options.queue:
-            logger.warn("--queue is deprecated; use --queue-type instead")
-        if options.sge_queue_opts:
-            logger.warn("--sge_queue_opts is deprecated; use --queue-name instead")
+        self.pe  = options.pe
+        self.mem_request_variable = options.mem_request_variable
+        self.queue_type = options.queue_type
+        self.queue_name = options.queue_name
         self.queue_opts = options.queue_opts
         self.ns = options.use_ns
         self.uri_file = options.urifile
@@ -285,6 +288,7 @@ class pipelineExecutor(object):
         self.serverURI = None
         self.current_running_job_pids = []
         self.registered_with_server = False
+        self.heartbeat_thread_crashed = False
         # we associate an event with each executor which is set when jobs complete.
         # in the future it might also be set by the server, and we might have more
         # than one event (for reclaiming, server messages, ...)
@@ -358,7 +362,7 @@ class pipelineExecutor(object):
         """Submits to sge queueing system using qsub""" 
         if self.queue_type == "sge":
             strprocs = str(self.procs)
-            strmem = "vf=%sG" % float(self.mem)
+            strmem = "%s=%sG" % (self.mem_request_variable,float(self.mem))
             jobname = ""
             if programName is not None:
                 executablePath = os.path.abspath(programName)
@@ -368,19 +372,21 @@ class pipelineExecutor(object):
             jobname += ident
             queue_opts = ['-V', '-j', 'yes',
                           '-N', jobname,
-                          '-l', strmem, '-pe', 'smp', strprocs,
+                          '-l', strmem,
                           '-o', os.path.join(os.getcwd(),
                                              ident + '-eo.log')] \
                           + (['-q', self.queue_name]
                              if self.queue_name else []) \
+                          + (['-pe', self.pe, strprocs]
+                             if self.pe else []) \
                           + shlex.split(self.queue_opts)
             qsub_cmd = ['qsub'] + queue_opts
             cmd  = ["pipeline_executor.py", "--local"]
             cmd += ['--uri-file', self.uri_file]
             # Only one exec is launched at a time in this manner, so:
             cmd += ["--num-executors", str(1)]
-            # send ALL args except --num-executors to the executor
-            cmd += q.remove_flags(['--num-exec', '--mem'], sys.argv)
+            # pass most args to the executor
+            cmd += q.remove_flags(['--num-exec', '--mem'], sys.argv[1:])
             cmd += ['--mem', str(self.mem)]
             script = "#!/usr/bin/env bash\n%s\n" % ' '.join(cmd)
             # FIXME huge hack -- shouldn't we just iterate over options,
@@ -464,8 +470,13 @@ class pipelineExecutor(object):
                 time.sleep(HEARTBEAT_INTERVAL)
         except:
             logger.exception("Heartbeat thread crashed: ")
-            # TODO should this take down the executor since globally Pydpiper
-            # is now in an inconsistent state?
+            # this will take down the executor to avoid the case
+            # where an executor wastes time processing jobs which the server
+            # considers lost; there might be a better way to do this
+            # (re-register/restart heartbeat and notify server of existing
+            # jobs? quite complicated ...), and it could be done
+            # 'atomically' using an event for better guarantees ...
+            self.heartbeat_thread_crashed = True
 
     # use an event set/timeout system to run the executor mainLoop -
     # we might want to pass some extra information in addition to waking the system
@@ -492,6 +503,10 @@ class pipelineExecutor(object):
         # (unless, in the future, we allow clients to connect to switch allegiances
         # to other servers)
         self.free_resources()
+
+        if self.heartbeat_thread_crashed:
+            logger.debug("Heartbeat thread crashed; quitting")
+            return False
 
         if self.idle():
             self.idle_time += self.current_time - self.prev_time
@@ -594,12 +609,12 @@ if __name__ == "__main__":
 
     if options.local:
         local_launch(options)
-    elif options.queue == "pbs" or options.queue_type == "pbs":
+    elif options.queue_type == "pbs":
         roq = q.runOnQueueingSystem(options, sysArgs=sys.argv)
         for i in range(options.num_exec):
             roq.createAndSubmitExecutorJobFile(i, after=None,
                             time=q.timestr_to_secs(options.time))
-    elif options.queue == "sge" or options.queue_type == "sge":
+    elif options.queue_type == "sge":
         for i in range(options.num_exec):
             pe = pipelineExecutor(options)
             pe.submitToQueue()

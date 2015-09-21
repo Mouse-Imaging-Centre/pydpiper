@@ -15,13 +15,19 @@ import random
 
 logger = logging.getLogger(__name__)
 
+def nullable_int(string):
+    if string == "None":
+        return None
+    else:
+        return int(string)
+
 def addLSQ12ArgumentGroup(parser):
     """option group for the command line argument parser"""
     group = parser.add_argument_group("LSQ12 registration options",
                         "Options for performing a pairwise, affine registration")
     group.add_argument("--lsq12-max-pairs", dest="lsq12_max_pairs",
-                       type=int, default=None,
-                       help="Maximum number of pairs to register together.  [Default = %(default)s]")
+                       type=nullable_int, default=25,
+                       help="Maximum number of pairs to register together ('None' implies all pairs).  [Default = %(default)s]")
     group.add_argument("--lsq12-likefile", dest="lsq12_likeFile",
                        type=str, default=None,
                        help="Can optionally specify a like file for resampling at the end of pairwise "

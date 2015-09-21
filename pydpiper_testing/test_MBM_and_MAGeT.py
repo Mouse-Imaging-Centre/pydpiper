@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 ### to use this script, run the following:
-#$ wget repo.phenogenomics.ca/repo/Pydpiper_test_files/test-data.tar.gz
+#$ wget repo.mouseimaging.ca/repo/Pydpiper_test_files/test-data.tar.gz
 #$ tar xf test-data.tar test-data
 # ... alter the config file in the test-data directory as appropriate ...
 #$ test-script.py /path/to/test-data --working_dir=/directory/to/run/pipelines

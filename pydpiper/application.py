@@ -105,7 +105,6 @@ class AbstractApplication(object):
     
     def _setup_pipeline(self, options):
         self.pipeline = Pipeline(options)
-        #self.pipeline.main_options_hash = options
 
     # FIXME check that only one server is running with a given output directory
     def _setup_directories(self):
@@ -122,12 +121,13 @@ class AbstractApplication(object):
         logger.info("Command version : " + self.__version__)
         # also, because this is probably a better file for it (also has similar
         # naming conventions as the pipeline-stages.txt file:
-        fileForCommandAndVersion = os.path.abspath(os.curdir + "/" + self.options.pipeline_name + "-command-and-version-" + time.strftime("%d-%m-%Y-at-%H-%m-%S") + ".sh")
+        fileForCommandAndVersion = self.options.pipeline_name + "-command-and-version-" + time.strftime("%d-%m-%Y-at-%H-%m-%S") + ".sh"
         pf = open(fileForCommandAndVersion, "w")
         pf.write("#!/usr/bin/env bash\n")
         pf.write("# Command version is: " + self.__version__ + "\n")
         pf.write("# Command was: \n")
         pf.write(reconstruct + '\n')
+        pf.write("# options were: \n# %s" % self.options)
         pf.close()
         
     def start(self):
@@ -150,14 +150,16 @@ class AbstractApplication(object):
         self.appName = self.setup_appName()
         self.setup_logger()
 
-        # NB this doesn't capture environment variables
+        # TODO this doesn't capture environment variables
         # or contents of any config file so isn't really complete
         self.reconstructCommand()
 
-        pbs_submit = (self.options.queue == "pbs" or \
-                      self.options.queue_type == "pbs") \
+        pbs_submit = self.options.queue_type == "pbs" \
                      and not self.options.local
 
+        # --create-graph causes the pipeline to be constructed
+        # both at PBS submit time and on the grid; this may be an extremely
+        # expensive duplication
         if (self.options.execute and not pbs_submit) or self.options.create_graph:
             logger.debug("Calling `run`")
             self.run()
