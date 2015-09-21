@@ -1,3 +1,32 @@
+New in Version 1.15
+===================
+* some of the python dependencies are now installed automatically (from PyPI): 
+  ConfigArgParse, networkx, pygraphviz, Pyro4, pytest, pydot
+* default value for the lsq12-max-pairs is set to 25
+* the LSQ6.py module now has the ability to copy the header information of the 
+  first input into the lsq6-average file
+* the non-linear modules are hard coded to use pmincaverage instead of mincaverage 
+  (for the time being)
+* updates to the code to speed up the server process (less disk access when creating 
+  directories, and directories are crated only once)
+* new SciNet default (in the configuration file): latency tolerance is set to 10 
+  minutes (delay between executor-server pings), executor-start-delay is set to 
+  10 minutes: the local executor starts 10 minutes after the server to make sure 
+  that the server is ready/created the uri, otherwise the executor dies right away, 
+  and no processing will be done on the compute node that runs the server.
+* the server logs its own memory usage, and uses this information when launching 
+  local executors
+* changed the graph representation to save memory/time when computing newly runnable 
+  stages after a stage completes
+* opened up an argument for the executors to specify which pe (parallel environment) 
+  is used on SGE
+* executors shutdown when they are unable to communicate with the server. This is to 
+  avoid having them sit idle when the server is gone
+* removed the deprecated options --queue and --sge-queue-opts
+* added the option --mem-request-variable which allows you to change the memory request 
+  variable to use for sge/ogs
+
+
 New in Version 1.14
 ===================
 * the build model and registration chain applications now both create a
