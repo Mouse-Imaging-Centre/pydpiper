@@ -29,7 +29,8 @@ class XfmHandler(object):
         return "%s(xfm=%s)" % (self.__class__,self.xfm.path) 
 
     # convenience accesor to allow `xfm.path` instead of `xfm.xfm.path`:
-    path = property(lambda self: self.xfm.path, "`path` property")
+    # (turned off because it was a bad idea due to lack of types)
+    #path = property(lambda self: self.xfm.path, "`path` property")
 
     # accessing a null `resampled` field is almost certainly a programming error; throw an exception:
     resampled = property(ensure_nonnull_return(lambda self: self._resampled), "`resampled` property")

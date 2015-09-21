@@ -13,7 +13,7 @@ class CmdStage(object):
         self.inputs  = inputs  # TODO: might be better to derefence inputs -> inputs.path here to save mem
         self.outputs = outputs
         #self.conf    = conf            # not needed at present -- see note on render_fn
-        self._cmd    = cmd
+        self._cmd    = cmd # TODO: why not expose this publically?
 
         self.when_runnable_hooks = []  # TODO: make the hooks accessible via the constructor
         self.when_finished_hooks = []
@@ -21,7 +21,7 @@ class CmdStage(object):
     # NB: __hash__ and __eq__ ignore hooks, memory
     # Also, we assume cmd determines inputs, outputs so ignore it in hash/eq calculations
     def __hash__(self):
-        return hash(str(self._cmd))
+        return hash(self.cmd_to_string())
     def __eq__(self, c):
         return self._cmd == c._cmd
     # Originally I had `render_fn` : inputs, outputs, conf -> [str] instead of `cmd` : [str] to

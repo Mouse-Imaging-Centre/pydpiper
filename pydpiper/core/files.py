@@ -81,10 +81,10 @@ class FileAtom(object):
         new_dir = os.path.join(self.pipeline_sub_dir, 
                                self.output_sub_dir if self.output_sub_dir else "",
                                subdir if subdir else "") 
-        ext  = ext or self.ext
         filename_wo_ext = fn(self.filename_wo_ext) 
         fa = copy.copy(self)
         fa.dir = new_dir
+        fa.ext = ext or self.ext
         fa.filename_wo_ext = filename_wo_ext
         return fa
 

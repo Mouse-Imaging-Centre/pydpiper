@@ -6,6 +6,7 @@ import csv
 from collections import defaultdict
 from atom.api import Atom, Int, Str, Dict, Enum, Instance
 from pydpiper.minc.analysis import determinants_at_fwhms, invert
+from pydpiper.core.containers import Result
 from pydpiper.minc.registration import (Stages, mincANTS_NLIN_build_model, mincANTS_default_conf,
                                         MincANTSConf, mincANTS, intrasubject_registrations, mincaverage, concat)
 from pydpiper.minc.files import MincAtom
@@ -233,7 +234,7 @@ def get_final_transforms_reg_chain(pipeline_subject_info, intersubj_xfms_dict, c
         new_subj = Subject(intersubject_registration_time_pt = subj.intersubject_registration_time_pt,
                            time_pt_dict   = new_time_pt_dict)
         new_d[s_id] = new_subj
-    return new_d
+    return Result(stages=s, output=new_d)
 
 def chain(options):
 
@@ -319,7 +320,7 @@ def chain(options):
     # by this point in the code (i.e., lsq6)
     if options.input_space == 'lsq6' or options.input_space == 'native':
         raise NotImplementedError("We currently have not implemented the code for 'input space': %s" % options.input_space)
-        #intersubj_xfms = lsq12_NLIN_build_model_on_dictionaries(imgs=intersubj_imgs,
+    #intersubj_xfms = lsq12_NLIN_build_model_on_dictionaries(imgs=intersubj_imgs,
         #                                                        conf=conf,
         #                                                        lsq12_dir=lsq12_directory
                                                                 #, like={atlas_from_init_model_at_this_tp}
@@ -337,7 +338,8 @@ def chain(options):
                                                    initial_target=some_temp_target, # this doesn't make sense yet
                                                    nlin_dir=pipeline_nlin_common_dir,
                                                    confs=full_hierarchy))
-        dict_intersubj_atom_to_xfm = {xfm.source: xfm for xfm in intersubj_xfms.xfms} 
+        dict_intersubj_atom_to_xfm = {xfm.source: xfm for xfm in intersubj_xfms.xfms}
+    return s
 
     ## within-subject registration
     # In the toy scenario below: 
@@ -359,14 +361,14 @@ def chain(options):
                    for s_id, subj in pipeline_subject_info.iteritems() }
     
     # create transformation from each subject to the final common time point average
-    final_non_rigid_xfms = get_final_transforms_reg_chain(pipeline_subject_info,
+    final_non_rigid_xfms = s.defer(get_final_transforms_reg_chain(pipeline_subject_info,
                                                           dict_intersubj_atom_to_xfm,
-                                                          chain_xfms)
-     
-    
-    subject_determinants = map_over_time_pt_dict_in_Subject(lambda xfm: s.defer(determinants_at_fwhms(s.defer(invert(xfm)), 
-                                                                    options.stats_kernels)), 
-                                                                    final_non_rigid_xfms)
+                                                          chain_xfms))
+
+    subject_determinants = map_over_time_pt_dict_in_Subject(
+        lambda xfm: s.defer(determinants_at_fwhms(xfm=s.defer(invert(xfm)),
+                                                  inv_xfm=xfm,
+                                                  blur_fwhms=options.stats_kernels)),      final_non_rigid_xfms)
     
     return s
 
@@ -395,5 +397,7 @@ if __name__ == "__main__":
     # *** *** *** *** *** *** *** *** ***
 
     chain_stages = chain(options)
+
+    #[print(s.render() + '\n') for s in chain_stages]
 
     execute(chain_stages, options)

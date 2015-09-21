@@ -29,8 +29,8 @@ def mincblob(op, grid): # str, mnc -> mnc
     """
     Low-level mincblob wrapper -- use `determinant` instead to actually compute a determinant ...
     >>> stages = mincblob('determinant', MincAtom("/images/img_1.mnc", pipeline_sub_dir="/tmp")).stages
-    >>> stages.pop().render()
-    'mincblob -clobber -determinant /images/img_1.mnc /tmp/img_1/img_1_determinant.mnc'
+    >>> [s.render() for s in stages]
+    ['mincblob -clobber -determinant /images/img_1.mnc /tmp/img_1/img_1_determinant.mnc']
     """
     # FIXME could automatically add 1 here for determinant; what about others?
     if op not in ["determinant", "trace", "translation", "magnitude"]:
@@ -69,22 +69,27 @@ def nlin_displacement(xfm, inv_xfm=None): # xfm -> mnc
     # "minc_displacement <=< nlin_part"
     
     s = Stages()
-    return Result(stages=s, output=s.defer(minc_displacement(s.defer(nlin_part(xfm, inv_xfm)))))
+    return Result(stages=s,
+                  output=s.defer(minc_displacement(
+                         s.defer(nlin_part(xfm, inv_xfm)))))
 
-def determinants_at_fwhms(xfm, blur_fwhms):
+def determinants_at_fwhms(xfm, blur_fwhms, inv_xfm=None):
     """
-    This function takes transformations (xfm) containing
-    both lsq12 (scaling and shearing, the main
+    Takes a transformation (xfm) containing
+    both lsq12 (scaling and shearing, the 6-parameter
     rotations/translations should not be part of this) and
     non-linear parts of a subject to a common/shared average
     and returns the determinants of both the (forward) non linear
-    part of the xfm at the given fwhms as well as the determinats
-    of the full (forward) transformation
+    part of the xfm at the given fwhms as well as the determinants
+    of the full (forward) transformation.  The inverse transform
+    may optionally be specified to avoid its recomputation (e.g.,
+    when passing an inverted xfm to determinants_at_fwhms,
+    specify the original here).
     """
     # "(nlin_displacement, minc_displacement) <=< invert"
     s = Stages()
 
-    inv_xfm = s.defer(invert(xfm))
+    inv_xfm = inv_xfm or s.defer(invert(xfm))
 
     nlin_disp = s.defer(nlin_displacement(xfm=xfm, inv_xfm=inv_xfm))
     full_disp = s.defer(minc_displacement(xfm))

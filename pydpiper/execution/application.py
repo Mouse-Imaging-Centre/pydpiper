@@ -81,6 +81,20 @@ def create_parser():
 def output_dir(options):
     return options.output_directory if options.output_directory else os.getcwd()
 
+def file_graph(stages):
+    # TODO remove pipeline_dir from node pathnames
+    G = nx.DiGraph()
+    #files = [f.path for s in stages for f in s.inputs]
+    #G.add_nodes_from(files)
+    # could filter out boring outputs here...
+    for s in stages:
+        for x in s.inputs:
+            for y in s.outputs:
+                G.add_edge(x.path,y.path,label=s.to_array()[0])
+    return G
+    # TODO: nx.write_dot doesn't show `cmd` attribute;
+    # need to use something like nx.to_pydot to convert
+
 #TODO: change this to ...(static_pipeline, options)?
 def execute(stages, options):
     """Basically just looks at the arguments and exits if `--no-execute` is specified,
@@ -96,6 +110,7 @@ def execute(stages, options):
     if options.create_graph:
         logger.debug("Writing dot file...")
         nx.write_dot(pipeline.G, str(options.pipeline_name) + "_labeled-tree.dot")
+        nx.write_dot(file_graph(stages), str(options.pipeline_name) + "_labeled-tree-alternate.dot")
         logger.debug("Done.")
 
     if not options.execute:

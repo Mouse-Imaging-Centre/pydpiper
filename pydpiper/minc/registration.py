@@ -7,16 +7,12 @@ import shlex
 from atom.api import (Atom, Bool, Int, Float, List,
                       Enum, Tuple, Instance, Str)
 
-from pydpiper.minc.files            import MincAtom
+from pydpiper.minc.files            import MincAtom, FileAtom
 from pydpiper.minc.containers       import XfmHandler, Registration
 from pydpiper.core.stages     import CmdStage, cmd_stage, Stages
 from pydpiper.core.containers import Result
 from pydpiper.core.util       import flatten
 from pydpiper.core.conversion import InputFile, OutputFile
-
-# FIXME a lot of input=..., output=... dependency specifications are broken as they specify a dependence
-# on a handler rather than on a path (i.e., a string) (although this is OK since we can always call
-# <whatever>.path -- the important thing is to make this **uniform**; need to add path accessor to xfmh)
 
 # TODO canonicalize all names of form 'source', 'src', 'src_img', 'dest', 'target', ... in program
 
@@ -27,19 +23,23 @@ def mincblur(img, fwhm, gradient=False, subdir='tmp'): # mnc -> mnc  #, output_d
     >>> img = MincAtom(name='/images/img_1.mnc', pipeline_sub_dir='/scratch/some_pipeline_processed/')
     >>> img_blur = mincblur(img=img, fwhm='0.056')
     >>> img_blur.output.path
-    '/scratch/some_pipeline_processed/img_1/tmp/img_1_fwhm0.056.mnc'
+    '/scratch/some_pipeline_processed/img_1/tmp/img_1_fwhm0.056_blur.mnc'
     >>> [i.render() for i in img_blur.stages]
     ['mincblur -clobber -no_apodize -fwhm 0.056 /images/img_1.mnc /scratch/some_pipeline_processed/img_1/tmp/img_1_fwhm0.056.mnc']
     """
-    outf  = img.newname_with_suffix("_fwhm%s" % fwhm + ("_dxyz" if gradient else ""), subdir=subdir)
+    suffix = "_dxyz" if gradient else "_blur"
+    outf  = img.newname_with_suffix("_fwhm%s" % fwhm + suffix, subdir=subdir)
     stage = CmdStage(
               inputs = [img], outputs = [outf],
               #this used to a function render_fn : conf, inf, outf -> string
-              cmd = shlex.split('mincblur -clobber -no_apodize -fwhm %s %s %s' % (fwhm, img.path, outf.path)) \
+              # drop last 9 chars from output filename since mincblur
+              # automatically adds "_blur.mnc/_dxyz.mnc" and Python
+              # won't lift this length calculation automatically ...
+              cmd = shlex.split('mincblur -clobber -no_apodize -fwhm %s %s %s' % (fwhm, img.path, outf.path[:-9])) \
                   + (['-gradient'] if gradient else []))
     return Result(stages=Stages([stage]), output=outf)
 
-def mincresample_simple(img, xfm, like, extra_flags): # mnc -> mnc
+def mincresample_simple(img, xfm, like, extra_flags): # mnc, ???, mnc, [str] -> mnc
     #TODO should extra_args (might contain -invert or -sinc) be(/be part of a conf object/list/dict/... ?
     """Resample an image, ignoring mask/labels"""
     outf = img.newname_with_fn(lambda _old: xfm.filename_wo_ext + '-resampled', subdir='resampled') # TODO update the mask/labels here
@@ -55,6 +55,14 @@ def mincresample_simple(img, xfm, like, extra_flags): # mnc -> mnc
 
 # TODO mincresample_simple could easily be replaced by a recursive call to mincresample
 def mincresample(img, xfm, like, extra_flags): # mnc -> mnc
+    """
+    >>> img  = MincAtom('/tmp/img_1.mnc')
+    >>> like = MincAtom('/tmp/img_2.mnc')
+    >>> xfm  = FileAtom('/tmp/trans.xfm')
+    >>> stages, resampled = mincresample(img=img, xfm=xfm, like=like, extra_flags=[])
+    >>> [x.render() for x in stages]
+    ['mincresample -clobber -2 -transform /tmp/trans.xfm -like /tmp/img_2.mnc /tmp/img_1.mnc /micehome/bdarwin/git/pydpiper/img_1/resampled/trans-resampled.mnc']
+    """
     s = Stages()
     # FIXME remove interpolation (-sinc, -tricubic, ...) from mask/label extra_flags -- from minc_atoms.py, seems default is nearest_neighbour?
     # TODO better solution - separate interpolation argument taking a nullable(?) enum val
@@ -73,8 +81,8 @@ def mincresample(img, xfm, like, extra_flags): # mnc -> mnc
 def xfmconcat(xfms): # [xfm] -> xfm
     """
     >>> stages, xfm = xfmconcat([MincAtom('/tmp/%s' % i, pipeline_sub_dir='/scratch') for i in ['t1.xfm', 't2.xfm']])
-    >>> stages.pop().render()
-    'xfmconcat /tmp/t1.xfm /tmp/t2.xfm /scratch/t1/concat_of_t1_and_t2.xfm'
+    >>> [s.render() for s in stages]
+    ['xfmconcat /tmp/t1.xfm /tmp/t2.xfm /scratch/t1/concat_of_t1_and_t2.xfm']
     """
     if len(xfms) == 0:
         raise ValueError("`xfmconcat` arg `xfms` was empty (can't concat zero files)")
@@ -260,7 +268,6 @@ default_nonlinear_minctracc_conf = MinctraccConf(
     objective='corrcoeff',
     lattice_diameter=tuple(map(lambda x: x * 3, step_sizes)),
     sub_lattice=6)
-#  return c
 
 #TODO move to utils
 def space_sep(x):
@@ -330,6 +337,7 @@ def mincANTS(source, target, conf, transform=None):
     since the cost function might use these."""
     s = Stages()
     # TODO add a way to add _nlin_0 or whatever to name based on generation or whatever
+    # FIXME why are xfms MincAtoms ???
     xfm = source.newname_with_fn(lambda x: "%s_to_%s" % (source.filename_wo_ext, target.filename_wo_ext), ext='.xfm') #TODO fix dir, orig_name, ...
 
     similarity_cmds = []
@@ -349,7 +357,7 @@ def mincANTS(source, target, conf, transform=None):
                           str(sim_metric_conf.weight), str(sim_metric_conf.radius_or_bins)])
         subcmd = "'" + "".join([sim_metric_conf.metric, '[', inner, ']']) + "'"
         similarity_cmds.extend(["-m", subcmd])
-    stage = CmdStage(inputs = [source, target] + ([target.mask] if target.mask else []) + list(similarity_inputs),
+    stage = CmdStage(inputs = [source, target] + list(similarity_inputs) + ([target.mask] if target.mask else []),
                      # hard to use cmd_stage wrapper here due to complicated subcmds ...
                      outputs = [xfm],
                      cmd = ['mincANTS', '3',
@@ -567,7 +575,7 @@ def mincaverage(imgs, name_wo_ext="average", output_dir='.', copy_header_from_fi
         additional_flags = ['-copy_header']
     s = CmdStage(inputs=imgs, outputs=[avg, sdfile],
           cmd = ['mincaverage', '-clobber', '-normalize',
-                 '-max-buffer-size-in-kb', '409620'] + additional_flags +
+                 '-max_buffer_size_in_kb', '409620'] + additional_flags +
                  ['-sdfile', sdfile.path] + 
                  [img.path for img in imgs] + 
                  [avg.path])
