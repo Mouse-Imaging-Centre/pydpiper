@@ -17,10 +17,6 @@ from pydpiper.core.arguments import addApplicationArgumentGroup, \
     addGeneralRegistrationArgumentGroup, addExecutorArgumentGroup, \
     addRegistrationChainArgumentGroup, addStatsArgumentGroup
 
-# TODO: this might be temporary... currently only used 
-# to test the registration chain
-import sys
-# TODO: same thing here..
 import os
 
 # TODO (general for all option records, not just for the registration chain):
@@ -38,7 +34,9 @@ import os
 
 class ChainConf(Atom):
     input_space            = Enum('native', 'lsq6', 'lsq12')
-    common_time_point      = Instance(type(None),int)
+    common_time_point      = Instance(type(None),int )
+    # could make this a Fraction or a Decimal to represent, e.g., day 18.5, etc.
+    # (float would be dangerous since we want to use these values as indices, etc.)
     common_time_point_name = Str("common")
     csv_file               = Instance(type(None), str)
     # perhaps the following belongs in a different class...
@@ -70,10 +68,6 @@ class Subject(Atom):
         return "Subject(inter_sub_time_pt: %s, time_pt_dict keys: %s ... (values not shown))" % (self.intersubject_registration_time_pt,
                                                                  self.time_pt_dict.keys())
     
-# could be a method/property; unsure how well this works with Traits/Atom
-def intersubject_registration_image(subject):
-    return subject.time_pt_dict[subject.intersubjection_registration_time_pt]
-
 class TimePointError(Exception):
     pass
                  
@@ -146,7 +140,7 @@ def parse_csv(rows, common_time_pt): # row iterator, int -> { subject_id(str) : 
             if parse_common(row.get('is_common', '')):
                 if subject_info[subj_id].intersubject_registration_time_pt is not None:
                     raise TimePointError(
-                        "duplicate common time point specified for subject '%s'"
+                        "multiple common time points specified for subject '%s'"
                         % subj_id)
                 else:
                     subject_info[subj_id].intersubject_registration_time_pt = timepoint
@@ -195,7 +189,7 @@ def parse_csv(rows, common_time_pt): # row iterator, int -> { subject_id(str) : 
 #                         (options.input_space, ','.join(map(str,fns.keys()))))
 #    # call f...
 
-def get_final_transforms_reg_chain(pipeline_subject_info, intersubj_xfms_dict, chain_xfms_dict):
+def final_transforms(pipeline_subject_info, intersubj_xfms_dict, chain_xfms_dict):
     """
     This function takes a subject mapping (with timepoints to MincAtoms) and returns a
     subject mapping of timepoints to `XfmHandler`s. Those transformations for
@@ -222,13 +216,13 @@ def get_final_transforms_reg_chain(pipeline_subject_info, intersubj_xfms_dict, c
         # so we will assign the concatenated transform to the target of each 
         # transform we are adding 
         for time_pt, transform in chain_transforms[index_of_common_time_pt:]:
-            current_xfm_to_common = s.defer(concat([s.defer(invert(transform)),current_xfm_to_common]))
+            current_xfm_to_common = s.defer(concat([s.defer(invert(transform)),current_xfm_to_common], name="%s%s_to_common" % (s_id, time_pt))) # TODO: naming
             new_time_pt_dict[time_pt] = current_xfm_to_common
         # we need to do something similar moving backwards: make sure to reset
         # the current_xfm_to_common here!
         current_xfm_to_common = intersubj_xfms_dict[subj.intersubject_registration_image]
         for time_pt, transform in chain_transforms[index_of_common_time_pt-1::-1]:
-            current_xfm_to_common = s.defer(concat([transform,current_xfm_to_common]))
+            current_xfm_to_common = s.defer(concat([transform,current_xfm_to_common], name="%s%s_to_common" % (s_id, time_pt)))
             new_time_pt_dict[time_pt] = current_xfm_to_common
         
         new_subj = Subject(intersubject_registration_time_pt = subj.intersubject_registration_time_pt,
@@ -247,11 +241,6 @@ def chain(options):
     # data, making it harder to keep the mapping simple/straightforward
 
     s = Stages()
-    
-    if not options.csv_file:
-        print("Error: no csv_file with the mapping of the input data was provided. "
-              "Use the --csv-file flag to specify.", file=sys.stderr)
-        sys.exit(1)
     
     with open(options.csv_file, 'r') as f:
         subject_info = parse_csv(f, options.common_time_point)
@@ -313,8 +302,9 @@ def chain(options):
     
     if options.verbose:
         print("\nImages that are used for the inter-subject registration:")
+        print("ID\tsubject")
         for subject in intersubj_imgs:
-            print("ID:   ", subject, "\nFile: ", intersubj_imgs[subject].orig_path)  
+            print(subject + '\t' + intersubj_imgs[subject].orig_path)  
     
     # input files that started off in native space have been aligned rigidly 
     # by this point in the code (i.e., lsq6)
@@ -339,7 +329,6 @@ def chain(options):
                                                    nlin_dir=pipeline_nlin_common_dir,
                                                    confs=full_hierarchy))
         dict_intersubj_atom_to_xfm = {xfm.source: xfm for xfm in intersubj_xfms.xfms}
-    return s
 
     ## within-subject registration
     # In the toy scenario below: 
@@ -359,18 +348,19 @@ def chain(options):
     
     chain_xfms = { s_id : s.defer(intrasubject_registrations(subj, MincANTSConf()))
                    for s_id, subj in pipeline_subject_info.iteritems() }
-    
+
     # create transformation from each subject to the final common time point average
-    final_non_rigid_xfms = s.defer(get_final_transforms_reg_chain(pipeline_subject_info,
+    final_non_rigid_xfms = s.defer(final_transforms(pipeline_subject_info,
                                                           dict_intersubj_atom_to_xfm,
                                                           chain_xfms))
 
     subject_determinants = map_over_time_pt_dict_in_Subject(
         lambda xfm: s.defer(determinants_at_fwhms(xfm=s.defer(invert(xfm)),
                                                   inv_xfm=xfm,
-                                                  blur_fwhms=options.stats_kernels)),      final_non_rigid_xfms)
+                                                  blur_fwhms=options.stats_kernels)),
+        final_non_rigid_xfms)
     
-    return s
+    return Result(stages=s, output=(final_non_rigid_xfms, subject_determinants))
 
 
 
@@ -396,7 +386,7 @@ if __name__ == "__main__":
     options = parser.parse_args()    
     # *** *** *** *** *** *** *** *** ***
 
-    chain_stages = chain(options)
+    chain_stages, _ = chain(options)
 
     #[print(s.render() + '\n') for s in chain_stages]
 

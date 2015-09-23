@@ -155,7 +155,7 @@ def addStatsArgumentGroup(parser):
     group = parser.add_argument_group("Statistics options", 
                           "Options for calculating statistics.")
     group.add_argument("--stats-kernels", dest="stats_kernels",
-                       type=str, default="0.5,0.2,0.1", 
+                       type=lambda s: ','.split(s), default=[0.5,0.2,0.1],
                        help="comma separated list of blurring kernels for analysis. Default is: 0.5,0.2,0.1")
 
 
@@ -163,7 +163,7 @@ def addRegistrationChainArgumentGroup(parser):
     group = parser.add_argument_group("Registration chain options",
                         "Options for processing longitudinal data.")
     group.add_argument("--csv-file", dest="csv_file",
-                       type=str, default=None,
+                       type=str, required=True,
                        help="The spreadsheet with information about your input data. "
                             "For the registration chain you are required to have the "
                             "following columns in your csv file: \" subject_id\", "

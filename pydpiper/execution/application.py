@@ -81,7 +81,7 @@ def create_parser():
 def output_dir(options):
     return options.output_directory if options.output_directory else os.getcwd()
 
-def file_graph(stages):
+def file_graph(stages, pipeline_dir):
     # TODO remove pipeline_dir from node pathnames
     G = nx.DiGraph()
     #files = [f.path for s in stages for f in s.inputs]
@@ -90,10 +90,18 @@ def file_graph(stages):
     for s in stages:
         for x in s.inputs:
             for y in s.outputs:
-                G.add_edge(x.path,y.path,label=s.to_array()[0])
+                G.add_edge(os.path.relpath(x.path, pipeline_dir),
+                           os.path.relpath(y.path, pipeline_dir),
+                           label=s.to_array()[0])
     return G
     # TODO: nx.write_dot doesn't show `cmd` attribute;
     # need to use something like nx.to_pydot to convert
+
+def ensure_short_output_paths(stages, max_len=245): # magic no. for mincblur, &c.
+    for s in stages:
+        for o in s.outputs:
+            if len(o.path) > max_len:
+                raise ValueError("output filename '%s' too long (more than %s chars)" % (o.path, max_len))
 
 #TODO: change this to ...(static_pipeline, options)?
 def execute(stages, options):
@@ -103,26 +111,31 @@ def execute(stages, options):
     # TODO: logger.info('Constructing pipeline...')
     pipeline = Pipeline(stages=map(convertCmdStage, stages), options=options)
 
+    ensure_short_output_paths(stages)
+
     # TODO: print/log version
 
     reconstruct_command(options)
     
     if options.create_graph:
+        # TODO: these could have more descriptive names ...
         logger.debug("Writing dot file...")
         nx.write_dot(pipeline.G, str(options.pipeline_name) + "_labeled-tree.dot")
-        nx.write_dot(file_graph(stages), str(options.pipeline_name) + "_labeled-tree-alternate.dot")
+        nx.write_dot(file_graph(stages, options.output_directory), str(options.pipeline_name) + "_labeled-tree-alternate.dot")
         logger.debug("Done.")
 
     if not options.execute:
         print("Not executing the command (--no-execute is specified).\nDone.")
         return
 
+    # TODO: why is this needed now that --version is also handled automatically?
+    # --num-executors=0 (<=> --no-execute) could be the default, and you could
+    # also refuse to submit scripts for 0 executors ...
     ensure_exec_specified(options.num_exec)
 
-    # TODO: should create_directories be added as a method to Pipeline?
     # TODO: move calls to create_directories into execution functions
     #create_directories(stages)
-
+    
     execution_proc = backend(options)
     execution_proc(pipeline, options)
 
@@ -130,12 +143,13 @@ def execute(stages, options):
 def backend(options):
     return normal_execute if options.local else execution_backends[options.queue_type]
 
+# TODO: should create_directories be added as a method to Pipeline?
 def create_directories(stages):
     dirs = output_directories(stages)
     for d in dirs:
         mkdir_p(d)
 
-# The old AbstractApplication class has been removed due to its API being non-obvious.  Instead,
+# The old AbstractApplication class has been removed due to its non-obvious API.  In its place,
 # we currently provide an `execute` function and some helper functions for command-line parsing.
 # In the future, we could also provide higher-order functions which invert control again, although
 # with a clearer interface than AbstractApplication.  This would be nice since the user wouldn't have

@@ -121,7 +121,7 @@ def mincmath(op, vols, const=None, new_name=None):
     s = CmdStage(inputs=vols, outputs=[outf],
                  cmd=['mincmath', '-clobber', '-2'] \
                  + (['-const', const] if const else []) \
-                 + ['-' + op] + [v.path for v in vols])
+                 + ['-' + op] + [v.path for v in vols] + [outf.path])
     return Result(stages=Stages([s]), output=outf)
 
 def determinant(displacement_grid):
@@ -132,7 +132,8 @@ def determinant(displacement_grid):
 
 def smooth_vector(source, fwhm):
     outf = source.newname_with_suffix("_smooth_fwhm%s" % fwhm) # TODO smooth_displacement_?
-    cmd  = ['smooth_vector', '--clobber', '--filter', str(fwhm), source.path, outf.path]
+    cmd  = ['smooth_vector', '--clobber', '--filter', '--fwhm=%s' % fwhm,
+            source.path, outf.path]
     stage = CmdStage(inputs=[source], outputs=[outf], cmd=cmd)
     return Result(stages=Stages([stage]), output=outf)
 

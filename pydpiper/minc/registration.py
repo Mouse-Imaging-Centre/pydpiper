@@ -78,7 +78,7 @@ def mincresample(img, xfm, like, extra_flags): # mnc -> mnc
     new_img.labels = new_labels
     return Result(stages=s, output=new_img)
 
-def xfmconcat(xfms): # [xfm] -> xfm
+def xfmconcat(xfms, name=None): # [xfm], ?str -> xfm
     """
     >>> stages, xfm = xfmconcat([MincAtom('/tmp/%s' % i, pipeline_sub_dir='/scratch') for i in ['t1.xfm', 't2.xfm']])
     >>> [s.render() for s in stages]
@@ -89,17 +89,20 @@ def xfmconcat(xfms): # [xfm] -> xfm
     elif len(xfms) == 1:
         return Result(stages=Stages(), output=xfms[0])
     else:
-        outf = xfms[0].newname_with_fn(
-            lambda orig: "concat_of_%s" % "_and_".join([x.filename_wo_ext for x in xfms])) #could do names[1:] if dirname contains names[0]?
+        if name:
+            outf = xfms[0].newname_with_fn(lambda _: name)
+        else:
+            outf = xfms[0].newname_with_fn(
+                lambda _orig: "concat_of_%s" % "_and_".join([x.filename_wo_ext for x in xfms])) #could do names[1:] if dirname contains names[0]?
         stage = CmdStage(
             inputs = xfms, outputs = [outf],
             cmd = shlex.split('xfmconcat %s %s' % (' '.join([x.path for x in xfms]), outf.path)))
         return Result(stages=Stages([stage]), output=outf)
 
 """xfmconcat lifted to work on XfmHandlers instead of MincAtoms"""
-def concat(ts, extra_flags=[]): # TODO remove extra flags OR make ['-sinc'] default
+def concat(ts, name=None, extra_flags=[]): # TODO remove extra flags OR make ['-sinc'] default
     s = Stages()
-    t = s.defer(xfmconcat([t.xfm for t in ts]))
+    t = s.defer(xfmconcat([t.xfm for t in ts], name=name))
     res = s.defer(mincresample(img=ts[0].source,
                             xfm=t,
                             like=ts[-1].target,
@@ -603,9 +606,3 @@ def invert(xfm): #xfm -> xfm
     inv_xfm = s.defer(xfminvert(xfm.xfm))
     return Result(stages=s, #FIXME add a resampling stage to get rid of null `resampled` field?
                   output=XfmHandler(xfm=inv_xfm, source=xfm.target, target=xfm.source, resampled=NotImplemented))
-
-#June 30: Matthijs thinks we shouldn't always supply a resampled by default, since, e.g., lin_from_nlin resamplings
-#would never be used.  But this means there will be null fields in most/all (if we don't generated
-#resampled images even for staples like minctracc/mincANTS) xfmhandlers.  Perhaps this means that most stages shouldn't
-#create xfmhs and only return xfms, and the user should create the xfmhandler when he/she believes this makes sense.
-#add another type (xfhm/resxfmh)??
