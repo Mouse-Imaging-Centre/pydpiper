@@ -41,7 +41,7 @@ def addApplicationArgumentGroup(parser):
     # with the pipeline name/date, we could create one identifying directory
     # and put these other directories inside
     group.add_argument("--output-dir", dest="output_directory",
-                       type=str, default=os.getcwd(),
+                       type=str, default='', #os.getcwd(),
                        help="Directory where output data and backups will be saved.")
     group.add_argument("--create-graph", dest="create_graph",
                        action="store_true", default=False,

@@ -22,19 +22,19 @@ class FileAtom(object):
                           
     """
     def __init__(self, name, orig_name=NotProvided, pipeline_sub_dir=None, output_sub_dir=None):
-        self.dir, self.filename_wo_ext, self.ext = explode(os.path.abspath(name))
+        self.dir, self.filename_wo_ext, self.ext = explode(name)
         if orig_name is NotProvided:
             self.orig_path = self.get_path()
         elif orig_name is None:
             # is this case even needed? if no orig file, when _isn't_ file itself the orig file?
             self.orig_path = None
         else:
-            self.orig_path = os.path.abspath(orig_name)
+            self.orig_path = orig_name
             
         if pipeline_sub_dir:
             self.pipeline_sub_dir = pipeline_sub_dir
         else:
-            self.pipeline_sub_dir = os.getcwd()
+            self.pipeline_sub_dir = ''
 
         if output_sub_dir:
             self.output_sub_dir = output_sub_dir

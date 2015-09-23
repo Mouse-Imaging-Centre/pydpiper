@@ -32,6 +32,8 @@ import os
 # ... so we could have a nested record, but this might not be best if both the chain
 # and lsq6 need a particular option ... (also executor options, ...) ??
 
+# some data structures used in this pipeline:
+
 class ChainConf(Atom):
     input_space            = Enum('native', 'lsq6', 'lsq12')
     common_time_point      = Instance(type(None), int)
@@ -70,6 +72,141 @@ class Subject(Atom):
     
 class TimePointError(Exception):
     pass
+
+
+def chain(options):
+    """Create a registration chain pipeline from the given options."""
+
+    # TODO:
+    # one overall question for this entire piece of code is how
+    # we are going to make sure that we can concatenate/add all
+    # the transformations together. Many of the sub-registrations
+    # that are performed (inter-subject registration, lsq6 using
+    # multiple initial models) are applied to subsets of the entire 
+    # data, making it harder to keep the mapping simple/straightforward
+
+    s = Stages()
+    
+    with open(options.csv_file, 'r') as f:
+        subject_info = parse_csv(f, options.common_time_point)
+    
+    pipeline_processed_dir = os.path.join(options.output_directory, options.pipeline_name + "_processed")
+    pipeline_lsq12_common_dir = os.path.join(options.output_directory, options.pipeline_name + "_lsq12_" + options.common_name)
+    pipeline_nlin_common_dir = os.path.join(options.output_directory, options.pipeline_name + "_nlin_" + options.common_name)
+    
+    pipeline_subject_info = map_over_time_pt_dict_in_Subject(
+                                     lambda subj_str:  MincAtom(name=subj_str, pipeline_sub_dir=pipeline_processed_dir),
+                                     subject_info)
+    
+    if options.input_space not in ChainConf.input_space.items:
+        raise ValueError('unrecognized input space: %s; choices: %s' % (options.input_space, ChainConf.input_space.items))
+    
+    if options.input_space == 'native':
+        raise NotImplementedError("We currently have not implemented the code for 'input space': %s" % options.input_space)
+        
+        # TODO:
+        # what should be done here is the LSQ6 registration, options:
+        # - bootstrap
+        # - lsq6-target
+        # - initial model
+        # - "pride" of initial models (different targets for different time points)
+        
+        
+    some_temp_target = None
+
+    # NB currently LSQ6 expects an array of files, but we have a map.
+    # possibilities:
+    # - note that pairwise is enough (except for efficiency -- redundant blurring, etc.)
+    #   and just use the map fn above with an LSQ6 fn taking only a single source
+    # - rewrite LSQ6 to use such a (nested) map
+    # - write conversion which creates a tagged array from the map, performs LSQ6,
+    #   and converts back
+    # - write 'over' which takes a registration, a data structure, and 'get/set' fns ...?
+    
+
+    # Intersubject registration: LSQ12/NLIN registration of common-timepoint images
+    # The assumption here is that all these files are roughly aligned. Here is a toy
+    # schematic of what happens. In this example, the common timepoint is set timepoint 2: 
+    #
+    #                            ------------
+    # subject A    A_time_1   -> | A_time_2 | ->   A_time_3
+    # subject B    B_time_1   -> | B_time_2 | ->   B_time_3
+    # subject C    C_time_1   -> | C_time_2 | ->   C_time_3
+    #                            ------------
+    #                                 |
+    #                            group_wise registration on time point 2
+    #
+    dict_intersubj_atom_to_xfm = {}
+    if options.input_space == 'lsq6' or options.input_space == 'lsq12':
+        intersubj_imgs = { s_id : subj.intersubject_registration_image
+                          for s_id, subj in pipeline_subject_info.iteritems() }
+    else:
+        # TODO: the intersubj_imgs should now be extracted from the
+        # lsq6 aligned images
+        raise NotImplementedError("We currently have not implemented the code for 'input space': %s" % options.input_space)
+    
+    if options.verbose:
+        print("\nImages that are used for the inter-subject registration:")
+        print("ID\timage")
+        for subject in intersubj_imgs:
+            print(subject + '\t' + intersubj_imgs[subject].orig_path)  
+    
+    # input files that started off in native space have been aligned rigidly 
+    # by this point in the code (i.e., lsq6)
+    if options.input_space == 'lsq6' or options.input_space == 'native':
+        raise NotImplementedError("We currently have not implemented the code for 'input space': %s" % options.input_space)
+    #intersubj_xfms = lsq12_NLIN_build_model_on_dictionaries(imgs=intersubj_imgs,
+        #                                                        conf=conf,
+        #                                                        lsq12_dir=lsq12_directory
+                                                                #, like={atlas_from_init_model_at_this_tp}
+        #                                                        )
+    elif options.input_space == 'lsq12':
+        #TODO: write reader that creates a mincANTS configuration out of an input protocol 
+        if not some_temp_target:
+            some_temp_target = s.defer(mincaverage(imgs=intersubj_imgs.values(),
+                                           name_wo_ext="avg_of_input_files",
+                                           output_dir=pipeline_nlin_common_dir))
+        test_conf = mincANTS_default_conf
+        first_level = MincANTSConf(iterations="100x100x100x0")
+        full_hierarchy = [first_level, test_conf]
+        intersubj_xfms = s.defer(mincANTS_NLIN_build_model(imgs=intersubj_imgs.values(),
+                                                   initial_target=some_temp_target, # this doesn't make sense yet
+                                                   nlin_dir=pipeline_nlin_common_dir,
+                                                   confs=full_hierarchy))
+        dict_intersubj_atom_to_xfm = {xfm.source: xfm for xfm in intersubj_xfms.xfms}
+
+    return Result(stages=s, output=())
+    ## within-subject registration
+    # In the toy scenario below: 
+    # subject A    A_time_1   ->   A_time_2   ->   A_time_3
+    # subject B    B_time_1   ->   B_time_2   ->   B_time_3
+    # subject C    C_time_1   ->   C_time_2   ->   C_time_3
+    # 
+    # The following registrations are run:
+    # 1) A_time_1   ->   A_time_2
+    # 2) A_time_2   ->   A_time_3
+    #
+    # 3) B_time_1   ->   B_time_2
+    # 4) B_time_2   ->   B_time_3
+    #
+    # 5) C_time_1   ->   C_time_2
+    # 6) C_time_2   ->   C_time_3    
+    
+    chain_xfms = { s_id : s.defer(intrasubject_registrations(subj, MincANTSConf()))
+                   for s_id, subj in pipeline_subject_info.iteritems() }
+
+    # create transformation from each subject to the final common time point average
+    final_non_rigid_xfms = s.defer(final_transforms(pipeline_subject_info,
+                                                          dict_intersubj_atom_to_xfm,
+                                                          chain_xfms))
+
+    subject_determinants = map_over_time_pt_dict_in_Subject(
+        lambda xfm: s.defer(determinants_at_fwhms(xfm=s.defer(invert(xfm)),
+                                                  inv_xfm=xfm,
+                                                  blur_fwhms=options.stats_kernels)),
+        final_non_rigid_xfms)
+    
+    return Result(stages=s, output=(final_non_rigid_xfms, subject_determinants))
                  
 def map_over_time_pt_dict_in_Subject(f, d):
     """Map `f` non-destructively (if `f` is) over (the values of)
@@ -229,139 +366,6 @@ def final_transforms(pipeline_subject_info, intersubj_xfms_dict, chain_xfms_dict
                            time_pt_dict   = new_time_pt_dict)
         new_d[s_id] = new_subj
     return Result(stages=s, output=new_d)
-
-def chain(options):
-
-    # TODO:
-    # one overall question for this entire piece of code is how
-    # we are going to make sure that we can concatenate/add all
-    # the transformations together. Many of the sub-registrations
-    # that are performed (inter-subject registration, lsq6 using
-    # multiple initial models) are applied to subsets of the entire 
-    # data, making it harder to keep the mapping simple/straightforward
-
-    s = Stages()
-    
-    with open(options.csv_file, 'r') as f:
-        subject_info = parse_csv(f, options.common_time_point)
-    
-    pipeline_processed_dir = os.path.join(options.output_directory, options.pipeline_name + "_processed")
-    pipeline_lsq12_common_dir = os.path.join(options.output_directory, options.pipeline_name + "_lsq12_" + options.common_name)
-    pipeline_nlin_common_dir = os.path.join(options.output_directory, options.pipeline_name + "_nlin_" + options.common_name)
-    
-    pipeline_subject_info = map_over_time_pt_dict_in_Subject(
-                                     lambda subj_str:  MincAtom(name=subj_str, pipeline_sub_dir=pipeline_processed_dir),
-                                     subject_info)
-    
-    if options.input_space not in ChainConf.input_space.items:
-        raise ValueError('unrecognized input space: %s; choices: %s' % (options.input_space, ChainConf.input_space.items))
-    
-    if options.input_space == 'native':
-        raise NotImplementedError("We currently have not implemented the code for 'input space': %s" % options.input_space)
-        
-        # TODO:
-        # what should be done here is the LSQ6 registration, options:
-        # - bootstrap
-        # - lsq6-target
-        # - initial model
-        # - "pride" of initial models (different targets for different time points)
-        
-        
-    some_temp_target = None
-
-    # NB currently LSQ6 expects an array of files, but we have a map.
-    # possibilities:
-    # - note that pairwise is enough (except for efficiency -- redundant blurring, etc.)
-    #   and just use the map fn above with an LSQ6 fn taking only a single source
-    # - rewrite LSQ6 to use such a (nested) map
-    # - write conversion which creates a tagged array from the map, performs LSQ6,
-    #   and converts back
-    # - write 'over' which takes a registration, a data structure, and 'get/set' fns ...?
-    
-
-    # Intersubject registration: LSQ12/NLIN registration of common-timepoint images
-    # The assumption here is that all these files are roughly aligned. Here is a toy
-    # schematic of what happens. In this example, the common timepoint is set timepoint 2: 
-    #
-    #                            ------------
-    # subject A    A_time_1   -> | A_time_2 | ->   A_time_3
-    # subject B    B_time_1   -> | B_time_2 | ->   B_time_3
-    # subject C    C_time_1   -> | C_time_2 | ->   C_time_3
-    #                            ------------
-    #                                 |
-    #                            group_wise registration on time point 2
-    #
-    dict_intersubj_atom_to_xfm = {}
-    if options.input_space == 'lsq6' or options.input_space == 'lsq12':
-        intersubj_imgs = { s_id : subj.intersubject_registration_image
-                          for s_id, subj in pipeline_subject_info.iteritems() }
-    else:
-        # TODO: the intersubj_imgs should now be extracted from the
-        # lsq6 aligned images
-        raise NotImplementedError("We currently have not implemented the code for 'input space': %s" % options.input_space)
-    
-    if options.verbose:
-        print("\nImages that are used for the inter-subject registration:")
-        print("ID\tsubject")
-        for subject in intersubj_imgs:
-            print(subject + '\t' + intersubj_imgs[subject].orig_path)  
-    
-    # input files that started off in native space have been aligned rigidly 
-    # by this point in the code (i.e., lsq6)
-    if options.input_space == 'lsq6' or options.input_space == 'native':
-        raise NotImplementedError("We currently have not implemented the code for 'input space': %s" % options.input_space)
-    #intersubj_xfms = lsq12_NLIN_build_model_on_dictionaries(imgs=intersubj_imgs,
-        #                                                        conf=conf,
-        #                                                        lsq12_dir=lsq12_directory
-                                                                #, like={atlas_from_init_model_at_this_tp}
-        #                                                        )
-    elif options.input_space == 'lsq12':
-        #TODO: write reader that creates a mincANTS configuration out of an input protocol 
-        if not some_temp_target:
-            some_temp_target = s.defer(mincaverage(imgs=intersubj_imgs.values(),
-                                           name_wo_ext="avg_of_input_files",
-                                           output_dir=pipeline_nlin_common_dir))
-        test_conf = mincANTS_default_conf
-        first_level = MincANTSConf(iterations="100x100x100x0")
-        full_hierarchy = [first_level, test_conf]
-        intersubj_xfms = s.defer(mincANTS_NLIN_build_model(imgs=intersubj_imgs.values(),
-                                                   initial_target=some_temp_target, # this doesn't make sense yet
-                                                   nlin_dir=pipeline_nlin_common_dir,
-                                                   confs=full_hierarchy))
-        dict_intersubj_atom_to_xfm = {xfm.source: xfm for xfm in intersubj_xfms.xfms}
-
-    ## within-subject registration
-    # In the toy scenario below: 
-    # subject A    A_time_1   ->   A_time_2   ->   A_time_3
-    # subject B    B_time_1   ->   B_time_2   ->   B_time_3
-    # subject C    C_time_1   ->   C_time_2   ->   C_time_3
-    # 
-    # The following registrations are run:
-    # 1) A_time_1   ->   A_time_2
-    # 2) A_time_2   ->   A_time_3
-    #
-    # 3) B_time_1   ->   B_time_2
-    # 4) B_time_2   ->   B_time_3
-    #
-    # 5) C_time_1   ->   C_time_2
-    # 6) C_time_2   ->   C_time_3    
-    
-    chain_xfms = { s_id : s.defer(intrasubject_registrations(subj, MincANTSConf()))
-                   for s_id, subj in pipeline_subject_info.iteritems() }
-
-    # create transformation from each subject to the final common time point average
-    final_non_rigid_xfms = s.defer(final_transforms(pipeline_subject_info,
-                                                          dict_intersubj_atom_to_xfm,
-                                                          chain_xfms))
-
-    subject_determinants = map_over_time_pt_dict_in_Subject(
-        lambda xfm: s.defer(determinants_at_fwhms(xfm=s.defer(invert(xfm)),
-                                                  inv_xfm=xfm,
-                                                  blur_fwhms=options.stats_kernels)),
-        final_non_rigid_xfms)
-    
-    return Result(stages=s, output=(final_non_rigid_xfms, subject_determinants))
-
 
 
 if __name__ == "__main__":
