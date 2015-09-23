@@ -34,13 +34,11 @@ import os
 
 class ChainConf(Atom):
     input_space            = Enum('native', 'lsq6', 'lsq12')
-    common_time_point      = Instance(type(None),int )
+    common_time_point      = Instance(type(None), int)
     # could make this a Fraction or a Decimal to represent, e.g., day 18.5, etc.
     # (float would be dangerous since we want to use these values as indices, etc.)
     common_time_point_name = Str("common")
     csv_file               = Instance(type(None), str)
-    # perhaps the following belongs in a different class...
-    stats_kernels          = Str("0.5,0.2,0.1") 
 
 class Subject(Atom):
     """
@@ -49,8 +47,9 @@ class Subject(Atom):
     stored for instance as string, FileAtoms/MincAtoms or XfmHandler) 
     """
     intersubject_registration_time_pt = Instance(int)
-    time_pt_dict   = Dict()    # validation (key=Int, value=Str) doesn't work? ...
+    time_pt_dict   = Dict()    # TODO: get validation (key=Int) to work? ...
 
+    # compare by fields, not pointer
     def __eq__(self, other):
         return (self is other or
                 (self.intersubject_registration_time_pt == other.intersubject_registration_time_pt
@@ -61,12 +60,13 @@ class Subject(Atom):
     def get_intersubject_registration_image(self):
         return self.time_pt_dict[self.intersubject_registration_time_pt]
 
+    # TODO: change name? This might not be an 'image'
     intersubject_registration_image = property(get_intersubject_registration_image,
                                                'intersubject_registration_image property')
     
     def __repr__(self):
         return "Subject(inter_sub_time_pt: %s, time_pt_dict keys: %s ... (values not shown))" % (self.intersubject_registration_time_pt,
-                                                                 self.time_pt_dict.keys())
+          self.time_pt_dict.keys())
     
 class TimePointError(Exception):
     pass
