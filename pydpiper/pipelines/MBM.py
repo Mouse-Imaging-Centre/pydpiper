@@ -7,9 +7,12 @@ from pydpiper.core.stages     import Stages
 #from ..core.containers import Result
 #TODO fix up imports, naming, stuff in registration vs. pipelines, ...
 from pydpiper.minc.files            import MincAtom
-import pydpiper.minc.registration as m
-from pydpiper.minc.analysis     import *
-from pydpiper.pipelines.LSQ6 import LSQ6_default_conf
+from pydpiper.pipelines.LSQ6    import LSQ6
+from pydpiper.minc.registration import LSQ12_NLIN_build_model
+from pydpiper.minc.analysis     import determinants_at_fwhms
+import pydpiper.core.arguments  as args
+from pydpiper.core.containers   import Result
+from pydpiper.core.execution    import execute
 
 # TODO abstract out some common configuration functionality and think about argparsing ...
 
@@ -22,56 +25,48 @@ MBMConf = namedtuple('MBMConf',
    'stats_conf'
    ])
 
-MBM_default_conf = MBMConf(
-  pipeline_name='MBM',
-  execution_conf=None,
-  lsq6_conf=LSQ6_default_conf,
-  lsq12_conf=m.LSQ12_default_conf,
-  nlin_conf=m.mincANTS_default_conf,
-  stats_conf={'blur_fwhms' : [None, 0.056]})
+# MBM_default_conf = MBMConf(
+#   pipeline_name='MBM',
+#   execution_conf=None,
+#   lsq6_conf=LSQ6_default_conf,
+#   lsq12_conf=LSQ12_default_conf,
+#   nlin_conf=mincANTS_default_conf,
+#   stats_conf={'blur_fwhms' : [None, 0.056]})
 
-def MBM(imgs, conf):
+def MBM(conf):
 
-    # TODO some of this initial blather could be factored into a pipeline-creating function ...
     # TODO could also allow pluggable pipeline parts e.g. LSQ6 could be substituted out for the modified LSQ6
     # for the kidney tips, etc...
     pipeline_dir = os.path.join('.', conf.pipeline_name)
     #curr_dir = os.path.join(os.getcwd(), conf.pipeline_name, '/processed')
-    imgs = map(lambda name: MincAtom(name, output_dir=pipeline_dir), images)
+    imgs = map(lambda name: MincAtom(name, output_dir=pipeline_dir),
+               options.files)
 
-    lsq6_stages = Stages()
-    lsq6_result = lsq6_stages.defer(lsq6(imgs, LSQ6_conf, output_dir=pipeline_dir))
-
-    #TODO factor out some of this standard model-building stuff into a procedure, similar to FullIterativeLSQ12NLIN
-    # in the old code, but maybe also with optional LSQ6 ?  Also used in, e.g., two-level code
-
-    lsq12_stages = Stages()
-    lsq12_result = lsq12_stages.defer(m.lsq12(imgs=[x.resampled for x in lsq6_result.xfms], conf=m.MinctraccConf(), output_dir=pipeline_dir))
-
-    for s in lsq12_stages:
-        print(s.render())
-
-    nlin_stages = Stages()
-    nlin_result = nlin_stages.defer(m.mincANTS_NLIN(imgs=[x.resampled for x in lsq12_result.xfms],
-                                                    avg=lsq12_result.avg_img,
-                                                    conf=m.mincANTS_default_conf))
-
-    for s in nlin_stages:
-        print(s.render())
-
-    stats_stages = Stages()
+    s = Stages()
     
-    overall_xfms = map(lambda f, g: stats_stages.defer(concat([f, g])), lsq12_result.xfms, nlin_result.xfms)
+    lsq6_result = s.defer(LSQ6(imgs=imgs, conf=options.lsq6,
+                               output_dir=pipeline_dir))
 
-    for xfm in overall_xfms:
-        stats_stages.defer(a.determinants_at_fwhms(xfm, blur_fwhms=conf.stats_conf['blur_fwhms']))
+    lsq12_nlin_result = s.defer(LSQ12_NLIN_build_model(
+        imgs=[xfm.resampled for xfm in lsq6_result],
+        lsq12_conf = options.lsq12_conf, nlin_conf=options.nlin_conf))
 
-    #for s in stats_stages:
-    #    print(s.render())
+    determinants = \
+      [s.defer(determinants_at_fwhms(xfm, blur_fwhms=conf.stats.stats_kernels))
+       for xfm in lsq12_nlin_result.xfms]
 
-    all_stages = lsq6_stages | lsq12_stages | nlin_stages | stats_stages # TODO just use one set of stages ?
+    #for stage in s:
+    #    print(stage.render())
 
-    return all_stages
+    return Result(stages=s, output=determinants) # TODO: add more outputs
 
 if __name__ == "__main__":
-    MBM(['images/img_%d.mnc' % i for i in range(1,4)], conf=MBM_test_conf)
+    parser = args.make_parser(
+        [(args.addExecutorArgumentGroup, None),
+         (args.addApplicationArgumentGroup, None),
+         (args.addGeneralRegistrationArgumentGroup, None),
+         (args.addMBMArgumentGroup, None),
+         (args.addStatsArgumentGroup, None)])
+    options = parser.parse_args()
+    stages, _ = MBM(options)
+    execute(stages, options)

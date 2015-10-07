@@ -4,18 +4,62 @@ by PydPiper applications. Some option groups might be mandatory/highly
 recommended to add to your application: e.g. the arguments that deal
 with the execution of your application.
 '''
+import configargparse
 import time
 import os
 from pkg_resources import get_distribution
 
-# TODO: most (if not all) of the following options don't do anything yet
-# we should come up with a good way to deal with all this. Given that
+# TODO: should the pipeline-specific argument handling be located here
+# or in that pipeline's module?  Makes more sense (general stuff
+# can still go here)
+
 # Jason wants to be able to connect each of the applications together
 # in new code (e.g., by simply calling chain(...args...) or MBM(,,,args...)
 # there needs to be another way to create the options hash? So that you could
 # write applications that require little to no command line arguments?
 
 
+def parse(pcs, args): # [???], [str] -> Namespace(Namespace())
+    """
+    Parse args given a list of parserconfigs to generate a parser from and some args to parse.
+    Note: the implementation is a huge hack--apologies for breakage
+    """
+    # TODO: curry this function?
+    # TODO: code cleanup: can we make the pcs less ugly to create?
+    # TODO: think about non(/empty)-prefixed and prefixed parsers in the same code ...
+    # TODO: is requirement for prefixing compatible with combining parsers (particularly multiple
+    # parsers of the same sort) in a modular way?  Maybe any abstraction could also take a general prefix??
+    default_config_file = os.getenv("PYDPIPER_CONFIG_FILE")
+    config_files = [default_config_file] if default_config_file else []
+
+    # First, build a parser that's aware of all options
+    # (will be used for help/version/error messages).
+    # This must be tried _before_ the partial parsing attempts
+    # in order to get correct help/version messages.
+    main_parser = configargparse.ArgParser(default_config_files=config_files)
+    
+    for pc in pcs:
+        pc.add_fn(main_parser)
+    # exit with helpful message if parse fails or --help/--version specified:
+    main_parser.parse_args(args)
+
+    # Next, parse each option group into a separate namespace.
+    # An alternate strategy could be to use the main parser only,
+    # parsing the prefixed options into prefixed destination fields
+    # (of the main Namespace object) and then iterate through these,
+    # unflattening the namespace.
+    n = configargparse.Namespace()
+    for pc in pcs:
+        parser = configargparse.ArgParser()
+        pc.add_fn(parser)
+        result, args = parser.parse_known_args(args)
+        # ensure we're not clobbering an existing sub-namespace:
+        if pc.namespace in n.__dict__:
+            raise ValueError("Namespace field %s is already in use" % pc.namespace)
+        else:
+            n.__dict__[pc.namespace] = result
+    else:
+        return n
 
 def addApplicationArgumentGroup(parser):
     """
@@ -41,7 +85,7 @@ def addApplicationArgumentGroup(parser):
     # with the pipeline name/date, we could create one identifying directory
     # and put these other directories inside
     group.add_argument("--output-dir", dest="output_directory",
-                       type=str, default='', #os.getcwd(),
+                       type=str, default='',
                        help="Directory where output data and backups will be saved.")
     group.add_argument("--create-graph", dest="create_graph",
                        action="store_true", default=False,
@@ -154,9 +198,10 @@ def addGeneralRegistrationArgumentGroup(parser):
 def addStatsArgumentGroup(parser):
     group = parser.add_argument_group("Statistics options", 
                           "Options for calculating statistics.")
+    default_fwhms = ['0.5','0.2','0.1']
     group.add_argument("--stats-kernels", dest="stats_kernels",
-                       type=lambda s: ','.split(s), default=[0.5,0.2,0.1],
-                       help="comma separated list of blurring kernels for analysis. Default is: 0.5,0.2,0.1")
+                       type=','.split, default=[0.5,0.2,0.1],
+                       help="comma separated list of blurring kernels for analysis. Default is: %s" % ','.join(default_fwhms))
 
 
 def addRegistrationChainArgumentGroup(parser):
@@ -168,9 +213,9 @@ def addRegistrationChainArgumentGroup(parser):
                             "For the registration chain you are required to have the "
                             "following columns in your csv file: \" subject_id\", "
                             "\"timepoint\", and \"filename\". Optionally you can have "
-                            "a column called \"is_common\" that indicates that a subject "
-                            "is to be used for the common time point using a 1, and 0 "
-                            "otherwise.")
+                            "a column called \"is_common\" that indicates that a scan "
+                            "is to be used for the common time point registration"
+                            "using a 1, and 0 otherwise.")
     group.add_argument("--common-time-point", dest="common_time_point",
                        type=int, default=None,
                        help="The time point at which the inter-subject registration will be "

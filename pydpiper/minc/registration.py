@@ -379,9 +379,18 @@ def mincANTS(source, target, conf, transform=None):
                                     xfm=xfm,
                                     resampled=resampled))
 
-#def lsq12_NLIN_build_model(...):
-#    raise NotImplemented
+# TODO: the same, but with optional (?) lsq6
+def lsq12_NLIN_build_model(imgs, initial_target, lsq12_conf, nlin_conf):
+    s = Stages()
 
+    lsq12_result = s.defer(lsq12(imgs=imgs, conf=lsq12_conf))
+    nlin_result  = s.defer(nlin(imgs=[img.resampled for img in lsq12_result.xfms]), conf=nlin_conf, avg=lsq12_result.avg_img)
+
+    overall_xfms = map(lambda f, g: s.defer(concat([f, g])),
+                       lsq12_result.xfms, nlin_result.xfms)
+
+    return Result(stages=s, output=overall_xfms) # TODO: return more stuff?
+    
 #def NLIN_build_model(imgs, initial_target, reg_method, nlin_dir, confs):
 #    functions = { 'mincANTS'  : mincANTS_NLIN,
 #                  'minctracc' : minctracc_NLIN }
