@@ -15,7 +15,8 @@ from pydpiper.execution.application import execute
 from configargparse import ArgParser
 from pydpiper.core.arguments import addApplicationArgumentGroup, \
     addGeneralRegistrationArgumentGroup, addExecutorArgumentGroup, \
-    addRegistrationChainArgumentGroup, addStatsArgumentGroup
+    addRegistrationChainArgumentGroup, addStatsArgumentGroup, \
+    addLSQ6ArgumentGroup
 
 import os
 
@@ -384,6 +385,7 @@ if __name__ == "__main__":
     addExecutorArgumentGroup(parser)
     addApplicationArgumentGroup(parser)
     addGeneralRegistrationArgumentGroup(parser)
+    addLSQ6ArgumentGroup(parser)
     addRegistrationChainArgumentGroup(parser)
     addStatsArgumentGroup(parser)
     
