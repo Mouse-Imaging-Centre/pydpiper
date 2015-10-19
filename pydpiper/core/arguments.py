@@ -293,4 +293,10 @@ def addRegistrationChainArgumentGroup(parser):
                             "creation of more readable output file names. Default is \"common\". Note "
                             "that the common time point is the one created by an iterative group-wise " 
                             "registration (inter-subject).")
+    group.add_argument("--pride-of-models", dest="pride_of_models",
+                       type=str, default=None,
+                       help="Specify the top level directory of the \"pride\" of models. "
+                       "The idea is that you might want to use different initial models for "
+                       "the time points in your data. See our wiki (https://wiki.mouseimaging.ca/) "
+                       "for detailed information on the pride of models. [Default = %(default)s]")
 

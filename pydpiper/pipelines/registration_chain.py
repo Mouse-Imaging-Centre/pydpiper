@@ -8,7 +8,8 @@ from atom.api import Atom, Int, Str, Dict, Enum, Instance
 from pydpiper.minc.analysis import determinants_at_fwhms, invert
 from pydpiper.core.containers import Result
 from pydpiper.minc.registration import (Stages, mincANTS_NLIN_build_model, mincANTS_default_conf,
-                                        MincANTSConf, mincANTS, intrasubject_registrations, mincaverage, concat)
+                                        MincANTSConf, mincANTS, intrasubject_registrations, mincaverage, 
+                                        concat, check_MINC_input_files, get_registration_targets)
 from pydpiper.minc.files import MincAtom
 from pydpiper.execution.application import execute
 #from pydpiper.pipelines.LSQ6 import lsq6
@@ -91,6 +92,14 @@ def chain(options):
     with open(options.csv_file, 'r') as f:
         subject_info = parse_csv(f, options.common_time_point)
     
+    # verify that in input files are proper MINC files, and that there 
+    # are no duplicates in the filenames
+    all_filenames = []
+    for s_id, subj in subject_info.iteritems():
+        for subj_time_pt, subj_filename in subj.time_pt_dict.iteritems():
+            all_filenames.append(subj_filename)
+    check_MINC_input_files(all_filenames)
+    
     pipeline_processed_dir = os.path.join(options.output_directory, options.pipeline_name + "_processed")
     pipeline_lsq12_common_dir = os.path.join(options.output_directory, options.pipeline_name + "_lsq12_" + options.common_name)
     pipeline_nlin_common_dir = os.path.join(options.output_directory, options.pipeline_name + "_nlin_" + options.common_name)
@@ -103,7 +112,26 @@ def chain(options):
         raise ValueError('unrecognized input space: %s; choices: %s' % (options.input_space, ChainConf.input_space.items))
     
     if options.input_space == 'native':
-        raise NotImplementedError("We currently have not implemented the code for 'input space': %s" % options.input_space)
+        # for the registration chain, a bootstrap model is somewhat ill-defined, because
+        # it's unclear what "the first input file" is. As such, when this option is chosen
+        # we should prompt the user to use --lsq6-target instead
+        if options.bootstrap:
+            raise ValueError("\nA bootstrap model is ill-defined for the registration chain. "
+                             "(Which file is the first input file?). Please use the --lsq6-target "
+                             "flag to specify a target for the lsq6 stage, or use an initial model.")
+        
+        if options.pride_of_models:
+            raise NotImplementedError("We currently have not implemented the code that handles the pride of initial models...")
+        
+        # if we are not dealing with a pride of models, we can retrieve a fixed
+        # registration target for all input files:
+        registration_targets = get_registration_targets(init_model=options.init_model,
+                                                        lsq6_target=options.lsq6_target,
+                                                        bootstrap=options.bootstrap,
+                                                        output_dir=options.output_directory,
+                                                        pipeline_name=options.pipeline_name)
+        
+        
         
         # TODO:
         # what should be done here is the LSQ6 registration, options:

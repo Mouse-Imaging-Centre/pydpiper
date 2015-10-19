@@ -3,6 +3,9 @@ from   collections import namedtuple
 #import copy
 import os.path
 import shlex
+import subprocess
+import re
+import sys
 
 from atom.api import (Atom, Bool, Int, Float, List,
                       Enum, Tuple, Instance, Str)
@@ -233,23 +236,22 @@ class NonlinearMinctraccConf(Atom):
 # does this even get used in the pipeline?  LSQ6/12 get their own
 # protocols, and many settings here are the minctracc default
 def default_linear_minctracc_conf(transform_type):
-  return MinctraccConf(
-    is_nonlinear=False,
-    step_sizes=(0.5,) * 3,
-    use_masks=True,
-    simplex=1,
-    transform_type=transform_type,
-    tolerance=0.001,
-    w_scales=(0.02,) * 3,
-    w_shear=(0.02,) * 3,
-    w_rotations=(0.0174533,) * 3,
-    w_translations=(1.0,) * 3)
+    return MinctraccConf(is_nonlinear=False,
+                         step_sizes=(0.5,) * 3,
+                         use_masks=True,
+                         simplex=1,
+                         transform_type=transform_type,
+                         tolerance=0.001,
+                         w_scales=(0.02,) * 3,
+                         w_shear=(0.02,) * 3,
+                         w_rotations=(0.0174533,) * 3,
+                         w_translations=(1.0,) * 3)
 
 def default_LSQ6_conf(resolution):
-  pass
+    pass
 
 def default_LSQ12_conf(resolution):
-  return MinctraccConf(
+    return MinctraccConf(
     
     )
 
@@ -606,3 +608,209 @@ def invert(xfm): #xfm -> xfm
     inv_xfm = s.defer(xfminvert(xfm.xfm))
     return Result(stages=s, #FIXME add a resampling stage to get rid of null `resampled` field?
                   output=XfmHandler(xfm=inv_xfm, source=xfm.target, target=xfm.source, resampled=NotImplemented))
+
+def can_read_MINC_file(filename):
+    """
+    Attempts to read the MINC file with mincinfo, and returns 0 
+    if that call fails
+    
+    filename: string pointing to the MINC file
+    """
+    if not isinstance(filename, str):
+        raise ValueError("\nError: the argument filename should be of type string (str).")
+    
+    mincinfoCmd = subprocess.Popen(["mincinfo", filename], 
+                                   stdin=subprocess.PIPE, 
+                                   stdout=subprocess.PIPE, 
+                                   stderr=subprocess.STDOUT, 
+                                   shell=False)
+    # if the following returns anything other than None, the string matched, 
+    # and thus indicates that the file could not be read
+    if re.search("Unable to open file", mincinfoCmd.stdout.read()):
+        return False
+    else:
+        return True
+                
+
+def check_MINC_input_files(args):
+    """
+    This is a general function that checks MINC input files to a pipeline. It uses
+    the program mincinfo to test whether the input files are readable MINC files,
+    and ensures that the input files have distinct filenames. (A directory is created
+    for each inputfile based on the filename without extension, which means that 
+    filenames need to be distinct)
+    
+    args: and array of strings (pointing to the input files)
+    """ 
+    if not isinstance(args, list):
+        raise ValueError("The argument args needs to be of type list/array.")
+    
+    if len(args) < 1:
+        raise ValueError("\nError: no input files are provided. Exiting...\n")
+    else:
+        # here we should also check that the input files can be read
+        issuesWithInputs = 0
+        for inputF in args:
+            if not can_read_MINC_file(inputF):
+                print("\nError: can not read input file: " + str(inputF) + "\n", file=sys.stderr)
+                issuesWithInputs = 1
+        if issuesWithInputs:
+            raise ValueError("Error: issues reading input files. Exiting...\n")
+    # lastly we should check that the actual filenames are distinct, because
+    # directories are made based on the basename
+    seen = set()
+    for inputF in args:
+        fileBase = os.path.splitext(os.path.basename(inputF))[0]
+        if fileBase in seen:
+            raise ValueError("\nError: the following name occurs at least twice in the "
+                             "input file list:\n" + str(fileBase) + ".mnc\nPlease provide "
+                             "unique names for all input files.\n")
+        seen.add(fileBase)
+
+class RegistrationTargets(Atom):
+    """
+    This class can be used for the following options:
+    --init-model
+    --lsq6-target
+    --bootstrap 
+    """
+    registration_standard      = Instance(type(None), MincAtom)
+    xfm_to_standard            = Instance(type(None), MincAtom)
+    registration_native        = Instance(type(None), MincAtom)
+    
+def get_registration_targets_from_init_model(init_model_standard_file, output_dir, pipeline_name):
+    """
+    An initial model can have two forms:
+    
+    1) a model that only has standard space files
+    name.mnc --> File in standard registration space.
+    name_mask.mnc --> Mask for name.mnc
+    
+    2) a model with both standard space and native space files
+    name.mnc --> File in standard registration space.
+    name_mask.mnc --> Mask for name.mnc
+    name_native.mnc --> File in native scanner space.
+    name_native_mask.mnc --> Mask for name_native.mnc
+    name_native_to_standard.xfm --> Transform from native space to standard space
+    """
+    # initialize the MincAtoms that will be used for the RegistrationTargets
+    registration_standard = None
+    xfm_to_standard = None
+    registration_native = None
+    
+    # the output directory for files related to the initial model:
+    init_model_output_dir = os.path.join(output_dir, pipeline_name + "_init_model")
+    
+    # first things first, is this a nice MINC file:
+    if not can_read_MINC_file(init_model_standard_file):
+        raise ("\nError: can not read the following initial model file: %s\n" % init_model_standard_file)
+    init_model_dir, standard_file_base =  os.path.split(os.path.splitext(init_model_standard_file)[0])
+    init_model_standard_mask = os.path.join(init_model_dir, standard_file_base + "_mask.mnc")
+    # this mask file is a prerequisite, so we need to test it
+    if not can_read_MINC_file(init_model_standard_mask):
+        raise ("\nError (initial model): can not read/find the mask file for the standard space: %s\n" 
+               % init_model_standard_mask)
+    registration_standard = MincAtom(name=init_model_standard_file,
+                                     orig_name=init_model_standard_file,
+                                     mask=init_model_standard_mask,
+                                     pipeline_sub_dir=init_model_output_dir)
+    
+    # check to see if we are dealing with option 2), an initial model with native files
+    init_model_native_file = os.path.join(init_model_dir, standard_file_base + "_native.mnc")
+    init_model_native_mask = os.path.join(init_model_dir, standard_file_base + "_native_mask.mnc")
+    init_model_native_to_standard = os.path.join(init_model_dir, standard_file_base + "_native_to_standard.xfm")
+    if os.path.exists(init_model_native_file):
+        if not can_read_MINC_file(init_model_native_file):
+            raise ("\nError: can not read the following initial model file: %s\n" % init_model_native_file)
+        if not can_read_MINC_file(init_model_native_mask):
+            raise ("\nError: can not read the following initial model file (required native mask): %s\n" 
+                   % init_model_native_mask)
+        registration_native = MincAtom(name=init_model_native_file,
+                                       orig_name=init_model_native_file,
+                                       mask=init_model_native_mask,
+                                       pipeline_sub_dir=init_model_output_dir)
+        if not os.path.exists(init_model_native_to_standard):
+            raise ("\nError: can not read the following initial model file (required transformation when native "
+                   "files exist): %s\n" % init_model_native_to_standard)
+        xfm_to_standard = MincAtom(name=init_model_native_to_standard,
+                                   orig_name=init_model_native_to_standard,
+                                   pipeline_sub_dir=init_model_output_dir)
+    
+    return RegistrationTargets(registration_standard=registration_standard,
+                               xfm_to_standard=xfm_to_standard,
+                               registration_native=registration_native)
+
+def verify_correct_lsq6_target_options(init_model, lsq6_target, bootstrap):
+    """
+    This function can be called using the parameters that are set using 
+    the flags:
+    --init-model
+    --lsq6-target
+    --bootstrap
+    
+    it will check that exactly one of the options is provided and raises 
+    an error otherwise
+    """
+    # check how many options have been specified that can be used as the initial target
+    number_of_target_options = sum((bootstrap   != False,
+                                    init_model  != None,
+                                    lsq6_target != None))
+    if(number_of_target_options == 0):
+        raise ValueError("\nError: please specify a target for the 6 parameter alignmnet. "
+                         "Options are: --lsq6-target, --init-model, --bootstrap.\n")
+    if(number_of_target_options > 1):
+        raise ValueError("\nError: please specify only one of the following options: "
+                         "--lsq6-target, --init-model, --bootstrap. Don't know which "
+                         "target to use...\n")
+    
+
+
+def get_registration_targets(init_model, lsq6_target, bootstrap,
+                             output_dir, pipeline_name,
+                             first_input_file = None):
+    """
+    init_model       : value of the flag --init-model (is None, or points 
+                       to a MINC file in standard space
+    lsq6_target      : value of the flag --lsq6-target (is None, or points 
+                       to a target MINC file)
+    bootstrap        : value of the flag --bootstrap (is True or False)
+    output_dir       : value of the flag --output-dir (top level directory 
+                       of the entire process
+    pipeline_name    : value of the flag  --pipeline-name
+    first_input_file : is None or points to the first input file. This argument
+                       only needs to be specified when --boostrap is True
+    """
+    # first check that exactly one of the target methods was chosen
+    verify_correct_lsq6_target_options(init_model, lsq6_target, bootstrap)
+    
+    # if we are dealing with either an lsq6 target or a bootstrap model
+    # create the appropriate directories for those
+    if lsq6_target != None:
+        if not can_read_MINC_file(lsq6_target):
+            raise ValueError("\nError (lsq6 target): can not read MINC file: %s\n" % lsq6_target)
+        target_file = MincAtom(name=lsq6_target,
+                               orig_name=lsq6_target,
+                               pipeline_sub_dir=os.path.join(output_dir, pipeline_name +
+                                                             "_target_file"))
+        return(RegistrationTargets(registration_standard=target_file))
+    if bootstrap:
+        if not first_input_file:
+            raise ValueError("\nError: (developer's error) the function "
+                             "get_registration_targets is called with bootstrap=True "
+                             "but the first input file to the pipeline was not passed "
+                             "along. Don't know which file to use as target for LSQ6.\n")
+        if not can_read_MINC_file(first_input_file):
+            raise ValueError("\nError (bootstrap file): can not read MINC file: %s\n" % first_input_file)
+        bootstrap_file = MincAtom(name=first_input_file,
+                                  orig_name=first_input_file,
+                                  pipeline_sub_dir=os.path.join(output_dir, pipeline_name +
+                                                                "_bootstrap_file"))
+        return(RegistrationTargets(registration_standard=bootstrap_file))
+    
+    if init_model:
+        return get_registration_targets_from_init_model(init_model, output_dir, pipeline_name)
+    
+    
+    
+    
+     
