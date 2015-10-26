@@ -5,24 +5,22 @@ recommended to add to your application: e.g. the arguments that deal
 with the execution of your application.
 '''
 from configargparse import ArgParser, Namespace
-import time
-import os
-from pkg_resources import get_distribution
+from atom.api import Atom, Enum, Instance, Int, Str
 
-from atom.api import Atom, Enum, Instance
+from collections import namedtuple
+from pkg_resources import get_distribution
+import copy
+import os
+import sys
+import time
+
+from pydpiper.core.util import raise_
 
 # TODO: should the pipeline-specific argument handling be located here
 # or in that pipeline's module?  Makes more sense (general stuff
 # can still go here)
 
 class PydParser(ArgParser):
-    """
-    #>>> p = PydParser()
-    #>>> g = p.add_argument_group("General", prefix='foo')
-    #>>> g.add_argument('--bar', type=int)
-    #>>> p.parse_args(['--foo-bar', '3'])
-    #Namespace(foo_bar=3)
-    """
     # Some sneakiness... override the format_epilog method
     # to return the epilog verbatim.
     # That way in the help message you can include an example
@@ -34,42 +32,9 @@ class PydParser(ArgParser):
             self.epilog = ""
         return self.epilog
 
+# TODO delete/move to util?
 def id(*args, **kwargs):
     return args, kwargs
-
-# TODO: this API is rather unclear.  Better idea: make a class
-#class parser(object):
-#    def __init__(self, whatever):
-#        # test that whatever actually makes sense
-#p = parser({ 'application' :
-#               [verbatim('--foo', type=int)],
-#             'lsq12' :
-#               [verbatim('--bar', type=str)],
-#             'blah'  : [] })
-#p(['--foo', '--bar'])
-
-# my ideal API ...:
-# would sets be semantically better here/below?
-#applicationArguments = [id('--arg1'), id('--arg2')]
-#lsq12Arguments       = [id('--bar', dest='wherever')]
-# the important thing is that you can define such a thing
-# WITHOUT specifying where the result is to go ...
-#coreArgumentGroups = [(applicationArguments, 'application'),
-#                      (executionArguments,   'execution'),
-#                      (generalArguments,     'general')]
-# argument sets plus prefix AND a namespace to parse into:
-#parser = make_parser(coreArgumentGroups
-#                   + [(chainArguments, 'chain')])
-#result = parser(args)
-#this doesn't work well since other fns like
-#add_mutually_exclusive_group, etc., don't work.
-
-#another possibility would be to post-process parser._actions
-#but it's too late to do so since we don't know which group
-#a given --whatever came from.  To fix this, we could make
-#the addX functions take a group instead of a parser:
-# def addExecutorArguments(g, *args, **kwargs):
-#   g.add
 
 def nullable_int(string):
     if string == "None":
@@ -77,63 +42,110 @@ def nullable_int(string):
     else:
         return int(string)
 
-#FIXME is this approach general enough that it could work in a nested way,
-#e.g., if two MBM calls within a single pipeline each want separate
-#LSQ12 params? investigate ...
-def make_parser(pcs): # [(???, str)] -> arglist -> Namespace(Namespace())
-    """
-    Parse args given a list of parserconfigs to generate a parser from and some args to parse.
-    Note: the implementation is a huge hack--apologies for breakage
-    """
-    def parser(args):
-        # TODO: code cleanup: can we make the pcs less ugly to create?
-        # TODO: think about non(/empty)-prefixed and prefixed parsers in the same code ...
-        # TODO: is requirement for prefixing compatible with combining parsers (particularly multiple
-        # parsers of the same sort) in a modular way?  Maybe any abstraction could also take a general prefix??
-        default_config_file = os.getenv("PYDPIPER_CONFIG_FILE")
-        config_files = [default_config_file] if default_config_file else []
+#Annotated = namedtuple('Annotated', ['it', 'prefix', 'namespace'])
+class Annotated(Atom):
+    it        = Instance(object, factory=lambda : raise_(ValueError("must provide a parser")))
+    prefix    = Str("")
+    namespace = Str("", factory=lambda : raise_(ValueError("must provide a namespace")))
+    proc      = Instance(object, factory=lambda : None) #lambda y: y)
 
-        # First, build a parser that's aware of all options
-        # (will be used for help/version/error messages).
-        # This must be tried _before_ the partial parsing attempts
-        # in order to get correct help/version messages.
-        main_parser = PydParser(default_config_files=config_files)
+class Parser: pass
 
-        for add_fn, _, _ in pcs:
-            #for arg in args:
-            add_fn(main_parser)
-            #main_parser.add_argument(main_parser)
-        # exit with helpful message if parse fails or --help/--version specified:
-        main_parser.parse_args(args)
+class BaseParser(Parser):
+    def __init__(self, argparser): # Some(
+        self.argparser = argparser
 
-        # Next, parse each option group into a separate namespace.
-        # An alternate strategy could be to use the main parser only,
-        # parsing the prefixed options into prefixed destination fields
-        # (of the main Namespace object) and then iterate through these,
-        # unflattening the namespace.
-        n = Namespace()
-        for add_fn, namespace, proc in pcs:
-            parser = PydParser(default_config_files=config_files)
-            add_fn(parser)
-            result, _rest = parser.parse_known_args(args)
-            print(namespace, _rest)
-            # ensure we're not clobbering an existing sub-namespace:
-            # NB if one wanted to allow some fields to be added
-            # to the top-level namespace, one could
-            # add result to n.__dict__ if namespace is None
-            # (need additional conflict checking).
-            # Currently this isn't allowed as it just complicates
-            # usage for little benefit.
-            if namespace in n.__dict__:
-                raise ValueError("Namespace field '%s' is already in use" % namespace)
-            else:
-                n.__dict__[namespace] = proc(result) # (apply the cast/post-processing...)
+class CompoundParser(Parser):
+    def __init__(self, annotated_parsers):
+        self.parsers  = annotated_parsers
+
+#combine_parsers = CompoundParsers
+
+#Parser = BaseParser ArgParser | CompoundParser([Annotated Parser]) - rose tree with elts at leaves instead of nodes?
+# for more flexibility, you could also add an extra parser at the node, but that doesn't seem to be needed
+# (you can always add an extra leaf at that node) (~isomorphic?)
+
+# TODO: What about the situation when you want cross-cutting?  That is, instead of the usual situation
+# (everything grows like a tree with more and more prefixes), you have components at very far-apart
+# locations in the tree which you wish to control via a single set of options?  For instance,
+# what if you have two twolevel models within a pipeline and want to set the second-level LSQ12 on both
+# via --second-level-lsq12-max-pairs?  Within one twolevel pipeline, you can do this easily.
+# I guess you could add a lsq12 parser in the code calling the two pipelines and use it as a default,
+# but this wouldn't happen automagically.
+
+def parse(parser, args):
+    default_config_file = os.getenv("PYDPIPER_CONFIG_FILE") #TODO: accepting a comma-separated list might allow more flexibility
+    config_files = [default_config_file] if default_config_file else []
+
+    # First, build a parser that's aware of all options
+    # (will be used for help/version/error messages).
+    # This must be tried _before_ the partial parsing attempts
+    # in order to get correct help/version messages.
+
+    main_parser = ArgParser(default_config_files=config_files)
+
+    # TODO: abstract out the recursive travels in go_1 and go_2
+    def go_1(p, current_prefix):
+        if isinstance(p, BaseParser):
+            for a in p.argparser._actions:
+                a = copy.copy(a)
+                ss = copy.deepcopy(a.option_strings)
+                for ix, s in enumerate(a.option_strings):
+                    if s.startswith("--"):
+                        ss[ix] = "-" + current_prefix + "-" + s[2:]
+                    else:
+                        raise NotImplementedError
+                a.option_strings = ss
+                main_parser._add_action(a)
+        elif isinstance(p, CompoundParser):
+            for q in p.parsers:
+                go_1(q.it, current_prefix + "-" + q.prefix)
         else:
-            return n
-    return parser
+            raise TypeError("parser %s wasn't a %s (%s or %s) but a %s" % (p, Parser, BaseParser, CompoundParser, p.__class__))
 
-# TODO: what about making these add...Group fns take a group
-# instead of a parser as argument?
+    go_1(parser, "")
+
+    # Use this parser to exit with a helpful message if parse fails or --help/--version specified:
+    main_parser.parse_args(args)
+
+    # Now, use parse_known_args for each parser in the tree of parsers to fill the appropriate namespace object ...
+    def go_2(p, current_prefix, current_ns):
+        if isinstance(p, BaseParser):
+            new_p = ArgParser(default_config_files=config_files)
+            for ix, a in enumerate(p.argparser._actions):
+                new_a = copy.copy(a)
+                ss = copy.deepcopy(new_a.option_strings)
+                for ix, s in enumerate(new_a.option_strings):
+                    if s.startswith("--"):
+                        ss[ix] = "-" + current_prefix + "-" + s[2:]
+                    else:
+                        raise NotImplementedError
+                    new_a.option_strings = ss
+                new_p._add_action(new_a)
+            used_args, _rest = new_p.parse_known_args(args, namespace=current_ns)  # TODO: could continue parsing from `_rest` instead of original `args`
+        elif isinstance(p, CompoundParser):
+            for q in p.parsers:
+                ns = Namespace()
+                if q.namespace in current_ns.__dict__:
+                    raise ValueError("Namespace field '%s' already in use" % q.namespace)
+                else:
+                    current_ns.__dict__[q.namespace] = q.proc(**vars(ns)) if q.proc else ns # gross but how to write n-ary identity fn that behaves sensibly on single arg??
+                go_2(q.it, current_prefix=current_prefix + "-" + q.prefix, current_ns=ns) # TODO current_ns or current_namespace or ns or namespace?
+        else:
+            raise TypeError("parser %s wasn't a %s (%s or %s) but a %s" % (p, Parser, BaseParser, CompoundParser, p.__class__))
+
+    main_ns = Namespace()
+    go_2(parser, current_prefix="", current_ns=main_ns)
+    return(main_ns)
+
+def with_parser(p):
+    return lambda args: parse(p, args)
+
+mbm_p = CompoundParser([Annotated(it=lsq6_p, prefix='lsq6', namespace="lsq6"), Annotated(it=lsq12_p, namespace="lsq12", prefix="lsq12", proc=Lsq12Conf)])
+two_mbms = CompoundParser([Annotated(it=mbm_p, prefix="mbm1", namespace="mbm1"), Annotated(it=mbm_p, prefix="mbm2")])  #, namespace="mbm2")])
+four_mbms = CompoundParser([Annotated(it=two_mbms, prefix="first-two-mbms", namespace="first-two"), Annotated(it=two_mbms, prefix="next-two-mbms", namespace="next-two")])
+
+result = with_parser(four_mbms)(["--first-two-mbms-mbm1-lsq12-max-pairs", "10"]) #(['--lsq6-rotation-interval=30'])
 
 def addApplicationArgumentGroup(parser):
     """
@@ -349,7 +361,3 @@ def addLSQ12ArgumentGroup(prefix):
         parser.add_argument_group(group)
     return f
 
-# attempt to sensibly add/combine two prefixed lsq12 option sets (would be same for two MBMs)
-#two_lsq12_parser = make_parser([(addLSQ12ArgumentGroup('second-level'),  'second-level-lsq12'),
-#                                (addLSQ12ArgumentGroup('first-level'),   'first-level-lsq12')])(['--help'])
-    
