@@ -5,13 +5,11 @@ recommended to add to your application: e.g. the arguments that deal
 with the execution of your application.
 '''
 from configargparse import ArgParser, Namespace
-from atom.api import Atom, Enum, Instance, Int, Str
+from atom.api import Atom, Enum, Instance, Str
 
-from collections import namedtuple
 from pkg_resources import get_distribution
 import copy
 import os
-import sys
 import time
 
 from pydpiper.core.util import raise_
@@ -33,8 +31,8 @@ class PydParser(ArgParser):
         return self.epilog
 
 # TODO delete/move to util?
-def id(*args, **kwargs):
-    return args, kwargs
+#def id(*args, **kwargs):
+#    return args, kwargs
 
 def nullable_int(string):
     if string == "None":
@@ -84,19 +82,19 @@ def parse(parser, args):
 
     main_parser = ArgParser(default_config_files=config_files)
 
-    # TODO: abstract out the recursive travels in go_1 and go_2
+    # TODO: abstract out the recursive travels in go_1 and go_2 into a `walk` function
     def go_1(p, current_prefix):
         if isinstance(p, BaseParser):
             for a in p.argparser._actions:
-                a = copy.copy(a)
-                ss = copy.deepcopy(a.option_strings)
-                for ix, s in enumerate(a.option_strings):
+                new_a = copy.copy(a)
+                ss = copy.deepcopy(new_a.option_strings)
+                for ix, s in enumerate(new_a.option_strings):
                     if s.startswith("--"):
                         ss[ix] = "-" + current_prefix + "-" + s[2:]
                     else:
                         raise NotImplementedError
-                a.option_strings = ss
-                main_parser._add_action(a)
+                new_a.option_strings = ss
+                main_parser._add_action(new_a)
         elif isinstance(p, CompoundParser):
             for q in p.parsers:
                 go_1(q.it, current_prefix + "-" + q.prefix)
@@ -140,12 +138,6 @@ def parse(parser, args):
 
 def with_parser(p):
     return lambda args: parse(p, args)
-
-mbm_p = CompoundParser([Annotated(it=lsq6_p, prefix='lsq6', namespace="lsq6"), Annotated(it=lsq12_p, namespace="lsq12", prefix="lsq12", proc=Lsq12Conf)])
-two_mbms = CompoundParser([Annotated(it=mbm_p, prefix="mbm1", namespace="mbm1"), Annotated(it=mbm_p, prefix="mbm2")])  #, namespace="mbm2")])
-four_mbms = CompoundParser([Annotated(it=two_mbms, prefix="first-two-mbms", namespace="first-two"), Annotated(it=two_mbms, prefix="next-two-mbms", namespace="next-two")])
-
-result = with_parser(four_mbms)(["--first-two-mbms-mbm1-lsq12-max-pairs", "10"]) #(['--lsq6-rotation-interval=30'])
 
 def addApplicationArgumentGroup(parser):
     """
@@ -334,8 +326,7 @@ core_pieces = [(addApplicationArgumentGroup, 'application'),
                (addExecutorArgumentGroup,    'execution')]
 
 # TODO probably doesn't belong here ...
-def addLSQ12ArgumentGroup(prefix):
-    prefix = "" if prefix in ["", None] else (prefix + '-')
+def addLSQ12ArgumentGroup():
     def f(parser):
         """option group for the command line argument parser"""
         group = parser.add_argument_group("LSQ12 registration options",
@@ -360,4 +351,10 @@ def addLSQ12ArgumentGroup(prefix):
                            "[Default = %(default)s].")
         parser.add_argument_group(group)
     return f
+
+
+#mbm_p = CompoundParser([Annotated(it=lsq6_p, prefix='lsq6', namespace="lsq6"), Annotated(it=lsq12_p, namespace="lsq12", prefix="lsq12", proc=Lsq12Conf)])
+#two_mbms = CompoundParser([Annotated(it=mbm_p, prefix="mbm1", namespace="mbm1"), Annotated(it=mbm_p, prefix="mbm2")])  #, namespace="mbm2")])
+#four_mbms = CompoundParser([Annotated(it=two_mbms, prefix="first-two-mbms", namespace="first-two"), Annotated(it=two_mbms, prefix="next-two-mbms", namespace="next-two")])
+#result = with_parser(four_mbms)(["--first-two-mbms-mbm1-lsq12-max-pairs", "10"]) #(['--lsq6-rotation-interval=30'])
 
