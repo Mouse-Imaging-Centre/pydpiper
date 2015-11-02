@@ -5,8 +5,9 @@ import sys
 from pydpiper.minc.registration import lsq12_pairwise
 from pydpiper.minc.files import MincAtom
 
-def addLSQ12ArgumentGroup(parser):
-    raise NotImplemented
+# TODO why camel case here?
+# TODO what is this for -- arbitrary lsq12 registration (including a single src/target) or pairwise lsq12?
+
 
 def parse_LSQ12_protocol(f): # handle -> LSQ12Conf
     """Parse a protocol file and, if possible, return a protocol object

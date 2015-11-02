@@ -4,22 +4,151 @@ by PydPiper applications. Some option groups might be mandatory/highly
 recommended to add to your application: e.g. the arguments that deal
 with the execution of your application.
 '''
-import time
-import os
+from configargparse import ArgParser, Namespace
+from atom.api import Atom, Enum, Instance, Str
+
 from pkg_resources import get_distribution
+import copy
+import os
+import time
 
-# TODO: most (if not all) of the following options don't do anything yet
-# we should come up with a good way to deal with all this. Given that
-# Jason wants to be able to connect each of the applications together
-# in new code (e.g., by simply calling chain(...args...) or MBM(,,,args...)
-# there needs to be another way to create the options hash? So that you could
-# write applications that require little to no command line arguments?
+from pydpiper.core.util import raise_
 
+# TODO: should the pipeline-specific argument handling be located here
+# or in that pipeline's module?  Makes more sense (general stuff
+# can still go here)
 
+class PydParser(ArgParser):
+    # Some sneakiness... override the format_epilog method
+    # to return the epilog verbatim.
+    # That way in the help message you can include an example
+    # of what an lsq6/nlin protocol should look like, and this
+    # won't be mangled when the parser calls `format_epilog`
+    # when writing its help.
+    def format_epilog(self, formatter):
+        if not self.epilog:
+            self.epilog = ""
+        return self.epilog
+
+# TODO delete/move to util?
+#def id(*args, **kwargs):
+#    return args, kwargs
+
+def nullable_int(string):
+    if string == "None":
+        return None
+    else:
+        return int(string)
+
+class Parser: pass
+
+# the leaves of the parse object (these contain the arguments you're interested in)
+class BaseParser(Parser):
+    def __init__(self, argparser): # Some(
+        self.argparser = argparser
+
+# the internal nodes of the parse object
+class CompoundParser(Parser):
+    def __init__(self, annotated_parsers):
+        """
+        annotated_parsers is a list that can hold
+        both BaseParser-s and CompoundParser-s.
+        """
+        self.parsers  = annotated_parsers
+
+#Annotated = namedtuple('Annotated', ['it', 'prefix', 'namespace'])
+class AnnotatedParser(Atom):
+    parser    = Instance(Parser, factory=lambda : raise_(ValueError("must provide a parser")))
+    prefix    = Str("")
+    namespace = Str("", factory=lambda : raise_(ValueError("must provide a namespace")))
+    cast      = Instance(object, factory=lambda : None) #lambda y: y)
+
+#combine_parsers = CompoundParsers
+
+#Parser = BaseParser ArgParser | CompoundParser([Annotated Parser]) - rose tree with elts at leaves instead of nodes?
+# for more flexibility, you could also add an extra parser at the node, but that doesn't seem to be needed
+# (you can always add an extra leaf at that node) (~isomorphic?)
+
+# TODO: What about the situation when you want cross-cutting?  That is, instead of the usual situation
+# (everything grows like a tree with more and more prefixes), you have components at very far-apart
+# locations in the tree which you wish to control via a single set of options?  For instance,
+# what if you have two twolevel models within a pipeline and want to set the second-level LSQ12 on both
+# via --second-level-lsq12-max-pairs?  Within one twolevel pipeline, you can do this easily.
+# I guess you could add a lsq12 parser in the code calling the two pipelines and use it as a default,
+# but this wouldn't happen automagically.
+
+def parse(parser, args):
+    default_config_file = os.getenv("PYDPIPER_CONFIG_FILE") #TODO: accepting a comma-separated list might allow more flexibility
+    config_files = [default_config_file] if default_config_file else []
+
+    # First, build a parser that's aware of all options
+    # (will be used for help/version/error messages).
+    # This must be tried _before_ the partial parsing attempts
+    # in order to get correct help/version messages.
+
+    main_parser = ArgParser(default_config_files=config_files)
+
+    # TODO: abstract out the recursive travels in go_1 and go_2 into a `walk` function
+    def go_1(p, current_prefix):
+        if isinstance(p, BaseParser):
+            for a in p.argparser._actions:
+                new_a = copy.copy(a)
+                ss = copy.deepcopy(new_a.option_strings)
+                for ix, s in enumerate(new_a.option_strings):
+                    if s.startswith("--"):
+                        ss[ix] = "-" + current_prefix + "-" + s[2:]
+                    else:
+                        raise NotImplementedError
+                new_a.option_strings = ss
+                main_parser._add_action(new_a)
+        elif isinstance(p, CompoundParser):
+            for q in p.parsers:
+                go_1(q.it, current_prefix + "-" + q.prefix)
+        else:
+            raise TypeError("parser %s wasn't a %s (%s or %s) but a %s" % (p, Parser, BaseParser, CompoundParser, p.__class__))
+
+    go_1(parser, "")
+
+    # Use this parser to exit with a helpful message if parse fails or --help/--version specified:
+    main_parser.parse_args(args)
+
+    # Now, use parse_known_args for each parser in the tree of parsers to fill the appropriate namespace object ...
+    def go_2(p, current_prefix, current_ns):
+        if isinstance(p, BaseParser):
+            new_p = ArgParser(default_config_files=config_files)
+            for ix, a in enumerate(p.argparser._actions):
+                new_a = copy.copy(a)
+                ss = copy.deepcopy(new_a.option_strings)
+                for ix, s in enumerate(new_a.option_strings):
+                    if s.startswith("--"):
+                        ss[ix] = "-" + current_prefix + "-" + s[2:]
+                    else:
+                        raise NotImplementedError
+                    new_a.option_strings = ss
+                new_p._add_action(new_a)
+            used_args, _rest = new_p.parse_known_args(args, namespace=current_ns)  # TODO: could continue parsing from `_rest` instead of original `args`
+        elif isinstance(p, CompoundParser):
+            for q in p.parsers:
+                ns = Namespace()
+                if q.namespace in current_ns.__dict__:
+                    raise ValueError("Namespace field '%s' already in use" % q.namespace)
+                else:
+                    current_ns.__dict__[q.namespace] = q.proc(**vars(ns)) if q.proc else ns # gross but how to write n-ary identity fn that behaves sensibly on single arg??
+                go_2(q.it, current_prefix=current_prefix + "-" + q.prefix, current_ns=ns) # TODO current_ns or current_namespace or ns or namespace?
+        else:
+            raise TypeError("parser %s wasn't a %s (%s or %s) but a %s" % (p, Parser, BaseParser, CompoundParser, p.__class__))
+
+    main_ns = Namespace()
+    go_2(parser, current_prefix="", current_ns=main_ns)
+    return(main_ns)
+
+def with_parser(p):
+    return lambda args: parse(p, args)
 
 def addApplicationArgumentGroup(parser):
     """
     The arguments that all applications share:
+    --pipeline-name
     --restart
     --no-restart
     --output-dir
@@ -35,13 +164,17 @@ def addApplicationArgumentGroup(parser):
     group.add_argument("--restart", dest="restart", 
                        action="store_false", default=True,
                        help="Restart pipeline using backup files. [default = %(default)s]")
+    group.add_argument("--pipeline-name", dest="pipeline_name", type=str,
+                       default=time.strftime("pipeline-%d-%m-%Y-at-%H-%m-%S"),
+                       help="Name of pipeline and prefix for models.")
+
     group.add_argument("--no-restart", dest="restart", 
                         action="store_false", help="Opposite of --restart")
     # TODO instead of prefixing all subdirectories (logs, backups, processed, ...)
     # with the pipeline name/date, we could create one identifying directory
     # and put these other directories inside
     group.add_argument("--output-dir", dest="output_directory",
-                       type=str, default='', #os.getcwd(),
+                       type=str, default='',
                        help="Directory where output data and backups will be saved.")
     group.add_argument("--create-graph", dest="create_graph",
                        action="store_true", default=False,
@@ -55,8 +188,8 @@ def addApplicationArgumentGroup(parser):
                        action="store_false",
                        help="Opposite of --execute")
     group.add_argument("--version", action="version",
-                       version="%(prog)s ("+get_distribution("pydpiper").version+")", # pylint: disable=E1101                
-                       help="Print the version number and exit.")
+                       version="%(prog)s ("+get_distribution("pydpiper").version+")", # pylint: disable=E1101
+                   ) #    help="Print the version number and exit.")
     group.add_argument("--verbose", dest="verbose",
                        action="store_true",
                        help="Be verbose in what is printed to the screen [default = %(default)s]")
@@ -68,7 +201,7 @@ def addApplicationArgumentGroup(parser):
 
 
 
-def addExecutorArgumentGroup(parser):
+def addExecutorArgumentGroup(parser, prefix=None):
     group = parser.add_argument_group("Executor options",
                         "Options controlling how and where the code is run.")
     group.add_argument("--uri-file", dest="urifile",
@@ -138,23 +271,26 @@ def addExecutorArgumentGroup(parser):
 
 def addGeneralRegistrationArgumentGroup(parser):
     group = parser.add_argument_group("General registration options",
-                         "General options for running various types of registrations.")
-    group.add_argument("--pipeline-name", dest="pipeline_name", type=str,
-                       default=time.strftime("pipeline-%d-%m-%Y-at-%H-%m-%S"),
-                       help="Name of pipeline and prefix for models.")
+                                      "....")
     group.add_argument("--input-space", dest="input_space",
-                       type=str, default="native", 
-                       help="Option to specify space of input-files. Can be native, lsq6, lsq12. "
+                       choices=['native', 'lsq6', 'lsq12'], default="native", 
+                       help="Option to specify space of input-files. Can be native (default), lsq6, lsq12. "
                             "Native means that there is no prior formal alignent between the input files " 
                             "yet. lsq6 means that the input files have been aligned using translations "
                             "and rotations; the code will continue with a 12 parameter alignment. lsq12 " 
                             "means that the input files are fully linearly aligned. Only non linear "
                             "registrations are performed. [Default=%(default)s]")
-    group.add_argument("--registration-resolution", dest="registration_resolution",
+    group.add_argument("--resolution", dest="resolution",
                        type=float, default=None,
                        help="Specify the resolution at which you want the registration to be run. "
                             "If not specified, the resolution of the target of your pipeline will "
                             "be used. [Default=%(default)s]")
+
+# TODO: where should this live?
+class RegistrationConf(Atom):
+    input_space = Enum('native', 'lsq6', 'lsq12')
+    resolution  = Instance(float)
+
 
 def addLSQ6ArgumentGroup(parser):
     """
@@ -264,26 +400,33 @@ def addLSQ6ArgumentGroup(parser):
                        "example: applications_testing/test_data/minctracc_example_linear_protocol.csv \n"
                        "[Default = %(default)s].")
 
+# TODO: where should this live?
+class LSQ6Conf(Atom):
+    lsq6_method = Enum('lsq6_simple', 'lsq6_centre_estimation', 'lsq6_large_rotations')
+    # more to be added...
+
 def addStatsArgumentGroup(parser):
     group = parser.add_argument_group("Statistics options", 
                           "Options for calculating statistics.")
+    default_fwhms = ['0.5','0.2','0.1']
     group.add_argument("--stats-kernels", dest="stats_kernels",
-                       type=lambda s: ','.split(s), default=[0.5,0.2,0.1],
-                       help="comma separated list of blurring kernels for analysis. Default is: 0.5,0.2,0.1")
+                       type=','.split, default=[0.5,0.2,0.1],
+                       help="comma separated list of blurring kernels for analysis. Default is: %s" % ','.join(default_fwhms))
 
 
 def addRegistrationChainArgumentGroup(parser):
     group = parser.add_argument_group("Registration chain options",
                         "Options for processing longitudinal data.")
+#    addGeneralRegistrationArguments(group)
     group.add_argument("--csv-file", dest="csv_file",
                        type=str, required=True,
                        help="The spreadsheet with information about your input data. "
                             "For the registration chain you are required to have the "
                             "following columns in your csv file: \" subject_id\", "
                             "\"timepoint\", and \"filename\". Optionally you can have "
-                            "a column called \"is_common\" that indicates that a subject "
-                            "is to be used for the common time point using a 1, and 0 "
-                            "otherwise.")
+                            "a column called \"is_common\" that indicates that a scan "
+                            "is to be used for the common time point registration"
+                            "using a 1, and 0 otherwise.")
     group.add_argument("--common-time-point", dest="common_time_point",
                        type=int, default=None,
                        help="The time point at which the inter-subject registration will be "
@@ -292,16 +435,55 @@ def addRegistrationChainArgumentGroup(parser):
                             "(they might differ per input file) specify -1. If the common time "
                             "is not specified, the assumption is that the spreadsheet contains "
                             "the mapping using the \"is_common\" column. [Default = %(default)s]")
-    group.add_argument("--common-time-point-name", dest="common_name",
+    group.add_argument("--common-time-point-name", dest="common_time_point_name",
                        type=str, default="common", 
                        help="Option to specify a name for the common time point. This is useful for the "
                             "creation of more readable output file names. Default is \"common\". Note "
                             "that the common time point is the one created by an iterative group-wise " 
                             "registration (inter-subject).")
+    #TODO: add information about the pride of models to the code in such a way that it 
+    # is reflected on GitHub
     group.add_argument("--pride-of-models", dest="pride_of_models",
                        type=str, default=None,
                        help="Specify the top level directory of the \"pride\" of models. "
                        "The idea is that you might want to use different initial models for "
-                       "the time points in your data. See our wiki (https://wiki.mouseimaging.ca/) "
-                       "for detailed information on the pride of models. [Default = %(default)s]")
+                       "the time points in your data. [Default = %(default)s]")
+
+
+core_pieces = [(addApplicationArgumentGroup, 'application'),
+               (addExecutorArgumentGroup,    'execution')]
+
+# TODO: probably doesn't belong here ... do we need to move them again to the 
+# modules where complementary code is?
+def addLSQ12ArgumentGroup():
+    def f(parser):
+        """option group for the command line argument parser"""
+        group = parser.add_argument_group("LSQ12 registration options",
+                            "Options for performing a pairwise, affine registration")
+        group.add_argument("--lsq12-max-pairs", dest="lsq12_max_pairs",
+                           type=nullable_int, default=25,
+                           help="Maximum number of pairs to register together ('None' implies all pairs).  [Default = %(default)s]")
+        group.add_argument("--lsq12-likefile", dest="lsq12_likeFile",
+                           type=str, default=None,
+                           help="Can optionally specify a like file for resampling at the end of pairwise "
+                           "alignment. Default is None, which means that the input file will be used. [Default = %(default)s]")
+        group.add_argument("--lsq12-subject-matter", dest="lsq12_subject_matter",
+                           type=str, default=None,
+                           help="Can specify the subject matter for the pipeline. This will set the parameters "
+                           "for the 12 parameter alignment based on the subject matter rather than the file "
+                           "resolution. Currently supported option is: \"mousebrain\". [Default = %(default)s].")
+        group.add_argument("--lsq12-protocol", dest="lsq12_protocol",
+                           type=str, default=None,
+                           help="Can optionally specify a registration protocol that is different from defaults. "
+                           "Parameters must be specified as in the following example: \n"
+                           "applications_testing/test_data/minctracc_example_linear_protocol.csv \n"
+                           "[Default = %(default)s].")
+        parser.add_argument_group(group)
+    return f
+
+
+#mbm_p = CompoundParser([Annotated(it=lsq6_p, prefix='lsq6', namespace="lsq6"), Annotated(it=lsq12_p, namespace="lsq12", prefix="lsq12", proc=Lsq12Conf)])
+#two_mbms = CompoundParser([Annotated(it=mbm_p, prefix="mbm1", namespace="mbm1"), Annotated(it=mbm_p, prefix="mbm2")])  #, namespace="mbm2")])
+#four_mbms = CompoundParser([Annotated(it=two_mbms, prefix="first-two-mbms", namespace="first-two"), Annotated(it=two_mbms, prefix="next-two-mbms", namespace="next-two")])
+#result = with_parser(four_mbms)(["--first-two-mbms-mbm1-lsq12-max-pairs", "10"]) #(['--lsq6-rotation-interval=30'])
 

@@ -26,6 +26,7 @@ setup(name='pydpiper',
                'pydpiper/execution/check_pipeline_status.py',
                'pydpiper/pipelines/LSQ12.py', 
                'pydpiper/pipelines/LSQ6.py',
+               'pydpiper/pipelines/MBM.py',
                'pydpiper/pipelines/registration_chain.py'],
       #tests_require=['pytest']
       )

@@ -340,13 +340,19 @@ class SimilarityMetricConf(Atom):
     use_gradient_image = Bool(False)
 
 class MincANTSConf(Atom):
+    # FIXME open these parameters as (lists of) numbers, not strings
     iterations           = Str("100x100x100x150")
     transformation_model = Str("'Syn[0.1]'")
     regularization       = Str("'Gauss[2,1]'")
     use_mask             = Bool(True)
+    default_resolution   = Instance(float) # for sim_metric_confs
+    # we don't supply a default here because it's preferable
+    # to take resolution from initial target instead
+    # TODO user can't set default_resolution - making it Float(0.56)
+    # doesn't allow use in sim_metric_confs below, so it's currently a constant
     sim_metric_confs     = List(item=SimilarityMetricConf,
                                 default = [SimilarityMetricConf(),
-                                           SimilarityMetricConf(blur_resolution=0.056,
+                                           SimilarityMetricConf(#blur_resolution=Float(default_resolution),
                                                                 use_gradient_image=True)]) 
     
 mincANTS_default_conf = MincANTSConf()
@@ -396,9 +402,19 @@ def mincANTS(source, target, conf, transform=None):
                                     xfm=xfm,
                                     resampled=resampled))
 
-#def lsq12_NLIN_build_model(...):
-#    raise NotImplemented
+# TODO: the same, but with optional (?) lsq6
+def lsq12_NLIN_build_model(imgs, initial_target, lsq12_conf, nlin_conf):
+    s = Stages()
 
+    # TODO consistent capitalization scheme for LSQ, NLIN cmds
+    lsq12_result = s.defer(lsq12_pairwise(imgs=imgs, conf=lsq12_conf))
+    nlin_result  = s.defer(nlin(imgs=[img.resampled for img in lsq12_result.xfms]), conf=nlin_conf, avg=lsq12_result.avg_img)
+
+    overall_xfms = map(lambda f, g: s.defer(concat([f, g])),
+                       lsq12_result.xfms, nlin_result.xfms)
+
+    return Result(stages=s, output=overall_xfms) # TODO: return more stuff?
+    
 #def NLIN_build_model(imgs, initial_target, reg_method, nlin_dir, confs):
 #    functions = { 'mincANTS'  : mincANTS_NLIN,
 #                  'minctracc' : minctracc_NLIN }
@@ -429,7 +445,7 @@ def mincANTS_NLIN_build_model(imgs, initial_target, nlin_dir, confs):
     return Result(stages=s, output=Registration(xfms=xfms, avg_img=avg, avg_imgs=avg_imgs))
 
 def LSQ12_NLIN(source, target, conf):
-    raise NotImplementedException
+    raise NotImplementedError
 
 def intrasubject_registrations(subj, conf): # Subject, lsq12_nlin_conf -> Result(..., (Registration)(xfms))
     """
@@ -544,7 +560,7 @@ MultilevelMinctraccConf = namedtuple('MultilevelMinctraccConf',
 
 MinctraccConf = namedtuple('MinctraccConf', ['transform_type', 'w_translations', 'w_rotations'])
 
-# TODO move LSQ12 stuff to an LSQ12 file
+# TODO move LSQ12 stuff to an LSQ12 file??
 LSQ12_default_conf = MultilevelMinctraccConf(transform_type='lsq12', resolution = NotImplemented,
   single_gen_confs = [])
 

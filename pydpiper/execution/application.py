@@ -103,6 +103,13 @@ def ensure_short_output_paths(stages, max_len=245): # magic no. for mincblur, &c
             if len(o.path) > max_len:
                 raise ValueError("output filename '%s' too long (more than %s chars)" % (o.path, max_len))
 
+def ensure_output_paths_in_dir(stages, d):
+    for s in stages:
+        for o in s.outputs:
+            if os.path.relpath(o.path, d).startswith('..'):
+                raise ValueError("output %s of stage %s not contained inside "
+                                 "pipeline directory %s" % (o.path, s, d))
+
 #TODO: change this to ...(static_pipeline, options)?
 def execute(stages, options):
     """Basically just looks at the arguments and exits if `--no-execute` is specified,
@@ -112,6 +119,7 @@ def execute(stages, options):
     pipeline = Pipeline(stages=map(convertCmdStage, stages), options=options)
 
     ensure_short_output_paths(stages)
+    ensure_output_paths_in_dir(stages, options.output_directory)
 
     # TODO: print/log version
 

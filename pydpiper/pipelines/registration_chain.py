@@ -1,10 +1,13 @@
 #!/usr/bin/env python
 
-from __future__ import print_function
-from __future__ import absolute_import
+from __future__ import print_function, absolute_import
 import csv
 from collections import defaultdict
+import os
+import sys
+
 from atom.api import Atom, Int, Str, Dict, Enum, Instance
+
 from pydpiper.minc.analysis import determinants_at_fwhms, invert
 from pydpiper.core.containers import Result
 from pydpiper.minc.registration import (Stages, mincANTS_NLIN_build_model, mincANTS_default_conf,
@@ -15,12 +18,13 @@ from pydpiper.minc.files import MincAtom
 from pydpiper.execution.application import execute
 #from pydpiper.pipelines.LSQ6 import lsq6
 from configargparse import ArgParser
-from pydpiper.core.arguments import addApplicationArgumentGroup, \
-    addGeneralRegistrationArgumentGroup, addExecutorArgumentGroup, \
-    addRegistrationChainArgumentGroup, addStatsArgumentGroup, \
-    addLSQ6ArgumentGroup
+from pydpiper.core.arguments import (addApplicationArgumentGroup,
+                                     addGeneralRegistrationArgumentGroup, RegistrationConf,
+                                     addExecutorArgumentGroup, addLSQ12ArgumentGroup,
+                                     addRegistrationChainArgumentGroup,
+                                     addStatsArgumentGroup, parse,
+                                     addLSQ6ArgumentGroup, AnnotatedParser, BaseParser, CompoundParser)
 
-import os
 
 # TODO (general for all option records, not just for the registration chain):
 # namedtuples are better than Argparse Namespaces for specification 
@@ -38,12 +42,13 @@ import os
 # some data structures used in this pipeline:
 
 class ChainConf(Atom):
-    input_space            = Enum('native', 'lsq6', 'lsq12')
-    common_time_point      = Instance(type(None), int)
+    #input_space            = Enum('native', 'lsq6', 'lsq12') # FIXME put here?
+    common_time_point      = Instance(int)
     # could make this a Fraction or a Decimal to represent, e.g., day 18.5, etc.
     # (float would be dangerous since we want to use these values as indices, etc.)
     common_time_point_name = Str("common")
-    csv_file               = Instance(type(None), str)
+    csv_file               = Instance(str)
+    pride_of_models        = Instance(str)
 
 class Subject(Atom):
     """
@@ -90,12 +95,12 @@ def chain(options):
 
     s = Stages()
     
-    with open(options.csv_file, 'r') as f:
-        subject_info = parse_csv(f, options.common_time_point)
+    with open(options.chain.csv_file, 'r') as f:
+        subject_info = parse_csv(f, options.chain.common_time_point)
     
-    pipeline_processed_dir = os.path.join(options.output_directory, options.pipeline_name + "_processed")
-    pipeline_lsq12_common_dir = os.path.join(options.output_directory, options.pipeline_name + "_lsq12_" + options.common_name)
-    pipeline_nlin_common_dir = os.path.join(options.output_directory, options.pipeline_name + "_nlin_" + options.common_name)
+    pipeline_processed_dir = os.path.join(options.application.output_directory, options.application.pipeline_name + "_processed")
+    pipeline_lsq12_common_dir = os.path.join(options.application.output_directory, options.application.pipeline_name + "_lsq12_" + options.chain.common_time_point_name)
+    pipeline_nlin_common_dir = os.path.join(options.application.output_directory, options.application.pipeline_name + "_nlin_" + options.chain.common_time_point_name)
     
     
     pipeline_subject_info = map_over_time_pt_dict_in_Subject(
@@ -111,28 +116,28 @@ def chain(options):
     # check_MINC_input_files takes strings, so pass along those instead of the actual MincAtoms
     check_MINC_input_files([minc_atom.get_path() for minc_atom in all_Minc_Atoms])
     
-    if options.input_space not in ChainConf.input_space.items:
-        raise ValueError('unrecognized input space: %s; choices: %s' % (options.input_space, ChainConf.input_space.items))
+    if options.general.input_space not in RegistrationConf.input_space.items:
+        raise ValueError('unrecognized input space: %s; choices: %s' % (options.general.input_space, RegistrationConf.input_space.items))
     
-    if options.input_space == 'native':
+    if options.general.input_space == 'native':
         # for the registration chain, a bootstrap model is somewhat ill-defined, because
         # it's unclear what "the first input file" is. As such, when this option is chosen
         # we should prompt the user to use --lsq6-target instead
-        if options.bootstrap:
+        if options.lsq6.bootstrap:
             raise ValueError("\nA bootstrap model is ill-defined for the registration chain. "
                              "(Which file is the first input file?). Please use the --lsq6-target "
                              "flag to specify a target for the lsq6 stage, or use an initial model.")
         
-        if options.pride_of_models:
+        if options.lsq6.pride_of_models:
             raise NotImplementedError("We currently have not implemented the code that handles the pride of initial models...")
         
         # if we are not dealing with a pride of models, we can retrieve a fixed
         # registration target for all input files:
-        registration_targets = get_registration_targets(init_model=options.init_model,
-                                                        lsq6_target=options.lsq6_target,
-                                                        bootstrap=options.bootstrap,
-                                                        output_dir=options.output_directory,
-                                                        pipeline_name=options.pipeline_name)
+        registration_targets = get_registration_targets(init_model=options.lsq6.init_model,
+                                                        lsq6_target=options.lsq6.lsq6_target,
+                                                        bootstrap=options.lsq6.bootstrap,
+                                                        output_dir=options.application.output_directory,
+                                                        pipeline_name=options.application.pipeline_name)
         
         # now that we have the  
         
@@ -145,7 +150,7 @@ def chain(options):
             print("\nNative to standard : %s" % registration_targets.xfm_to_standard.get_path())
 
         # TODO: this is a temporary hack in order to test the LSQ6 alignment:            
-        lsq6_nuc_inorm(all_Minc_Atoms, registration_targets, options.lsq6_method)
+        lsq6_nuc_inorm(all_Minc_Atoms, registration_targets, options.lsq6.lsq6_method)
         
         # TODO:
         # what should be done here is the LSQ6 registration, options:
@@ -155,7 +160,7 @@ def chain(options):
         # - "pride" of initial models (different targets for different time points)
         
         
-    some_temp_target = None
+    some_temp_target = None # FIXME just set this right away
 
     # NB currently LSQ6 expects an array of files, but we have a map.
     # possibilities:
@@ -180,15 +185,15 @@ def chain(options):
     #                            group_wise registration on time point 2
     #
     dict_intersubj_atom_to_xfm = {}
-    if options.input_space == 'lsq6' or options.input_space == 'lsq12':
+    if options.general.input_space == 'lsq6' or options.general.input_space == 'lsq12':
         intersubj_imgs = { s_id : subj.intersubject_registration_image
                           for s_id, subj in pipeline_subject_info.iteritems() }
     else:
         # TODO: the intersubj_imgs should now be extracted from the
         # lsq6 aligned images
-        raise NotImplementedError("We currently have not implemented the code for 'input space': %s" % options.input_space)
+        raise NotImplementedError("We currently have not implemented the code for 'input space': %s" % options.general.input_space)
     
-    if options.verbose:
+    if options.application.verbose:
         print("\nImages that are used for the inter-subject registration:")
         print("ID\timage")
         for subject in intersubj_imgs:
@@ -196,27 +201,28 @@ def chain(options):
     
     # input files that started off in native space have been aligned rigidly 
     # by this point in the code (i.e., lsq6)
-    if options.input_space == 'lsq6' or options.input_space == 'native':
-        raise NotImplementedError("We currently have not implemented the code for 'input space': %s" % options.input_space)
+    if options.general.input_space == 'lsq6' or options.general.input_space == 'native':
+        raise NotImplementedError("We currently have not implemented the code for 'input space': %s" % options.registration.input_space)
     #intersubj_xfms = lsq12_NLIN_build_model_on_dictionaries(imgs=intersubj_imgs,
         #                                                        conf=conf,
         #                                                        lsq12_dir=lsq12_directory
                                                                 #, like={atlas_from_init_model_at_this_tp}
         #                                                        )
-    elif options.input_space == 'lsq12':
+    elif options.general.input_space == 'lsq12':
         #TODO: write reader that creates a mincANTS configuration out of an input protocol 
         if not some_temp_target:
             some_temp_target = s.defer(mincaverage(imgs=intersubj_imgs.values(),
                                            name_wo_ext="avg_of_input_files",
                                            output_dir=pipeline_nlin_common_dir))
-        test_conf = mincANTS_default_conf
-        first_level = MincANTSConf(iterations="100x100x100x0")
-        full_hierarchy = [first_level, test_conf]
+        conf1 = MincANTSConf(default_resolution=options.general.resolution,
+                             iterations="100x100x100x0")
+        conf2 = MincANTSConf(default_resolution=options.general.resolution)
+        full_hierarchy = [conf1, conf2]
         intersubj_xfms = s.defer(mincANTS_NLIN_build_model(imgs=intersubj_imgs.values(),
                                                    initial_target=some_temp_target, # this doesn't make sense yet
                                                    nlin_dir=pipeline_nlin_common_dir,
                                                    confs=full_hierarchy))
-        dict_intersubj_atom_to_xfm = {xfm.source: xfm for xfm in intersubj_xfms.xfms}
+        dict_intersubj_atom_to_xfm = { xfm.source : xfm for xfm in intersubj_xfms.xfms }
 
     return Result(stages=s, output=())
     ## within-subject registration
@@ -235,7 +241,7 @@ def chain(options):
     # 5) C_time_1   ->   C_time_2
     # 6) C_time_2   ->   C_time_3    
     
-    chain_xfms = { s_id : s.defer(intrasubject_registrations(subj, MincANTSConf()))
+    chain_xfms = { s_id : s.defer(intrasubject_registrations(subj, MincANTSConf(default_resolution=options.general.resolution)))
                    for s_id, subj in pipeline_subject_info.iteritems() }
 
     # create transformation from each subject to the final common time point average
@@ -411,52 +417,46 @@ def final_transforms(pipeline_subject_info, intersubj_xfms_dict, chain_xfms_dict
     return Result(stages=s, output=new_d)
 
 
-if __name__ == "__main__":
-    # TODO: the following can be captured in some sort of initialization 
-    # function to make it easier to write/create a new application
-    
-    # *** *** *** *** *** *** *** *** ***
-    # use an environment variable to look for a default config file
-    default_config_file = os.getenv("PYDPIPER_CONFIG_FILE")
-    if default_config_file is not None:
-        config_files = [default_config_file]
-    else:
-        config_files = []
-    parser = ArgParser(default_config_files=config_files)
+def identity(x): return x
 
-    addExecutorArgumentGroup(parser)
-    addApplicationArgumentGroup(parser)
-    addGeneralRegistrationArgumentGroup(parser)
-    addLSQ6ArgumentGroup(parser)
-    addRegistrationChainArgumentGroup(parser)
-    addStatsArgumentGroup(parser)
+if __name__ == "__main__":
     
-    options = parser.parse_args()    
-    
+    # TODO could abstract and then parametrize by prefix/ns ??
+    options = parse(CompoundParser(
+      [AnnotatedParser(BaseParser(addExecutorArgumentGroup), namespace='execution'),
+       AnnotatedParser(BaseParser(addApplicationArgumentGroup), 'application'),
+       AnnotatedParser(BaseParser(addGeneralRegistrationArgumentGroup), 'general', lambda x: RegistrationConf(**vars(x))),
+       AnnotatedParser(BaseParser(addRegistrationChainArgumentGroup), 'chain', lambda x: ChainConf(**vars(x))),
+       AnnotatedParser(BaseParser(addLSQ6ArgumentGroup), 'lsq6'), 
+       AnnotatedParser(BaseParser(addLSQ12ArgumentGroup), 'lsq12'), # should be MBM or build_model ...
+       AnnotatedParser(BaseParser(addLSQ12ArgumentGroup), 'lsq12-inter-subj'),
+       #addNLINArgumentGroup,
+       AnnotatedParser(BaseParser(addStatsArgumentGroup), 'stats')]), sys.argv[1:])
+        
     # TODO: the registration resolution should be set somewhat outside
     # of any actual function? Maybe the right time to set this, is here
     # when options are gathered? 
-    if not options.registration_resolution:
+    if not options.general.resolution:
         
         # still a bit of a hack I guess...
         
-        if options.init_model:
+        if options.lsq6.init_model:
             # Ha! an initial model always points to the file in standard space, so we 
             # can directly use this file to get the resolution from
-            options.registration_resolution = get_resolution_from_file(options.init_model)
-        if options.bootstrap:
-            options.registration_resolution = get_resolution_from_file(options.files[0])
-        if options.lsq6_target:
-            options.registration_resolution = get_resolution_from_file(options.lsq6_target)
+            options.general.registration_resolution = get_resolution_from_file(options.lsq6.init_model)
+        if options.lsq6.bootstrap:
+            options.general.registration_resolution = get_resolution_from_file(options.application.files[0])
+        if options.lsq6.lsq6_target:
+            options.general.registration_resolution = get_resolution_from_file(options.lsq6.lsq6_target)
             
-    if not options.registration_resolution:
+    if not options.general.registration_resolution:
         raise ValueError("Crap... couldn't get the registration resolution...")
     
-    print("Ha! The registration resolution is: %s\n" % options.registration_resolution)
+    print("Ha! The registration resolution is: %s\n" % options.general.registration_resolution)
     # *** *** *** *** *** *** *** *** ***
 
     chain_stages, _ = chain(options)
 
-    #[print(s.render() + '\n') for s in chain_stages]
-
     execute(chain_stages, options)
+    
+    
