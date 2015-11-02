@@ -103,7 +103,7 @@ def parse(parser, args):
                 main_parser._add_action(new_a)
         elif isinstance(p, CompoundParser):
             for q in p.parsers:
-                go_1(q.it, current_prefix + "-" + q.prefix)
+                go_1(q.parser, current_prefix + "-" + q.prefix)
         else:
             raise TypeError("parser %s wasn't a %s (%s or %s) but a %s" % (p, Parser, BaseParser, CompoundParser, p.__class__))
 
@@ -126,17 +126,21 @@ def parse(parser, args):
                         raise NotImplementedError
                     new_a.option_strings = ss
                 new_p._add_action(new_a)
-            used_args, _rest = new_p.parse_known_args(args, namespace=current_ns)  # TODO: could continue parsing from `_rest` instead of original `args`
+            used_args, _rest = new_p.parse_known_args(args, namespace=current_ns)
+            # TODO: could continue parsing from `_rest` instead of original `args`
         elif isinstance(p, CompoundParser):
             for q in p.parsers:
                 ns = Namespace()
                 if q.namespace in current_ns.__dict__:
                     raise ValueError("Namespace field '%s' already in use" % q.namespace)
                 else:
-                    current_ns.__dict__[q.namespace] = q.proc(**vars(ns)) if q.proc else ns # gross but how to write n-ary identity fn that behaves sensibly on single arg??
-                go_2(q.it, current_prefix=current_prefix + "-" + q.prefix, current_ns=ns) # TODO current_ns or current_namespace or ns or namespace?
+                    # gross but how to write n-ary identity fn that behaves sensibly on single arg??
+                    current_ns.__dict__[q.namespace] = q.proc(**vars(ns)) if q.proc else ns
+                go_2(q.parser, current_prefix=current_prefix + "-" + q.prefix, current_ns=ns)
+                # TODO current_ns or current_namespace or ns or namespace?
         else:
-            raise TypeError("parser %s wasn't a %s (%s or %s) but a %s" % (p, Parser, BaseParser, CompoundParser, p.__class__))
+            raise TypeError("parser %s wasn't a %s (%s or %s) but a %s" %
+                            (p, Parser, BaseParser, CompoundParser, p.__class__))
 
     main_ns = Namespace()
     go_2(parser, current_prefix="", current_ns=main_ns)
@@ -160,7 +164,8 @@ def addApplicationArgumentGroup(parser):
     --no-verbose
     files (left over arguments (0 or more is allowed)
     """
-    group = parser.add_argument_group("General application options", "General options for all pydpiper applications.")
+    group = parser.add_argument_group("General application options",
+                                      "General options for all pydpiper applications.")
     group.add_argument("--restart", dest="restart", 
                        action="store_false", default=True,
                        help="Restart pipeline using backup files. [default = %(default)s]")

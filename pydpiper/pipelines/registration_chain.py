@@ -17,7 +17,7 @@ from pydpiper.minc.registration import (Stages, mincANTS_NLIN_build_model, mincA
 from pydpiper.minc.files import MincAtom
 from pydpiper.execution.application import execute
 #from pydpiper.pipelines.LSQ6 import lsq6
-from configargparse import ArgParser
+#from configargparse import ArgParser
 from pydpiper.core.arguments import (addApplicationArgumentGroup,
                                      addGeneralRegistrationArgumentGroup, RegistrationConf,
                                      addExecutorArgumentGroup, addLSQ12ArgumentGroup,
@@ -423,15 +423,15 @@ if __name__ == "__main__":
     
     # TODO could abstract and then parametrize by prefix/ns ??
     options = parse(CompoundParser(
-      [AnnotatedParser(BaseParser(addExecutorArgumentGroup), namespace='execution'),
-       AnnotatedParser(BaseParser(addApplicationArgumentGroup), 'application'),
-       AnnotatedParser(BaseParser(addGeneralRegistrationArgumentGroup), 'general', lambda x: RegistrationConf(**vars(x))),
-       AnnotatedParser(BaseParser(addRegistrationChainArgumentGroup), 'chain', lambda x: ChainConf(**vars(x))),
-       AnnotatedParser(BaseParser(addLSQ6ArgumentGroup), 'lsq6'), 
-       AnnotatedParser(BaseParser(addLSQ12ArgumentGroup), 'lsq12'), # should be MBM or build_model ...
-       AnnotatedParser(BaseParser(addLSQ12ArgumentGroup), 'lsq12-inter-subj'),
+      [AnnotatedParser(parser=BaseParser(addExecutorArgumentGroup), namespace='execution'),
+       AnnotatedParser(parser=BaseParser(addApplicationArgumentGroup), namespace='application'),
+       AnnotatedParser(parser=BaseParser(addGeneralRegistrationArgumentGroup), namespace='general', cast=lambda x: RegistrationConf(**vars(x))),
+       AnnotatedParser(parser=BaseParser(addRegistrationChainArgumentGroup), namespace='chain', cast=lambda x: ChainConf(**vars(x))),
+       AnnotatedParser(parser=BaseParser(addLSQ6ArgumentGroup), namespace='lsq6'),
+       AnnotatedParser(parser=BaseParser(addLSQ12ArgumentGroup), namespace='lsq12'), # should be MBM or build_model ...
+       AnnotatedParser(parser=BaseParser(addLSQ12ArgumentGroup), namespace='lsq12-inter-subj'),
        #addNLINArgumentGroup,
-       AnnotatedParser(BaseParser(addStatsArgumentGroup), 'stats')]), sys.argv[1:])
+       AnnotatedParser(parser=BaseParser(addStatsArgumentGroup), namespace='stats')]), sys.argv[1:])
         
     # TODO: the registration resolution should be set somewhat outside
     # of any actual function? Maybe the right time to set this, is here
