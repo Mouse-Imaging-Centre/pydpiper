@@ -9,7 +9,8 @@ from pydpiper.minc.analysis import determinants_at_fwhms, invert
 from pydpiper.core.containers import Result
 from pydpiper.minc.registration import (Stages, mincANTS_NLIN_build_model, mincANTS_default_conf,
                                         MincANTSConf, mincANTS, intrasubject_registrations, mincaverage, 
-                                        concat, check_MINC_input_files, get_registration_targets)
+                                        concat, check_MINC_input_files, get_registration_targets,
+                                        lsq6_nuc_inorm, get_resolution_from_file)
 from pydpiper.minc.files import MincAtom
 from pydpiper.execution.application import execute
 #from pydpiper.pipelines.LSQ6 import lsq6
@@ -92,21 +93,23 @@ def chain(options):
     with open(options.csv_file, 'r') as f:
         subject_info = parse_csv(f, options.common_time_point)
     
-    # verify that in input files are proper MINC files, and that there 
-    # are no duplicates in the filenames
-    all_filenames = []
-    for s_id, subj in subject_info.iteritems():
-        for subj_time_pt, subj_filename in subj.time_pt_dict.iteritems():
-            all_filenames.append(subj_filename)
-    check_MINC_input_files(all_filenames)
-    
     pipeline_processed_dir = os.path.join(options.output_directory, options.pipeline_name + "_processed")
     pipeline_lsq12_common_dir = os.path.join(options.output_directory, options.pipeline_name + "_lsq12_" + options.common_name)
     pipeline_nlin_common_dir = os.path.join(options.output_directory, options.pipeline_name + "_nlin_" + options.common_name)
     
+    
     pipeline_subject_info = map_over_time_pt_dict_in_Subject(
                                      lambda subj_str:  MincAtom(name=subj_str, pipeline_sub_dir=pipeline_processed_dir),
                                      subject_info)
+    
+    # verify that in input files are proper MINC files, and that there 
+    # are no duplicates in the filenames
+    all_Minc_Atoms = []
+    for s_id, subj in pipeline_subject_info.iteritems():
+        for subj_time_pt, subj_filename in subj.time_pt_dict.iteritems():
+            all_Minc_Atoms.append(subj_filename)
+    # check_MINC_input_files takes strings, so pass along those instead of the actual MincAtoms
+    check_MINC_input_files([minc_atom.get_path() for minc_atom in all_Minc_Atoms])
     
     if options.input_space not in ChainConf.input_space.items:
         raise ValueError('unrecognized input space: %s; choices: %s' % (options.input_space, ChainConf.input_space.items))
@@ -131,7 +134,18 @@ def chain(options):
                                                         output_dir=options.output_directory,
                                                         pipeline_name=options.pipeline_name)
         
+        # now that we have the  
         
+        print("Standard file      : %s" % registration_targets.registration_standard.get_path())
+        if registration_targets.registration_standard.mask:
+            print("\nStandard file mask : %s" % registration_targets.registration_standard.mask)
+        if registration_targets.registration_native:
+            print("\nNative file        : %s" % registration_targets.registration_native.get_path())
+            print("\nNative file mask   : %s" % registration_targets.registration_native.mask)
+            print("\nNative to standard : %s" % registration_targets.xfm_to_standard.get_path())
+
+        # TODO: this is a temporary hack in order to test the LSQ6 alignment:            
+        lsq6_nuc_inorm(all_Minc_Atoms, registration_targets, options.lsq6_method)
         
         # TODO:
         # what should be done here is the LSQ6 registration, options:
@@ -418,6 +432,27 @@ if __name__ == "__main__":
     addStatsArgumentGroup(parser)
     
     options = parser.parse_args()    
+    
+    # TODO: the registration resolution should be set somewhat outside
+    # of any actual function? Maybe the right time to set this, is here
+    # when options are gathered? 
+    if not options.registration_resolution:
+        
+        # still a bit of a hack I guess...
+        
+        if options.init_model:
+            # Ha! an initial model always points to the file in standard space, so we 
+            # can directly use this file to get the resolution from
+            options.registration_resolution = get_resolution_from_file(options.init_model)
+        if options.bootstrap:
+            options.registration_resolution = get_resolution_from_file(options.files[0])
+        if options.lsq6_target:
+            options.registration_resolution = get_resolution_from_file(options.lsq6_target)
+            
+    if not options.registration_resolution:
+        raise ValueError("Crap... couldn't get the registration resolution...")
+    
+    print("Ha! The registration resolution is: %s\n" % options.registration_resolution)
     # *** *** *** *** *** *** *** *** ***
 
     chain_stages, _ = chain(options)

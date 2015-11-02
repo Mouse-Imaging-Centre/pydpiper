@@ -2,6 +2,10 @@ from pydpiper.core.util  import NotProvided
 from pydpiper.core.files import FileAtom
 
 class MincAtom(FileAtom):
+    """
+    TODO: what is the type of "mask"? Is it a string, or should this be a MincAtom? The latter
+    options makes more sense?
+    """
     def __init__(self, name, orig_name=NotProvided, pipeline_sub_dir=None, output_sub_dir=None, 
                  mask=None, labels=None, resolution=None):
         super(self.__class__, self).__init__(name=name, orig_name=orig_name, 

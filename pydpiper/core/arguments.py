@@ -144,12 +144,17 @@ def addGeneralRegistrationArgumentGroup(parser):
                        help="Name of pipeline and prefix for models.")
     group.add_argument("--input-space", dest="input_space",
                        type=str, default="native", 
-                       help="Option to specify space of input-files. Can be native (default), lsq6, lsq12. "
+                       help="Option to specify space of input-files. Can be native, lsq6, lsq12. "
                             "Native means that there is no prior formal alignent between the input files " 
                             "yet. lsq6 means that the input files have been aligned using translations "
                             "and rotations; the code will continue with a 12 parameter alignment. lsq12 " 
                             "means that the input files are fully linearly aligned. Only non linear "
-                            "registrations are performed.")
+                            "registrations are performed. [Default=%(default)s]")
+    group.add_argument("--registration-resolution", dest="registration_resolution",
+                       type=float, default=None,
+                       help="Specify the resolution at which you want the registration to be run. "
+                            "If not specified, the resolution of the target of your pipeline will "
+                            "be used. [Default=%(default)s]")
 
 def addLSQ6ArgumentGroup(parser):
     """
