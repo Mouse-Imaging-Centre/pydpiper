@@ -18,12 +18,14 @@ from pydpiper.minc.files import MincAtom
 from pydpiper.execution.application import execute
 #from pydpiper.pipelines.LSQ6 import lsq6
 #from configargparse import ArgParser
-from pydpiper.core.arguments import (#addApplicationArgumentGroup,
+from pydpiper.core.arguments import (application_parser, #addApplicationArgumentGroup,
                                      #addGeneralRegistrationArgumentGroup,
-                                     #addExecutorArgumentGroup, addLSQ12ArgumentGroup,
+                                     executor_parser, #addExecutorArgumentGroup, addLSQ12ArgumentGroup,
                                      chain_parser, #addRegistrationChainArgumentGroup,
                                      stats_parser, #addStatsArgumentGroup,
-                                     #addLSQ6ArgumentGroup,
+                                     general_parser,
+                                     lsq6_parser,
+                                     lsq12_parser,
                                      parse, #parser,
                                      AnnotatedParser, BaseParser, CompoundParser,
                                      RegistrationConf)
@@ -428,14 +430,14 @@ def identity(x): return x
 if __name__ == "__main__":
 
     p = CompoundParser(
-          [#AnnotatedParser(parser=BaseParser(executor_parser, "execution"), namespace='execution'),
-           #AnnotatedParser(parser=BaseParser(application_parser, "application"), namespace='application'),
-           #AnnotatedParser(parser=BaseParser(general_parser, "general"), namespace='general', cast=lambda x: RegistrationConf(**vars(x))),
-           AnnotatedParser(parser=BaseParser(chain_parser(), "chain"), namespace='chain', cast=ChainConf),
-           #AnnotatedParser(parser=BaseParser(addLSQ6ArgumentGroup), namespace='lsq6'),
-           #AnnotatedParser(parser=BaseParser(addLSQ12ArgumentGroup), namespace='lsq12'), # should be MBM or build_model ...
-           #AnnotatedParser(parser=BaseParser(addLSQ12ArgumentGroup), namespace='lsq12-inter-subj'),
+          [AnnotatedParser(parser=BaseParser(executor_parser(), "execution"), namespace='execution'),
+           AnnotatedParser(parser=BaseParser(application_parser(), "application"), namespace='application'),
+           AnnotatedParser(parser=BaseParser(general_parser(), "general"), namespace='general', cast=lambda x: RegistrationConf(**vars(x))),
+           AnnotatedParser(parser=BaseParser(lsq6_parser(), "lsq6"), namespace='lsq6'),
+           AnnotatedParser(parser=BaseParser(lsq12_parser(), "lsq12"), namespace='lsq12'), # should be MBM or build_model ...
+           #AnnotatedParser(parser=BaseParser(lsq12_parser(), "lsq12-second"), namespace='lsq12'),
            #addNLINArgumentGroup,
+           AnnotatedParser(parser=BaseParser(chain_parser(), "chain"), namespace='chain', cast=ChainConf),
            AnnotatedParser(parser=BaseParser(stats_parser(), "stats"), namespace='stats', cast=None)])
     
     # TODO could abstract and then parametrize by prefix/ns ??
