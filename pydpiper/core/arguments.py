@@ -146,7 +146,6 @@ def parse(parser, args):
 
     main_ns = Namespace()
     go_2(parser, current_prefix="", current_ns=main_ns)
-    print(main_ns)
     return main_ns
 
 def with_parser(p):
@@ -167,52 +166,52 @@ def _mk_application_parser():
     --no-verbose
     files (left over arguments (0 or more is allowed)
     """
-    parser = ArgParser(add_help=False)
-    group = parser.add_argument_group("General application options",
-                                      "General options for all pydpiper applications.")
-    group.add_argument("--restart", dest="restart", 
+    p = ArgParser(add_help=False)
+    #group = parser.add_argument_group("General application options",
+    #                                  "General options for all pydpiper applications.")
+    p.add_argument("--restart", dest="restart", 
                        action="store_false", default=True,
                        help="Restart pipeline using backup files. [default = %(default)s]")
-    group.add_argument("--pipeline-name", dest="pipeline_name", type=str,
+    p.add_argument("--pipeline-name", dest="pipeline_name", type=str,
                        default=time.strftime("pipeline-%d-%m-%Y-at-%H-%m-%S"),
                        help="Name of pipeline and prefix for models.")
 
-    group.add_argument("--no-restart", dest="restart", 
+    p.add_argument("--no-restart", dest="restart", 
                         action="store_false", help="Opposite of --restart")
     # TODO instead of prefixing all subdirectories (logs, backups, processed, ...)
     # with the pipeline name/date, we could create one identifying directory
     # and put these other directories inside
-    group.add_argument("--output-dir", dest="output_directory",
-                       type=str, default='',
-                       help="Directory where output data and backups will be saved.")
-    group.add_argument("--create-graph", dest="create_graph",
-                       action="store_true", default=False,
-                       help="Create a .dot file with graphical representation of pipeline relationships [default = %(default)s]")
-    parser.set_defaults(execute=True)
-    parser.set_defaults(verbose=False)
-    group.add_argument("--execute", dest="execute",
-                       action="store_true",
-                       help="Actually execute the planned commands [default = %(default)s]")
-    group.add_argument("--no-execute", dest="execute",
-                       action="store_false",
-                       help="Opposite of --execute")
-    group.add_argument("--version", action="version",
-                       version="%(prog)s ("+get_distribution("pydpiper").version+")", # pylint: disable=E1101
+    p.add_argument("--output-dir", dest="output_directory",
+                   type=str, default='',
+                   help="Directory where output data and backups will be saved.")
+    p.add_argument("--create-graph", dest="create_graph",
+                   action="store_true", default=False,
+                   help="Create a .dot file with graphical representation of pipeline relationships [default = %(default)s]")
+    p.set_defaults(execute=True)
+    p.set_defaults(verbose=False)
+    p.add_argument("--execute", dest="execute",
+                   action="store_true",
+                   help="Actually execute the planned commands [default = %(default)s]")
+    p.add_argument("--no-execute", dest="execute",
+                   action="store_false",
+                   help="Opposite of --execute")
+    p.add_argument("--version", action="version",
+                   version="%(prog)s ("+get_distribution("pydpiper").version+")", # pylint: disable=E1101
                    ) #    help="Print the version number and exit.")
-    group.add_argument("--verbose", dest="verbose",
-                       action="store_true",
-                       help="Be verbose in what is printed to the screen [default = %(default)s]")
-    group.add_argument("--no-verbose", dest="verbose",
-                       action="store_false",
-                       help="Opposite of --verbose [default]")
-    group.add_argument("files", type=str, nargs='*', metavar='file',
-                        help='Files to process')
-    return group
+    p.add_argument("--verbose", dest="verbose",
+                   action="store_true",
+                   help="Be verbose in what is printed to the screen [default = %(default)s]")
+    p.add_argument("--no-verbose", dest="verbose",
+                  action="store_false",
+                   help="Opposite of --verbose [default]")
+    p.add_argument("files", type=str, nargs='*', metavar='file',
+                   help='Files to process')
+    return p
 
 application_parser = BaseParser(_mk_application_parser(), "application")
 
 
-def addExecutorArgumentGroup():
+def _mk_execution_parser():
     parser = ArgParser(add_help=False)
     group = parser.add_argument_group("Executor options",
                         "Options controlling how and where the code is run.")
@@ -282,9 +281,9 @@ def addExecutorArgumentGroup():
                        help="Memory (in GB) to allocate to jobs which don't make a request. [Default=%(default)s]")
     return parser
 
-execution_parser = BaseParser(addExecutorArgumentGroup(), 'execution') # TODO: nomenclature
+execution_parser = BaseParser(_mk_execution_parser(), 'execution')
 
-def _mk_general_parser():
+def _mk_registration_parser():
     #group = parser.add_argument_group("General registration options",
     #                                  "....")
     p = ArgParser(add_help=False)
@@ -303,7 +302,7 @@ def _mk_general_parser():
                         "be used. [Default=%(default)s]")
     return p
 
-general_parser = BaseParser(_mk_general_parser(), "general")
+registration_parser = BaseParser(_mk_registration_parser(), "general")
 
 # TODO: where should this live?
 class RegistrationConf(Atom):
@@ -311,37 +310,33 @@ class RegistrationConf(Atom):
     resolution  = Instance(float)
 
 
-def addLSQ6ArgumentGroup():
-    """
-        standard options for the LSQ6 module
-    """
-    parser = ArgParser(add_help=False)
-    group = parser.add_argument_group("LSQ6-registration options", "Options for performing a 6 parameter (rigid) registration.")
-    parser.set_defaults(lsq6_method="lsq6_large_rotations")
-    parser.set_defaults(nuc=True)
-    parser.set_defaults(inormalize=True)
-    parser.set_defaults(copy_header_info=False)
-    parser.set_defaults(run_lsq6=True)
-    group.add_argument("--run-lsq6", dest="run_lsq6",
-                       action="store_true",
-                       help="Actually run the 6 parameter alignment [default = %(default)s]")
-    group.add_argument("--no-run-lsq6", dest="run_lsq6",
-                       action="store_false",
-                       help="Opposite of --run-lsq6")
-    group.add_argument("--init-model", dest="init_model",
-                       type=str, default=None,
-                       help="File in standard space in the initial model. The initial model "
-                       "can also have a file in native space and potentially a transformation "
-                       "file. See our wiki (https://wiki.mouseimaging.ca/) for detailed "
-                       "information on initial models. [Default = %(default)s]")
-    group.add_argument("--lsq6-target", dest="lsq6_target",
-                       type=str, default=None,
-                       help="File to be used as the target for the 6 parameter alignment. "
-                       "[Default = %(default)s]")
-    group.add_argument("--bootstrap", dest="bootstrap",
-                       action="store_true", default=False,
-                       help="Use the first input file to the pipeline as the target for the "
-                       "6 parameter alignment. [Default = %(default)s]")
+def _mk_lsq6_parser():
+    p = ArgParser(add_help=False)
+    p.set_defaults(lsq6_method="lsq6_large_rotations")
+    p.set_defaults(nuc=True)
+    p.set_defaults(inormalize=True)
+    p.set_defaults(copy_header_info=False)
+    p.set_defaults(run_lsq6=True)
+    p.add_argument("--run-lsq6", dest="run_lsq6",
+                   action="store_true",
+                   help="Actually run the 6 parameter alignment [default = %(default)s]")
+    p.add_argument("--no-run-lsq6", dest="run_lsq6",
+                   action="store_false",
+                   help="Opposite of --run-lsq6")
+    p.add_argument("--init-model", dest="init_model",
+                   type=str, default=None,
+                   help="File in standard space in the initial model. The initial model "
+                   "can also have a file in native space and potentially a transformation "
+                   "file. See our wiki (https://wiki.mouseimaging.ca/) for detailed "
+                   "information on initial models. [Default = %(default)s]")
+    p.add_argument("--lsq6-target", dest="lsq6_target",
+                   type=str, default=None,
+                   help="File to be used as the target for the 6 parameter alignment. "
+                   "[Default = %(default)s]")
+    p.add_argument("--bootstrap", dest="bootstrap",
+                   action="store_true", default=False,
+                   help="Use the first input file to the pipeline as the target for the "
+                   "6 parameter alignment. [Default = %(default)s]")
     # TODO: do we need to implement this option? This was for Kieran Short, but the procedure
     # he will be using in the future most likely will not involve this option.
     #group.add_argument("--lsq6-alternate-data-prefix", dest="lsq6_alternate_prefix",
@@ -354,74 +349,75 @@ def addLSQ6ArgumentGroup():
     #                   "in the same orientation/location as the regular input files.  They will be used for "
     #                   "for the 6 parameter alignment. The transformations will then be used to transform "
     #                   "the regular input files, with which the pipeline will continue.")
-    group.add_argument("--lsq6-simple", dest="lsq6_method",
-                       action="store_const", const="lsq6_simple",
-                       help="Run a 6 parameter alignment assuming that the input files are roughly "
-                       "aligned: same space, similar orientation. Keep in mind that if you use an "
-                       "initial model with both a standard and a native space, the assumption is "
-                       "that the input files are already roughly aligned to the native space. "
-                       "Three iterations are run: 1st is 17 times stepsize blur, 2nd is 9 times "
-                       "stepsize gradient, 3rd is 4 times stepsize blur. [Default = %(default)s]")
-    group.add_argument("--lsq6-centre-estimation", dest="lsq6_method",
-                       action="store_const", const="lsq6_centre_estimation",
-                       help="Run a 6 parameter alignment assuming that the input files have a "
-                       "similar orientation, but are scanned in different coils/spaces. [Default = %(default)s]")
-    group.add_argument("--lsq6-large-rotations", dest="lsq6_method",
-                       action="store_const", const="lsq6_large_rotations",
-                       help="Run a 6 parameter alignment assuming that the input files have a random "
-                       "orientation and are scanned in different coils/spaces. A brute force search over "
-                       "the x,y,z rotation space is performed to find the best 6 parameter alignment. "
-                       "[Default = %(default)s]")
-    group.add_argument("--lsq6-large-rotations-tmp-dir", dest="large_rotation_tmp_dir",
-                       type=str, default="/dev/shm/",
-                       help="Specify the directory that rotational_minctracc.py uses for temporary files. "
-                       "By default we use /dev/shm/, because this program involves a lot of I/O, and "
-                       "this is probably one of the fastest way to provide this. [Default = %(default)s]")
-    group.add_argument("--lsq6-large-rotations-parameters", dest="large_rotation_parameters",
-                       type=str, default="10,4,10,8",
-                       help="Settings for the large rotation alignment. factor=factor based on smallest file "
-                       "resolution: 1) blur factor, 2) resample step size factor, 3) registration step size "
-                       "factor, 4) w_translations factor  ***** if you are working with mouse brain data "
-                       " the defaults do not have to be based on the file resolution; a default set of "
-                       " settings works for all mouse brain. In order to use those setting, specify: "
-                       "\"mousebrain\" as the argument for this option. ***** [default = %(default)s]")
-    group.add_argument("--lsq6-rotational-range", dest="large_rotation_range",
-                       type=int, default=50,
-                       help="Settings for the rotational range in degrees when running the large rotation "
-                       "alignment. [Default = %(default)s]")
-    group.add_argument("--lsq6-rotational-interval", dest="large_rotation_interval",
-                       type=int, default=10,
-                       help="Settings for the rotational interval in degrees when running the large rotation "
-                       "alignment. [Default = %(default)s]")
-    group.add_argument("--nuc", dest="nuc",
-                       action="store_true", 
-                       help="Perform non-uniformity correction. [Default = %(default)s]")
-    group.add_argument("--no-nuc", dest="nuc",
-                       action="store_false", 
-                       help="If specified, do not perform non-uniformity correction. Opposite of --nuc.")
-    group.add_argument("--inormalize", dest="inormalize",
-                       action="store_true", 
-                       help="Normalize the intensities after lsq6 alignment and nuc, if done. "
-                       "[Default = %(default)s] ")
-    group.add_argument("--no-inormalize", dest="inormalize",
-                       action="store_false", 
-                       help="If specified, do not perform intensity normalization. Opposite of --inormalize.")
-    group.add_argument("--copy-header-info-to-average", dest="copy_header_info",
-                       action="store_true", 
-                       help="Copy the MINC header information of the first input file into the "
-                       "average that is created. [Default = %(default)s] ")
-    group.add_argument("--no-copy-header-info-to-average", dest="copy_header_info",
-                       action="store_false", 
-                       help="Opposite of --copy-header-info-to-average.")
-    group.add_argument("--lsq6-protocol", dest="lsq6_protocol",
-                       type=str, default=None,
-                       help="Specify an lsq6 protocol that overrides the default setting for stages in "
-                       "the 6 parameter minctracc call. Parameters must be specified as in the following \n"
-                       "example: applications_testing/test_data/minctracc_example_linear_protocol.csv \n"
-                       "[Default = %(default)s].")
-    return parser
 
-lsq6_parser = BaseParser(addLSQ6ArgumentGroup(), "LSQ6")
+    p.add_argument("--lsq6-simple", dest="lsq6_method",
+                   action="store_const", const="lsq6_simple",
+                   help="Run a 6 parameter alignment assuming that the input files are roughly "
+                   "aligned: same space, similar orientation. Keep in mind that if you use an "
+                   "initial model with both a standard and a native space, the assumption is "
+                   "that the input files are already roughly aligned to the native space. "
+                   "Three iterations are run: 1st is 17 times stepsize blur, 2nd is 9 times "
+                   "stepsize gradient, 3rd is 4 times stepsize blur. [Default = %(default)s]")
+    p.add_argument("--lsq6-centre-estimation", dest="lsq6_method",
+                   action="store_const", const="lsq6_centre_estimation",
+                   help="Run a 6 parameter alignment assuming that the input files have a "
+                   "similar orientation, but are scanned in different coils/spaces. [Default = %(default)s]")
+    p.add_argument("--lsq6-large-rotations", dest="lsq6_method",
+                   action="store_const", const="lsq6_large_rotations",
+                   help="Run a 6 parameter alignment assuming that the input files have a random "
+                   "orientation and are scanned in different coils/spaces. A brute force search over "
+                   "the x,y,z rotation space is performed to find the best 6 parameter alignment. "
+                   "[Default = %(default)s]")
+    p.add_argument("--lsq6-large-rotations-tmp-dir", dest="large_rotation_tmp_dir",
+                   type=str, default="/dev/shm/",
+                   help="Specify the directory that rotational_minctracc.py uses for temporary files. "
+                   "By default we use /dev/shm/, because this program involves a lot of I/O, and "
+                   "this is probably one of the fastest way to provide this. [Default = %(default)s]")
+    p.add_argument("--lsq6-large-rotations-parameters", dest="large_rotation_parameters",
+                   type=str, default="10,4,10,8",
+                   help="Settings for the large rotation alignment. factor=factor based on smallest file "
+                   "resolution: 1) blur factor, 2) resample step size factor, 3) registration step size "
+                   "factor, 4) w_translations factor  ***** if you are working with mouse brain data "
+                   " the defaults do not have to be based on the file resolution; a default set of "
+                   " settings works for all mouse brain. In order to use those setting, specify: "
+                   "\"mousebrain\" as the argument for this option. ***** [default = %(default)s]")
+    p.add_argument("--lsq6-rotational-range", dest="large_rotation_range",
+                   type=int, default=50,
+                   help="Settings for the rotational range in degrees when running the large rotation "
+                   "alignment. [Default = %(default)s]")
+    p.add_argument("--lsq6-rotational-interval", dest="large_rotation_interval",
+                   type=int, default=10,
+                   help="Settings for the rotational interval in degrees when running the large rotation "
+                   "alignment. [Default = %(default)s]")
+    p.add_argument("--nuc", dest="nuc",
+                   action="store_true", 
+                   help="Perform non-uniformity correction. [Default = %(default)s]")
+    p.add_argument("--no-nuc", dest="nuc",
+                   action="store_false", 
+                   help="If specified, do not perform non-uniformity correction. Opposite of --nuc.")
+    p.add_argument("--inormalize", dest="inormalize",
+                   action="store_true", 
+                   help="Normalize the intensities after lsq6 alignment and nuc, if done. "
+                   "[Default = %(default)s] ")
+    p.add_argument("--no-inormalize", dest="inormalize",
+                   action="store_false", 
+                   help="If specified, do not perform intensity normalization. Opposite of --inormalize.")
+    p.add_argument("--copy-header-info-to-average", dest="copy_header_info",
+                   action="store_true", 
+                   help="Copy the MINC header information of the first input file into the "
+                   "average that is created. [Default = %(default)s] ")
+    p.add_argument("--no-copy-header-info-to-average", dest="copy_header_info",
+                   action="store_false", 
+                   help="Opposite of --copy-header-info-to-average.")
+    p.add_argument("--lsq6-protocol", dest="lsq6_protocol",
+                   type=str, default=None,
+                   help="Specify an lsq6 protocol that overrides the default setting for stages in "
+                   "the 6 parameter minctracc call. Parameters must be specified as in the following \n"
+                   "example: applications_testing/test_data/minctracc_example_linear_protocol.csv \n"
+                   "[Default = %(default)s].")
+    return p
+
+lsq6_parser = BaseParser(_mk_lsq6_parser(), "LSQ6")
 
 # TODO: where should this live?
 class LSQ6Conf(Atom):
@@ -503,8 +499,6 @@ def _mk_lsq12_parser():
     return p
 
 lsq12_parser = BaseParser(_mk_lsq12_parser(), "LSQ12")
-
-
 
 #FIXME: move to test/
 #mbm_p = CompoundParser([AnnotatedParser(parser=lsq6_parser, prefix='lsq6', namespace="lsq6"), AnnotatedParser(parser=lsq12_parser, namespace="lsq12", prefix="lsq12")])
