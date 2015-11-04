@@ -149,8 +149,11 @@ def chain(options):
             print("\nNative file mask   : %s" % registration_targets.registration_native.mask)
             print("\nNative to standard : %s" % registration_targets.xfm_to_standard.get_path())
 
-        # TODO: this is a temporary hack in order to test the LSQ6 alignment:            
-        lsq6_nuc_inorm(all_Minc_Atoms, registration_targets, options.lsq6.lsq6_method)
+        # TODO: this is a temporary hack in order to test the LSQ6 alignment. For the 
+        # registration chain we probably want to have a function that returns the XfmHandlers
+        # in a similar "shape" as pipeline_subject_info    
+        lsq6_nuc_inorm(all_Minc_Atoms, registration_targets, options.lsq6.lsq6_method,
+                       options.general.resolution)
         
         # TODO:
         # what should be done here is the LSQ6 registration, options:
