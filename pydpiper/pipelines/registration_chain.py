@@ -18,12 +18,15 @@ from pydpiper.minc.files import MincAtom
 from pydpiper.execution.application import execute
 #from pydpiper.pipelines.LSQ6 import lsq6
 #from configargparse import ArgParser
-from pydpiper.core.arguments import (addApplicationArgumentGroup,
-                                     addGeneralRegistrationArgumentGroup, RegistrationConf,
-                                     addExecutorArgumentGroup, addLSQ12ArgumentGroup,
-                                     addRegistrationChainArgumentGroup,
-                                     addStatsArgumentGroup, parse,
-                                     addLSQ6ArgumentGroup, AnnotatedParser, BaseParser, CompoundParser)
+from pydpiper.core.arguments import (#addApplicationArgumentGroup,
+                                     #addGeneralRegistrationArgumentGroup,
+                                     #addExecutorArgumentGroup, addLSQ12ArgumentGroup,
+                                     chain_parser, #addRegistrationChainArgumentGroup,
+                                     stats_parser, #addStatsArgumentGroup,
+                                     #addLSQ6ArgumentGroup,
+                                     parse, #parser,
+                                     AnnotatedParser, BaseParser, CompoundParser,
+                                     RegistrationConf)
 
 
 # TODO (general for all option records, not just for the registration chain):
@@ -423,18 +426,20 @@ def final_transforms(pipeline_subject_info, intersubj_xfms_dict, chain_xfms_dict
 def identity(x): return x
 
 if __name__ == "__main__":
+
+    p = CompoundParser(
+          [#AnnotatedParser(parser=BaseParser(executor_parser, "execution"), namespace='execution'),
+           #AnnotatedParser(parser=BaseParser(application_parser, "application"), namespace='application'),
+           #AnnotatedParser(parser=BaseParser(general_parser, "general"), namespace='general', cast=lambda x: RegistrationConf(**vars(x))),
+           AnnotatedParser(parser=BaseParser(chain_parser(), "chain"), namespace='chain', cast=ChainConf),
+           #AnnotatedParser(parser=BaseParser(addLSQ6ArgumentGroup), namespace='lsq6'),
+           #AnnotatedParser(parser=BaseParser(addLSQ12ArgumentGroup), namespace='lsq12'), # should be MBM or build_model ...
+           #AnnotatedParser(parser=BaseParser(addLSQ12ArgumentGroup), namespace='lsq12-inter-subj'),
+           #addNLINArgumentGroup,
+           AnnotatedParser(parser=BaseParser(stats_parser(), "stats"), namespace='stats', cast=None)])
     
     # TODO could abstract and then parametrize by prefix/ns ??
-    options = parse(CompoundParser(
-      [AnnotatedParser(parser=BaseParser(addExecutorArgumentGroup), namespace='execution'),
-       AnnotatedParser(parser=BaseParser(addApplicationArgumentGroup), namespace='application'),
-       AnnotatedParser(parser=BaseParser(addGeneralRegistrationArgumentGroup), namespace='general', cast=lambda x: RegistrationConf(**vars(x))),
-       AnnotatedParser(parser=BaseParser(addRegistrationChainArgumentGroup), namespace='chain', cast=lambda x: ChainConf(**vars(x))),
-       AnnotatedParser(parser=BaseParser(addLSQ6ArgumentGroup), namespace='lsq6'),
-       AnnotatedParser(parser=BaseParser(addLSQ12ArgumentGroup), namespace='lsq12'), # should be MBM or build_model ...
-       AnnotatedParser(parser=BaseParser(addLSQ12ArgumentGroup), namespace='lsq12-inter-subj'),
-       #addNLINArgumentGroup,
-       AnnotatedParser(parser=BaseParser(addStatsArgumentGroup), namespace='stats')]), sys.argv[1:])
+    options = parse(p, sys.argv[1:])
         
     # TODO: the registration resolution should be set somewhat outside
     # of any actual function? Maybe the right time to set this, is here

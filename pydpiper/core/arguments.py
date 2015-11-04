@@ -44,8 +44,9 @@ class Parser: pass
 
 # the leaves of the parse object (these contain the arguments you're interested in)
 class BaseParser(Parser):
-    def __init__(self, argparser): # Some(
-        self.argparser = argparser
+    def __init__(self, argparser, group_name):
+        self.argparser  = argparser
+        self.group_name = group_name
 
 # the internal nodes of the parse object
 class CompoundParser(Parser):
@@ -91,16 +92,17 @@ def parse(parser, args):
     # TODO: abstract out the recursive travels in go_1 and go_2 into a `walk` function
     def go_1(p, current_prefix):
         if isinstance(p, BaseParser):
+            g = main_parser.add_argument_group(p.group_name)
             for a in p.argparser._actions:
                 new_a = copy.copy(a)
                 ss = copy.deepcopy(new_a.option_strings)
                 for ix, s in enumerate(new_a.option_strings):
                     if s.startswith("--"):
-                        ss[ix] = "-" + current_prefix + "-" + s[2:]
+                        ss[ix] = "" + current_prefix + "-" + s[2:] # "" was "-"
                     else:
-                        raise NotImplementedError
+                        raise NotImplementedError #("dunno what to do with %s" % s)
                 new_a.option_strings = ss
-                main_parser._add_action(new_a)
+                g._add_action(new_a)
         elif isinstance(p, CompoundParser):
             for q in p.parsers:
                 go_1(q.parser, current_prefix + "-" + q.prefix)
@@ -121,7 +123,7 @@ def parse(parser, args):
                 ss = copy.deepcopy(new_a.option_strings)
                 for ix, s in enumerate(new_a.option_strings):
                     if s.startswith("--"):
-                        ss[ix] = "-" + current_prefix + "-" + s[2:]
+                        ss[ix] = "" + current_prefix + "-" + s[2:]
                     else:
                         raise NotImplementedError
                     new_a.option_strings = ss
@@ -135,7 +137,7 @@ def parse(parser, args):
                     raise ValueError("Namespace field '%s' already in use" % q.namespace)
                 else:
                     # gross but how to write n-ary identity fn that behaves sensibly on single arg??
-                    current_ns.__dict__[q.namespace] = q.proc(**vars(ns)) if q.proc else ns
+                    current_ns.__dict__[q.namespace] = q.cast(**vars(ns)) if q.cast else ns
                 go_2(q.parser, current_prefix=current_prefix + "-" + q.prefix, current_ns=ns)
                 # TODO current_ns or current_namespace or ns or namespace?
         else:
@@ -203,6 +205,7 @@ def addApplicationArgumentGroup(parser):
                        help="Opposite of --verbose [default]")
     group.add_argument("files", type=str, nargs='*', metavar='file',
                         help='Files to process')
+    return group
 
 
 
@@ -273,6 +276,7 @@ def addExecutorArgumentGroup(parser, prefix=None):
     group.add_argument("--default-job-mem", dest="default_job_mem",
                        type=float, default = 1.75,
                        help="Memory (in GB) to allocate to jobs which don't make a request. [Default=%(default)s]")
+    return group
 
 def addGeneralRegistrationArgumentGroup(parser):
     group = parser.add_argument_group("General registration options",
@@ -290,6 +294,7 @@ def addGeneralRegistrationArgumentGroup(parser):
                        help="Specify the resolution at which you want the registration to be run. "
                             "If not specified, the resolution of the target of your pipeline will "
                             "be used. [Default=%(default)s]")
+    return group
 
 # TODO: where should this live?
 class RegistrationConf(Atom):
@@ -404,87 +409,85 @@ def addLSQ6ArgumentGroup(parser):
                        "the 6 parameter minctracc call. Parameters must be specified as in the following \n"
                        "example: applications_testing/test_data/minctracc_example_linear_protocol.csv \n"
                        "[Default = %(default)s].")
+    return group
 
 # TODO: where should this live?
 class LSQ6Conf(Atom):
     lsq6_method = Enum('lsq6_simple', 'lsq6_centre_estimation', 'lsq6_large_rotations')
     # more to be added...
 
-def addStatsArgumentGroup(parser):
-    group = parser.add_argument_group("Statistics options", 
-                          "Options for calculating statistics.")
+def stats_parser():
+    p = ArgParser(add_help=False)
+    #p.add_argument_group("Statistics options", 
+    #                      "Options for calculating statistics.")
     default_fwhms = ['0.5','0.2','0.1']
-    group.add_argument("--stats-kernels", dest="stats_kernels",
+    p.add_argument("--stats-kernels", dest="stats_kernels",
                        type=','.split, default=[0.5,0.2,0.1],
                        help="comma separated list of blurring kernels for analysis. Default is: %s" % ','.join(default_fwhms))
+    return p
 
 
-def addRegistrationChainArgumentGroup(parser):
-    group = parser.add_argument_group("Registration chain options",
-                        "Options for processing longitudinal data.")
+
+
+def chain_parser():
+    p = ArgParser(add_help=False)
+    #p.add_argument("Registration chain options",
+    #               "Options for processing longitudinal data.")
 #    addGeneralRegistrationArguments(group)
-    group.add_argument("--csv-file", dest="csv_file",
-                       type=str, required=True,
-                       help="The spreadsheet with information about your input data. "
-                            "For the registration chain you are required to have the "
-                            "following columns in your csv file: \" subject_id\", "
-                            "\"timepoint\", and \"filename\". Optionally you can have "
-                            "a column called \"is_common\" that indicates that a scan "
-                            "is to be used for the common time point registration"
-                            "using a 1, and 0 otherwise.")
-    group.add_argument("--common-time-point", dest="common_time_point",
-                       type=int, default=None,
-                       help="The time point at which the inter-subject registration will be "
-                            "performed. I.e., the time point that will link the subjects together. "
-                            "If you want to use the last time point from each of your input files, "
-                            "(they might differ per input file) specify -1. If the common time "
-                            "is not specified, the assumption is that the spreadsheet contains "
-                            "the mapping using the \"is_common\" column. [Default = %(default)s]")
-    group.add_argument("--common-time-point-name", dest="common_time_point_name",
-                       type=str, default="common", 
-                       help="Option to specify a name for the common time point. This is useful for the "
-                            "creation of more readable output file names. Default is \"common\". Note "
-                            "that the common time point is the one created by an iterative group-wise " 
-                            "registration (inter-subject).")
+    p.add_argument("--csv-file", dest="csv_file",
+                   type=str, required=True,
+                   help="The spreadsheet with information about your input data. "
+                        "For the registration chain you are required to have the "
+                        "following columns in your csv file: \" subject_id\", "
+                        "\"timepoint\", and \"filename\". Optionally you can have "
+                        "a column called \"is_common\" that indicates that a scan "
+                        "is to be used for the common time point registration "
+                        "using a 1, and 0 otherwise.")
+    p.add_argument("--common-time-point", dest="common_time_point",
+                   type=int, default=None,
+                   help="The time point at which the inter-subject registration will be "
+                        "performed. I.e., the time point that will link the subjects together. "
+                        "If you want to use the last time point from each of your input files, "
+                        "(they might differ per input file) specify -1. If the common time "
+                        "is not specified, the assumption is that the spreadsheet contains "
+                        "the mapping using the \"is_common\" column. [Default = %(default)s]")
+    p.add_argument("--common-time-point-name", dest="common_time_point_name",
+                   type=str, default="common", 
+                   help="Option to specify a name for the common time point. This is useful for the "                   "creation of more readable output file names. Default is \"common\". Note "                     "that the common time point is the one created by an iterative group-wise "                     "registration (inter-subject).")
     #TODO: add information about the pride of models to the code in such a way that it 
     # is reflected on GitHub
-    group.add_argument("--pride-of-models", dest="pride_of_models",
-                       type=str, default=None,
-                       help="Specify the top level directory of the \"pride\" of models. "
-                       "The idea is that you might want to use different initial models for "
-                       "the time points in your data. [Default = %(default)s]")
-
-
-core_pieces = [(addApplicationArgumentGroup, 'application'),
-               (addExecutorArgumentGroup,    'execution')]
+    p.add_argument("--pride-of-models", dest="pride_of_models",
+                   type=str, default=None,
+                   help="Specify the top level directory of the \"pride\" of models. "
+                   "The idea is that you might want to use different initial models for "
+                   "the time points in your data. [Default = %(default)s]")
+    return p
 
 # TODO: probably doesn't belong here ... do we need to move them again to the 
 # modules where complementary code is?
-def addLSQ12ArgumentGroup():
-    def f(parser):
-        """option group for the command line argument parser"""
-        group = parser.add_argument_group("LSQ12 registration options",
-                            "Options for performing a pairwise, affine registration")
-        group.add_argument("--lsq12-max-pairs", dest="lsq12_max_pairs",
-                           type=nullable_int, default=25,
-                           help="Maximum number of pairs to register together ('None' implies all pairs).  [Default = %(default)s]")
-        group.add_argument("--lsq12-likefile", dest="lsq12_likeFile",
-                           type=str, default=None,
-                           help="Can optionally specify a like file for resampling at the end of pairwise "
-                           "alignment. Default is None, which means that the input file will be used. [Default = %(default)s]")
-        group.add_argument("--lsq12-subject-matter", dest="lsq12_subject_matter",
-                           type=str, default=None,
-                           help="Can specify the subject matter for the pipeline. This will set the parameters "
-                           "for the 12 parameter alignment based on the subject matter rather than the file "
-                           "resolution. Currently supported option is: \"mousebrain\". [Default = %(default)s].")
-        group.add_argument("--lsq12-protocol", dest="lsq12_protocol",
-                           type=str, default=None,
-                           help="Can optionally specify a registration protocol that is different from defaults. "
-                           "Parameters must be specified as in the following example: \n"
-                           "applications_testing/test_data/minctracc_example_linear_protocol.csv \n"
-                           "[Default = %(default)s].")
-        parser.add_argument_group(group)
-    return f
+def addLSQ12ArgumentGroup(parser):
+    """option group for the command line argument parser"""
+    group = parser.add_argument_group("LSQ12 registration options",
+                                      "Options for performing a pairwise, affine registration")
+    group.add_argument("--lsq12-max-pairs", dest="lsq12_max_pairs",
+                       type=nullable_int, default=25,
+                       help="Maximum number of pairs to register together ('None' implies all pairs).  [Default = %(default)s]")
+    group.add_argument("--lsq12-likefile", dest="lsq12_likeFile",
+                       type=str, default=None,
+                       help="Can optionally specify a like file for resampling at the end of pairwise "
+                       "alignment. Default is None, which means that the input file will be used. [Default = %(default)s]")
+    group.add_argument("--lsq12-subject-matter", dest="lsq12_subject_matter",
+                       type=str, default=None,
+                       help="Can specify the subject matter for the pipeline. This will set the parameters "
+                       "for the 12 parameter alignment based on the subject matter rather than the file "
+                       "resolution. Currently supported option is: \"mousebrain\". [Default = %(default)s].")
+    group.add_argument("--lsq12-protocol", dest="lsq12_protocol",
+                       type=str, default=None,
+                       help="Can optionally specify a registration protocol that is different from defaults. "
+                       "Parameters must be specified as in the following example: \n"
+                       "applications_testing/test_data/minctracc_example_linear_protocol.csv \n"
+                       "[Default = %(default)s].")
+    return group
 
 
 #mbm_p = CompoundParser([Annotated(it=lsq6_p, prefix='lsq6', namespace="lsq6"), Annotated(it=lsq12_p, namespace="lsq12", prefix="lsq12", proc=Lsq12Conf)])
