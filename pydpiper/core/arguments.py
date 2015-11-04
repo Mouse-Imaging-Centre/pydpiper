@@ -100,7 +100,7 @@ def parse(parser, args):
                     if s.startswith("--"):
                         ss[ix] = "" + current_prefix + "-" + s[2:] # "" was "-"
                     else:
-                        raise NotImplementedError #("dunno what to do with %s" % s)
+                        raise NotImplementedError("sorry, I only understand flags starting with `--` at the moment, but got %s" % s)
                 new_a.option_strings = ss
                 g._add_action(new_a)
         elif isinstance(p, CompoundParser):
@@ -137,7 +137,7 @@ def parse(parser, args):
                     raise ValueError("Namespace field '%s' already in use" % q.namespace)
                 else:
                     # gross but how to write n-ary identity fn that behaves sensibly on single arg??
-                    current_ns.__dict__[q.namespace] = q.cast(**vars(ns)) if q.cast else ns
+                    current_ns.__dict__[q.namespace] = ns # q.cast(**vars(ns)) if q.cast else ns
                 go_2(q.parser, current_prefix=current_prefix + "-" + q.prefix, current_ns=ns)
                 # TODO current_ns or current_namespace or ns or namespace?
         else:
@@ -146,12 +146,13 @@ def parse(parser, args):
 
     main_ns = Namespace()
     go_2(parser, current_prefix="", current_ns=main_ns)
-    return(main_ns)
+    print(main_ns)
+    return main_ns
 
 def with_parser(p):
     return lambda args: parse(p, args)
 
-def addApplicationArgumentGroup(parser):
+def _mk_application_parser():
     """
     The arguments that all applications share:
     --pipeline-name
@@ -166,6 +167,7 @@ def addApplicationArgumentGroup(parser):
     --no-verbose
     files (left over arguments (0 or more is allowed)
     """
+    parser = ArgParser(add_help=False)
     group = parser.add_argument_group("General application options",
                                       "General options for all pydpiper applications.")
     group.add_argument("--restart", dest="restart", 
@@ -207,9 +209,11 @@ def addApplicationArgumentGroup(parser):
                         help='Files to process')
     return group
 
+application_parser = BaseParser(_mk_application_parser(), "application")
 
 
-def addExecutorArgumentGroup(parser, prefix=None):
+def addExecutorArgumentGroup():
+    parser = ArgParser(add_help=False)
     group = parser.add_argument_group("Executor options",
                         "Options controlling how and where the code is run.")
     group.add_argument("--uri-file", dest="urifile",
@@ -276,25 +280,30 @@ def addExecutorArgumentGroup(parser, prefix=None):
     group.add_argument("--default-job-mem", dest="default_job_mem",
                        type=float, default = 1.75,
                        help="Memory (in GB) to allocate to jobs which don't make a request. [Default=%(default)s]")
-    return group
+    return parser
 
-def addGeneralRegistrationArgumentGroup(parser):
-    group = parser.add_argument_group("General registration options",
-                                      "....")
-    group.add_argument("--input-space", dest="input_space",
-                       choices=['native', 'lsq6', 'lsq12'], default="native", 
-                       help="Option to specify space of input-files. Can be native (default), lsq6, lsq12. "
-                            "Native means that there is no prior formal alignent between the input files " 
-                            "yet. lsq6 means that the input files have been aligned using translations "
-                            "and rotations; the code will continue with a 12 parameter alignment. lsq12 " 
-                            "means that the input files are fully linearly aligned. Only non linear "
-                            "registrations are performed. [Default=%(default)s]")
-    group.add_argument("--resolution", dest="resolution",
-                       type=float, default=None,
-                       help="Specify the resolution at which you want the registration to be run. "
-                            "If not specified, the resolution of the target of your pipeline will "
-                            "be used. [Default=%(default)s]")
-    return group
+execution_parser = BaseParser(addExecutorArgumentGroup(), 'execution') # TODO: nomenclature
+
+def _mk_general_parser():
+    #group = parser.add_argument_group("General registration options",
+    #                                  "....")
+    p = ArgParser(add_help=False)
+    p.add_argument("--input-space", dest="input_space",
+                   choices=['native', 'lsq6', 'lsq12'], default="native", 
+                   help="Option to specify space of input-files. Can be native (default), lsq6, lsq12. "
+                        "Native means that there is no prior formal alignent between the input files "
+                        "yet. lsq6 means that the input files have been aligned using translations "
+                        "and rotations; the code will continue with a 12 parameter alignment. lsq12 "
+                        "means that the input files are fully linearly aligned. Only non linear "
+                        "registrations are performed. [Default=%(default)s]")
+    p.add_argument("--resolution", dest="resolution",
+                   type=float, default=None,
+                   help="Specify the resolution at which you want the registration to be run. "
+                        "If not specified, the resolution of the target of your pipeline will "
+                        "be used. [Default=%(default)s]")
+    return p
+
+general_parser = BaseParser(_mk_general_parser(), "general")
 
 # TODO: where should this live?
 class RegistrationConf(Atom):
@@ -302,10 +311,11 @@ class RegistrationConf(Atom):
     resolution  = Instance(float)
 
 
-def addLSQ6ArgumentGroup(parser):
+def addLSQ6ArgumentGroup():
     """
         standard options for the LSQ6 module
     """
+    parser = ArgParser(add_help=False)
     group = parser.add_argument_group("LSQ6-registration options", "Options for performing a 6 parameter (rigid) registration.")
     parser.set_defaults(lsq6_method="lsq6_large_rotations")
     parser.set_defaults(nuc=True)
@@ -409,14 +419,16 @@ def addLSQ6ArgumentGroup(parser):
                        "the 6 parameter minctracc call. Parameters must be specified as in the following \n"
                        "example: applications_testing/test_data/minctracc_example_linear_protocol.csv \n"
                        "[Default = %(default)s].")
-    return group
+    return parser
+
+lsq6_parser = BaseParser(addLSQ6ArgumentGroup(), "LSQ6")
 
 # TODO: where should this live?
 class LSQ6Conf(Atom):
     lsq6_method = Enum('lsq6_simple', 'lsq6_centre_estimation', 'lsq6_large_rotations')
     # more to be added...
 
-def stats_parser():
+def _mk_stats_parser():
     p = ArgParser(add_help=False)
     #p.add_argument_group("Statistics options", 
     #                      "Options for calculating statistics.")
@@ -426,10 +438,9 @@ def stats_parser():
                        help="comma separated list of blurring kernels for analysis. Default is: %s" % ','.join(default_fwhms))
     return p
 
+stats_parser = BaseParser(_mk_stats_parser(), "stats")
 
-
-
-def chain_parser():
+def _mk_chain_parser():
     p = ArgParser(add_help=False)
     #p.add_argument("Registration chain options",
     #               "Options for processing longitudinal data.")
@@ -463,35 +474,42 @@ def chain_parser():
                    "the time points in your data. [Default = %(default)s]")
     return p
 
+chain_parser = BaseParser(_mk_chain_parser(), "chain")
+
 # TODO: probably doesn't belong here ... do we need to move them again to the 
 # modules where complementary code is?
-def addLSQ12ArgumentGroup(parser):
-    """option group for the command line argument parser"""
-    group = parser.add_argument_group("LSQ12 registration options",
-                                      "Options for performing a pairwise, affine registration")
-    group.add_argument("--lsq12-max-pairs", dest="lsq12_max_pairs",
-                       type=nullable_int, default=25,
-                       help="Maximum number of pairs to register together ('None' implies all pairs).  [Default = %(default)s]")
-    group.add_argument("--lsq12-likefile", dest="lsq12_likeFile",
-                       type=str, default=None,
-                       help="Can optionally specify a like file for resampling at the end of pairwise "
-                       "alignment. Default is None, which means that the input file will be used. [Default = %(default)s]")
-    group.add_argument("--lsq12-subject-matter", dest="lsq12_subject_matter",
-                       type=str, default=None,
-                       help="Can specify the subject matter for the pipeline. This will set the parameters "
-                       "for the 12 parameter alignment based on the subject matter rather than the file "
-                       "resolution. Currently supported option is: \"mousebrain\". [Default = %(default)s].")
-    group.add_argument("--lsq12-protocol", dest="lsq12_protocol",
-                       type=str, default=None,
-                       help="Can optionally specify a registration protocol that is different from defaults. "
-                       "Parameters must be specified as in the following example: \n"
-                       "applications_testing/test_data/minctracc_example_linear_protocol.csv \n"
-                       "[Default = %(default)s].")
-    return group
+def _mk_lsq12_parser():
+    p = ArgParser(add_help=False)
+    #group = parser.add_argument_group("LSQ12 registration options",
+    #                                  "Options for performing a pairwise, affine registration")
+    p.add_argument("--lsq12-max-pairs", dest="lsq12_max_pairs",
+                   type=nullable_int, default=25,
+                   help="Maximum number of pairs to register together ('None' implies all pairs).  [Default = %(default)s]")
+    p.add_argument("--lsq12-likefile", dest="lsq12_likeFile",
+                   type=str, default=None,
+                   help="Can optionally specify a like file for resampling at the end of pairwise "
+                   "alignment. Default is None, which means that the input file will be used. [Default = %(default)s]")
+    p.add_argument("--lsq12-subject-matter", dest="lsq12_subject_matter",
+                   type=str, default=None,
+                   help="Can specify the subject matter for the pipeline. This will set the parameters "
+                        "for the 12 parameter alignment based on the subject matter rather than the file "
+                        "resolution. Currently supported option is: \"mousebrain\". [Default = %(default)s].")
+    p.add_argument("--lsq12-protocol", dest="lsq12_protocol",
+                   type=str, default=None,
+                   help="Can optionally specify a registration protocol that is different from defaults. "
+                        "Parameters must be specified as in the following example: \n"
+                        "applications_testing/test_data/minctracc_example_linear_protocol.csv \n"
+                        "[Default = %(default)s].")
+    return p
+
+lsq12_parser = BaseParser(_mk_lsq12_parser(), "LSQ12")
 
 
-#mbm_p = CompoundParser([Annotated(it=lsq6_p, prefix='lsq6', namespace="lsq6"), Annotated(it=lsq12_p, namespace="lsq12", prefix="lsq12", proc=Lsq12Conf)])
-#two_mbms = CompoundParser([Annotated(it=mbm_p, prefix="mbm1", namespace="mbm1"), Annotated(it=mbm_p, prefix="mbm2")])  #, namespace="mbm2")])
-#four_mbms = CompoundParser([Annotated(it=two_mbms, prefix="first-two-mbms", namespace="first-two"), Annotated(it=two_mbms, prefix="next-two-mbms", namespace="next-two")])
+
+#FIXME: move to test/
+#mbm_p = CompoundParser([AnnotatedParser(parser=lsq6_parser, prefix='lsq6', namespace="lsq6"), AnnotatedParser(parser=lsq12_parser, namespace="lsq12", prefix="lsq12")])
+#two_mbms = CompoundParser([AnnotatedParser(parser=mbm_p, prefix="mbm1", namespace="mbm1"), AnnotatedParser(parser=mbm_p, prefix="mbm2")])  #, namespace="mbm2")])
+#four_mbms = CompoundParser([AnnotatedParser(parser=two_mbms, prefix="first-two-mbms", namespace="first-two"), AnnotatedParser(parser=two_mbms, prefix="next-two-mbms", namespace="next-two")])
 #result = with_parser(four_mbms)(["--first-two-mbms-mbm1-lsq12-max-pairs", "10"]) #(['--lsq6-rotation-interval=30'])
 
+#print(result)
