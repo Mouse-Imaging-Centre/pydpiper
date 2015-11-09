@@ -100,7 +100,7 @@ def parse(parser, args):
                     if s.startswith("--"):
                         ss[ix] = "" + current_prefix + "-" + s[2:] # "" was "-"
                     else:
-                        raise NotImplementedError #("dunno what to do with %s" % s)
+                        raise NotImplementedError("sorry, I only understand flags starting with `--` at the moment, but got %s" % s)
                 new_a.option_strings = ss
                 g._add_action(new_a)
         elif isinstance(p, CompoundParser):
@@ -137,7 +137,7 @@ def parse(parser, args):
                     raise ValueError("Namespace field '%s' already in use" % q.namespace)
                 else:
                     # gross but how to write n-ary identity fn that behaves sensibly on single arg??
-                    current_ns.__dict__[q.namespace] = q.cast(**vars(ns)) if q.cast else ns
+                    current_ns.__dict__[q.namespace] = ns # q.cast(**vars(ns)) if q.cast else ns
                 go_2(q.parser, current_prefix=current_prefix + "-" + q.prefix, current_ns=ns)
                 # TODO current_ns or current_namespace or ns or namespace?
         else:
@@ -146,13 +146,12 @@ def parse(parser, args):
 
     main_ns = Namespace()
     go_2(parser, current_prefix="", current_ns=main_ns)
-    return(main_ns)
+    return main_ns
 
 def with_parser(p):
     return lambda args: parse(p, args)
 
-def application_parser():
-    p = ArgParser(add_help=False)
+def _mk_application_parser():
     """
     The arguments that all applications share:
     --pipeline-name
@@ -167,15 +166,18 @@ def application_parser():
     --no-verbose
     files (left over arguments (0 or more is allowed)
     """
+    p = ArgParser(add_help=False)
+    #group = parser.add_argument_group("General application options",
+    #                                  "General options for all pydpiper applications.")
     p.add_argument("--restart", dest="restart", 
-                   action="store_false", default=True,
-                   help="Restart pipeline using backup files. [default = %(default)s]")
+                       action="store_false", default=True,
+                       help="Restart pipeline using backup files. [default = %(default)s]")
     p.add_argument("--pipeline-name", dest="pipeline_name", type=str,
-                   default=time.strftime("pipeline-%d-%m-%Y-at-%H-%m-%S"),
-                   help="Name of pipeline and prefix for models.")
+                       default=time.strftime("pipeline-%d-%m-%Y-at-%H-%m-%S"),
+                       help="Name of pipeline and prefix for models.")
 
     p.add_argument("--no-restart", dest="restart", 
-                    action="store_false", help="Opposite of --restart")
+                        action="store_false", help="Opposite of --restart")
     # TODO instead of prefixing all subdirectories (logs, backups, processed, ...)
     # with the pipeline name/date, we could create one identifying directory
     # and put these other directories inside
@@ -200,97 +202,107 @@ def application_parser():
                    action="store_true",
                    help="Be verbose in what is printed to the screen [default = %(default)s]")
     p.add_argument("--no-verbose", dest="verbose",
-                   action="store_false",
+                  action="store_false",
                    help="Opposite of --verbose [default]")
     p.add_argument("files", type=str, nargs='*', metavar='file',
-                    help='Files to process')
+                   help='Files to process')
     return p
 
+application_parser = BaseParser(_mk_application_parser(), "application")
 
-def executor_parser():
-    p = ArgParser(add_help=False)
-    p.add_argument("--uri-file", dest="urifile",
-                   type=str, default=None,
-                   help="Location for uri file if NameServer is not used. If not specified, default is current working directory.")
-    p.add_argument("--use-ns", dest="use_ns",
-                   action="store_true",
-                   help="Use the Pyro NameServer to store object locations. Currently a Pyro nameserver must be started separately for this to work.")
-    p.add_argument("--latency-tolerance", dest="latency_tolerance",
-                   type=float, default=15.0,
-                   help="Allowed grace period by which an executor may miss a heartbeat tick before being considered failed [Default = %(default)s.")
-    p.add_argument("--num-executors", dest="num_exec", 
-                   type=int, default=-1, 
-                   help="Number of independent executors to launch. [Default = %(default)s. Code will not run without an explicit number specified.]")
-    p.add_argument("--max-failed-executors", dest="max_failed_executors",
-                  type=int, default=2,
-                  help="Maximum number of failed executors before we stop relaunching. [Default = %(default)s]")
+
+def _mk_execution_parser():
+    parser = ArgParser(add_help=False)
+    group = parser.add_argument_group("Executor options",
+                        "Options controlling how and where the code is run.")
+    group.add_argument("--uri-file", dest="urifile",
+                       type=str, default=None,
+                       help="Location for uri file if NameServer is not used. If not specified, default is current working directory.")
+    group.add_argument("--use-ns", dest="use_ns",
+                       action="store_true",
+                       help="Use the Pyro NameServer to store object locations. Currently a Pyro nameserver must be started separately for this to work.")
+    group.add_argument("--latency-tolerance", dest="latency_tolerance",
+                       type=float, default=15.0,
+                       help="Allowed grace period by which an executor may miss a heartbeat tick before being considered failed [Default = %(default)s.")
+    group.add_argument("--num-executors", dest="num_exec", 
+                       type=int, default=-1, 
+                       help="Number of independent executors to launch. [Default = %(default)s. Code will not run without an explicit number specified.]")
+    group.add_argument("--max-failed-executors", dest="max_failed_executors",
+                      type=int, default=2,
+                      help="Maximum number of failed executors before we stop relaunching. [Default = %(default)s]")
     # TODO: add corresponding --monitor-heartbeats
-    p.add_argument("--no-monitor-heartbeats", dest="monitor_heartbeats",
-                  action="store_false",
-                  help="Don't assume executors have died if they don't check in with the server (NOTE: this can hang your pipeline if an executor crashes).")
-    p.add_argument("--time", dest="time", 
-                   type=str, default=None,
-                   help="Wall time to request for each server/executor in the format hh:mm:ss. Required only if --queue-type=pbs. Current default on PBS is 48:00:00.")
-    p.add_argument("--proc", dest="proc", 
-                   type=int, default=1,
-                   help="Number of processes per executor. Also sets max value for processor use per executor. [Default = %(default)s]")
-    p.add_argument("--mem", dest="mem", 
-                   type=float, default=6,
-                   help="Total amount of requested memory (in GB) for all processes the executor runs. [Default = %(default)s].")
-    p.add_argument("--pe", dest="pe",
-                   type=str, default=None,
-                   help="Name of the SGE pe, if any. [Default = %(default)s]")
-    p.add_argument("--greedy", dest="greedy",
-                   action="store_true",
-                   help="Request the full amount of RAM specified by --mem rather than the (lesser) amount needed by runnable jobs.  Always use this if your executor is assigned a full node.")
-    p.add_argument("--ppn", dest="ppn", 
-                   type=int, default=8,
-                   help="Number of processes per node. Used when --queue-type=pbs. [Default = %(default)s].")
-    p.add_argument("--queue-name", dest="queue_name", type=str, default=None,
-                   help="Name of the queue, e.g., all.q (MICe) or batch (SciNet)")
-    p.add_argument("--queue-type", dest="queue_type", type=str, default=None,
-                   help="""Queue type to submit jobs, i.e., "sge" or "pbs".  [Default = %(default)s]""")
-    p.add_argument("--queue-opts", dest="queue_opts",
-                   type=str, default="",
-                   help="A string of extra arguments/flags to pass to qsub. [Default = %(default)s]")
-    p.add_argument("--executor-start-delay", dest="executor_start_delay", type=int, default=180,
-                   help="Seconds before starting remote executors when running the server on the grid")
-    p.add_argument("--time-to-seppuku", dest="time_to_seppuku", 
-                   type=int, default=1,
-                   help="The number of minutes an executor is allowed to continuously sleep, i.e. wait for an available job, while active on a compute node/farm before it kills itself due to resource hogging. [Default = %(default)s]")
-    p.add_argument("--time-to-accept-jobs", dest="time_to_accept_jobs", 
-                   type=int,
-                   help="The number of minutes after which an executor will not accept new jobs anymore. This can be useful when running executors on a batch system where other (competing) jobs run for a limited amount of time. The executors can behave in a similar way by given them a rough end time. [Default = %(default)s]")
-    p.add_argument('--local', dest="local", action='store_true', help="Don't submit anything to any specified queueing system but instead run as a server/executor")
-    p.add_argument("--config-file", type=str, metavar='config_file', is_config_file=True,
-                   required=False, help='Config file location')
-    p.add_argument("--prologue-file", type=str, metavar='file',
-                   help="Location of a shell script to inline into PBS submit script to set paths, load modules, etc.")
-    p.add_argument("--min-walltime", dest="min_walltime", type=int, default = 0,
-                   help="Min walltime (s) allowed by the queuing system [Default = %(default)s]")
-    p.add_argument("--max-walltime", dest="max_walltime", type=int, default = None,
-                   help="Max walltime (s) allowed for jobs on the queuing system, or infinite if None [Default = %(default)s]")
-    p.add_argument("--default-job-mem", dest="default_job_mem",
-                   type=float, default = 1.75,
-                   help="Memory (in GB) to allocate to jobs which don't make a request. [Default=%(default)s]")
-    return p
+    group.add_argument("--no-monitor-heartbeats", dest="monitor_heartbeats",
+                      action="store_false",
+                      help="Don't assume executors have died if they don't check in with the server (NOTE: this can hang your pipeline if an executor crashes).")
+    group.add_argument("--time", dest="time", 
+                       type=str, default=None,
+                       help="Wall time to request for each server/executor in the format hh:mm:ss. Required only if --queue-type=pbs. Current default on PBS is 48:00:00.")
+    group.add_argument("--proc", dest="proc", 
+                       type=int, default=1,
+                       help="Number of processes per executor. Also sets max value for processor use per executor. [Default = %(default)s]")
+    group.add_argument("--mem", dest="mem", 
+                       type=float, default=6,
+                       help="Total amount of requested memory (in GB) for all processes the executor runs. [Default = %(default)s].")
+    group.add_argument("--pe", dest="pe",
+                       type=str, default=None,
+                       help="Name of the SGE pe, if any. [Default = %(default)s]")
+    group.add_argument("--greedy", dest="greedy",
+                       action="store_true",
+                       help="Request the full amount of RAM specified by --mem rather than the (lesser) amount needed by runnable jobs.  Always use this if your executor is assigned a full node.")
+    group.add_argument("--ppn", dest="ppn", 
+                       type=int, default=8,
+                       help="Number of processes per node. Used when --queue-type=pbs. [Default = %(default)s].")
+    group.add_argument("--queue-name", dest="queue_name", type=str, default=None,
+                       help="Name of the queue, e.g., all.q (MICe) or batch (SciNet)")
+    group.add_argument("--queue-type", dest="queue_type", type=str, default=None,
+                       help="""Queue type to submit jobs, i.e., "sge" or "pbs".  [Default = %(default)s]""")
+    group.add_argument("--queue-opts", dest="queue_opts",
+                       type=str, default="",
+                       help="A string of extra arguments/flags to pass to qsub. [Default = %(default)s]")
+    group.add_argument("--executor-start-delay", dest="executor_start_delay", type=int, default=180,
+                       help="Seconds before starting remote executors when running the server on the grid")
+    group.add_argument("--time-to-seppuku", dest="time_to_seppuku", 
+                       type=int, default=1,
+                       help="The number of minutes an executor is allowed to continuously sleep, i.e. wait for an available job, while active on a compute node/farm before it kills itself due to resource hogging. [Default = %(default)s]")
+    group.add_argument("--time-to-accept-jobs", dest="time_to_accept_jobs", 
+                       type=int,
+                       help="The number of minutes after which an executor will not accept new jobs anymore. This can be useful when running executors on a batch system where other (competing) jobs run for a limited amount of time. The executors can behave in a similar way by given them a rough end time. [Default = %(default)s]")
+    group.add_argument('--local', dest="local", action='store_true', help="Don't submit anything to any specified queueing system but instead run as a server/executor")
+    group.add_argument("--config-file", type=str, metavar='config_file', is_config_file=True,
+                       required=False, help='Config file location')
+    group.add_argument("--prologue-file", type=str, metavar='file',
+                       help="Location of a shell script to inline into PBS submit script to set paths, load modules, etc.")
+    group.add_argument("--min-walltime", dest="min_walltime", type=int, default = 0,
+            help="Min walltime (s) allowed by the queuing system [Default = %(default)s]")
+    group.add_argument("--max-walltime", dest="max_walltime", type=int, default = None,
+            help="Max walltime (s) allowed for jobs on the queuing system, or infinite if None [Default = %(default)s]")
+    group.add_argument("--default-job-mem", dest="default_job_mem",
+                       type=float, default = 1.75,
+                       help="Memory (in GB) to allocate to jobs which don't make a request. [Default=%(default)s]")
+    return parser
 
-def general_parser():
+execution_parser = BaseParser(_mk_execution_parser(), 'execution')
+
+def _mk_registration_parser():
+    #group = parser.add_argument_group("General registration options",
+    #                                  "....")
     p = ArgParser(add_help=False)
     p.add_argument("--input-space", dest="input_space",
-                       choices=['native', 'lsq6', 'lsq12'], default="native", 
-                       help="Option to specify space of input-files. Can be native (default), lsq6, lsq12. "
-                            "Native means that there is no prior formal alignent between the input files " 
-                            "yet. lsq6 means that the input files have been aligned using translations "
-                            "and rotations; the code will continue with a 12 parameter alignment. lsq12 " 
-                            "means that the input files are fully linearly aligned. Only non linear "
-                            "registrations are performed. [Default=%(default)s]")
+                   choices=['native', 'lsq6', 'lsq12'], default="native", 
+                   help="Option to specify space of input-files. Can be native (default), lsq6, lsq12. "
+                        "Native means that there is no prior formal alignent between the input files "
+                        "yet. lsq6 means that the input files have been aligned using translations "
+                        "and rotations; the code will continue with a 12 parameter alignment. lsq12 "
+                        "means that the input files are fully linearly aligned. Only non linear "
+                        "registrations are performed. [Default=%(default)s]")
     p.add_argument("--resolution", dest="resolution",
-                       type=float, default=None,
-                       help="Specify the resolution at which you want the registration to be run. "
-                            "If not specified, the resolution of the target of your pipeline will "
-                            "be used. [Default=%(default)s]")
+                   type=float, default=None,
+                   help="Specify the resolution at which you want the registration to be run. "
+                        "If not specified, the resolution of the target of your pipeline will "
+                        "be used. [Default=%(default)s]")
     return p
+
+registration_parser = BaseParser(_mk_registration_parser(), "general")
 
 # TODO: where should this live?
 class RegistrationConf(Atom):
@@ -298,7 +310,7 @@ class RegistrationConf(Atom):
     resolution  = Instance(float)
 
 
-def lsq6_parser():
+def _mk_lsq6_parser():
     p = ArgParser(add_help=False)
     p.set_defaults(lsq6_method="lsq6_large_rotations")
     p.set_defaults(nuc=True)
@@ -337,6 +349,7 @@ def lsq6_parser():
     #                   "in the same orientation/location as the regular input files.  They will be used for "
     #                   "for the 6 parameter alignment. The transformations will then be used to transform "
     #                   "the regular input files, with which the pipeline will continue.")
+
     p.add_argument("--lsq6-simple", dest="lsq6_method",
                    action="store_const", const="lsq6_simple",
                    help="Run a 6 parameter alignment assuming that the input files are roughly "
@@ -404,12 +417,14 @@ def lsq6_parser():
                    "[Default = %(default)s].")
     return p
 
+lsq6_parser = BaseParser(_mk_lsq6_parser(), "LSQ6")
+
 # TODO: where should this live?
 class LSQ6Conf(Atom):
     lsq6_method = Enum('lsq6_simple', 'lsq6_centre_estimation', 'lsq6_large_rotations')
     # more to be added...
 
-def stats_parser():
+def _mk_stats_parser():
     p = ArgParser(add_help=False)
     #p.add_argument_group("Statistics options", 
     #                      "Options for calculating statistics.")
@@ -419,10 +434,9 @@ def stats_parser():
                        help="comma separated list of blurring kernels for analysis. Default is: %s" % ','.join(default_fwhms))
     return p
 
+stats_parser = BaseParser(_mk_stats_parser(), "stats")
 
-
-
-def chain_parser():
+def _mk_chain_parser():
     p = ArgParser(add_help=False)
     #p.add_argument("Registration chain options",
     #               "Options for processing longitudinal data.")
@@ -456,33 +470,40 @@ def chain_parser():
                    "the time points in your data. [Default = %(default)s]")
     return p
 
+chain_parser = BaseParser(_mk_chain_parser(), "chain")
+
 # TODO: probably doesn't belong here ... do we need to move them again to the 
 # modules where complementary code is?
-def lsq12_parser():
+def _mk_lsq12_parser():
     p = ArgParser(add_help=False)
+    #group = parser.add_argument_group("LSQ12 registration options",
+    #                                  "Options for performing a pairwise, affine registration")
     p.add_argument("--lsq12-max-pairs", dest="lsq12_max_pairs",
                    type=nullable_int, default=25,
                    help="Maximum number of pairs to register together ('None' implies all pairs).  [Default = %(default)s]")
     p.add_argument("--lsq12-likefile", dest="lsq12_likeFile",
-                       type=str, default=None,
-                       help="Can optionally specify a like file for resampling at the end of pairwise "
-                       "alignment. Default is None, which means that the input file will be used. [Default = %(default)s]")
+                   type=str, default=None,
+                   help="Can optionally specify a like file for resampling at the end of pairwise "
+                   "alignment. Default is None, which means that the input file will be used. [Default = %(default)s]")
     p.add_argument("--lsq12-subject-matter", dest="lsq12_subject_matter",
                    type=str, default=None,
                    help="Can specify the subject matter for the pipeline. This will set the parameters "
-                   "for the 12 parameter alignment based on the subject matter rather than the file "
-                   "resolution. Currently supported option is: \"mousebrain\". [Default = %(default)s].")
+                        "for the 12 parameter alignment based on the subject matter rather than the file "
+                        "resolution. Currently supported option is: \"mousebrain\". [Default = %(default)s].")
     p.add_argument("--lsq12-protocol", dest="lsq12_protocol",
                    type=str, default=None,
                    help="Can optionally specify a registration protocol that is different from defaults. "
-                   "Parameters must be specified as in the following example: \n"
-                   "applications_testing/test_data/minctracc_example_linear_protocol.csv \n"
-                   "[Default = %(default)s].")
+                        "Parameters must be specified as in the following example: \n"
+                        "applications_testing/test_data/minctracc_example_linear_protocol.csv \n"
+                        "[Default = %(default)s].")
     return p
 
+lsq12_parser = BaseParser(_mk_lsq12_parser(), "LSQ12")
 
-#mbm_p = CompoundParser([Annotated(it=lsq6_p, prefix='lsq6', namespace="lsq6"), Annotated(it=lsq12_p, namespace="lsq12", prefix="lsq12", proc=Lsq12Conf)])
-#two_mbms = CompoundParser([Annotated(it=mbm_p, prefix="mbm1", namespace="mbm1"), Annotated(it=mbm_p, prefix="mbm2")])  #, namespace="mbm2")])
-#four_mbms = CompoundParser([Annotated(it=two_mbms, prefix="first-two-mbms", namespace="first-two"), Annotated(it=two_mbms, prefix="next-two-mbms", namespace="next-two")])
+#FIXME: move to test/
+#mbm_p = CompoundParser([AnnotatedParser(parser=lsq6_parser, prefix='lsq6', namespace="lsq6"), AnnotatedParser(parser=lsq12_parser, namespace="lsq12", prefix="lsq12")])
+#two_mbms = CompoundParser([AnnotatedParser(parser=mbm_p, prefix="mbm1", namespace="mbm1"), AnnotatedParser(parser=mbm_p, prefix="mbm2")])  #, namespace="mbm2")])
+#four_mbms = CompoundParser([AnnotatedParser(parser=two_mbms, prefix="first-two-mbms", namespace="first-two"), AnnotatedParser(parser=two_mbms, prefix="next-two-mbms", namespace="next-two")])
 #result = with_parser(four_mbms)(["--first-two-mbms-mbm1-lsq12-max-pairs", "10"]) #(['--lsq6-rotation-interval=30'])
 
+#print(result)
