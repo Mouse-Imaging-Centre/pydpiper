@@ -155,46 +155,107 @@ def inormalize(src, conf): # mnc, INormalizeConf -> result(..., mnc)
     return Result(stages=Stages([cmd]), output=out)
 
 class RotationalMinctraccConf(Atom):
-    blur                = Instance(float)
+    blur_factor              = Instance((int,float))
     # these could also be floats, but then ints will be converted, hence printed with decimals ...
     # TODO we could subclass `Instance` to add a `default` field instead of using `factory`/`args`/...
-    resample_step       = Instance((int, float)) # can use `factory=lambda : ...` to set default
-    registration_step   = Instance((int, float))
-    w_translations      = Instance((int, float))
-    rotational_range    = Instance((int, float))
-    rotational_interval = Instance((int, float))
-    temp_dir            = Str("/dev/shm/")
+    resample_step_factor     = Instance((int, float)) # can use `factory=lambda : ...` to set default
+    registration_step_factor = Instance((int, float))
+    w_translations_factor    = Instance((int, float))
+    rotational_range         = Instance((int, float))
+    rotational_interval      = Instance((int, float))
+    temp_dir                 = Str("/dev/shm/")
 
 # again, should this be folded into the class?  One could argue that doing so might be dangerous if
 # one forgets to set a certain variable, but one might also forget to override a certain value from the default conf
 # and overriding class defaults can actually be done in a MORE functional-seeming way than copying/setting values
 # (without hacking on __dict__, etc.)
 default_rotational_minctracc_conf = RotationalMinctraccConf(
-  blur=0.56,
-  resample_step=4,
-  registration_step=10,
-  w_translations=8,
+  blur_factor=10,
+  resample_step_factor=4,
+  registration_step_factor=10,
+  w_translations_factor=8,
   rotational_range=50,
   rotational_interval=10,
   temp_dir="/dev/shm")
 
+def get_rotational_minctracc_conf(resolution, rotation_params=None, rotation_range=None,
+                                  rotation_interval=None, rotation_tmp_dir=None,
+                                  subject_matter=None):
+    """
+    The parameters for rotational minctracc are set based on the resolution of the input files.
+    If not explicitly specified, most parameters are muliples of that resolution.
+    
+    resolution - int/float indicating the resolution of the input files
+    rotation_params - a list with 4 integer elements indicating multiples of the resolution: 
+                     [blur factor,
+                     resample factor,
+                     registration factor,
+                     w_translation factor]
+     
+    """
+
 #FIXME consistently require that masks are explicitely added to inputs array (or not?)
-def rotational_minctracc(source, target, conf):
-    """Calls rotational_minctracc.py"""
+def rotational_minctracc(source, target, conf, resolution, mask=None):
+    """
+    source     -- MincAtom (do not have to be blurred)
+    target     -- MincAtom (do not have to be blurred)
+    conf       -- RotationalMinctraccConf
+    resolution -- (float) resolution at which the registration happens, used
+                  to determine all parameters for rotation_minctracc 
+    mask       -- MincAtom (optional argument to specify a mask)
+    
+    This function runs a rotational_minctracc.py call on its two input 
+    files.  That program performs a 6 parameter (rigid) registration
+    by doing a brute force search in the x,y,z rotation space.  Normally
+    the input files have unknown orientation.  
+        
+    There are a number of parameters that have to be set and this 
+    will be done using factors that depend on the resolution of the
+    input files. Here is the list:
+        
+    argument to be set   --  default (factor)  -- (for 56 micron, translates to)
+            blur                    10                    (560 micron) 
+        resample stepsize            4                    (224 micron)
+      registration stepsize         10                    (560 micron)
+        w_translations               8                    (448 micron)
+         
+    Specifying -1 for the blur argument will result in retrieving an unblurred file.
+    The two other parameters that can be set are (in degrees) have defaults:
+        
+        rotational range          50
+        rotational interval       10
+        
+    Whether or not a mask will be used is based on the presence of a mask 
+    in the target file (target.mask).  Alternatively, a mask can be specified using the
+    mask argument.
+    """
+    p = Stages()
+    
+    # convert the factors into units appropriate for rotational_minctracc (i.e., mm)
+    blur_stepsize          = resolution * conf.blur_factor
+    resamepl_stepsize      = resolution * conf.resample_step_factor   
+    registration_stepsize  = resolution * conf.registration_step_factor
+    w_translation_stepsize = resolution * conf.w_translations_factor 
+    
+    # blur input files
+    blurred_src = p.defer(mincblur(source, blur_stepsize))
+    blurred_dest = p.defer(mincblur(target, blur_stepsize))
+    
     out = source.newname_with_suffix("_rotational_minctracc_FIXME")
     cmd = CmdStage(inputs = [source, target] + ([source.mask] if source.mask else []), outputs = [out],
         cmd = ["rotational_minctracc.py", 
                "-t", conf.temp_dir, 
-               "-w", str(conf.w_trans),
-               "-s", str(conf.resample_step),
-               "-g", str(conf.registration_step),
+               "-w", str(w_translation_stepsize),
+               "-s", str(resamepl_stepsize),
+               "-g", str(registration_stepsize),
                "-r", str(conf.rotational_range),
                "-i", str(conf.rotational_interval),
-               source.path,
-               target.path,
+               blurred_src.path,
+               blurred_dest.path,
                out.path,
                "/dev/null"] + (['-m', source.mask.path] if source.mask else []))
-    return Result(stages=Stages([cmd]), output=out)
+    p.defer([cmd])
+    return Result(stages=p, output=out)
 
 class MinctraccConf(Atom):
     step_sizes        = Tuple((int, float), default=None)
@@ -340,7 +401,6 @@ class SimilarityMetricConf(Atom):
     use_gradient_image = Bool(False)
 
 class MincANTSConf(Atom):
-    # FIXME open these parameters as (lists of) numbers, not strings
     iterations           = Str("100x100x100x150")
     transformation_model = Str("'Syn[0.1]'")
     regularization       = Str("'Gauss[2,1]'")
@@ -402,19 +462,9 @@ def mincANTS(source, target, conf, transform=None):
                                     xfm=xfm,
                                     resampled=resampled))
 
-# TODO: the same, but with optional (?) lsq6
-def lsq12_NLIN_build_model(imgs, initial_target, lsq12_conf, nlin_conf):
-    s = Stages()
+#def lsq12_NLIN_build_model(...):
+#    raise NotImplemented
 
-    # TODO consistent capitalization scheme for LSQ, NLIN cmds
-    lsq12_result = s.defer(lsq12_pairwise(imgs=imgs, conf=lsq12_conf))
-    nlin_result  = s.defer(nlin(imgs=[img.resampled for img in lsq12_result.xfms]), conf=nlin_conf, avg=lsq12_result.avg_img)
-
-    overall_xfms = map(lambda f, g: s.defer(concat([f, g])),
-                       lsq12_result.xfms, nlin_result.xfms)
-
-    return Result(stages=s, output=overall_xfms) # TODO: return more stuff?
-    
 #def NLIN_build_model(imgs, initial_target, reg_method, nlin_dir, confs):
 #    functions = { 'mincANTS'  : mincANTS_NLIN,
 #                  'minctracc' : minctracc_NLIN }
@@ -445,7 +495,7 @@ def mincANTS_NLIN_build_model(imgs, initial_target, nlin_dir, confs):
     return Result(stages=s, output=Registration(xfms=xfms, avg_img=avg, avg_imgs=avg_imgs))
 
 def LSQ12_NLIN(source, target, conf):
-    raise NotImplementedError
+    raise NotImplementedException
 
 def intrasubject_registrations(subj, conf): # Subject, lsq12_nlin_conf -> Result(..., (Registration)(xfms))
     """
@@ -560,7 +610,7 @@ MultilevelMinctraccConf = namedtuple('MultilevelMinctraccConf',
 
 MinctraccConf = namedtuple('MinctraccConf', ['transform_type', 'w_translations', 'w_rotations'])
 
-# TODO move LSQ12 stuff to an LSQ12 file??
+# TODO move LSQ12 stuff to an LSQ12 file
 LSQ12_default_conf = MultilevelMinctraccConf(transform_type='lsq12', resolution = NotImplemented,
   single_gen_confs = [])
 
@@ -698,7 +748,7 @@ def check_MINC_input_files(args):
                              "unique names for all input files.\n")
         seen.add(fileBase)
 
-def lsq6(imgs, target, lsq6_method,
+def lsq6(imgs, target, lsq6_method, resolution,
          rotation_tmp_dir=None, rotation_range=None, 
          rotation_interval=None, rotation_params=None):
     """
@@ -733,6 +783,7 @@ def lsq6(imgs, target, lsq6_method,
     #
     if lsq6_method == "lsq6_large_rotations":
         rotational_configuration = RotationalMinctraccConf()
+        
         # for mouse brains we have fixed parameters:
         #if rotation_params == "mousebrain":
             
@@ -753,7 +804,10 @@ def lsq6(imgs, target, lsq6_method,
 #
 #    return function(imgs=imgs, initial_target=initial_target, nlin_dir=nlin_dir, confs=confs)
 
-def lsq6_nuc_inorm(imgs, registration_targets, lsq6_method):
+def lsq6_nuc_inorm(imgs, registration_targets, lsq6_method,
+                   resolution,
+                   rotation_tmp_dir=None, rotation_range=None, 
+                   rotation_interval=None, rotation_params=None):
     """
     imgs                 -- a list of MincAtoms
     registration_targets -- instance of RegistrationTargets
@@ -775,7 +829,9 @@ def lsq6_nuc_inorm(imgs, registration_targets, lsq6_method):
     # 1) run the actual 6 parameter registration
     init_target = registration_targets.registration_standard if not registration_targets.registration_native \
                     else registration_targets.registration_native
-    source_imgs_to_lsq6_target = lsq6(imgs, init_target, lsq6_method)
+    source_imgs_to_lsq6_target = lsq6(imgs, init_target, lsq6_method, resolution,
+                                      rotation_tmp_dir, rotation_range, 
+                                      rotation_interval, rotation_params)
     
     # return Result(stages=s,
     #               output=XfmHandler(source=source,

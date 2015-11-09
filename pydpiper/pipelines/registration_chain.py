@@ -435,7 +435,7 @@ if __name__ == "__main__":
            AnnotatedParser(parser=BaseParser(general_parser(), "general"), namespace='general', cast=lambda x: RegistrationConf(**vars(x))),
            AnnotatedParser(parser=BaseParser(lsq6_parser(), "lsq6"), namespace='lsq6'),
            AnnotatedParser(parser=BaseParser(lsq12_parser(), "lsq12"), namespace='lsq12'), # should be MBM or build_model ...
-           #AnnotatedParser(parser=BaseParser(lsq12_parser(), "lsq12-second"), namespace='lsq12'),
+           #AnnotatedParser(parser=BaseParser(lsq12_parser(), "lsq12-second"), namespace='lsq12-second'),
            #addNLINArgumentGroup,
            AnnotatedParser(parser=BaseParser(chain_parser(), "chain"), namespace='chain', cast=ChainConf),
            AnnotatedParser(parser=BaseParser(stats_parser(), "stats"), namespace='stats', cast=None)])
