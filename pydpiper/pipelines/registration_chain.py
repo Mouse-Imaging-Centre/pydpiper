@@ -344,7 +344,12 @@ def parse_csv(rows, common_time_pt): # row iterator, int -> { subject_id(str) : 
         if s.intersubject_registration_time_pt is None:
             if common_time_pt is None:
                 raise TimePointError("no subject-specific or default inter-subject "
-                                     "time point provided for subject '%s'" % s_id)
+                                     "time point provided for subject '%s' " 
+                                     "You can use either the --common-time-point flag "
+                                     "to specify which time point you want to use, or "
+                                     "have a column in your csv called \'is_common\' "
+                                     "indicating with 0s and 1s which files to use "
+                                     "for the common time point." % s_id)
             elif common_time_pt in s.time_pt_dict.keys():
                 s.intersubject_registration_time_pt = common_time_pt
             elif common_time_pt == -1 or common_time_pt == "-1":
