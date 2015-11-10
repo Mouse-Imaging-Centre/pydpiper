@@ -156,7 +156,11 @@ def chain(options):
         # registration chain we probably want to have a function that returns the XfmHandlers
         # in a similar "shape" as pipeline_subject_info    
         lsq6_nuc_inorm(all_Minc_Atoms, registration_targets, options.lsq6.lsq6_method,
-                       options.registration.resolution)
+                       options.registration.resolution, 
+                       rotation_tmp_dir=options.lsq6.large_rotation_tmp_dir,
+                       rotation_range=options.lsq6.large_rotation_range,
+                       rotation_interval=options.lsq6.large_rotation_interval,
+                       rotation_params=options.lsq6.large_rotation_parameters)
         
         # TODO:
         # what should be done here is the LSQ6 registration, options:
@@ -443,8 +447,6 @@ if __name__ == "__main__":
     
     # TODO could abstract and then parametrize by prefix/ns ??
     options = parse(p, sys.argv[1:])
-    
-    print(options.stats.stats_kernels)
     
     # TODO: the registration resolution should be set somewhat outside
     # of any actual function? Maybe the right time to set this, is here

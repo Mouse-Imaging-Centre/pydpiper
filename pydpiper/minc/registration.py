@@ -207,7 +207,13 @@ def rotational_minctracc(source, target, conf, resolution, mask=None):
     This function runs a rotational_minctracc.py call on its two input 
     files.  That program performs a 6 parameter (rigid) registration
     by doing a brute force search in the x,y,z rotation space.  Normally
-    the input files have unknown orientation.  
+    the input files have unknown orientation.
+    
+    simplex -- this simplex will be set based on the resolution provided.
+               for the mouse brain we want it to be 1mm. We have mouse brain
+               files at either 0.056mm or 0.04mm resultion. For now we will
+               determine the value for the simplex by multiplying the 
+               resultion by 20.
         
     There are a number of parameters that have to be set and this 
     will be done using factors that depend on the resolution of the
@@ -229,8 +235,18 @@ def rotational_minctracc(source, target, conf, resolution, mask=None):
     in the target file (target.mask).  Alternatively, a mask can be specified using the
     mask argument.
     """
-    p = Stages()
+    # argument checking:
+    if not isinstance(source, MincAtom):
+        raise ValueError("The source input to rotation_minctracc is not a MincAtom.")
+    if not isinstance(target, MincAtom):
+        raise ValueError("The target input to rotation_minctracc is not a MincAtom.")
+    if not isinstance(conf, RotationalMinctraccConf):
+        raise ValueError("The configuration provided to rotational_minctracc is not a RotationalMinctraccConf")
+    if not isinstance(resolution, float):
+        raise ValueError("The resolution provided to rotational_minctracc is not a float value")
     
+    s = Stages()
+
     # convert the factors into units appropriate for rotational_minctracc (i.e., mm)
     blur_stepsize          = resolution * conf.blur_factor
     resamepl_stepsize      = resolution * conf.resample_step_factor   
@@ -238,9 +254,9 @@ def rotational_minctracc(source, target, conf, resolution, mask=None):
     w_translation_stepsize = resolution * conf.w_translations_factor 
     
     # blur input files
-    blurred_src = p.defer(mincblur(source, blur_stepsize))
-    blurred_dest = p.defer(mincblur(target, blur_stepsize))
-    
+    blurred_src = s.defer(mincblur(source, blur_stepsize))
+    blurred_dest = s.defer(mincblur(target, blur_stepsize))
+
     out = source.newname_with_suffix("_rotational_minctracc_FIXME")
     cmd = CmdStage(inputs = [source, target] + ([source.mask] if source.mask else []), outputs = [out],
         cmd = ["rotational_minctracc.py", 
@@ -250,12 +266,15 @@ def rotational_minctracc(source, target, conf, resolution, mask=None):
                "-g", str(registration_stepsize),
                "-r", str(conf.rotational_range),
                "-i", str(conf.rotational_interval),
+               "--simplex", str(resolution * 20),
                blurred_src.path,
                blurred_dest.path,
                out.path,
                "/dev/null"] + (['-m', source.mask.path] if source.mask else []))
-    p.defer([cmd])
-    return Result(stages=p, output=out)
+    print(cmd.render())
+    # add this command to the set of stages
+    s.update(Stages([cmd]))
+    return Result(stages=s, output=out)
 
 class MinctraccConf(Atom):
     step_sizes        = Tuple((int, float), default=None)
@@ -773,19 +792,47 @@ def lsq6(imgs, target, lsq6_method, resolution,
     if not isinstance(target, MincAtom):
         raise ValueError("The target arg for lsq6() is not an instance of MincAtom")
     
-    #functions = { 'lsq6_large_rotations'   : rotational_minctracc,
-    #              'lsq6_simple'            : multilevel_minctracc,
-    #              'lsq6_centre_estimation' : multilevel_minctracc}
-    #function  = functions[lsq6_method]
+    s = Stages()
+    xfms_to_target = []
     
     #
     # Calling rotational_minctracc
     #
     if lsq6_method == "lsq6_large_rotations":
-        rotational_configuration = RotationalMinctraccConf()
-        
+        rotational_configuration = default_rotational_minctracc_conf
+        resolution_for_rot = resolution
         # for mouse brains we have fixed parameters:
-        #if rotation_params == "mousebrain":
+        if rotation_params == "mousebrain":
+            # we want to set the parameters such that 
+            # blur          ->  560 micron (10 * resolution)
+            # resample step ->  224 micron ( 4 * resolution)
+            # registr. step ->  560 micron (10 * resolution)
+            # w_trans       ->  448 micron ( 8 * resolution)
+            # simplex       -> 1120 micron (20 * resolution)
+            # so we simply need to set the resolution to establish this:
+            resolution_for_rot = 0.056
+        else:
+            # use the parameters provided
+            if rotation_tmp_dir:
+                rotational_configuration.temp_dir = rotation_tmp_dir
+            if rotation_range:
+                rotational_configuration.rotational_range = rotation_range
+            if rotation_interval:
+                rotational_configuration.rotational_interval = rotation_interval
+            if rotation_params:
+                rotational_configuration.blur_factor              = float(rotation_params.split(',')[0])
+                rotational_configuration.resample_step_factor     = float(rotation_params.split(',')[1])
+                rotational_configuration.registration_step_factor = float(rotation_params.split(',')[2])
+                rotational_configuration.w_translations_factor    = float(rotation_params.split(',')[3])
+        
+        # now call rotational_minctracc on all input images 
+        mask = target.mask if target.mask else None
+        xfms_to_target = [s.defer(rotational_minctracc(img, target, \
+                                                       rotational_configuration,
+                                                       resolution_for_rot, mask)) \
+                          for img in imgs]
+
+        
             
     
     #large_rotation_tmp_dir
