@@ -90,6 +90,9 @@ def xfmconcat(xfms, name=None): # [xfm], ?str -> xfm
     """
     if len(xfms) == 0:
         raise ValueError("`xfmconcat` arg `xfms` was empty (can't concat zero files)")
+    # TODO: why is this option here? is there any use for it? Because
+    # if not, this would mean that you can mis-specify or mis-call this function
+    # and not know.
     elif len(xfms) == 1:
         return Result(stages=Stages(), output=xfms[0])
     else:
@@ -262,11 +265,11 @@ def rotational_minctracc(source, target, conf, resolution, mask=None):
     blurred_src = s.defer(mincblur(source, blur_stepsize))
     blurred_dest = s.defer(mincblur(target, blur_stepsize))
 
-    out = source.newname_with_suffix("_rotational_minctracc_FIXME")
+    out_xfm = source.newname_with_fn(lambda x: "%s_rotational_minctracc_to_%s" % (x, target.filename_wo_ext), ext='.xfm')
     # use the target mask if around, or overwrite this mask with the mask
     # that is explicitly provided:
     mask_for_command = target.mask if target.mask else mask
-    cmd = CmdStage(inputs = [source, target] + ([mask_for_command] if mask_for_command else []), outputs = [out],
+    cmd = CmdStage(inputs = [source, target] + ([mask_for_command] if mask_for_command else []), outputs = [out_xfm],
         cmd = ["rotational_minctracc.py", 
                "-t", conf.temp_dir, 
                "-w", str(w_translation_stepsize),
@@ -277,12 +280,11 @@ def rotational_minctracc(source, target, conf, resolution, mask=None):
                "--simplex", str(resolution * 20),
                blurred_src.path,
                blurred_dest.path,
-               out.path,
+               out_xfm.path,
                "/dev/null"] + (['-m', mask_for_command] if mask_for_command else []))
     # add this command to the set of stages
-    print(cmd.render())
     s.update(Stages([cmd]))
-    return Result(stages=s, output=out)
+    return Result(stages=s, output=out_xfm)
 
 class MinctraccConf(Atom):
     step_sizes        = Tuple((int, float), default=None)
@@ -827,6 +829,8 @@ def lsq6(imgs, target, lsq6_method, resolution,
     rotation_interval -- step size in degrees along range
     rotation_params   -- list of 4 values (or "mousebrain"), see rotational_minctracc for more info
     
+    Return: -- stages
+            -- list of transformations from input files to the target
     """
     # make sure all variables that are passed along are of the appropriate type:
     if not isinstance(imgs, list):
@@ -840,6 +844,9 @@ def lsq6(imgs, target, lsq6_method, resolution,
     s = Stages()
     xfms_to_target = []
     
+    ############################################################################
+    # alignment
+    ############################################################################
     #
     # Calling rotational_minctracc
     #
@@ -853,25 +860,22 @@ def lsq6(imgs, target, lsq6_method, resolution,
                                                        rotational_configuration,
                                                        resolution_for_rot)) \
                           for img in imgs]
-
-        
-            
+    #
+    # Center estimation
+    #
+    if lsq6_method == "lsq6_centre_estimation":
+        raise NotImplementedError("lsq6_centre_estimation is not implemented yet...")
+    #
+    # Simple lsq6 (files already roughly aligned)
+    #
+    if lsq6_method == "lsq6_simple":
+        raise NotImplementedError("lsq6_simple is not implemented yet...")
     
-    #large_rotation_tmp_dir
-    #large_rotation_parameters
-    #large_rotation_range
-    #large_rotation_interval
-    # type=str, default="10,4,10,8",
-    #                   help="Settings for the large rotation alignment. factor=factor based on smallest file "
-    #                   "resolution: 1) blur factor, 2) resample step size factor, 3) registration step size "
-    #                   "factor, 4) w_translations factor  ***** if you are working with mouse brain data "
-    #                   " the defaults do not have to be based on the file resolution; a default set of "
-    #                   " settings works for all mouse brain. In order to use those setting, specify: "
-    #                   "\"mousebrain\" as the argument for this option. ***** [default = %(default)s]")
+    ############################################################################
+    # TODO: resample input files ???
+    ############################################################################
     
-    
-#
-#    return function(imgs=imgs, initial_target=initial_target, nlin_dir=nlin_dir, confs=confs)
+    return Result(stages=s, output=xfms_to_target)
 
 def lsq6_nuc_inorm(imgs, registration_targets, lsq6_method,
                    resolution,
@@ -885,6 +889,7 @@ def lsq6_nuc_inorm(imgs, registration_targets, lsq6_method,
     """       
     # TODO: is there a better way to do this kind of argument checking for functions?
     # there will be a fair bit of duplication in several functions... 
+    s = Stages()
     
     # make sure all variables that are passed along are of the appropriate type:
     if not isinstance(imgs, list):
@@ -898,18 +903,18 @@ def lsq6_nuc_inorm(imgs, registration_targets, lsq6_method,
     # 1) run the actual 6 parameter registration
     init_target = registration_targets.registration_standard if not registration_targets.registration_native \
                     else registration_targets.registration_native
-    source_imgs_to_lsq6_target = lsq6(imgs, init_target, lsq6_method, resolution,
-                                      rotation_tmp_dir, rotation_range, 
-                                      rotation_interval, rotation_params)
-    
-    # return Result(stages=s,
-    #               output=XfmHandler(source=source,
-    #                                 target=target,
-    #                                 xfm=xfm,
-    #                                 resampled=resampled))
+    xfms_source_imgs_to_lsq6_target = s.defer(lsq6(imgs, init_target, lsq6_method, resolution,
+                                                   rotation_tmp_dir, rotation_range, 
+                                                   rotation_interval, rotation_params))
     
     # 2) concatenate the native_to_standard transform if we have this transform
-    # update "output"
+    xfms_to_final_target_space = []
+    if registration_targets.xfm_to_standard:
+        xfms_to_final_target_space = [s.defer(xfmconcat([first_xfm, 
+                                                        registration_targets.xfm_to_standard])) \
+                                              for first_xfm in xfms_source_imgs_to_lsq6_target]
+    else:
+         xfms_to_final_target_space = xfms_source_imgs_to_lsq6_target
     
     
     # 3) resample the input to the final lsq6 space
