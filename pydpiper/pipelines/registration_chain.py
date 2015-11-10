@@ -131,7 +131,7 @@ def chain(options):
                              "(Which file is the first input file?). Please use the --lsq6-target "
                              "flag to specify a target for the lsq6 stage, or use an initial model.")
         
-        if options.lsq6.pride_of_models:
+        if options.chain.pride_of_models:
             raise NotImplementedError("We currently have not implemented the code that handles the pride of initial models...")
         
         # if we are not dealing with a pride of models, we can retrieve a fixed
@@ -443,7 +443,9 @@ if __name__ == "__main__":
     
     # TODO could abstract and then parametrize by prefix/ns ??
     options = parse(p, sys.argv[1:])
-        
+    
+    print(options.stats.stats_kernels)
+    
     # TODO: the registration resolution should be set somewhat outside
     # of any actual function? Maybe the right time to set this, is here
     # when options are gathered? 

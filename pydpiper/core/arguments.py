@@ -428,10 +428,18 @@ def _mk_stats_parser():
     p = ArgParser(add_help=False)
     #p.add_argument_group("Statistics options", 
     #                      "Options for calculating statistics.")
-    default_fwhms = ['0.5','0.2','0.1']
+    default_fwhms = "0.5,0.2,0.1"
+    p.set_defaults(stats_kernels=default_fwhms)
+    p.set_defaults(calc_stats=True)
+    p.add_argument("--calc-stats", dest="calc_stats",
+                   action="store_true",
+                   help="Calculate statistics at the end of the registration. [Default = %(default)s]")
+    p.add_argument("--no-calc-stats", dest="calc_stats",
+                   action="store_false", 
+                   help="If specified, statistics are not calculated. Opposite of --calc-stats.")
     p.add_argument("--stats-kernels", dest="stats_kernels",
-                       type=','.split, default=[0.5,0.2,0.1],
-                       help="comma separated list of blurring kernels for analysis. Default is: %s" % ','.join(default_fwhms))
+                   type=str,
+                   help="comma separated list of blurring kernels for analysis. [Default = %(default)s].")
     return p
 
 stats_parser = BaseParser(_mk_stats_parser(), "stats")

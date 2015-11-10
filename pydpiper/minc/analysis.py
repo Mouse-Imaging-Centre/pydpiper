@@ -75,6 +75,8 @@ def nlin_displacement(xfm, inv_xfm=None): # xfm -> mnc
 
 def determinants_at_fwhms(xfm, blur_fwhms, inv_xfm=None):
     """
+    blur_fwhms -- string with comma separated blurring kernels
+    
     Takes a transformation (xfm) containing
     both lsq12 (scaling and shearing, the 6-parameter
     rotations/translations should not be part of this) and
@@ -98,8 +100,8 @@ def determinants_at_fwhms(xfm, blur_fwhms, inv_xfm=None):
     #for blur in blur_fwhms: # throws away the results
     #    s.defer(det_and_log_det(nlin_disp, blur))
     #    s.defer(det_and_log_det(full_disp, blur))
-    nlin_dets = [(fwhm, s.defer(det_and_log_det(nlin_disp, fwhm))) for fwhm in blur_fwhms]
-    full_dets = [(fwhm, s.defer(det_and_log_det(full_disp, fwhm))) for fwhm in blur_fwhms]
+    nlin_dets = [(fwhm, s.defer(det_and_log_det(nlin_disp, fwhm))) for fwhm in blur_fwhms.split(',')]
+    full_dets = [(fwhm, s.defer(det_and_log_det(full_disp, fwhm))) for fwhm in blur_fwhms.split(',')]
     # won't work when additional xfm is specified for nlin_dets:
     #(nlin_dets, full_dets) = [[(fwhm, s.defer(det_and_log_det(disp, fwhm))) for fwhm in blur_fwhms]
     #                          for disp in (nlin_disp, full_disp)]
