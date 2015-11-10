@@ -202,7 +202,9 @@ def rotational_minctracc(source, target, conf, resolution, mask=None):
     conf       -- RotationalMinctraccConf
     resolution -- (float) resolution at which the registration happens, used
                   to determine all parameters for rotation_minctracc 
-    mask       -- MincAtom (optional argument to specify a mask)
+    mask       -- string (optional argument to specify a mask, we want this
+                  to be provided as a string, because currently in a MincAtom
+                  the mask is stored as a string)
     
     This function runs a rotational_minctracc.py call on its two input 
     files.  That program performs a 6 parameter (rigid) registration
@@ -244,6 +246,9 @@ def rotational_minctracc(source, target, conf, resolution, mask=None):
         raise ValueError("The configuration provided to rotational_minctracc is not a RotationalMinctraccConf")
     if not isinstance(resolution, float):
         raise ValueError("The resolution provided to rotational_minctracc is not a float value")
+    if mask:
+        if not isinstance(mask, str):
+            raise ValueError("The mask provided to rotational_minctracc is not a string")
     
     s = Stages()
 
@@ -258,7 +263,10 @@ def rotational_minctracc(source, target, conf, resolution, mask=None):
     blurred_dest = s.defer(mincblur(target, blur_stepsize))
 
     out = source.newname_with_suffix("_rotational_minctracc_FIXME")
-    cmd = CmdStage(inputs = [source, target] + ([source.mask] if source.mask else []), outputs = [out],
+    # use the target mask if around, or overwrite this mask with the mask
+    # that is explicitly provided:
+    mask_for_command = target.mask if target.mask else mask
+    cmd = CmdStage(inputs = [source, target] + ([mask_for_command] if mask_for_command else []), outputs = [out],
         cmd = ["rotational_minctracc.py", 
                "-t", conf.temp_dir, 
                "-w", str(w_translation_stepsize),
@@ -270,8 +278,7 @@ def rotational_minctracc(source, target, conf, resolution, mask=None):
                blurred_src.path,
                blurred_dest.path,
                out.path,
-               "/dev/null"] + (['-m', source.mask.path] if source.mask else []))
-    print(cmd.render())
+               "/dev/null"] + (['-m', mask_for_command] if mask_for_command else []))
     # add this command to the set of stages
     s.update(Stages([cmd]))
     return Result(stages=s, output=out)
@@ -826,10 +833,9 @@ def lsq6(imgs, target, lsq6_method, resolution,
                 rotational_configuration.w_translations_factor    = float(rotation_params.split(',')[3])
         
         # now call rotational_minctracc on all input images 
-        mask = target.mask if target.mask else None
         xfms_to_target = [s.defer(rotational_minctracc(img, target, \
                                                        rotational_configuration,
-                                                       resolution_for_rot, mask)) \
+                                                       resolution_for_rot)) \
                           for img in imgs]
 
         
