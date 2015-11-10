@@ -280,6 +280,7 @@ def rotational_minctracc(source, target, conf, resolution, mask=None):
                out.path,
                "/dev/null"] + (['-m', mask_for_command] if mask_for_command else []))
     # add this command to the set of stages
+    print(cmd.render())
     s.update(Stages([cmd]))
     return Result(stages=s, output=out)
 
@@ -774,6 +775,43 @@ def check_MINC_input_files(args):
                              "unique names for all input files.\n")
         seen.add(fileBase)
 
+def get_parameters_for_rotational_minctracc(resolution,
+                                            rotation_tmp_dir=None, rotation_range=None, 
+                                            rotation_interval=None, rotation_params=None):
+    """
+    returns the proper combination of a rotation_minctracc configuration and
+    a value for the resolution such that the "mousebrain" option for 
+    the --lsq6-large-rotations-parameters flag works.
+    """
+    rotational_configuration = default_rotational_minctracc_conf
+    resolution_for_rot = resolution
+    # for mouse brains we have fixed parameters:
+    if rotation_params == "mousebrain":
+        # we want to set the parameters such that 
+        # blur          ->  560 micron (10 * resolution)
+        # resample step ->  224 micron ( 4 * resolution)
+        # registr. step ->  560 micron (10 * resolution)
+        # w_trans       ->  448 micron ( 8 * resolution)
+        # simplex       -> 1120 micron (20 * resolution)
+        # so we simply need to set the resolution to establish this:
+        resolution_for_rot = 0.056
+    else:
+        # use the parameters provided
+        if rotation_tmp_dir:
+            rotational_configuration.temp_dir = rotation_tmp_dir
+        if rotation_range:
+            rotational_configuration.rotational_range = rotation_range
+        if rotation_interval:
+            rotational_configuration.rotational_interval = rotation_interval
+        if rotation_params:
+            rotational_configuration.blur_factor              = float(rotation_params.split(',')[0])
+            rotational_configuration.resample_step_factor     = float(rotation_params.split(',')[1])
+            rotational_configuration.registration_step_factor = float(rotation_params.split(',')[2])
+            rotational_configuration.w_translations_factor    = float(rotation_params.split(',')[3])
+            
+    return rotational_configuration, resolution_for_rot
+                
+    
 def lsq6(imgs, target, lsq6_method, resolution,
          rotation_tmp_dir=None, rotation_range=None, 
          rotation_interval=None, rotation_params=None):
@@ -806,32 +844,10 @@ def lsq6(imgs, target, lsq6_method, resolution,
     # Calling rotational_minctracc
     #
     if lsq6_method == "lsq6_large_rotations":
-        rotational_configuration = default_rotational_minctracc_conf
-        resolution_for_rot = resolution
-        # for mouse brains we have fixed parameters:
-        if rotation_params == "mousebrain":
-            # we want to set the parameters such that 
-            # blur          ->  560 micron (10 * resolution)
-            # resample step ->  224 micron ( 4 * resolution)
-            # registr. step ->  560 micron (10 * resolution)
-            # w_trans       ->  448 micron ( 8 * resolution)
-            # simplex       -> 1120 micron (20 * resolution)
-            # so we simply need to set the resolution to establish this:
-            resolution_for_rot = 0.056
-        else:
-            # use the parameters provided
-            if rotation_tmp_dir:
-                rotational_configuration.temp_dir = rotation_tmp_dir
-            if rotation_range:
-                rotational_configuration.rotational_range = rotation_range
-            if rotation_interval:
-                rotational_configuration.rotational_interval = rotation_interval
-            if rotation_params:
-                rotational_configuration.blur_factor              = float(rotation_params.split(',')[0])
-                rotational_configuration.resample_step_factor     = float(rotation_params.split(',')[1])
-                rotational_configuration.registration_step_factor = float(rotation_params.split(',')[2])
-                rotational_configuration.w_translations_factor    = float(rotation_params.split(',')[3])
-        
+        rotational_configuration, resolution_for_rot = \
+            get_parameters_for_rotational_minctracc(resolution, rotation_tmp_dir,
+                                                    rotation_range, rotation_interval,
+                                                    rotation_params) 
         # now call rotational_minctracc on all input images 
         xfms_to_target = [s.defer(rotational_minctracc(img, target, \
                                                        rotational_configuration,
