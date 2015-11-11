@@ -43,11 +43,47 @@ def mincblur(img, fwhm, gradient=False, subdir='tmp'): # mnc -> mnc  #, output_d
                   + (['-gradient'] if gradient else []))
     return Result(stages=Stages([stage]), output=outf)
 
-def mincresample_simple(img, xfm, like, extra_flags): # mnc, ???, mnc, [str] -> mnc
-    #TODO should extra_args (might contain -invert or -sinc) be(/be part of a conf object/list/dict/... ?
-    """Resample an image, ignoring mask/labels"""
-    outf = img.newname_with_fn(lambda _old: xfm.filename_wo_ext + '-resampled', subdir='resampled') # TODO update the mask/labels here
-    #outf = MincAtom(name=xname + '-resampled' + '.mnc', subdir='resampled')
+def mincresample_simple(img, xfm, like, extra_flags, new_name_wo_ext=None, subdir=None): # mnc, ???, mnc, [str] -> mnc
+    """
+    Resample an image, ignoring mask/labels
+    
+    img             -- MincAtom
+    xfm             -- MincAtom
+    like            -- MincAtom
+    extra_flags     -- list of strings
+    new_name_wo_ext -- string indicating a user specified file name (without extension)
+    """
+    # argument checking:
+    if not isinstance(img, MincAtom):
+        raise ValueError("The input (img) to mincresample is not a MincAtom.")
+    if not isinstance(xfm, MincAtom):
+        raise ValueError("The transformation (xfm) to mincresample is not a MincAtom.")
+    if not isinstance(like, MincAtom):
+        raise ValueError("The like file (like) provided to mincresample is not a MincAtom.")
+    if not isinstance(extra_flags, list):
+        raise ValueError("The additional flags (extra_flags) to mincresample are not provided in a list.")
+    if new_name_wo_ext:
+        if not isinstance(new_name_wo_ext, str):
+            raise ValueError("The new_name_wo_ext argument to mincresample should be a string.")
+    if subdir:
+        if not isinstance(subdir, str):
+            raise ValueError("The subdir argument to mincresample should be a string.")
+    
+    if not subdir:
+        subdir = 'resampled'
+        
+    if not new_name_wo_ext:
+        outf = img.newname_with_fn(lambda _old: xfm.filename_wo_ext + '-resampled', subdir=subdir)
+    else:
+        # we have the output filename without extension. This should replace the entire
+        # current "base" of the filename. Easiest thing to do is to create a new MincAtom??
+        # TODO: am I potentially missing a main subdir path? Or do we not need this because
+        #       we are trying to get rid of absolute paths, to make pipelines portable?
+        outf = MincAtom(name=os.path.join(img.pipeline_sub_dir, img.output_sub_dir, subdir, new_name_wo_ext + img.ext),
+                        orig_name =img.orig_path,
+                        pipeline_sub_dir=img.pipeline_sub_dir,
+                        output_sub_dir=img.output_sub_dir)
+    
     stage = CmdStage(
               inputs = [xfm, like, img], 
               outputs = [outf],
@@ -58,8 +94,15 @@ def mincresample_simple(img, xfm, like, extra_flags): # mnc, ???, mnc, [str] -> 
     return Result(stages=Stages([stage]), output=outf)
 
 # TODO mincresample_simple could easily be replaced by a recursive call to mincresample
-def mincresample(img, xfm, like, extra_flags): # mnc -> mnc
+def mincresample(img, xfm, like, extra_flags, new_name_wo_ext=None, subdir=None): # mnc -> mnc
     """
+    img             -- MincAtom
+    xfm             -- MincAtom
+    like            -- MincAtom
+    extra_flags     -- list of strings
+    new_name_wo_ext -- string indicating a user specified file name (without extension)
+    subdir          -- string indicating which subdirectory to output the file in:
+    
     >>> img  = MincAtom('/tmp/img_1.mnc')
     >>> like = MincAtom('/tmp/img_2.mnc')
     >>> xfm  = FileAtom('/tmp/trans.xfm')
@@ -67,14 +110,41 @@ def mincresample(img, xfm, like, extra_flags): # mnc -> mnc
     >>> [x.render() for x in stages]
     ['mincresample -clobber -2 -transform /tmp/trans.xfm -like /tmp/img_2.mnc /tmp/img_1.mnc /micehome/bdarwin/git/pydpiper/img_1/resampled/trans-resampled.mnc']
     """
+    # argument checking:
+    if not isinstance(img, MincAtom):
+        raise ValueError("The input (img) to mincresample is not a MincAtom.")
+    if not isinstance(xfm, MincAtom):
+        raise ValueError("The transformation (xfm) to mincresample is not a MincAtom.")
+    if not isinstance(like, MincAtom):
+        raise ValueError("The like file (like) provided to mincresample is not a MincAtom.")
+    if not isinstance(extra_flags, list):
+        raise ValueError("The additional flags (extra_flags) to mincresample are not provided in a list.")
+    if new_name_wo_ext:
+        if not isinstance(new_name_wo_ext, str):
+            raise ValueError("The new_name_wo_ext argument to mincresample should be a string.")
+    if subdir:
+        if not isinstance(subdir, str):
+            raise ValueError("The subdir argument to mincresample should be a string.")
+    
     s = Stages()
-    # FIXME remove interpolation (-sinc, -tricubic, ...) from mask/label extra_flags -- from minc_atoms.py, seems default is nearest_neighbour?
-    # TODO better solution - separate interpolation argument taking a nullable(?) enum val
-    # FIXME add keep_real_range?
-    new_mask   = s.defer(mincresample_simple(img.mask, xfm, like, extra_flags))   if img.mask   is not None else None
-    new_labels = s.defer(mincresample_simple(img.labels, xfm, like, extra_flags)) if img.labels is not None else None
-    new_img    = s.defer(mincresample_simple(img, xfm, like, extra_flags))
-    # TODO stealing another file's name (and updating mask) could be made cleaner/easier ...
+    
+    # when resampling a mask, make sure we use nearest neighbor resampling:
+    # and watch out... make sure the copy is a true copy to avoid the original
+    # extra_flags list being modified when mask_extra_flags is modified.
+    mask_extra_flags = list(extra_flags)
+    if '-sinc' in mask_extra_flags:
+        mask_extra_flags.remove('-sinc')
+    mask_extra_flags.append('-nearest_neighbour')
+    new_mask   = s.defer(mincresample_simple(img.mask, xfm, like, mask_extra_flags, 
+                                             new_name_wo_ext, subdir)) if img.mask is not None else None
+    # and with labels we have to ensure that the values are not scaled 
+    labels_extra_flags = list(mask_extra_flags)
+    labels_extra_flags.append('-keep_real_range')
+    new_labels = s.defer(mincresample_simple(img.labels, xfm, like, labels_extra_flags, 
+                                             new_name_wo_ext, subdir)) if img.labels is not None else None
+    new_img    = s.defer(mincresample_simple(img, xfm, like, extra_flags, 
+                                             new_name_wo_ext, subdir))
+    
     # Note that new_img can't be used for anything until the mask/label files are also resampled.
     # This shouldn't create a problem with stage dependencies as long as masks/labels appear in inputs/outputs of CmdStages.
     # (If this isn't automatic, a relevant helper function would be trivial.)
@@ -914,10 +984,19 @@ def lsq6_nuc_inorm(imgs, registration_targets, lsq6_method,
                                                         registration_targets.xfm_to_standard])) \
                                               for first_xfm in xfms_source_imgs_to_lsq6_target]
     else:
-         xfms_to_final_target_space = xfms_source_imgs_to_lsq6_target
-    
+        xfms_to_final_target_space = xfms_source_imgs_to_lsq6_target
     
     # 3) resample the input to the final lsq6 space
+    #    we should go back to basics in terms of the file name that we create here. It should
+    #    be fairly basic. Something along the lines of:
+    #    {orig_file_base}_resampled_lsq6.mnc
+    filenames_wo_ext_lsq6 = [img.filename_wo_ext + "_resampled_lsq6" for img in imgs]
+    imgs_in_lsq6_space = [s.defer(mincresample(img=native_img,
+                                               xfm=xfm_to_lsq6,
+                                               like=registration_targets.registration_standard,
+                                               extra_flags=['-sinc'],
+                                               new_name_wo_ext=filename_wo_ext)) \
+                          for native_img,xfm_to_lsq6,filename_wo_ext in zip(imgs,xfms_to_final_target_space,filenames_wo_ext_lsq6)]
     
     # 4) NUC? (TODO: open up NUC parameters)
     # 4a) if we have an initial model, resample the mask to native space and run NUC
