@@ -17,7 +17,6 @@ from pydpiper.core.containers import Result
 from pydpiper.core.util       import flatten
 from pydpiper.core.conversion import InputFile, OutputFile
 from pyminc.volumes.factory   import volumeFromFile
-from pydpiper.pipelines.registration_chain import Subject
 
 # TODO canonicalize all names of form 'source', 'src', 'src_img', 'dest', 'target', ... in program
 
@@ -40,7 +39,7 @@ def mincblur(img, fwhm, gradient=False, subdir='tmp'): # mnc -> mnc  #, output_d
               # drop last 9 chars from output filename since mincblur
               # automatically adds "_blur.mnc/_dxyz.mnc" and Python
               # won't lift this length calculation automatically ...
-              cmd = shlex.split('mincblur -clobber -no_apodize -fwhm %s %s %s' % (fwhm, img.path, outf.path[:-9])) \
+              cmd = shlex.split('mincblur -clobber -no_apodize -fwhm %s %s %s' % (fwhm, img.path, outf.path[:-9]))
                   + (['-gradient'] if gradient else []))
     return Result(stages=Stages([stage]), output=outf)
 
@@ -344,7 +343,7 @@ def rotational_minctracc(source, target, conf, resolution, mask=None):
     blurred_src = s.defer(mincblur(source, blur_stepsize))
     blurred_dest = s.defer(mincblur(target, blur_stepsize))
 
-    out_xfm = XfmAtom(name=os.path.join(source.pipeline_sub_dir, source.output_sub_dir, 'transforms', \
+    out_xfm = XfmAtom(name=os.path.join(source.pipeline_sub_dir, source.output_sub_dir, 'transforms',
                                          "%s_rotational_minctracc_to_%s.xfm" % (source.filename_wo_ext, target.filename_wo_ext)),
                       pipeline_sub_dir=source.pipeline_sub_dir,
                       output_sub_dir=source.output_sub_dir)
@@ -475,7 +474,7 @@ def minctracc(source, target, conf, transform=None):
     #    raise ValueError("minctracc: invalid transform type %s" % conf.transform_type) # not needed if MinctraccConfig(Atom) given
     # FIXME this line should produce a MincAtom (or FileAtom?? doesn't matter if
     # we use only structural properties) with null mask/labels
-    out_xfm = XfmAtom(name=os.path.join(source.pipeline_sub_dir, source.output_sub_dir, 'transforms', \
+    out_xfm = XfmAtom(name=os.path.join(source.pipeline_sub_dir, source.output_sub_dir, 'transforms',
                                         "%s_minctracc_to_%s.xfm" % (source.filename_wo_ext, target.filename_wo_ext)),
                       pipeline_sub_dir=source.pipeline_sub_dir,
                       output_sub_dir=source.output_sub_dir)
@@ -550,17 +549,17 @@ def mincANTS(source, target, conf, transform_name_wo_ext=None, generation=None, 
     s = Stages()
     
     if transform_name_wo_ext:
-        out_xfm = XfmAtom(name=os.path.join(source.pipeline_sub_dir, source.output_sub_dir, 'transforms', \
+        out_xfm = XfmAtom(name=os.path.join(source.pipeline_sub_dir, source.output_sub_dir, 'transforms',
                                             "%s.xfm" % (transform_name_wo_ext)),
                           pipeline_sub_dir=source.pipeline_sub_dir,
                           output_sub_dir=source.output_sub_dir)
     elif generation:
-        out_xfm = XfmAtom(name=os.path.join(source.pipeline_sub_dir, source.output_sub_dir, 'transforms', \
+        out_xfm = XfmAtom(name=os.path.join(source.pipeline_sub_dir, source.output_sub_dir, 'transforms',
                                             "%s_mincANTS_nlin-%s.xfm" % (source.filename_wo_ext, generation)),
                           pipeline_sub_dir=source.pipeline_sub_dir,
                           output_sub_dir=source.output_sub_dir)
     else:
-        out_xfm = XfmAtom(name=os.path.join(source.pipeline_sub_dir, source.output_sub_dir, 'transforms', \
+        out_xfm = XfmAtom(name=os.path.join(source.pipeline_sub_dir, source.output_sub_dir, 'transforms',
                                             "%s_mincANTS_to_%s.xfm" % (source.filename_wo_ext, target.filename_wo_ext)),
                           pipeline_sub_dir=source.pipeline_sub_dir,
                           output_sub_dir=source.output_sub_dir)
@@ -587,11 +586,11 @@ def mincANTS(source, target, conf, transform_name_wo_ext=None, generation=None, 
                      outputs = [out_xfm],
                      cmd = ['mincANTS', '3',
                             '--number-of-affine-iterations', '0']
-                         + similarity_cmds \
+                         + similarity_cmds
                          + ['-t', conf.transformation_model,
                             '-r', conf.regularization,
                             '-i', conf.iterations,
-                            '-o', out_xfm.path] \
+                            '-o', out_xfm.path]
                          + (['-x', target.mask.path] if conf.use_mask and target.mask else []))
     s.add(stage)
     resampled = NotImplemented
@@ -652,8 +651,9 @@ def intrasubject_registrations(subj, conf): # Subject, lsq12_nlin_conf -> Result
     # easy access from a MincAtom to an XfmHandler from time_pt N to N+1 
     # either here or in the chain() function 
     
-    if not isinstance(subj, Subject):
-        raise ValueError("The input to intrasubject_registrations (subj) is not of type Subject.")
+    # TODO: can't do this due to circular references...
+    #if not isinstance(subj, Subject):
+    #    raise ValueError("The input to intrasubject_registrations (subj) is not of type Subject.")
     if not isinstance(conf, MincANTSConf):
         raise ValueError("The configuration for intrasubject_registrations (conf) is not provided as a MincANTSConf.")
     
@@ -982,9 +982,9 @@ def lsq6(imgs, target, lsq6_method, resolution,
                                                     rotation_range, rotation_interval,
                                                     rotation_params) 
         # now call rotational_minctracc on all input images 
-        xfms_to_target = [s.defer(rotational_minctracc(img, target, \
+        xfms_to_target = [s.defer(rotational_minctracc(img, target,
                                                        rotational_configuration,
-                                                       resolution_for_rot)) \
+                                                       resolution_for_rot))
                           for img in imgs]
     #
     # Center estimation
@@ -1037,7 +1037,7 @@ def lsq6_nuc_inorm(imgs, registration_targets, lsq6_method,
     xfms_to_final_target_space = []
     if registration_targets.xfm_to_standard:
         xfms_to_final_target_space = [s.defer(xfmconcat([first_xfm, 
-                                                        registration_targets.xfm_to_standard])) \
+                                                        registration_targets.xfm_to_standard]))
                                               for first_xfm in xfms_source_imgs_to_lsq6_target]
     else:
         xfms_to_final_target_space = xfms_source_imgs_to_lsq6_target
@@ -1051,7 +1051,7 @@ def lsq6_nuc_inorm(imgs, registration_targets, lsq6_method,
                                                xfm=xfm_to_lsq6,
                                                like=registration_targets.registration_standard,
                                                extra_flags=['-sinc'],
-                                               new_name_wo_ext=filename_wo_ext)) \
+                                               new_name_wo_ext=filename_wo_ext))
                           for native_img,xfm_to_lsq6,filename_wo_ext in zip(imgs,xfms_to_final_target_space,filenames_wo_ext_lsq6)]
     
     # 4) NUC? (TODO: open up NUC parameters)
