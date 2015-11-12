@@ -43,7 +43,7 @@ def mincblur(img, fwhm, gradient=False, subdir='tmp'): # mnc -> mnc  #, output_d
                   + (['-gradient'] if gradient else []))
     return Result(stages=Stages([stage]), output=outf)
 
-def mincresample_simple(img, xfm, like, extra_flags, new_name_wo_ext=None, subdir=None): # mnc, ???, mnc, [str] -> mnc
+def mincresample_simple(img, xfm, like, extra_flags, new_name_wo_ext=None, subdir=None): # MincAtom, XfmAtom, MincAtom, [str] -> MincAtom
     """
     Resample an image, ignoring mask/labels
     
@@ -285,9 +285,7 @@ def rotational_minctracc(source, target, conf, resolution, mask=None):
     conf       -- RotationalMinctraccConf
     resolution -- (float) resolution at which the registration happens, used
                   to determine all parameters for rotation_minctracc 
-    mask       -- string (optional argument to specify a mask, we want this
-                  to be provided as a string, because currently in a MincAtom
-                  the mask is stored as a string)
+    mask       -- MincAtom (optional argument to specify a mask)
     
     This function runs a rotational_minctracc.py call on its two input 
     files.  That program performs a 6 parameter (rigid) registration
@@ -330,8 +328,8 @@ def rotational_minctracc(source, target, conf, resolution, mask=None):
     if not isinstance(resolution, float):
         raise ValueError("The resolution provided to rotational_minctracc is not a float value")
     if mask:
-        if not isinstance(mask, str):
-            raise ValueError("The mask provided to rotational_minctracc is not a string")
+        if not isinstance(mask, MincAtom):
+            raise ValueError("The mask provided to rotational_minctracc is not a MincAtom")
     
     s = Stages()
 
@@ -366,8 +364,7 @@ def rotational_minctracc(source, target, conf, resolution, mask=None):
                blurred_src.path,
                blurred_dest.path,
                out_xfm.path,
-               "/dev/null"] + (['-m', mask_for_command] if mask_for_command else []))
-    # add this command to the set of stages
+               "/dev/null"] + (['-m', mask_for_command.path] if mask_for_command else []))
     s.update(Stages([cmd]))
     return Result(stages=s, output=out_xfm)
 
@@ -1090,9 +1087,12 @@ def get_registration_targets_from_init_model(init_model_standard_file, output_di
     if not can_read_MINC_file(init_model_standard_mask):
         raise ValueError("\nError (initial model): can not read/find the mask file for the standard space: %s\n" 
                % init_model_standard_mask)
+    
     registration_standard = MincAtom(name=init_model_standard_file,
                                      orig_name=init_model_standard_file,
-                                     mask=init_model_standard_mask,
+                                     mask=MincAtom(name=init_model_standard_mask,
+                                                   orig_name=init_model_standard_mask,
+                                                   pipeline_sub_dir=init_model_output_dir),
                                      pipeline_sub_dir=init_model_output_dir)
     
     # check to see if we are dealing with option 2), an initial model with native files
@@ -1107,7 +1107,9 @@ def get_registration_targets_from_init_model(init_model_standard_file, output_di
                    % init_model_native_mask)
         registration_native = MincAtom(name=init_model_native_file,
                                        orig_name=init_model_native_file,
-                                       mask=init_model_native_mask,
+                                       mask=MincAtom(name=init_model_native_mask,
+                                                     orig_name=init_model_output_dir,
+                                                     pipeline_sub_dir=init_model_output_dir),
                                        pipeline_sub_dir=init_model_output_dir)
         if not os.path.exists(init_model_native_to_standard):
             raise ValueError("\nError: can not read the following initial model file (required transformation when native "

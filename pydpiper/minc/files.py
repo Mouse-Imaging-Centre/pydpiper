@@ -3,8 +3,8 @@ from pydpiper.core.files import FileAtom
 
 class MincAtom(FileAtom):
     """
-    TODO: what is the type of "mask"? Is it a string, or should this be a MincAtom? The latter
-    options makes more sense?
+    mask   -- MincAtom
+    labels -- MincAtom
     """
     def __init__(self, name, orig_name=NotProvided, pipeline_sub_dir=None, output_sub_dir=None, 
                  mask=None, labels=None):
