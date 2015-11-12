@@ -1,6 +1,6 @@
 from   __future__ import print_function
 from   collections import namedtuple
-#import copy
+import copy
 import os.path
 import shlex
 import subprocess
@@ -10,7 +10,7 @@ import sys
 from atom.api import (Atom, Bool, Int, Float, List,
                       Enum, Tuple, Instance, Str)
 
-from pydpiper.minc.files            import MincAtom, FileAtom
+from pydpiper.minc.files            import MincAtom, FileAtom, XfmAtom
 from pydpiper.minc.containers       import XfmHandler, Registration
 from pydpiper.core.stages     import CmdStage, cmd_stage, Stages
 from pydpiper.core.containers import Result
@@ -48,7 +48,7 @@ def mincresample_simple(img, xfm, like, extra_flags, new_name_wo_ext=None, subdi
     Resample an image, ignoring mask/labels
     
     img             -- MincAtom
-    xfm             -- MincAtom
+    xfm             -- XfmAtom
     like            -- MincAtom
     extra_flags     -- list of strings
     new_name_wo_ext -- string indicating a user specified file name (without extension)
@@ -56,8 +56,8 @@ def mincresample_simple(img, xfm, like, extra_flags, new_name_wo_ext=None, subdi
     # argument checking:
     if not isinstance(img, MincAtom):
         raise ValueError("The input (img) to mincresample is not a MincAtom.")
-    if not isinstance(xfm, MincAtom):
-        raise ValueError("The transformation (xfm) to mincresample is not a MincAtom.")
+    if not isinstance(xfm, XfmAtom):
+        raise ValueError("The transformation (xfm) to mincresample is not a XfmAtom.")
     if not isinstance(like, MincAtom):
         raise ValueError("The like file (like) provided to mincresample is not a MincAtom.")
     if not isinstance(extra_flags, list):
@@ -76,13 +76,8 @@ def mincresample_simple(img, xfm, like, extra_flags, new_name_wo_ext=None, subdi
         outf = img.newname_with_fn(lambda _old: xfm.filename_wo_ext + '-resampled', subdir=subdir)
     else:
         # we have the output filename without extension. This should replace the entire
-        # current "base" of the filename. Easiest thing to do is to create a new MincAtom??
-        # TODO: am I potentially missing a main subdir path? Or do we not need this because
-        #       we are trying to get rid of absolute paths, to make pipelines portable?
-        outf = MincAtom(name=os.path.join(img.pipeline_sub_dir, img.output_sub_dir, subdir, new_name_wo_ext + img.ext),
-                        orig_name =img.orig_path,
-                        pipeline_sub_dir=img.pipeline_sub_dir,
-                        output_sub_dir=img.output_sub_dir)
+        # current "base" of the filename. 
+        outf = img.newname_with_fn(lambda _old: new_name_wo_ext, subdir=subdir)
     
     stage = CmdStage(
               inputs = [xfm, like, img], 
@@ -97,7 +92,7 @@ def mincresample_simple(img, xfm, like, extra_flags, new_name_wo_ext=None, subdi
 def mincresample(img, xfm, like, extra_flags, new_name_wo_ext=None, subdir=None): # mnc -> mnc
     """
     img             -- MincAtom
-    xfm             -- MincAtom
+    xfm             -- XfmAtom
     like            -- MincAtom
     extra_flags     -- list of strings
     new_name_wo_ext -- string indicating a user specified file name (without extension)
@@ -105,7 +100,7 @@ def mincresample(img, xfm, like, extra_flags, new_name_wo_ext=None, subdir=None)
     
     >>> img  = MincAtom('/tmp/img_1.mnc')
     >>> like = MincAtom('/tmp/img_2.mnc')
-    >>> xfm  = FileAtom('/tmp/trans.xfm')
+    >>> xfm  = XfmAtom('/tmp/trans.xfm')
     >>> stages, resampled = mincresample(img=img, xfm=xfm, like=like, extra_flags=[])
     >>> [x.render() for x in stages]
     ['mincresample -clobber -2 -transform /tmp/trans.xfm -like /tmp/img_2.mnc /tmp/img_1.mnc /micehome/bdarwin/git/pydpiper/img_1/resampled/trans-resampled.mnc']
@@ -113,8 +108,8 @@ def mincresample(img, xfm, like, extra_flags, new_name_wo_ext=None, subdir=None)
     # argument checking:
     if not isinstance(img, MincAtom):
         raise ValueError("The input (img) to mincresample is not a MincAtom.")
-    if not isinstance(xfm, MincAtom):
-        raise ValueError("The transformation (xfm) to mincresample is not a MincAtom.")
+    if not isinstance(xfm, XfmAtom):
+        raise ValueError("The transformation (xfm) to mincresample is not a XfmcAtom.")
     if not isinstance(like, MincAtom):
         raise ValueError("The like file (like) provided to mincresample is not a MincAtom.")
     if not isinstance(extra_flags, list):
@@ -131,14 +126,14 @@ def mincresample(img, xfm, like, extra_flags, new_name_wo_ext=None, subdir=None)
     # when resampling a mask, make sure we use nearest neighbor resampling:
     # and watch out... make sure the copy is a true copy to avoid the original
     # extra_flags list being modified when mask_extra_flags is modified.
-    mask_extra_flags = list(extra_flags)
+    mask_extra_flags = copy.copy(extra_flags)
     if '-sinc' in mask_extra_flags:
         mask_extra_flags.remove('-sinc')
     mask_extra_flags.append('-nearest_neighbour')
     new_mask   = s.defer(mincresample_simple(img.mask, xfm, like, mask_extra_flags, 
                                              new_name_wo_ext, subdir)) if img.mask is not None else None
     # and with labels we have to ensure that the values are not scaled 
-    labels_extra_flags = list(mask_extra_flags)
+    labels_extra_flags = copy.copy(mask_extra_flags)
     labels_extra_flags.append('-keep_real_range')
     new_labels = s.defer(mincresample_simple(img.labels, xfm, like, labels_extra_flags, 
                                              new_name_wo_ext, subdir)) if img.labels is not None else None
@@ -152,17 +147,23 @@ def mincresample(img, xfm, like, extra_flags, new_name_wo_ext=None, subdir=None)
     new_img.labels = new_labels
     return Result(stages=s, output=new_img)
 
-def xfmconcat(xfms, name=None): # [xfm], ?str -> xfm
+def xfmconcat(xfms, name=None): # [XfmAtom], -> XfmAtom
     """
+    xfms -- list of XfmAtoms
+    
     >>> stages, xfm = xfmconcat([MincAtom('/tmp/%s' % i, pipeline_sub_dir='/scratch') for i in ['t1.xfm', 't2.xfm']])
     >>> [s.render() for s in stages]
     ['xfmconcat /tmp/t1.xfm /tmp/t2.xfm /scratch/t1/concat_of_t1_and_t2.xfm']
     """
+    # argument checking
+    if not isinstance(xfms, list):
+        raise ValueError("The input transformations (xfm) to xfmconcat is not of type list.")
+    for xfm_el in xfms:
+        if not isinstance(xfm_el, XfmAtom):
+            raise ValueError("The elements of the xfms list in xfmconcat need to be of type XfmAtom")
+    
     if len(xfms) == 0:
         raise ValueError("`xfmconcat` arg `xfms` was empty (can't concat zero files)")
-    # TODO: why is this option here? is there any use for it? Because
-    # if not, this would mean that you can mis-specify or mis-call this function
-    # and not know.
     elif len(xfms) == 1:
         return Result(stages=Stages(), output=xfms[0])
     else:
@@ -176,8 +177,17 @@ def xfmconcat(xfms, name=None): # [xfm], ?str -> xfm
             cmd = shlex.split('xfmconcat %s %s' % (' '.join([x.path for x in xfms]), outf.path)))
         return Result(stages=Stages([stage]), output=outf)
 
-"""xfmconcat lifted to work on XfmHandlers instead of MincAtoms"""
+
+#
+#
+# TODO: do we need this function at all??
+#       the concept seems odd. It's a concat and a resample?
+#
+#
 def concat(ts, name=None, extra_flags=[]): # TODO remove extra flags OR make ['-sinc'] default
+    """
+    xfmconcat lifted to work on XfmHandlers instead of MincAtoms
+    """
     s = Stages()
     t = s.defer(xfmconcat([t.xfm for t in ts], name=name))
     res = s.defer(mincresample(img=ts[0].source,
@@ -335,7 +345,12 @@ def rotational_minctracc(source, target, conf, resolution, mask=None):
     blurred_src = s.defer(mincblur(source, blur_stepsize))
     blurred_dest = s.defer(mincblur(target, blur_stepsize))
 
-    out_xfm = source.newname_with_fn(lambda x: "%s_rotational_minctracc_to_%s" % (x, target.filename_wo_ext), ext='.xfm')
+    out_xfm = XfmAtom(name=os.path.join(source.pipeline_sub_dir, source.output_sub_dir, 'transforms', \
+                                         "%s_rotational_minctracc_to_%s.xfm" % (source.filename_wo_ext, target.filename_wo_ext)),
+                      pipeline_sub_dir=source.pipeline_sub_dir,
+                      output_sub_dir=source.output_sub_dir)
+    
+    
     # use the target mask if around, or overwrite this mask with the mask
     # that is explicitly provided:
     mask_for_command = target.mask if target.mask else mask
@@ -462,7 +477,11 @@ def minctracc(source, target, conf, transform=None):
     #    raise ValueError("minctracc: invalid transform type %s" % conf.transform_type) # not needed if MinctraccConfig(Atom) given
     # FIXME this line should produce a MincAtom (or FileAtom?? doesn't matter if
     # we use only structural properties) with null mask/labels
-    out_xfm = source.newname_with_fn(lambda x: "%s_to_%s" % (x, target.name), ext='.xfm') #TODO destroy orig_name?
+    out_xfm = XfmAtom(name=os.path.join(source.pipeline_sub_dir, source.output_sub_dir, 'transforms', \
+                                        "%s_minctracc_to_%s.xfm" % (source.filename_wo_ext, target.filename_wo_ext)),
+                      pipeline_sub_dir=source.pipeline_sub_dir,
+                      output_sub_dir=source.output_sub_dir)
+        
     #outf = MincAtom(name = "%s_to_%s.xfm" % (source.name, target.name))            #TODO don't get an orig_name
     stage = cmd_stage(flatten(
               ['minctracc', '-clobber', '-debug', '-xcorr'],
@@ -522,8 +541,11 @@ def mincANTS(source, target, conf, transform=None):
     since the cost function might use these."""
     s = Stages()
     # TODO add a way to add _nlin_0 or whatever to name based on generation or whatever
-    # FIXME why are xfms MincAtoms ???
-    xfm = source.newname_with_fn(lambda x: "%s_to_%s" % (source.filename_wo_ext, target.filename_wo_ext), ext='.xfm') #TODO fix dir, orig_name, ...
+    out_xfm = XfmAtom(name=os.path.join(source.pipeline_sub_dir, source.output_sub_dir, 'transforms', \
+                                        "%s_mincANTS_to_%s.xfm" % (source.filename_wo_ext, target.filename_wo_ext)),
+                      pipeline_sub_dir=source.pipeline_sub_dir,
+                      output_sub_dir=source.output_sub_dir)
+
 
     similarity_cmds = []
     similarity_inputs = set()
@@ -544,21 +566,21 @@ def mincANTS(source, target, conf, transform=None):
         similarity_cmds.extend(["-m", subcmd])
     stage = CmdStage(inputs = [source, target] + list(similarity_inputs) + ([target.mask] if target.mask else []),
                      # hard to use cmd_stage wrapper here due to complicated subcmds ...
-                     outputs = [xfm],
+                     outputs = [out_xfm],
                      cmd = ['mincANTS', '3',
                             '--number-of-affine-iterations', '0']
                          + similarity_cmds \
                          + ['-t', conf.transformation_model,
                             '-r', conf.regularization,
                             '-i', conf.iterations,
-                            '-o', xfm.path] \
+                            '-o', out_xfm.path] \
                          + (['-x', target.mask.path] if conf.use_mask and target.mask else []))
     s.add(stage)
-    resampled = s.defer(mincresample(img=source, xfm=xfm, like=target, extra_flags=['-sinc']))
+    resampled = s.defer(mincresample(img=source, xfm=out_xfm, like=target, extra_flags=['-sinc']))
     return Result(stages=s,
                   output=XfmHandler(source=source,
                                     target=target,
-                                    xfm=xfm,
+                                    xfm=out_xfm,
                                     resampled=resampled))
 
 #def lsq12_NLIN_build_model(...):
@@ -638,6 +660,10 @@ def intrasubject_registrations(subj, conf): # Subject, lsq12_nlin_conf -> Result
 #    ...
 
 def multilevel_minctracc(source, target, conf, curr_dir, transform=None):
+    """
+    TODO:
+    conf -- ??? what is the type? 
+    """
     # TODO fold curr_dir into conf?
     p = Stages()
     for conf in conf.single_gen_confs:
@@ -766,24 +792,36 @@ def mincaverage(imgs, name_wo_ext="average", output_dir='.', copy_header_from_fi
                  [avg.path])
     return Result(stages=Stages([s]), output=avg)
 
-def xfmaverage(xfms, output_dir): #mnc -> mnc
+def xfmaverage(xfms, output_dir): # [XfmAtom] -> XfmAtom
+    if not isinstance(xfms, list):
+        raise ValueError("The input transformations (xfms) to xfmaverage need to be passed as a list")
     if len(xfms) == 0:
         raise ValueError("`xfmaverage` arg `xfms` is empty (can't average zero files)")
     #outf  = xfms[0].xfm.newname_with(fn = lambda _ : 'average') # ugh
     #outf.orig_path = None #ugh
-    outf  = MincAtom(name=os.path.join(output_dir, 'average'), orig_name=None)
+    #
+    #
+    # TODO: the path here is probably not right...
+    #
+    #
+    outf  = XfmAtom(name=os.path.join(output_dir, 'transforms/average.xfm'), orig_name=None)
     stage = CmdStage(inputs=xfms, outputs=[outf],
                      cmd=["xfmaverage"] + [x.xfm.path for x in xfms] + [outf.path])
     return Result(stages=Stages([stage]), output=outf)
 
-def xfminvert(xfm): #mnc -> mnc #TODO find a new naming scheme for lifted/unlifted operations?
+def xfminvert(xfm): #XfmAtom -> XfmAtom
+    if not isinstance(xfm, XfmAtom):
+        raise ValueError("The input to xfminvert (xfm) should be of type XfmAtom.")
+    
     inv_xfm = xfm.newname_with_suffix('_inverted')
     s = CmdStage(inputs=[xfm], outputs=[inv_xfm],
                  cmd=['xfminvert', '-clobber', xfm.path, inv_xfm.path])
     return Result(stages=Stages([s]), output=inv_xfm)
 
-def invert(xfm): #xfm -> xfm
+def invert(xfm): #XfmHandler -> XfmHandler
     """xfminvert lifted to work on XfmHandlers instead of MincAtoms"""
+    if not isinstance(xfm, XfmHandler):
+        raise ValueError("The input to invert (xfm) is not of type XfmHandler.")
     s = Stages()
     inv_xfm = s.defer(xfminvert(xfm.xfm))
     return Result(stages=s, #FIXME add a resampling stage to get rid of null `resampled` field?
@@ -900,7 +938,7 @@ def lsq6(imgs, target, lsq6_method, resolution,
     rotation_params   -- list of 4 values (or "mousebrain"), see rotational_minctracc for more info
     
     Return: -- stages
-            -- list of transformations from input files to the target
+            -- list of transformations from input files to the target (XfmAtoms)
     """
     # make sure all variables that are passed along are of the appropriate type:
     if not isinstance(imgs, list):
@@ -976,7 +1014,7 @@ def lsq6_nuc_inorm(imgs, registration_targets, lsq6_method,
     xfms_source_imgs_to_lsq6_target = s.defer(lsq6(imgs, init_target, lsq6_method, resolution,
                                                    rotation_tmp_dir, rotation_range, 
                                                    rotation_interval, rotation_params))
-    
+        
     # 2) concatenate the native_to_standard transform if we have this transform
     xfms_to_final_target_space = []
     if registration_targets.xfm_to_standard:
@@ -1017,7 +1055,7 @@ class RegistrationTargets(Atom):
     --bootstrap 
     """
     registration_standard      = Instance(MincAtom)
-    xfm_to_standard            = Instance(MincAtom)
+    xfm_to_standard            = Instance(XfmAtom)
     registration_native        = Instance(MincAtom)
     
 def get_registration_targets_from_init_model(init_model_standard_file, output_dir, pipeline_name):
@@ -1074,7 +1112,7 @@ def get_registration_targets_from_init_model(init_model_standard_file, output_di
         if not os.path.exists(init_model_native_to_standard):
             raise ValueError("\nError: can not read the following initial model file (required transformation when native "
                    "files exist): %s\n" % init_model_native_to_standard)
-        xfm_to_standard = MincAtom(name=init_model_native_to_standard,
+        xfm_to_standard = XfmAtom(name=init_model_native_to_standard,
                                    orig_name=init_model_native_to_standard,
                                    pipeline_sub_dir=init_model_output_dir)
     
