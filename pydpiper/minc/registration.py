@@ -17,6 +17,7 @@ from pydpiper.core.containers import Result
 from pydpiper.core.util       import flatten
 from pydpiper.core.conversion import InputFile, OutputFile
 from pyminc.volumes.factory   import volumeFromFile
+from pydpiper.pipelines.registration_chain import Subject
 
 # TODO canonicalize all names of form 'source', 'src', 'src_img', 'dest', 'target', ... in program
 
@@ -43,7 +44,7 @@ def mincblur(img, fwhm, gradient=False, subdir='tmp'): # mnc -> mnc  #, output_d
                   + (['-gradient'] if gradient else []))
     return Result(stages=Stages([stage]), output=outf)
 
-def mincresample_simple(img, xfm, like, extra_flags, new_name_wo_ext=None, subdir=None): # MincAtom, XfmAtom, MincAtom, [str] -> MincAtom
+def mincresample_simple(img, xfm, like, extra_flags=[], new_name_wo_ext=None, subdir=None): # MincAtom, XfmAtom, MincAtom, [str] -> MincAtom
     """
     Resample an image, ignoring mask/labels
     
@@ -89,7 +90,7 @@ def mincresample_simple(img, xfm, like, extra_flags, new_name_wo_ext=None, subdi
     return Result(stages=Stages([stage]), output=outf)
 
 # TODO mincresample_simple could easily be replaced by a recursive call to mincresample
-def mincresample(img, xfm, like, extra_flags, new_name_wo_ext=None, subdir=None): # mnc -> mnc
+def mincresample(img, xfm, like, extra_flags=[], new_name_wo_ext=None, subdir=None): # mnc -> mnc
     """
     img             -- MincAtom
     xfm             -- XfmAtom
@@ -532,17 +533,37 @@ class MincANTSConf(Atom):
     
 mincANTS_default_conf = MincANTSConf()
 
-def mincANTS(source, target, conf, transform=None):
-    """Construct a single call to mincANTS.
+def mincANTS(source, target, conf, transform_name_wo_ext=None, generation=None, resample_source=False):
+    """
+    source                -- MincAtom
+    target                -- MincAtom
+    conf                  -- MincANTSConf
+    transform_name_wo_ext -- string, to use for the output transformation (without the extension)
+    generation            -- integer, if provided the transformation name will be:
+                             source.filename_wo_ext + "_mincANTS_nlin-" + generation
+    resample_source       -- boolean indicating whether or not to resample the source file   
+    
+    Construct a single call to mincANTS.
     Also does blurring according to the specified options
-    since the cost function might use these."""
+    since the cost function might use these.
+    """
     s = Stages()
-    # TODO add a way to add _nlin_0 or whatever to name based on generation or whatever
-    out_xfm = XfmAtom(name=os.path.join(source.pipeline_sub_dir, source.output_sub_dir, 'transforms', \
-                                        "%s_mincANTS_to_%s.xfm" % (source.filename_wo_ext, target.filename_wo_ext)),
-                      pipeline_sub_dir=source.pipeline_sub_dir,
-                      output_sub_dir=source.output_sub_dir)
-
+    
+    if transform_name_wo_ext:
+        out_xfm = XfmAtom(name=os.path.join(source.pipeline_sub_dir, source.output_sub_dir, 'transforms', \
+                                            "%s.xfm" % (transform_name_wo_ext)),
+                          pipeline_sub_dir=source.pipeline_sub_dir,
+                          output_sub_dir=source.output_sub_dir)
+    elif generation:
+        out_xfm = XfmAtom(name=os.path.join(source.pipeline_sub_dir, source.output_sub_dir, 'transforms', \
+                                            "%s_mincANTS_nlin-%s.xfm" % (source.filename_wo_ext, generation)),
+                          pipeline_sub_dir=source.pipeline_sub_dir,
+                          output_sub_dir=source.output_sub_dir)
+    else:
+        out_xfm = XfmAtom(name=os.path.join(source.pipeline_sub_dir, source.output_sub_dir, 'transforms', \
+                                            "%s_mincANTS_to_%s.xfm" % (source.filename_wo_ext, target.filename_wo_ext)),
+                          pipeline_sub_dir=source.pipeline_sub_dir,
+                          output_sub_dir=source.output_sub_dir)
 
     similarity_cmds = []
     similarity_inputs = set()
@@ -573,7 +594,9 @@ def mincANTS(source, target, conf, transform=None):
                             '-o', out_xfm.path] \
                          + (['-x', target.mask.path] if conf.use_mask and target.mask else []))
     s.add(stage)
-    resampled = s.defer(mincresample(img=source, xfm=out_xfm, like=target, extra_flags=['-sinc']))
+    resampled = NotImplemented
+    if resample_source:
+        resampled = s.defer(mincresample(img=source, xfm=out_xfm, like=target, extra_flags=['-sinc']))
     return Result(stages=s,
                   output=XfmHandler(source=source,
                                     target=target,
@@ -606,7 +629,7 @@ def mincANTS_NLIN_build_model(imgs, initial_target, nlin_dir, confs):
     avg = initial_target
     avg_imgs = []
     for i, conf in enumerate(confs):
-        xfms = [s.defer(mincANTS(source=img, target=avg, conf=conf)) for img in imgs]
+        xfms = [s.defer(mincANTS(source=img, target=avg, conf=conf, generation=i+1,resample_source=True)) for img in imgs]
         # number the generations starting at 1, enumerate will start at 0
         avg  = s.defer(mincaverage([xfm.resampled for xfm in xfms], name_wo_ext='nlin-%d' % (i+1), output_dir=nlin_dir))
         avg_imgs.append(avg)
@@ -617,7 +640,9 @@ def LSQ12_NLIN(source, target, conf):
 
 def intrasubject_registrations(subj, conf): # Subject, lsq12_nlin_conf -> Result(..., (Registration)(xfms))
     """
-    TODO: more to be added
+    subj -- Subject (has a intersubject_registration_time_pt and a time_pt_dict 
+            that maps timepoints to individual subjects
+    conf -- MincANTSConf 
     
     This function returns a dictionary mapping a time point to a transformation
     {time_pt_1 : transform_from_1_to_2, ..., time_pt_n-1 : transform_from_n-1_to_n}
@@ -627,17 +652,11 @@ def intrasubject_registrations(subj, conf): # Subject, lsq12_nlin_conf -> Result
     # easy access from a MincAtom to an XfmHandler from time_pt N to N+1 
     # either here or in the chain() function 
     
-    # don't need if LSQ12_NLIN acts on a map with values being imgs
-    #test_conf = MincANTSConf()
-    #test_conf = MincANTSConf(iterations = "40x30x20",
-    #                         transformation_model = mincANTS_default_conf.transformation_model,
-    #                         regularization = "'Gauss[5,1]'",
-    #                         similarity_metric = mincANTS_default_conf.similarity_metric,
-    #                         weight = mincANTS_default_conf.weight,
-    #                         blurs = mincANTS_default_conf.blurs,
-    #                         radius_or_histo = [4,4],
-    #                         gradient = mincANTS_default_conf.gradient,
-    #                         use_mask = False)
+    if not isinstance(subj, Subject):
+        raise ValueError("The input to intrasubject_registrations (subj) is not of type Subject.")
+    if not isinstance(conf, MincANTSConf):
+        raise ValueError("The configuration for intrasubject_registrations (conf) is not provided as a MincANTSConf.")
+    
     s = Stages()
     timepts = sorted(subj.time_pt_dict.iteritems())
     timepts_indices = [index for index,subj_atom in timepts]
@@ -645,11 +664,13 @@ def intrasubject_registrations(subj, conf): # Subject, lsq12_nlin_conf -> Result
     # should only look at the first element of the tuples stored in timepts
     index_of_common_time_pt = timepts_indices.index(subj.intersubject_registration_time_pt)
     time_pt_to_xfms = []
+    
     for source_index in range(len(timepts) - 1):
         time_pt_to_xfms.append((timepts_indices[source_index],
-                               s.defer(mincANTS(source=timepts[source_index][1],
-                                                target=timepts[source_index + 1][1],
-                                                conf=conf))))
+                                s.defer(mincANTS(source=timepts[source_index][1],
+                                                 target=timepts[source_index + 1][1],
+                                                 conf=conf,
+                                                 resample_source=True))))
     return Result(stages=s, output=(time_pt_to_xfms,index_of_common_time_pt))
 
 
