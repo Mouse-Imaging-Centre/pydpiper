@@ -278,7 +278,7 @@ def get_rotational_minctracc_conf(resolution, rotation_params=None, rotation_ran
     """
 
 #FIXME consistently require that masks are explicitely added to inputs array (or not?)
-def rotational_minctracc(source, target, conf, resolution, mask=None):
+def rotational_minctracc(source, target, conf, resolution, mask=None, resample_source=False):
     """
     source     -- MincAtom (do not have to be blurred)
     target     -- MincAtom (do not have to be blurred)
@@ -366,7 +366,16 @@ def rotational_minctracc(source, target, conf, resolution, mask=None):
                out_xfm.path,
                "/dev/null"] + (['-m', mask_for_command.path] if mask_for_command else []))
     s.update(Stages([cmd]))
-    return Result(stages=s, output=out_xfm)
+    
+    resampled = NotImplemented
+    if resample_source:
+        resampled = s.defer(mincresample(img=source, xfm=out_xfm, like=target, extra_flags=['-sinc']))
+        
+    return Result(stages=s,
+                  output=XfmHandler(source=source,
+                                    target=target,
+                                    xfm=out_xfm,
+                                    resampled=resampled))
 
 class MinctraccConf(Atom):
     step_sizes        = Tuple((int, float), default=None)
@@ -956,7 +965,7 @@ def lsq6(imgs, target, lsq6_method, resolution,
     rotation_params   -- list of 4 values (or "mousebrain"), see rotational_minctracc for more info
     
     Return: -- stages
-            -- list of transformations from input files to the target (XfmAtoms)
+            -- list of XfmHandlers
     """
     # make sure all variables that are passed along are of the appropriate type:
     if not isinstance(imgs, list):
@@ -968,7 +977,7 @@ def lsq6(imgs, target, lsq6_method, resolution,
         raise ValueError("The target arg for lsq6() is not an instance of MincAtom")
     
     s = Stages()
-    xfms_to_target = []
+    xfm_handlers_to_target = []
     
     ############################################################################
     # alignment
@@ -982,10 +991,10 @@ def lsq6(imgs, target, lsq6_method, resolution,
                                                     rotation_range, rotation_interval,
                                                     rotation_params) 
         # now call rotational_minctracc on all input images 
-        xfms_to_target = [s.defer(rotational_minctracc(img, target,
-                                                       rotational_configuration,
-                                                       resolution_for_rot))
-                          for img in imgs]
+        xfm_handlers_to_target = [s.defer(rotational_minctracc(img, target,
+                                                               rotational_configuration,
+                                                               resolution_for_rot))
+                                  for img in imgs]
     #
     # Center estimation
     #
@@ -1001,7 +1010,7 @@ def lsq6(imgs, target, lsq6_method, resolution,
     # TODO: resample input files ???
     ############################################################################
     
-    return Result(stages=s, output=xfms_to_target)
+    return Result(stages=s, output=xfm_handlers_to_target)
 
 def lsq6_nuc_inorm(imgs, registration_targets, lsq6_method,
                    resolution,
@@ -1029,18 +1038,18 @@ def lsq6_nuc_inorm(imgs, registration_targets, lsq6_method,
     # 1) run the actual 6 parameter registration
     init_target = registration_targets.registration_standard if not registration_targets.registration_native \
                     else registration_targets.registration_native
-    xfms_source_imgs_to_lsq6_target = s.defer(lsq6(imgs, init_target, lsq6_method, resolution,
-                                                   rotation_tmp_dir, rotation_range, 
-                                                   rotation_interval, rotation_params))
+    xfm_handlers_source_imgs_to_lsq6_target = s.defer(lsq6(imgs, init_target, lsq6_method, resolution,
+                                                           rotation_tmp_dir, rotation_range, 
+                                                           rotation_interval, rotation_params))
         
     # 2) concatenate the native_to_standard transform if we have this transform
     xfms_to_final_target_space = []
     if registration_targets.xfm_to_standard:
-        xfms_to_final_target_space = [s.defer(xfmconcat([first_xfm, 
+        xfms_to_final_target_space = [s.defer(xfmconcat([first_xfm.xfm, 
                                                         registration_targets.xfm_to_standard]))
-                                              for first_xfm in xfms_source_imgs_to_lsq6_target]
+                                              for first_xfm in xfm_handlers_source_imgs_to_lsq6_target]
     else:
-        xfms_to_final_target_space = xfms_source_imgs_to_lsq6_target
+        xfms_to_final_target_space = [xfm_handler.xfm for xfm_handler in xfm_handlers_source_imgs_to_lsq6_target]
     
     # 3) resample the input to the final lsq6 space
     #    we should go back to basics in terms of the file name that we create here. It should
