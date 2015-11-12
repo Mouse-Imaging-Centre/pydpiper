@@ -15,9 +15,10 @@ setup(name='pydpiper',
       install_requires=[
         'ConfigArgParse',
         'networkx',
-        'pygraphviz',
+        #'pygraphviz',
         'Pyro4',
-        'pytest'
+        'pytest',
+        'typing'
       ],
       platforms="any",
       packages=['pydpiper', 'pydpiper.core', 'pydpiper.minc', 'pydpiper.execution', 'pydpiper.pipelines'],

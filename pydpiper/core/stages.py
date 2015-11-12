@@ -1,4 +1,5 @@
 import shlex
+import typing
 
 from pydpiper.execution.pipeline import PipelineFile, InputFile, OutputFile
 

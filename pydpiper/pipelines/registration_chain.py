@@ -113,8 +113,8 @@ def chain(options):
     # verify that in input files are proper MINC files, and that there 
     # are no duplicates in the filenames
     all_Minc_Atoms = []
-    for s_id, subj in pipeline_subject_info.iteritems():
-        for subj_time_pt, subj_filename in subj.time_pt_dict.iteritems():
+    for s_id, subj in pipeline_subject_info.items():
+        for subj_time_pt, subj_filename in subj.time_pt_dict.items():
             all_Minc_Atoms.append(subj_filename)
     # check_MINC_input_files takes strings, so pass along those instead of the actual MincAtoms
     check_MINC_input_files([minc_atom.get_path() for minc_atom in all_Minc_Atoms])
@@ -197,7 +197,7 @@ def chain(options):
     dict_intersubj_atom_to_xfm = {}
     if options.registration.input_space == 'lsq6' or options.registration.input_space == 'lsq12':
         intersubj_imgs = { s_id : subj.intersubject_registration_image
-                          for s_id, subj in pipeline_subject_info.iteritems() }
+                          for s_id, subj in pipeline_subject_info.items() }
     else:
         # TODO: the intersubj_imgs should now be extracted from the
         # lsq6 aligned images
@@ -221,14 +221,14 @@ def chain(options):
     elif options.registration.input_space == 'lsq12':
         #TODO: write reader that creates a mincANTS configuration out of an input protocol 
         if not some_temp_target:
-            some_temp_target = s.defer(mincaverage(imgs=intersubj_imgs.values(),
+            some_temp_target = s.defer(mincaverage(imgs=list(intersubj_imgs.values()),
                                            name_wo_ext="avg_of_input_files",
                                            output_dir=pipeline_nlin_common_dir))
         conf1 = MincANTSConf(default_resolution=options.registration.resolution,
                              iterations="100x100x100x0")
         conf2 = MincANTSConf(default_resolution=options.registration.resolution)
         full_hierarchy = [conf1, conf2]
-        intersubj_xfms = s.defer(mincANTS_NLIN_build_model(imgs=intersubj_imgs.values(),
+        intersubj_xfms = s.defer(mincANTS_NLIN_build_model(imgs=list(intersubj_imgs.values()),
                                                    initial_target=some_temp_target, # this doesn't make sense yet
                                                    nlin_dir=pipeline_nlin_common_dir,
                                                    confs=full_hierarchy))
@@ -252,7 +252,7 @@ def chain(options):
     # 6) C_time_2   ->   C_time_3    
     
     chain_xfms = { s_id : s.defer(intrasubject_registrations(subj, MincANTSConf(default_resolution=options.registration.resolution)))
-                   for s_id, subj in pipeline_subject_info.iteritems() }
+                   for s_id, subj in pipeline_subject_info.items() }
 
     # create transformation from each subject to the final common time point average
     final_non_rigid_xfms = s.defer(final_transforms(pipeline_subject_info,
@@ -279,9 +279,9 @@ def map_over_time_pt_dict_in_Subject(f, d):
     True
     """
     new_d = {}
-    for s_id, subj in d.iteritems():
+    for s_id, subj in d.items():
         new_time_pt_dict = {}
-        for t,x in subj.time_pt_dict.iteritems():
+        for t,x in subj.time_pt_dict.items():
             new_time_pt_dict[t] = f(x)
         new_subj = Subject(intersubject_registration_time_pt = subj.intersubject_registration_time_pt,
                            time_pt_dict   = new_time_pt_dict)
@@ -344,7 +344,7 @@ def parse_csv(rows, common_time_pt): # row iterator, int -> { subject_id(str) : 
     # Iterate through subjects, filling in intersubject-registration time points with the common
     # time point if unspecified for a given subject, and raising an error if there's no timepoint
     # available or no scan for the specified timepoint
-    for s_id, s in subject_info.iteritems():
+    for s_id, s in subject_info.items():
         if s.intersubject_registration_time_pt is None:
             if common_time_pt is None:
                 raise TimePointError("no subject-specific or default inter-subject "
@@ -401,7 +401,7 @@ def final_transforms(pipeline_subject_info, intersubj_xfms_dict, chain_xfms_dict
     """
     s = Stages()
     new_d = {}
-    for s_id, subj in pipeline_subject_info.iteritems():
+    for s_id, subj in pipeline_subject_info.items():
         # this time point dictionary will hold a mapping
         # of time points to transformations to the final
         # common average (and it will have the inter_sub_time_pt)

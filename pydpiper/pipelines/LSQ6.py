@@ -64,7 +64,7 @@ def lsq6(imgs, target, options): # [mnc], mnc, LSQ6Conf -> Result(..., output=??
         try:
             v = choices[k]
         except KeyError:
-            raise SwitchError('unhandled case %s (no default supplied); valid: %s' % (k, choices.keys()))
+            raise SwitchError('unhandled case %s (no default supplied); valid: %s' % (k, list(choices.keys())))
         else:
             return v()
 

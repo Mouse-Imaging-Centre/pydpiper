@@ -3,6 +3,7 @@
 import errno
 import os
 #import os.path
+from functools import reduce
 from operator import add
 
 def raise_(err):
@@ -25,7 +26,7 @@ def explode(filename):
     return (directory, name, ext)
 
 def pairs(lst):
-    return zip(lst[:-1], lst[1:])
+    return list(zip(lst[:-1], lst[1:]))
 
 def flatten(*xs):
     return reduce(add, xs, [])
