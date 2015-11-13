@@ -379,6 +379,7 @@ def rotational_minctracc(source, target, conf, resolution, mask=None, resample_s
 
 class MinctraccConf(Atom):
     step_sizes        = Tuple((int, float), default=None)
+    blur_resolution   = Instance(float)
     use_masks         = Instance(bool)
     is_nonlinear      = Instance(bool)
     # linear part
@@ -441,6 +442,13 @@ def default_LSQ12_conf(resolution):
 
 default_lsq6_minctracc_conf, default_lsq12_minctracc_conf = map(default_linear_minctracc_conf, ('lsq6', 'lsq12'))
 
+#
+# TODO: I'm not sure about these defaults.. they should be
+# based on the resolution of the input files. This will 
+# somewhat work for mouse brains, but is a very coarse 
+# registration. What's its purpose?
+#
+#
 # FIXME wrapping this in a function gives a weird weird error ...
 #def default_nonlinear_minctracc_conf():
 step_size = 0.5
@@ -448,6 +456,7 @@ step_sizes = (step_size,) * 3
 default_nonlinear_minctracc_conf = MinctraccConf(
     is_nonlinear=True,
     step_sizes=step_sizes,
+    blur_resolution=step_size,
     use_masks=True,
     iterations=40,
     similarity=0.8,
@@ -466,8 +475,19 @@ def space_sep(x):
         return str(x)
 
 # TODO: add memory estimation hook
-def minctracc(source, target, conf, transform=None):
+def minctracc(source, target, conf, transform=None, transform_name_wo_ext=None, 
+              generation=None, resample_source=False):
     """
+    source                -- MincAtom
+    target                -- MincAtom
+    conf                  -- MinctraccConf
+    transform             -- XfmAtom
+    transform_name_wo_ext -- string, to use for the output transformation (without the extension)
+    generation            -- integer, if provided the transformation name will be:
+                             source.filename_wo_ext + "_mincANTS_nlin-" + generation
+    resample_source       -- boolean indicating whether or not to resample the source file 
+    
+    
     minctracc functionality:
     
     LSQ6 -- (conf.is_nonlinear == False) and (conf.transform_type == "lsq6")
@@ -479,20 +499,45 @@ def minctracc(source, target, conf, transform=None):
     
     
     """
+    # check just for now, because we've only recently switched to using 
+    # XfmAtom for transformations. Soon this will all be checked using
+    # Python3 "headers"
+    if transform:
+        if not isinstance(transform, XfmAtom):
+            raise ValueError("The input transform to minctracc (transform) is not of type XfmAtom.")
+    
+    s = Stages()
+    
     #if not conf.transform_type in [None, 'pat', 'lsq3', 'lsq6', 'lsq7', 'lsq9', 'lsq10', 'lsq12', 'procrustes']:
     #    raise ValueError("minctracc: invalid transform type %s" % conf.transform_type) # not needed if MinctraccConfig(Atom) given
     # FIXME this line should produce a MincAtom (or FileAtom?? doesn't matter if
     # we use only structural properties) with null mask/labels
-    out_xfm = XfmAtom(name=os.path.join(source.pipeline_sub_dir, source.output_sub_dir, 'transforms',
-                                        "%s_minctracc_to_%s.xfm" % (source.filename_wo_ext, target.filename_wo_ext)),
-                      pipeline_sub_dir=source.pipeline_sub_dir,
-                      output_sub_dir=source.output_sub_dir)
-        
-    #outf = MincAtom(name = "%s_to_%s.xfm" % (source.name, target.name))            #TODO don't get an orig_name
+    if transform_name_wo_ext:
+        out_xfm = XfmAtom(name=os.path.join(source.pipeline_sub_dir, source.output_sub_dir, 'transforms',
+                                            "%s.xfm" % (transform_name_wo_ext)),
+                          pipeline_sub_dir=source.pipeline_sub_dir,
+                          output_sub_dir=source.output_sub_dir)
+    elif generation:
+        out_xfm = XfmAtom(name=os.path.join(source.pipeline_sub_dir, source.output_sub_dir, 'transforms',
+                                            "%s_minctracc_nlin-%s.xfm" % (source.filename_wo_ext, generation)),
+                          pipeline_sub_dir=source.pipeline_sub_dir,
+                          output_sub_dir=source.output_sub_dir)
+    else:
+        out_xfm = XfmAtom(name=os.path.join(source.pipeline_sub_dir, source.output_sub_dir, 'transforms',
+                                            "%s_minctracc_to_%s.xfm" % (source.filename_wo_ext, target.filename_wo_ext)),
+                          pipeline_sub_dir=source.pipeline_sub_dir,
+                          output_sub_dir=source.output_sub_dir)
+    
+    source_for_minctracc = source
+    target_for_minctracc = target
+    if conf.blur_resolution is not None:
+        source_for_minctracc = s.defer(mincblur(source, conf.blur_resolution,
+                                                gradient=True))
+        target_for_minctracc = s.defer(mincblur(target, conf.blur_resolution,
+                                                gradient=True))
+    
     stage = cmd_stage(flatten(
               ['minctracc', '-clobber', '-debug', '-xcorr'],
-              #TODO remove -xcorr in nonlinear case?
-              #TODO remove -debug in purely linear case?
               (['-transformation', InputFile(transform.path)] if transform else []),
               (['-' + conf.transform_type] if conf.transform_type else []),
               (['-use_simplex'] if conf.use_simplex is not None else []),
@@ -513,9 +558,20 @@ def minctracc(source, target, conf, transform=None):
               (['-nonlinear %s' % (conf.objective if conf.objective else '')] if conf.is_nonlinear else []),
               (['-source_mask', InputFile(source.mask.path)] if source.mask and conf.use_masks else []),
               (['-model_mask',  InputFile(target.mask.path)] if target.mask and conf.use_masks else []),
-              [InputFile(source.path), InputFile(target.path), OutputFile(out_xfm.path)]))
-    # TODO: update this to be an XfmHandler!
-    return Result(stages=Stages([stage]), output=out_xfm)
+              [InputFile(source_for_minctracc.path), InputFile(target_for_minctracc.path), 
+               OutputFile(out_xfm.path)]))
+
+    s.add(stage)
+    
+    resampled = NotImplemented
+    if resample_source:
+        resampled = s.defer(mincresample(img=source, xfm=out_xfm, like=target, extra_flags=['-sinc']))
+
+    return Result(stages=s,
+                  output=XfmHandler(source=source,
+                                    target=target,
+                                    xfm=out_xfm,
+                                    resampled=resampled))
 
 class SimilarityMetricConf(Atom):
     metric             = Str("CC")
