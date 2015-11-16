@@ -157,10 +157,12 @@ def chain(options):
         # in a similar "shape" as pipeline_subject_info    
         lsq6_nuc_inorm(all_Minc_Atoms, registration_targets, options.lsq6.lsq6_method,
                        options.registration.resolution, 
+                       subject_matter=options.registration.subject_matter,
                        rotation_tmp_dir=options.lsq6.large_rotation_tmp_dir,
                        rotation_range=options.lsq6.large_rotation_range,
                        rotation_interval=options.lsq6.large_rotation_interval,
-                       rotation_params=options.lsq6.large_rotation_parameters)
+                       rotation_params=options.lsq6.large_rotation_parameters,
+                       nuc=options.lsq6.nuc)
         
         # TODO:
         # what should be done here is the LSQ6 registration, options:

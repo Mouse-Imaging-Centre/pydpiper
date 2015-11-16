@@ -200,14 +200,39 @@ def concat(ts, name=None, extra_flags=[]): # TODO remove extra flags OR make ['-
                                     xfm=t,
                                     resampled=res))
 
-def nu_estimate(src): # MincAtom -> Result(stages=Set(Stages), MincAtom)
+def nu_estimate(src, resolution, mask=None, subject_matter=None): # MincAtom -> Result(stages=Set(Stages), MincAtom)
+    """
+    src            -- MincAtom
+    resolution     -- resolution at which the registration is performed
+    mask           -- MincAtom - optional mask for nu_estimate
+    subject_matter -- can be either "mousebrain" or "human". If "mousebrain", the 
+                      distance parameter will be set to 8, if "human" it will be 200 
+    """
     out = src.newname_with_suffix("_nu_estimate", ext=".imp")
 
     # TODO finish dealing with masking as per lines 436-448 of the old LSQ6.py.  (note: the 'singlemask' option there is never used)
     # (currently we don't allow for a single mask or using the initial model's mask if the inputs don't have them)
+    
+    # there are at least one parameter that should vary with the resolution of the input 
+    # files, and that is: -distance 
+    # The defaults for human brains are: 200
+    # for mouse brains we use          :   8
+    distance_value = 150 * resolution
+    if subject_matter:
+        if subject_matter == "mousebrain":
+            distance_value = 8
+        elif subject_matter == "human":
+            distance_value = 200
+        else:
+            raise ValueError("The value for subject_matter in nu_estimate should be either \'human\' or \'mousebrain\'. It is: %s." % subject_matter) 
+    
+    mask_for_nu_est = src.mask.path if src.mask else None
+    if mask:
+        mask_for_nu_est = mask.path
+    
     cmd = CmdStage(inputs = [src], outputs = [out],
-                   cmd = shlex.split("nu_estimate -clobber -distance 8 -iterations 100 -stop 0.001 -fwhm 0.15 -shrink 4 -lambda 5.0e-02")
-                       + (['-mask', src.mask.path] if src.mask else []) + [src.path, out.path])
+                   cmd = shlex.split("nu_estimate -clobber -iterations 100 -stop 0.001 -fwhm 0.15 -shrink 4 -lambda 5.0e-02")
+                       + ["-distance", str(distance_value)] + (['-mask', mask_for_nu_est] if mask_for_nu_est else []) + [src.path, out.path])
     return Result(stages=Stages([cmd]), output=out)
 
 def nu_evaluate(img, field): #mnc, file -> result(..., mnc)
@@ -216,9 +241,11 @@ def nu_evaluate(img, field): #mnc, file -> result(..., mnc)
                    cmd = ['nu_evaluate', '-clobber', '-mapping', field.path, img.path, out.path])
     return Result(stages=Stages([cmd]), output=out)
 
-def nu_correct(src): # mnc -> result(..., mnc)
+def nu_correct(src, resolution, mask=None, subject_matter=None): # mnc -> result(..., mnc)
     s = Stages()
-    return Result(stages=s, output=s.defer(nu_evaluate(src, s.defer(nu_estimate(src)))))
+    return Result(stages=s, output=s.defer(nu_evaluate(src, s.defer(nu_estimate(src, resolution, 
+                                                                                mask=mask, 
+                                                                                subject_matter=subject_matter)))))
 
 class INormalizeConf(Atom):
     const  = Int(1000)
@@ -1069,9 +1096,10 @@ def lsq6(imgs, target, lsq6_method, resolution,
     return Result(stages=s, output=xfm_handlers_to_target)
 
 def lsq6_nuc_inorm(imgs, registration_targets, lsq6_method,
-                   resolution,
+                   resolution, subject_matter=None,
                    rotation_tmp_dir=None, rotation_range=None, 
-                   rotation_interval=None, rotation_params=None):
+                   rotation_interval=None, rotation_params=None,
+                   nuc=None):
     """
     imgs                 -- a list of MincAtoms
     registration_targets -- instance of RegistrationTargets
@@ -1119,9 +1147,30 @@ def lsq6_nuc_inorm(imgs, registration_targets, lsq6_method,
                                                new_name_wo_ext=filename_wo_ext))
                           for native_img,xfm_to_lsq6,filename_wo_ext in zip(imgs,xfms_to_final_target_space,filenames_wo_ext_lsq6)]
     
-    # 4) NUC? (TODO: open up NUC parameters)
-    # 4a) if we have an initial model, resample the mask to native space and run NUC
-    # 4b) if not, simply apply NUC. 
+    # 4) NUC
+    if nuc:
+        masks_in_native_space = None
+        if registration_targets.registration_standard.mask:
+            # we should apply the non uniformity correction in
+            # native space. Given that there is a mask, we should
+            # resample it to that space using the inverse of the
+            # lsq6 transformation we have so far
+            masks_in_native_space = [s.defer(mincresample(img=registration_targets.registration_standard.mask,
+                                                          xfm=xfm_to_lsq6,
+                                                          like=native_img,
+                                                          extra_flags=['-nearest','-invert']))
+                                     for native_img,xfm_to_lsq6 in zip(imgs,xfms_to_final_target_space)]
+        # if masks are around, they will be passed along to nu_correct,
+        # if not we create a list with the same length as the number
+        # of images with None values
+        # what we get back here is a list of MincAtoms with NUC files
+        nuc_imgs_in_native_space = [s.defer(nu_correct(src=native_img,
+                                                       resolution=resolution,
+                                                       mask=native_img_mask,
+                                                       subject_matter=subject_matter))
+                                    for native_img,native_img_mask in zip(imgs, 
+                                    masks_in_native_space if masks_in_native_space else [None] * len(imgs))]
+
     
     # 5) INORM? apply to the result of 4
     
