@@ -1,3 +1,8 @@
-from collections import namedtuple
+from typing import TypeVar, Generic
 
-Result = namedtuple('Result', ['stages', 'output'])
+T = TypeVar('T')
+
+class Result(Generic[T]):
+    def __init__(self, stages, output):
+        self.stages = stages
+        self.output = output

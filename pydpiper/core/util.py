@@ -61,7 +61,7 @@ def output_directories(stages):
     of some previous stage."""
     # TODO what about logfiles/logdirs?
     # What if an output file IS a directory - should there be a special
-    # way of tagging this?
+    # way of tagging this other than ending the path in a trailing "/"?
     return { os.path.dirname(o) for c in stages for o in c.outputFiles }
 
 # this doesn't seem possible to do properly ... but we could turn a namespace into another type
