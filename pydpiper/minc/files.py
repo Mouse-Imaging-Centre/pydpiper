@@ -3,25 +3,24 @@ from pydpiper.core.files import FileAtom
 
 class MincAtom(FileAtom):
     """
-    TODO: what is the type of "mask"? Is it a string, or should this be a MincAtom? The latter
-    options makes more sense?
+    mask   -- MincAtom
+    labels -- MincAtom
     """
     def __init__(self, name, orig_name=NotProvided, pipeline_sub_dir=None, output_sub_dir=None, 
-                 mask=None, labels=None, resolution=None):
+                 mask=None, labels=None):
         super(self.__class__, self).__init__(name=name, orig_name=orig_name, 
                                              pipeline_sub_dir=pipeline_sub_dir,
                                              output_sub_dir=output_sub_dir)
         self.mask   = mask
         self.labels = labels
-        #if resolution is not None: #    self.resolution = resolution
-        # FIXME try to go out to disk for the resolution.
-        # If done excessively, this could be quite slow on some systems ... add caching on self.path?
-        # Even better, we could have a separate constructor inputMincAtom which would be the only one to try to do this
-        #elif ...:
-        #else:
-        #    raise ValueError
     # TODO should newname_with be overloaded with new behaviour for mask/labels???  We could get a different
     # behaviour for free if the FileAtom.newname_with used copy.copy() internally
     # some operations (blurring) preserve mask/labels, but others don't (resampling) ... add a preserve_labels=<bool> arg?
 
-    #TODO: when newname_with_* is called, the super class will always create a FileAtom...
+class XfmAtom(FileAtom):
+    """
+    We create this just to be able to type check xfms. They don't need
+    any more fields/information than a FileAtom, so the class functionality
+    remains unchanged
+    """
+    pass

@@ -9,7 +9,7 @@ import sys
 from atom.api import Atom, Int, Str, Dict, Enum, Instance
 
 from pydpiper.minc.analysis import determinants_at_fwhms, invert
-from pydpiper.core.containers import Result
+from pydpiper.core.stages import Result
 from pydpiper.minc.registration import (Stages, mincANTS_NLIN_build_model, mincANTS_default_conf,
                                         MincANTSConf, mincANTS, intrasubject_registrations, mincaverage, 
                                         concat, check_MINC_input_files, get_registration_targets,

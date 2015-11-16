@@ -4,7 +4,7 @@ import os.path
 
 from atom.api import Atom
 
-from pydpiper.core.stages     import Stages
+from pydpiper.core.stages     import Result, Stages
 #from ..core.containers import Result
 #TODO fix up imports, naming, stuff in registration vs. pipelines, ...
 from pydpiper.minc.files            import MincAtom
@@ -12,7 +12,6 @@ from pydpiper.pipelines.LSQ6    import LSQ6
 from pydpiper.minc.registration import LSQ12_NLIN_build_model
 from pydpiper.minc.analysis     import determinants_at_fwhms
 import pydpiper.core.arguments  as args
-from pydpiper.core.containers   import Result
 from pydpiper.core.execution    import execute
 
 # TODO abstract out some common configuration functionality and think about argparsing ...

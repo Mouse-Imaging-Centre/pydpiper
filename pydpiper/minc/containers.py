@@ -11,12 +11,11 @@ class XfmHandler(object):
     but in a manner which changes only intensity, not geometry.
     
     source -- MincAtom
-    TODO: how do we store the actual transformation file?
-    xfm -- MincAtom (change this? a transformation doesn't have a mask etc.)
+    xfm    -- XfmAtom 
     target -- MincAtom
     
     """
-    # MincAtom^4 -> XfmHandler
+    # MincAtom,XfmAtom,MincAtom[,MincAtom] -> XfmHandler
     def __init__(self, source, xfm, target, resampled = None):
         self.source     = source
         self.xfm        = xfm
