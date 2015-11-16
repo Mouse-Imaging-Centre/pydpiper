@@ -1,6 +1,8 @@
 import shlex
+import typing
 
 from pydpiper.execution.pipeline import PipelineFile, InputFile, OutputFile
+from typing import TypeVar, Generic, Set
 
 class CmdStage(object):
     """A simplified command stage - one could write a simple conversion
@@ -108,3 +110,8 @@ def parse(cmd_str):
     outputs = [s[1:] for s in cmd if s[0] == '@']
     s = CmdStage(inputs = inputs, outputs = outputs, cmd = [c if c[0] not in [',','@'] else c[1:] for c in cmd])
     return s
+
+class Result(object):
+    def __init__(self, stages, output):
+        self.stages = stages
+        self.output = output

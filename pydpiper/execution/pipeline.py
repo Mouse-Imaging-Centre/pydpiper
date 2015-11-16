@@ -19,6 +19,11 @@ import logging
 
 from pydpiper.core.util import mkdir_p
 
+try:
+    from sys import intern
+except:
+    "older Python doesn't namespace `intern`, so do nothing"
+
 # TODO move this and Pyro4 imports down into launchServer where pipeline name is available?
 #os.environ["PYRO_LOGLEVEL"] = os.getenv("PYRO_LOGLEVEL", "INFO")
 #os.environ["PYRO_LOGFILE"]  = os.path.splitext(os.path.basename(__file__))[0] + ".log"
@@ -32,7 +37,7 @@ logger.basicConfig(filename="pipeline.log", level=logging.os.getenv("PYDPIPER_LO
                           +__name__+",%(levelname)s] %(message)s")
                 
 import Pyro4
-import pipeline_executor as pe
+from . import pipeline_executor as pe
 
 Pyro4.config.SERVERTYPE = pe.Pyro4.config.SERVERTYPE
 
@@ -193,7 +198,7 @@ def nondistinct_outputs(stages):
     d = defaultdict(set)
     for o,s in m:
         d[o].add(s)
-    bad_outputs = dict(filter(lambda (o,ss): len(ss) > 1, d.iteritems()))
+    bad_outputs = { o : ss for o, ss in d.items() if len(ss) > 1 }
     return bad_outputs
 
 class Pipeline(object):
@@ -272,20 +277,18 @@ class Pipeline(object):
                 print("output: %s\nstages:\n" % o, file=sys.stderr)
                 for s in ss:
                     print(ss, file=sys.stderr)
-            print("Bye", file=sys.stderr)
-            sys.exit(1)
+            sys.exit("Bye")
 
         for s in stages:
             self._add_stage(s)
 
         self.createEdges()
         # could also set this on G itself ...
-        self.unfinished_pred_counts = [ len(filter(lambda i: not self.stages[i].isFinished(),
-                                                   self.G.predecessors(n)))
-                                        for n in xrange(self.G.order()) ]
-
-        graph_heads = filter(lambda n: self.unfinished_pred_counts[n] == 0,
-                             self.G.nodes_iter())
+        self.unfinished_pred_counts = [ len([i for i in self.G.predecessors(n)
+                                             if not self.stages[i].isFinished()])
+                                        for n in range(self.G.order()) ]
+        graph_heads = [n for n in self.G.nodes_iter()
+                       if self.unfinished_pred_counts[n] == 0]
         logger.info("Graph heads: " + str(graph_heads))
         for n in graph_heads:
             self.enqueue(n)
@@ -328,7 +331,7 @@ class Pipeline(object):
         return self.mem_req_for_runnable
 
     def getMemoryAvailableInClients(self):
-        return [c.maxmemory for _, c in self.clients.iteritems()]
+        return [c.maxmemory for _, c in self.clients.items()]
 
     def _add_stage(self, stage):
         """adds a stage to the pipeline"""
@@ -344,7 +347,7 @@ class Pipeline(object):
         # are actually interned, so it might be faster/cheaper
         # just to store/compare the pointers.
         h = stage.getHash()
-        if self.stage_dict.has_key(h):
+        if h in self.stage_dict:
             self.skipped_stages += 1
             #stage already exists - nothing to be done
         else: #stage doesn't exist - add it
@@ -389,7 +392,7 @@ class Pipeline(object):
             for ip in self.stages[i].inputFiles:
                 # if the input to the current stage was the output of another
                 # stage, add a directional dependence to the DiGraph
-                if self.outputhash.has_key(ip):
+                if ip in self.outputhash:
                     self.G.add_edge(self.outputhash[ip], i)
         endtime = time.time()
         logger.info("Create Edges time: " + str(endtime-starttime))
@@ -692,9 +695,7 @@ class Pipeline(object):
             # RAM needed to run a single job:
             memNeeded = self.executor_memory_required(self.runnable)
             # RAM needed to run `proc` most expensive jobs (not the ideal choice):
-            memWanted = sum(sorted(map(lambda i: self.stages[i].mem,
-                                       self.runnable),
-                                   key = lambda x: -x)[0:self.options.proc])
+            memWanted = sum(sorted([self.stages[i].mem for i in self.runnable],                                   key = lambda x: -x)[0:self.options.proc])
             logger.debug("wanted: %s" % memWanted)
             logger.debug("needed: %s" % memNeeded)
                 
@@ -715,7 +716,7 @@ class Pipeline(object):
             # look for dead clients and requeue their jobs
             t = time.time()
             # copy() as unregisterClient mutates self.clients during iteration over the latter
-            for uri,client in self.clients.copy().iteritems():
+            for uri,client in self.clients.copy().items():
                 dt = t - client.timestamp
                 if dt > pe.HEARTBEAT_INTERVAL + self.options.latency_tolerance:
                     logger.warn("Executor at %s has died (no contact for %.1f sec)!", client.clientURI, dt)

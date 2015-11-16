@@ -5,7 +5,6 @@ recommended to add to your application: e.g. the arguments that deal
 with the execution of your application.
 '''
 from configargparse import ArgParser, Namespace
-from atom.api import Atom, Enum, Instance, Str
 
 from pkg_resources import get_distribution
 import copy
@@ -25,7 +24,7 @@ class PydParser(ArgParser):
     # of what an lsq6/nlin protocol should look like, and this
     # won't be mangled when the parser calls `format_epilog`
     # when writing its help.
-    def format_epilog(self, formatter):
+    def format_epilog(self, _formatter):
         if not self.epilog:
             self.epilog = ""
         return self.epilog
@@ -34,13 +33,13 @@ class PydParser(ArgParser):
 #def id(*args, **kwargs):
 #    return args, kwargs
 
-def nullable_int(string):
+def parse_nullable_int(string):
     if string == "None":
         return None
     else:
         return int(string)
 
-class Parser: pass
+class Parser(object): pass
 
 # the leaves of the parse object (these contain the arguments you're interested in)
 class BaseParser(Parser):
@@ -57,12 +56,16 @@ class CompoundParser(Parser):
         """
         self.parsers  = annotated_parsers
 
-#Annotated = namedtuple('Annotated', ['it', 'prefix', 'namespace'])
-class AnnotatedParser(Atom):
-    parser    = Instance(Parser, factory=lambda : raise_(ValueError("must provide a parser")))
-    prefix    = Str("")
-    namespace = Str("", factory=lambda : raise_(ValueError("must provide a namespace")))
-    cast      = Instance(object, factory=lambda : None) #lambda y: y)
+class AnnotatedParser(object):
+    def __init__(self, parser, namespace, prefix="", cast=None):
+        self.parser    = parser
+        self.prefix    = prefix
+        self.namespace = namespace
+        self.cast      = cast
+    #parser    = Instance(Parser, factory=lambda : raise_(ValueError("must provide a parser")))
+    #prefix    = Str("")
+    #namespace = Str("", factory=lambda : raise_(ValueError("must provide a namespace")))
+    #cast      = Instance(object, factory=lambda : None) #lambda y: y)
 
 #combine_parsers = CompoundParsers
 
@@ -311,10 +314,11 @@ def _mk_registration_parser():
 registration_parser = BaseParser(_mk_registration_parser(), "general")
 
 # TODO: where should this live?
-class RegistrationConf(Atom):
-    input_space = Enum('native', 'lsq6', 'lsq12')
-    resolution  = Instance(float)
-
+class RegistrationConf(object):
+    def __init__(self, input_space, resolution):
+        self.input_space = input_space
+        self.resolution  = resolution
+    #input_space = Enum('native', 'lsq6', 'lsq12')
 
 def _mk_lsq6_parser():
     p = ArgParser(add_help=False)
@@ -426,8 +430,10 @@ def _mk_lsq6_parser():
 lsq6_parser = BaseParser(_mk_lsq6_parser(), "LSQ6")
 
 # TODO: where should this live?
-class LSQ6Conf(Atom):
-    lsq6_method = Enum('lsq6_simple', 'lsq6_centre_estimation', 'lsq6_large_rotations')
+class LSQ6Conf(object):
+    def __init__(self, lsq6_method):
+        self.lsq6_method = lsq6_method
+    #lsq6_method = Enum('lsq6_simple', 'lsq6_centre_estimation', 'lsq6_large_rotations')
     # more to be added...
 
 def _mk_stats_parser():
@@ -493,7 +499,7 @@ def _mk_lsq12_parser():
     #group = parser.add_argument_group("LSQ12 registration options",
     #                                  "Options for performing a pairwise, affine registration")
     p.add_argument("--lsq12-max-pairs", dest="lsq12_max_pairs",
-                   type=nullable_int, default=25,
+                   type=parse_nullable_int, default=25,
                    help="Maximum number of pairs to register together ('None' implies all pairs).  [Default = %(default)s]")
     p.add_argument("--lsq12-likefile", dest="lsq12_likeFile",
                    type=str, default=None,

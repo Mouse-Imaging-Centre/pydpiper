@@ -17,7 +17,7 @@ def parse_LSQ12_protocol(f): # handle -> LSQ12Conf
     d = {}
     for l in csvReader:
         d[l[0]] = l[1:]
-    #for k, v in d.iteritems():
+    #for k, v in d.items():
     #    if k
 
 # Q. should a pipeline (post-cmdline-parsing) take a `files` arg

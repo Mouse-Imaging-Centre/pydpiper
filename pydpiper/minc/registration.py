@@ -10,10 +10,9 @@ import sys
 from atom.api import (Atom, Bool, Int, Float, List,
                       Enum, Tuple, Instance, Str)
 
-from pydpiper.minc.files            import MincAtom, FileAtom, XfmAtom
+from pydpiper.minc.files            import MincAtom, XfmAtom
 from pydpiper.minc.containers       import XfmHandler, Registration
-from pydpiper.core.stages     import CmdStage, cmd_stage, Stages
-from pydpiper.core.containers import Result
+from pydpiper.core.stages     import CmdStage, cmd_stage, Result, Stages
 from pydpiper.core.util       import flatten
 from pydpiper.core.conversion import InputFile, OutputFile
 from pyminc.volumes.factory   import volumeFromFile
@@ -467,7 +466,7 @@ def default_LSQ12_conf(resolution):
     
     )
 
-default_lsq6_minctracc_conf, default_lsq12_minctracc_conf = map(default_linear_minctracc_conf, ('lsq6', 'lsq12'))
+default_lsq6_minctracc_conf, default_lsq12_minctracc_conf = [default_linear_minctracc_conf(x) for x in ('lsq6', 'lsq12')]
 
 #
 # TODO: I'm not sure about these defaults.. they should be
@@ -491,7 +490,7 @@ default_nonlinear_minctracc_conf = MinctraccConf(
     stiffness=0.98,
     weight=0.8,
     objective='corrcoeff',
-    lattice_diameter=tuple(map(lambda x: x * 3, step_sizes)),
+    lattice_diameter=tuple((x * 3 for x in step_sizes)),
     sub_lattice=6)
 
 #TODO move to utils
@@ -569,7 +568,8 @@ def minctracc(source, target, conf, transform=None, transform_name_wo_ext=None,
               (['-' + conf.transform_type] if conf.transform_type else []),
               (['-use_simplex'] if conf.use_simplex is not None else []),
               # FIXME add -est_centre, -est_translations/-identity if not transform (else add transform) !!
-              flatten(*map(lambda (f,v): [f, space_sep(v)], filter(lambda (f,v): v is not None, [
+              flatten(*[[f,space_sep(v)] for (f,v) in
+               [
                 ['-step',                  conf.step_sizes],
                 ['-simplex',               conf.simplex],
                 ['-tol',                   conf.tolerance],
@@ -580,8 +580,8 @@ def minctracc(source, target, conf, transform=None, transform_name_wo_ext=None,
                 ['-iterations',            conf.iterations],
                 ['-similarity_cost_ratio', conf.similarity],
                 ['-lattice_diameter',      conf.lattice_diameter],
-                ['-sub_lattice',           conf.sub_lattice],
-               ]))),
+                ['-sub_lattice',           conf.sub_lattice]
+               ] if v is not None]),
               (['-nonlinear %s' % (conf.objective if conf.objective else '')] if conf.is_nonlinear else []),
               (['-source_mask', InputFile(source.mask.path)] if source.mask and conf.use_masks else []),
               (['-model_mask',  InputFile(target.mask.path)] if target.mask and conf.use_masks else []),
@@ -750,7 +750,7 @@ def intrasubject_registrations(subj, conf): # Subject, lsq12_nlin_conf -> Result
         raise ValueError("The configuration for intrasubject_registrations (conf) is not provided as a MincANTSConf.")
     
     s = Stages()
-    timepts = sorted(subj.time_pt_dict.iteritems())
+    timepts = sorted(subj.time_pt_dict.items())
     timepts_indices = [index for index,subj_atom in timepts]
     # we need to find the index of the common time point and for that we
     # should only look at the first element of the tuples stored in timepts
@@ -833,10 +833,7 @@ def multilevel_pairwise_minctracc(imgs, # list(MincAtom)
         return XfmHandler(xfm = avg_xfm, source = src_img,
                           target = None, resampled = res) ##FIXME the None here borks things interface-wise ...
                                                           ## does putting `target = res` make sense? could a sum be used?
-    return Result(stages=p, output=map(avg_xfm_from, imgs)) ##FIXME similarly, a list of xfmhs ... weird
-    #xfms = map(xfm_to_avg, imgs)
-    #avg_img = p.defer(mincaverage(xfms)
-    #return Result(stages=p, output=Registration(xfms=xfms, average = avg_img))
+    return Result(stages=p, output=[avg_xfm_from(img) for img in imgs])
 
 MultilevelMinctraccConf = namedtuple('MultilevelMinctraccConf',
   ['resolution',       # used to choose step size...shouldn't be here
@@ -870,7 +867,7 @@ def lsq12_pairwise(imgs, conf, lsq12_dir, like=None): #lsq12_dir = pipeline_dir_
     dictionaries as well. This is necessary (amongst others) for the registration_chain
     as using dictionaries is the easiest way to keep track of the input files. """
 def lsq12_pairwise_on_dictionaries(imgs, conf, lsq12_dir, like=None):
-    l  = [(k,v) for k, v in sorted(imgs.iteritems())]
+    l  = [(k,v) for k, v in sorted(imgs.items())]
     ks = [k for k, _ in l]
     vs = [v for _, v in l]
     stages, outputs = lsq12_pairwise(imgs=vs, conf=conf, curr_dir=lsq12_dir, like=like)

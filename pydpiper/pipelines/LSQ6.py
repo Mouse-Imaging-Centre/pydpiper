@@ -3,8 +3,7 @@ from atom.api import Atom, Bool, Str, Enum
 
 #TODO s/MincAtom/MincFile/g
 
-from pydpiper.core.containers   import Result
-from pydpiper.core.stages       import CmdStage, Stages
+from pydpiper.core.stages       import CmdStage, Result, Stages
 from pydpiper.core.util         import raise_
 from pydpiper.minc.files        import MincAtom
 from pydpiper.minc.registration import multilevel_minctracc, nu_correct, inormalize
@@ -64,7 +63,7 @@ def lsq6(imgs, target, options): # [mnc], mnc, LSQ6Conf -> Result(..., output=??
         try:
             v = choices[k]
         except KeyError:
-            raise SwitchError('unhandled case %s (no default supplied); valid: %s' % (k, choices.keys()))
+            raise SwitchError('unhandled case %s (no default supplied); valid: %s' % (k, list(choices.keys())))
         else:
             return v()
 

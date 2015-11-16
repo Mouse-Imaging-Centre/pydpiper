@@ -116,7 +116,8 @@ def execute(stages, options):
     otherwise dispatch on backend type."""
 
     # TODO: logger.info('Constructing pipeline...')
-    pipeline = Pipeline(stages=map(convertCmdStage, stages), options=options)
+    pipeline = Pipeline(stages=[convertCmdStage(s) for s in stages],
+                        options=options)
 
     ensure_short_output_paths(stages)
     ensure_output_paths_in_dir(stages, options.output_directory)

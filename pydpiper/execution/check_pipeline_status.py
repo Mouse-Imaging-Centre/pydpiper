@@ -66,4 +66,4 @@ if __name__ == '__main__':
     # memory available in registered executors:
     memAvailable = proxyServer.getMemoryAvailableInClients()
     print("Memory available in registered clients: %s \n" %
-          map(lambda x: round(x, 4), memAvailable))
+          [round(x, 4) for x in memAvailable])
