@@ -103,21 +103,6 @@ def mincresample(img, xfm, like, extra_flags=[], new_name_wo_ext=None, subdir=No
     >>> [x.render() for x in stages]
     ['mincresample -clobber -2 -transform /tmp/trans.xfm -like /tmp/img_2.mnc /tmp/img_1.mnc /micehome/bdarwin/git/pydpiper/img_1/resampled/trans-resampled.mnc']
     """
-    # argument checking:
-    if not isinstance(img, MincAtom):
-        raise ValueError("The input (img) to mincresample is not a MincAtom.")
-    if not isinstance(xfm, XfmAtom):
-        raise ValueError("The transformation (xfm) to mincresample is not a XfmcAtom.")
-    if not isinstance(like, MincAtom):
-        raise ValueError("The like file (like) provided to mincresample is not a MincAtom.")
-    if not isinstance(extra_flags, list):
-        raise ValueError("The additional flags (extra_flags) to mincresample are not provided in a list.")
-    if new_name_wo_ext:
-        if not isinstance(new_name_wo_ext, str):
-            raise ValueError("The new_name_wo_ext argument to mincresample should be a string.")
-    if subdir:
-        if not isinstance(subdir, str):
-            raise ValueError("The subdir argument to mincresample should be a string.")
     
     s = Stages()
     
@@ -145,7 +130,7 @@ def mincresample(img, xfm, like, extra_flags=[], new_name_wo_ext=None, subdir=No
     new_img.labels = new_labels
     return Result(stages=s, output=new_img)
 
-def xfmconcat(xfms, name=None): # [XfmAtom], -> XfmAtom
+def xfmconcat(xfms, name=None):
     """
     xfms -- list of XfmAtoms
     
@@ -153,13 +138,6 @@ def xfmconcat(xfms, name=None): # [XfmAtom], -> XfmAtom
     >>> [s.render() for s in stages]
     ['xfmconcat /tmp/t1.xfm /tmp/t2.xfm /scratch/t1/concat_of_t1_and_t2.xfm']
     """
-    # argument checking
-    if not isinstance(xfms, list):
-        raise ValueError("The input transformations (xfm) to xfmconcat is not of type list.")
-    for xfm_el in xfms:
-        if not isinstance(xfm_el, XfmAtom):
-            raise ValueError("The elements of the xfms list in xfmconcat need to be of type XfmAtom")
-    
     if len(xfms) == 0:
         raise ValueError("`xfmconcat` arg `xfms` was empty (can't concat zero files)")
     elif len(xfms) == 1:
@@ -318,18 +296,6 @@ def rotational_minctracc(source, target, conf, resolution, mask=None, resample_s
     in the target file (target.mask).  Alternatively, a mask can be specified using the
     mask argument.
     """
-    # argument checking:
-    if not isinstance(source, MincAtom):
-        raise ValueError("The source input to rotation_minctracc is not a MincAtom.")
-    if not isinstance(target, MincAtom):
-        raise ValueError("The target input to rotation_minctracc is not a MincAtom.")
-    if not isinstance(conf, RotationalMinctraccConf):
-        raise ValueError("The configuration provided to rotational_minctracc is not a RotationalMinctraccConf")
-    if not isinstance(resolution, float):
-        raise ValueError("The resolution provided to rotational_minctracc is not a float value")
-    if mask:
-        if not isinstance(mask, MincAtom):
-            raise ValueError("The mask provided to rotational_minctracc is not a MincAtom")
     
     s = Stages()
 
@@ -387,7 +353,8 @@ _base_part   = [("step_sizes", float),
                 ("is_nonlinear", bool)]
 
 _linear_part = [("simplex", float),
-                ("transform_type", str), #TODO: enum
+                ("transform_type", str),
+                # TODO: Enum(None, 'lsq3', 'lsq6', 'lsq7', 'lsq9', 'lsq10', 'lsq12', 'procrustes')
                 ("tolerance", float),
                 ("w_rotations", R3),
                 ("w_translations", R3),
@@ -399,7 +366,8 @@ _nonlinear_part = [("iterations", int),
                    ("stiffness", float),
                    ("weight", float),
                    ("similarity", float),
-                   ("objective", str),   #TODO: enum
+                   ("objective", str),
+                   # TODO: Enum(None,'xcorr','diff','sqdiff','label', 'chamfer','corrcoeff','opticalflow')
                    ("lattice_diameter", R3),
                    ("sub_lattice", int),
                    ("max_def_magnitude", R3)]
@@ -409,46 +377,6 @@ MinctraccConf = NamedTuple('MinctraccConf', _base_part + _linear_part + _nonline
 LinearMinctraccConf = NamedTuple("LinearMinctraccConf", _base_part + _linear_part)
 
 NonlinearMinctraccConf = NamedTuple("NonlinearMinctraccConf", _base_part + _nonlinear_part)
-
-# class MinctraccConf(object):
-#     step_sizes        = Tuple((int, float), default=None)
-#     blur_resolution   = Instance(float)
-#     use_masks         = Instance(bool)
-#     is_nonlinear      = Instance(bool)
-#     # linear part
-#     simplex           = Instance((int, float))
-#     transform_type    = Enum(None, 'lsq3', 'lsq6', 'lsq7', 'lsq9', 'lsq10', 'lsq12', 'procrustes')
-#     tolerance         = Instance(float)
-#     w_rotations       = Tuple(float, default=None) # TODO should be Tuple((int,float),d=...) to preserve format
-#     w_translations    = Tuple(float, default=None) # TODO define types R3, ZorR3 for this
-#     w_scales          = Tuple(float, default=None) # TODO add length=3 validation
-#     w_shear           = Tuple(float, default=None)
-#     # nonlinear options
-#     iterations        = Instance(int)
-#     use_simplex       = Instance(bool)
-#     stiffness         = Instance(float)
-#     weight            = Instance(float)
-#     similarity        = Instance(float)
-#     objective         = Enum(None,'xcorr','diff','sqdiff','label',
-#                              'chamfer','corrcoeff','opticalflow')
-#     lattice_diameter  = Tuple(float, default=None)
-#     sub_lattice       = Instance(int)
-#     max_def_magnitude = Tuple((int, float), default=None)
-
-# class LinearMinctraccConf(object):
-#     """Generates a call to `minctracc` for linear registration only."""
-#     step_sizes        = Tuple((int, float), default=None)
-#     use_masks         = Instance(bool)
-#     simplex           = Instance((int, float))
-#     transform_type    = Enum(None, 'lsq3', 'lsq6', 'lsq7', 'lsq9', 'lsq10', 'lsq12', 'procrustes')
-#     tolerance         = Instance(float)
-#     w_rotations       = Tuple(float, default=None) # TODO should be Tuple((int,float),d=...) to preserve format
-#     w_translations    = Tuple(float, default=None) # TODO define types R3, ZorR3 for this
-#     w_scales          = Tuple(float, default=None) # TODO add length=3 validation
-#     w_shear           = Tuple(float, default=None)
-
-#class NonlinearMinctraccConf(object):
-#    """Generates a call to `minctracc` for nonlinear registration only."""
 
 # should we even keep (hence render) the defaults which are the same as minctracc's?
 # does this even get used in the pipeline?  LSQ6/12 get their own
@@ -468,7 +396,6 @@ def default_linear_minctracc_conf(transform_type):
 
 default_lsq6_minctracc_conf, default_lsq12_minctracc_conf = [default_linear_minctracc_conf(x) for x in ('lsq6', 'lsq12')]
 
-#
 # TODO: I'm not sure about these defaults.. they should be
 # based on the resolution of the input files. This will 
 # somewhat work for mouse brains, but is a very coarse 
@@ -528,17 +455,11 @@ def minctracc(source, target, conf, transform=None, transform_name_wo_ext=None,
     
     
     """
-    # check just for now, because we've only recently switched to using 
-    # XfmAtom for transformations. Soon this will all be checked using
-    # Python3 "headers"
-    if transform:
-        if not isinstance(transform, XfmAtom):
-            raise ValueError("The input transform to minctracc (transform) is not of type XfmAtom.")
     
     s = Stages()
     
-    #if not conf.transform_type in [None, 'pat', 'lsq3', 'lsq6', 'lsq7', 'lsq9', 'lsq10', 'lsq12', 'procrustes']:
-    #    raise ValueError("minctracc: invalid transform type %s" % conf.transform_type) # not needed if MinctraccConfig(Atom) given
+    if not conf.transform_type in [None, 'pat', 'lsq3', 'lsq6', 'lsq7', 'lsq9', 'lsq10', 'lsq12', 'procrustes']:
+        raise ValueError("minctracc: invalid transform type %s" % conf.transform_type) # not needed if MinctraccConfig(Atom) given
     # FIXME this line should produce a MincAtom (or FileAtom?? doesn't matter if
     # we use only structural properties) with null mask/labels
     if transform_name_wo_ext:
@@ -610,32 +531,12 @@ SimilarityMetricConf = NamedTuple('SimilarityMetricConf',
      ("radius_or_bins", float),
      ("use_gradient_image", bool)])
 
-default_similarity_metric_conf = SimilarityMetricConf(metric="CC",
-                                                      weight=1.0,
-                                                      blur_resolution=None,
-                                                      radius_or_bins=3,
-                                                      use_gradient_image=False)
-# class SimilarityMetricConf(object):
-#     metric             = Str("CC")
-#     weight             = Float(1)
-#     blur_resolution    = Instance(float)
-#     radius_or_bins     = Int(3)
-#     use_gradient_image = Bool(False)
-
-#class MincANTSConf(object):
-#    iterations           = Str("100x100x100x150")
-#    transformation_model = Str("'Syn[0.1]'")
-#    regularization       = Str("'Gauss[2,1]'")
-#    use_mask             = Bool(True)
-#    default_resolution   = Instance(float) # for sim_metric_confs
-    # we don't supply a default here because it's preferable
-    # to take resolution from initial target instead
-    # TODO user can't set default_resolution - making it Float(0.56)
-    # doesn't allow use in sim_metric_confs below, so it's currently a constant
-#    sim_metric_confs     = List(item=SimilarityMetricConf,
-#                                default = [SimilarityMetricConf(),
-#                                           SimilarityMetricConf(#blur_resolution=Float(default_resolution),
-#                                                                use_gradient_image=True)])
+default_similarity_metric_conf = SimilarityMetricConf(
+    metric="CC",
+    weight=1.0,
+    blur_resolution=None,
+    radius_or_bins=3,
+    use_gradient_image=False)
 
 MincANTSConf = NamedTuple("MincANTSConf",
                           [("iterations", str),
@@ -644,7 +545,9 @@ MincANTSConf = NamedTuple("MincANTSConf",
                            ("use_mask", bool),
                            ("default_resolution", float),
                            ("sim_metric_confs", Sequence[SimilarityMetricConf])])
-    
+
+# we don't supply a resolution default here because it's preferable
+# to take resolution from initial target instead
 mincANTS_default_conf = MincANTSConf(
     iterations="100x100x100x150",
     transformation_model="'Syn[0.1]'",
@@ -757,7 +660,7 @@ def mincANTS_NLIN_build_model(imgs, initial_target, nlin_dir, confs):
     return Result(stages=s, output=Registration(xfms=xfms, avg_img=avg, avg_imgs=avg_imgs))
 
 def LSQ12_NLIN(source, target, conf):
-    raise NotImplementedException
+    raise NotImplementedError
 
 def intrasubject_registrations(subj, conf): # Subject, lsq12_nlin_conf -> Result(..., (Registration)(xfms))
     """
