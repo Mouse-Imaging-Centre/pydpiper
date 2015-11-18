@@ -679,9 +679,6 @@ def intrasubject_registrations(subj, conf): # Subject, lsq12_nlin_conf -> Result
     # TODO: can't do this due to circular references...
     #if not isinstance(subj, Subject):
     #    raise ValueError("The input to intrasubject_registrations (subj) is not of type Subject.")
-    if not isinstance(conf, MincANTSConf):
-        raise ValueError("The configuration for intrasubject_registrations (conf) is not provided as a MincANTSConf.")
-    
     s = Stages()
     timepts = sorted(subj.time_pt_dict.items())
     timepts_indices = [index for index,subj_atom in timepts]
@@ -836,9 +833,6 @@ def mincaverage(imgs, name_wo_ext="average", output_dir='.', copy_header_from_fi
     return Result(stages=Stages([s]), output=avg)
 
 def xfmaverage(xfms, output_dir): # [XfmAtom] -> XfmAtom
-    if not isinstance(xfms, list):
-        raise ValueError("The input transformations (xfms) to xfmaverage need to be passed as a list")
-    if len(xfms) == 0:
         raise ValueError("`xfmaverage` arg `xfms` is empty (can't average zero files)")
     #outf  = xfms[0].xfm.newname_with(fn = lambda _ : 'average') # ugh
     #outf.orig_path = None #ugh
@@ -863,8 +857,6 @@ def xfminvert(xfm):
 
 def invert(xfm):
     """xfminvert lifted to work on XfmHandlers instead of MincAtoms"""
-    if not isinstance(xfm, XfmHandler):
-        raise ValueError("The input to invert (xfm) is not of type XfmHandler.")
     s = Stages()
     inv_xfm = s.defer(xfminvert(xfm.xfm))
     return Result(stages=s, #FIXME add a resampling stage to get rid of null `resampled` field?
@@ -877,8 +869,6 @@ def can_read_MINC_file(filename):
     
     filename: string pointing to the MINC file
     """
-    if not isinstance(filename, str):
-        raise ValueError("\nError: the argument filename should be of type string (str).")
     
     mincinfoCmd = subprocess.Popen(["mincinfo", filename], 
                                    stdin=subprocess.PIPE, 
@@ -1191,10 +1181,10 @@ def verify_correct_lsq6_target_options(init_model, lsq6_target, bootstrap):
     number_of_target_options = sum((bootstrap   != False,
                                     init_model  != None,
                                     lsq6_target != None))
-    if(number_of_target_options == 0):
-        raise ValueError("\nError: please specify a target for the 6 parameter alignmnet. "
+    if number_of_target_options == 0:
+        raise ValueError("\nError: please specify a target for the 6 parameter alignment. "
                          "Options are: --lsq6-target, --init-model, --bootstrap.\n")
-    if(number_of_target_options > 1):
+    if number_of_target_options > 1:
         raise ValueError("\nError: please specify only one of the following options: "
                          "--lsq6-target, --init-model, --bootstrap. Don't know which "
                          "target to use...\n")
@@ -1221,16 +1211,16 @@ def get_registration_targets(init_model, lsq6_target, bootstrap,
     
     # if we are dealing with either an lsq6 target or a bootstrap model
     # create the appropriate directories for those
-    if lsq6_target != None:
+    if lsq6_target is not None:
         if not can_read_MINC_file(lsq6_target):
             raise ValueError("\nError (lsq6 target): can not read MINC file: %s\n" % lsq6_target)
         target_file = MincAtom(name=lsq6_target,
                                orig_name=lsq6_target,
                                pipeline_sub_dir=os.path.join(output_dir, pipeline_name +
                                                              "_target_file"))
-        return(RegistrationTargets(registration_standard=target_file,
+        return RegistrationTargets(registration_standard=target_file,
                                    xfm_to_standard=None,
-                                   registration_native=None))
+                                   registration_native=None)
     if bootstrap:
         if not first_input_file:
             raise ValueError("\nError: (developer's error) the function "
@@ -1255,15 +1245,8 @@ def get_resolution_from_file(input_file):
     """
     # quite important is that this file actually exists...
     if not can_read_MINC_file(input_file):
-        raise ValueError("\nError: can not read input file: " + str(input_file) + "\n")
+        raise IOError("\nError: can not read input file: %s\n" % input_file)
     
     image_resolution = volumeFromFile(input_file).separations
-    
-    # the abs function does not work on lists... so we have to loop over it.  This 
-    # to avoid issues with negative step sizes.  Initialize with first dimension
-    finest_res = abs(image_resolution[0])
-    for i in range(1, len(image_resolution)):
-        if(abs(image_resolution[i]) < finest_res):
-            finest_res = abs(image_resolution[i])
-    
-    return finest_res
+
+    return min([abs(x) for x in image_resolution])

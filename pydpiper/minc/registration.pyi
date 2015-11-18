@@ -28,12 +28,12 @@ def nu_evaluate(img : MincAtom, field : FileAtom) -> Result[MincAtom]: ...
 def nu_correct(src  : MincAtom) -> Result[MincAtom]: ...
 
 INormalizeConf = ... # type: Any
-default_inormalize_conf = ... # type: Any
+default_inormalize_conf = ... # type: INormalizeConf
 
 def inormalize(src : MincAtom, conf : INormalizeConf) -> Result[MincAtom]: ...
 
 RotationalMinctraccConf = ... # type: Any
-default_rotational_minctracc_conf = ... # type: Any
+default_rotational_minctracc_conf = ... # type: RotationalMinctraccConf
 
 def get_rotational_minctracc_conf(resolution, rotation_params=None, rotation_range=None, rotation_interval=None, rotation_tmp_dir=None, subject_matter=None): ...
 def rotational_minctracc(source          : MincAtom,
@@ -43,14 +43,14 @@ def rotational_minctracc(source          : MincAtom,
                          mask            : MincAtom = None,
                          resample_source : bool     = False) -> Result[XfmHandler]: ...
 
-R3 = ... # type: Any
-MinctraccConf = ... # type: Any
-LinearMinctraccConf = ... # type: Any
-NonlinearMinctraccConf = ... # type: Any
+R3 = ...                     # type: Any
+MinctraccConf = ...          # type: MinctraccConf
+LinearMinctraccConf = ...    # type: MinctraccConf
+NonlinearMinctraccConf = ... # type: MinctraccConf 
 
 def default_linear_minctracc_conf(transform_type): ...
 
-default_lsq6_minctracc_conf = ... # type: Any
+default_lsq6_minctracc_conf  = ... # type: Any
 default_lsq12_minctracc_conf = ... # type: Any
 step_size = ... # type: Any
 step_sizes = ... # type: Any
@@ -77,7 +77,7 @@ def mincANTS(source : MincAtom,
              generation            : int = ...,
              resample_source       : bool = ...) -> Result[XfmHandler]: ...
 def mincANTS_NLIN_build_model(imgs, initial_target, nlin_dir, confs): ...
-def LSQ12_NLIN(source, target, conf): ...
+def LSQ12_NLIN(source : MincAtom, target : MincAtom, conf) -> Result[XfmHandler]: ...
 def intrasubject_registrations(subj, conf): ...
 def multilevel_minctracc(source, target, conf, curr_dir, transform=None): ...
 def multilevel_pairwise_minctracc(imgs, conf, transforms=None, like=None, curr_dir=''): ...
