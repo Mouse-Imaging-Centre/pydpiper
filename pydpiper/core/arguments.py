@@ -17,6 +17,10 @@ from pydpiper.core.util import raise_
 # or in that pipeline's module?  Makes more sense (general stuff
 # can still go here)
 
+class Python2RelatedEnums():
+    input_space = ['native', 'lsq6', 'lsq12']
+    lsq6_method = ['lsq6_simple', 'lsq6_centre_estimation', 'lsq6_large_rotations']
+
 class PydParser(ArgParser):
     # Some sneakiness... override the format_epilog method
     # to return the epilog verbatim.

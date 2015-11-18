@@ -26,7 +26,8 @@ from pydpiper.core.arguments import (application_parser,
                                      stats_parser,
                                      parse,
                                      AnnotatedParser, BaseParser, CompoundParser,
-                                     RegistrationConf)
+                                     RegistrationConf,
+                                     Python2RelatedEnums)
 
 
 # TODO (general for all option records, not just for the registration chain):
@@ -119,8 +120,8 @@ def chain(options):
     # check_MINC_input_files takes strings, so pass along those instead of the actual MincAtoms
     check_MINC_input_files([minc_atom.get_path() for minc_atom in all_Minc_Atoms])
     
-    if options.registration.input_space not in RegistrationConf.input_space.items:
-        raise ValueError('unrecognized input space: %s; choices: %s' % (options.registration.input_space, RegistrationConf.input_space.items))
+    if options.registration.input_space not in Python2RelatedEnums.input_space:
+        raise ValueError('unrecognized input space: %s; choices: %s' % (options.registration.input_space, Python2RelatedEnums.input_space))
     
     if options.registration.input_space == 'native':
         # for the registration chain, a bootstrap model is somewhat ill-defined, because
@@ -162,7 +163,7 @@ def chain(options):
                        rotation_range=options.lsq6.large_rotation_range,
                        rotation_interval=options.lsq6.large_rotation_interval,
                        rotation_params=options.lsq6.large_rotation_parameters,
-                       nuc=options.lsq6.nuc)
+                       nuc=options.lsq6.nuc, normalize_imgs=options.lsq6.inormalize)
         
         # TODO:
         # what should be done here is the LSQ6 registration, options:

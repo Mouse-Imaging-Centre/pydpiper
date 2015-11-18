@@ -255,11 +255,27 @@ class INormalizeConf(Atom):
     # should we put defaults into the classes or populate with None (which will often raise an error if disallowed)
     # and create default objects?
 
-def inormalize(src, conf): # mnc, INormalizeConf -> result(..., mnc)
+def inormalize(src, conf, mask=None): # mnc, INormalizeConf -> result(..., mnc)
+    """
+    src  -- MincAtom
+    conf -- INormalizeConf
+    mask -- MincAtom
+    
+    If a mask is specified through the "mask" parameter, it will have
+    precedence over the mask that might be associated with the 
+    src file.
+    """
     out = src.newname_with_suffix('_inorm')
+    
+    mask_for_inormalize = mask
+    if not mask:
+        # by default the mask in a MincAtom is None, so
+        # we can safely assign it
+        mask_for_inormalize = src.mask
+        
     cmd = CmdStage(inputs = [src], outputs = [out],
                    cmd = shlex.split('inormalize -clobber -const %s -%s' % (conf.const, conf.method))
-                       + (['-mask', src.mask.path] if src.mask else [])
+                       + (['-mask', mask_for_inormalize.path] if mask_for_inormalize else [])
                        + [src.path, out.path])
     return Result(stages=Stages([cmd]), output=out)
 
@@ -1096,7 +1112,7 @@ def lsq6_nuc_inorm(imgs, registration_targets, lsq6_method,
                    resolution, subject_matter=None,
                    rotation_tmp_dir=None, rotation_range=None, 
                    rotation_interval=None, rotation_params=None,
-                   nuc=None):
+                   nuc=False, normalize_imgs=False):
     """
     imgs                 -- a list of MincAtoms
     registration_targets -- instance of RegistrationTargets
@@ -1116,14 +1132,14 @@ def lsq6_nuc_inorm(imgs, registration_targets, lsq6_method,
     if not isinstance(registration_targets, RegistrationTargets):
         raise ValueError("The registration_targets arg for lsq6_nuc_inorm is not an instance of RegistrationTargets")
     
-    # 1) run the actual 6 parameter registration
+    # run the actual 6 parameter registration
     init_target = registration_targets.registration_standard if not registration_targets.registration_native \
                     else registration_targets.registration_native
     xfm_handlers_source_imgs_to_lsq6_target = s.defer(lsq6(imgs, init_target, lsq6_method, resolution,
                                                            rotation_tmp_dir, rotation_range, 
                                                            rotation_interval, rotation_params))
         
-    # 2) concatenate the native_to_standard transform if we have this transform
+    # concatenate the native_to_standard transform if we have this transform
     xfms_to_final_target_space = []
     if registration_targets.xfm_to_standard:
         xfms_to_final_target_space = [s.defer(xfmconcat([first_xfm.xfm, 
@@ -1132,10 +1148,10 @@ def lsq6_nuc_inorm(imgs, registration_targets, lsq6_method,
     else:
         xfms_to_final_target_space = [xfm_handler.xfm for xfm_handler in xfm_handlers_source_imgs_to_lsq6_target]
     
-    # 3) resample the input to the final lsq6 space
-    #    we should go back to basics in terms of the file name that we create here. It should
-    #    be fairly basic. Something along the lines of:
-    #    {orig_file_base}_resampled_lsq6.mnc
+    # resample the input to the final lsq6 space
+    # we should go back to basics in terms of the file name that we create here. It should
+    # be fairly basic. Something along the lines of:
+    # {orig_file_base}_resampled_lsq6.mnc
     filenames_wo_ext_lsq6 = [img.filename_wo_ext + "_resampled_lsq6" for img in imgs]
     imgs_in_lsq6_space = [s.defer(mincresample(img=native_img,
                                                xfm=xfm_to_lsq6,
@@ -1144,19 +1160,24 @@ def lsq6_nuc_inorm(imgs, registration_targets, lsq6_method,
                                                new_name_wo_ext=filename_wo_ext))
                           for native_img,xfm_to_lsq6,filename_wo_ext in zip(imgs,xfms_to_final_target_space,filenames_wo_ext_lsq6)]
     
-    # 4) NUC
+    # resample the mask from the initial model to native space
+    # we can use it for either the non uniformity correction or
+    # for intensity normalization later on
+    masks_in_native_space = None
+    if registration_targets.registration_standard.mask:
+        # we should apply the non uniformity correction in
+        # native space. Given that there is a mask, we should
+        # resample it to that space using the inverse of the
+        # lsq6 transformation we have so far
+        masks_in_native_space = [s.defer(mincresample(img=registration_targets.registration_standard.mask,
+                                                      xfm=xfm_to_lsq6,
+                                                      like=native_img,
+                                                      extra_flags=['-nearest','-invert']))
+                                 for native_img,xfm_to_lsq6 in zip(imgs,xfms_to_final_target_space)]
+    
+    # NUC
+    nuc_imgs_in_native_space = None
     if nuc:
-        masks_in_native_space = None
-        if registration_targets.registration_standard.mask:
-            # we should apply the non uniformity correction in
-            # native space. Given that there is a mask, we should
-            # resample it to that space using the inverse of the
-            # lsq6 transformation we have so far
-            masks_in_native_space = [s.defer(mincresample(img=registration_targets.registration_standard.mask,
-                                                          xfm=xfm_to_lsq6,
-                                                          like=native_img,
-                                                          extra_flags=['-nearest','-invert']))
-                                     for native_img,xfm_to_lsq6 in zip(imgs,xfms_to_final_target_space)]
         # if masks are around, they will be passed along to nu_correct,
         # if not we create a list with the same length as the number
         # of images with None values
@@ -1167,12 +1188,24 @@ def lsq6_nuc_inorm(imgs, registration_targets, lsq6_method,
                                                        subject_matter=subject_matter))
                                     for native_img,native_img_mask in zip(imgs, 
                                     masks_in_native_space if masks_in_native_space else [None] * len(imgs))]
-
     
-    # 5) INORM? apply to the result of 4
+    inorm_imgs_in_native_space = None
+    if normalize_imgs:
+        #TODO: this is still static
+        inorm_conf = INormalizeConf(method="ratioOfMedians")
+        input_imgs_for_inorm = nuc_imgs_in_native_space
+        if not input_imgs_for_inorm:
+            # i.e., we did not run non uniformity correction
+            input_imgs_for_inorm = imgs
+        inorm_imgs_in_native_space = [s.defer(inormalize(src=nuc_img,
+                                                         conf=inorm_conf,
+                                                         mask=native_img_mask))
+                                      for nuc_img,native_img_mask in zip(input_imgs_for_inorm,
+                                      masks_in_native_space if masks_in_native_space else [None] * len(input_imgs_for_inorm))]
     
-    # 6) if we have an initial model, and we ran NUC or INORM, resample this file i final
-    #    LSQ6 space
+    # the only thing left to check is whether we have to resample the NUC/inorm images to
+    # LSQ6 space:
+     
     
     # 7) return Result(stages=s, output=Registration(xfms=xfms, avg_img=avg, avg_imgs=avg_imgs))
 
