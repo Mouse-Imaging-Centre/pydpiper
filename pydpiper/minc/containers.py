@@ -12,10 +12,14 @@ class XfmHandler(object):
     TODO give invariants such a quadruple should satisfy - e.g., may replace the images
     but in a manner which changes only intensity, not geometry.
     
-    source -- MincAtom
-    xfm    -- XfmAtom 
-    target -- MincAtom
-    
+    source    -- MincAtom
+    xfm       -- XfmAtom 
+    target    -- MincAtom
+    resampled -- MincAtom, this is the file we care about in terms of 
+                 continuing with the pipeline. It does not necessarily be
+                 the source file resampled with the xfm. For instace, if
+                 the intensities of the source were first manipulated, and
+                 then the xfm applied, that file will be stored in resampled.
     """
     # MincAtom,XfmAtom,MincAtom[,MincAtom] -> XfmHandler
     def __init__(self, source, xfm, target, resampled = None):

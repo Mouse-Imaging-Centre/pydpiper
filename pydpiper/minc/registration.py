@@ -1170,11 +1170,52 @@ def lsq6_nuc_inorm(imgs, registration_targets, lsq6_method,
                                       for nuc_img,native_img_mask in zip(input_imgs_for_inorm,
                                       masks_in_native_space if masks_in_native_space else [None] * len(input_imgs_for_inorm))]
     
-    # the only thing left to check is whether we have to resample the NUC/inorm images to
-    # LSQ6 space:
-     
+    # the only thing left to check is whether we have to resample the NUC/inorm images to LSQ6 space:
+    final_resampled_lsq6_files = imgs_in_lsq6_space
+    if (nuc and normalize_imgs) or normalize_imgs:
+        # the final resampled files should be the normalized files resampled with the 
+        # lsq6 transformation
+        inorm_filenames_wo_ext_lsq6 = [inorm_img.filename_wo_ext + "_resampled_lsq6" for inorm_img in inorm_imgs_in_native_space]
+        final_resampled_lsq6_files = [s.defer(mincresample(img=inorm_img,
+                                                           xfm=xfm_to_lsq6,
+                                                           like=registration_targets.registration_standard,
+                                                           extra_flags=['-sinc'],
+                                                           new_name_wo_ext=inorm_filename_wo_ext))
+                                      for inorm_img,xfm_to_lsq6,inorm_filename_wo_ext in zip(inorm_imgs_in_native_space,
+                                                                                             xfms_to_final_target_space,
+                                                                                             inorm_filenames_wo_ext_lsq6)]
+    elif nuc:
+        # the final resampled files should be the non uniformity corrected files 
+        # resampled with the lsq6 transformation
+        nuc_filenames_wo_ext_lsq6 = [nuc_img.filename_wo_ext + "_resampled_lsq6" for nuc_img in nuc_imgs_in_native_space]
+        final_resampled_lsq6_files = [s.defer(mincresample(img=nuc_img,
+                                                           xfm=xfm_to_lsq6,
+                                                           like=registration_targets.registration_standard,
+                                                           extra_flags=['-sinc'],
+                                                           new_name_wo_ext=nuc_filename_wo_ext))
+                                      for nuc_img,xfm_to_lsq6,nuc_filename_wo_ext in zip(nuc_imgs_in_native_space,
+                                                                                         xfms_to_final_target_space,
+                                                                                         nuc_filenames_wo_ext_lsq6)]
+    else:
+        # in this case neither non uniformity correction was applied, nor intensity 
+        # normalization, so the initialization of the final_resampled_lsq6_files 
+        # variable is already correct
+        pass 
     
-    # 7) return Result(stages=s, output=Registration(xfms=xfms, avg_img=avg, avg_imgs=avg_imgs))
+    # note that in the return, the regitration target is given as "registration_standard".
+    # the actual registration might have been between the input file and a potential
+    # "registration_native", but since we concatenated that transform with the
+    # native_to_standard.xfm, the "registration_standard" file is the correct target
+    # with respect to the transformation that's returned
+    #
+    # TODO: potentially add more to this return. Perhaps we want to pass along 
+    #       non uniformity corrected / intensity normalized files in native space?
+    return Result(stages=s, output=[XfmHandler(source=src_img,
+                                               target=registration_targets.registration_standard,
+                                               xfm=lsq6_xfm,
+                                               resampled=final_resampled)
+                                    for src_img,lsq6_xfm,final_resampled in 
+                                    zip(imgs,xfms_to_final_target_space,final_resampled_lsq6_files)])
 
 # class RegistrationTargets(object):
 #     """

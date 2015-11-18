@@ -156,21 +156,14 @@ def chain(options):
         # TODO: this is a temporary hack in order to test the LSQ6 alignment. For the 
         # registration chain we probably want to have a function that returns the XfmHandlers
         # in a similar "shape" as pipeline_subject_info    
-        lsq6_nuc_inorm(all_Minc_Atoms, registration_targets, options.lsq6.lsq6_method,
-                       options.registration.resolution, 
-                       subject_matter=options.registration.subject_matter,
-                       rotation_tmp_dir=options.lsq6.large_rotation_tmp_dir,
-                       rotation_range=options.lsq6.large_rotation_range,
-                       rotation_interval=options.lsq6.large_rotation_interval,
-                       rotation_params=options.lsq6.large_rotation_parameters,
-                       nuc=options.lsq6.nuc, normalize_imgs=options.lsq6.inormalize)
-        
-        # TODO:
-        # what should be done here is the LSQ6 registration, options:
-        # - bootstrap
-        # - lsq6-target
-        # - initial model
-        # - "pride" of initial models (different targets for different time points)
+        xfm_handlers_lsq6 = s.defer(lsq6_nuc_inorm(all_Minc_Atoms, registration_targets, options.lsq6.lsq6_method,
+                                           options.registration.resolution, 
+                                           subject_matter=options.registration.subject_matter,
+                                           rotation_tmp_dir=options.lsq6.large_rotation_tmp_dir,
+                                           rotation_range=options.lsq6.large_rotation_range,
+                                           rotation_interval=options.lsq6.large_rotation_interval,
+                                           rotation_params=options.lsq6.large_rotation_parameters,
+                                           nuc=options.lsq6.nuc, normalize_imgs=options.lsq6.inormalize))
         
         
     some_temp_target = None # FIXME just set this right away
