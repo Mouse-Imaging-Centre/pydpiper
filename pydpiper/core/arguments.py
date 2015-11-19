@@ -19,6 +19,10 @@ from pydpiper.core.util import raise_
 # or in that pipeline's module?  Makes more sense (general stuff
 # can still go here)
 
+class Python2RelatedEnums():
+    input_space = ['native', 'lsq6', 'lsq12']
+    lsq6_method = ['lsq6_simple', 'lsq6_centre_estimation', 'lsq6_large_rotations']
+
 class PydParser(ArgParser):
     # Some sneakiness... override the format_epilog method
     # to return the epilog verbatim.
@@ -307,6 +311,12 @@ def _mk_registration_parser():
                    help="Specify the resolution at which you want the registration to be run. "
                         "If not specified, the resolution of the target of your pipeline will "
                         "be used. [Default=%(default)s]")
+    p.add_argument("--subject-matter", dest="subject_matter",
+                   type=str, default=None,
+                   help="Specify the subject matter for the pipeline. This will set the parameters "
+                        "for multiple programs based on the overall size of the subject matter. Instead "
+                        "of using the resolution of the files. Currently supported option is: \"mousebrain\" "
+                        "[Default=%(default)s]")
     return p
 
 registration_parser = BaseParser(_mk_registration_parser(), "general")
@@ -503,11 +513,6 @@ def _mk_lsq12_parser():
                    type=str, default=None,
                    help="Can optionally specify a like file for resampling at the end of pairwise "
                    "alignment. Default is None, which means that the input file will be used. [Default = %(default)s]")
-    p.add_argument("--lsq12-subject-matter", dest="lsq12_subject_matter",
-                   type=str, default=None,
-                   help="Can specify the subject matter for the pipeline. This will set the parameters "
-                        "for the 12 parameter alignment based on the subject matter rather than the file "
-                        "resolution. Currently supported option is: \"mousebrain\". [Default = %(default)s].")
     p.add_argument("--lsq12-protocol", dest="lsq12_protocol",
                    type=str, default=None,
                    help="Can optionally specify a registration protocol that is different from defaults. "

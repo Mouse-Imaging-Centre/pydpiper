@@ -6,10 +6,10 @@ import re
 import sys
 
 import typing
-from typing import NamedTuple, Sequence, Tuple, TypeVar
+from typing import NamedTuple, Optional, Sequence, Tuple, TypeVar
 
 from pydpiper.minc.files            import MincAtom, XfmAtom
-from pydpiper.minc.containers       import XfmHandler, Registration
+from pydpiper.minc.containers       import XfmHandler
 from pydpiper.core.stages     import CmdStage, cmd_stage, Result, Stages
 from pydpiper.core.util       import flatten
 from pydpiper.core.conversion import InputFile, OutputFile
@@ -168,14 +168,40 @@ def concat(ts          : Sequence[XfmHandler],
                                     xfm=t,
                                     resampled=res))
 
-def nu_estimate(src : MincAtom) -> Result[MincAtom]:
+def nu_estimate(src            : MincAtom,
+                resolution     : float,
+                mask           : Optional[MincAtom] = None,
+                subject_matter : Optional[str] = None) -> Result[MincAtom]:  # TODO: make subject_matter an Enum
+    """
+    subject_matter -- can be either "mousebrain" or "human". If "mousebrain", the 
+                      distance parameter will be set to 8 times the resolution,
+                      if "human" it will be 200 times.
+    """
     out = src.newname_with_suffix("_nu_estimate", ext=".imp")
 
     # TODO finish dealing with masking as per lines 436-448 of the old LSQ6.py.  (note: the 'singlemask' option there is never used)
     # (currently we don't allow for a single mask or using the initial model's mask if the inputs don't have them)
+    
+    # there are at least one parameter that should vary with the resolution of the input 
+    # files, and that is: -distance 
+    # The defaults for human brains are: 200
+    # for mouse brains we use          :   8
+    distance_value = 150 * resolution
+    if subject_matter is not None:
+        if subject_matter == "mousebrain":
+            distance_value = 8
+        elif subject_matter == "human":
+            distance_value = 200
+        else:
+            raise ValueError("The value for subject_matter in nu_estimate should be either 'human' or 'mousebrain'. It is: '%s.'" % subject_matter) 
+    
+    mask_for_nu_est = src.mask.path if src.mask else None
+    if mask:
+        mask_for_nu_est = mask.path
+    
     cmd = CmdStage(inputs = [src], outputs = [out],
-                   cmd = shlex.split("nu_estimate -clobber -distance 8 -iterations 100 -stop 0.001 -fwhm 0.15 -shrink 4 -lambda 5.0e-02")
-                       + (['-mask', src.mask.path] if src.mask else []) + [src.path, out.path])
+                   cmd = shlex.split("nu_estimate -clobber -iterations 100 -stop 0.001 -fwhm 0.15 -shrink 4 -lambda 5.0e-02")
+                       + ["-distance", str(distance_value)] + (['-mask', mask_for_nu_est] if mask_for_nu_est else []) + [src.path, out.path])
     return Result(stages=Stages([cmd]), output=out)
 
 def nu_evaluate(img : MincAtom,
@@ -185,9 +211,14 @@ def nu_evaluate(img : MincAtom,
                    cmd = ['nu_evaluate', '-clobber', '-mapping', field.path, img.path, out.path])
     return Result(stages=Stages([cmd]), output=out)
 
-def nu_correct(src : MincAtom) -> Result[MincAtom]:
+def nu_correct(src : MincAtom,
+               resolution : float,
+               mask       : Optional[MincAtom] = None,
+               subject_matter : Optional[str]  = None) -> Result[MincAtom]:
     s = Stages()
-    return Result(stages=s, output=s.defer(nu_evaluate(src, s.defer(nu_estimate(src)))))
+    return Result(stages=s, output=s.defer(nu_evaluate(src, s.defer(nu_estimate(src, resolution, 
+                                                                                mask=mask, 
+                                                                                subject_matter=subject_matter)))))
 
 INormalizeConf = NamedTuple('INormalizeConf',
                             [('const',  int),
@@ -201,11 +232,24 @@ default_inormalize_conf = INormalizeConf(const=1000, method='ratioOfMedians')
 # and create default objects?
 
 def inormalize(src  : MincAtom,
-               conf : INormalizeConf) -> Result[MincAtom]:
+               conf : INormalizeConf,
+               mask : Optional[MincAtom] = None) -> Result[MincAtom]:
+    """
+    Note: if a mask is specified through the "mask" parameter, it will have
+    precedence over the mask that might be associated with the 
+    src file.
+    """
     out = src.newname_with_suffix('_inorm')
+    
+    mask_for_inormalize = mask
+    if not mask:
+        # by default the mask in a MincAtom is None, so
+        # we can safely assign it
+        mask_for_inormalize = src.mask
+        
     cmd = CmdStage(inputs = [src], outputs = [out],
                    cmd = shlex.split('inormalize -clobber -const %s -%s' % (conf.const, conf.method))
-                       + (['-mask', src.mask.path] if src.mask else [])
+                       + (['-mask', mask_for_inormalize.path] if mask_for_inormalize else [])
                        + [src.path, out.path])
     return Result(stages=Stages([cmd]), output=out)
 
@@ -925,17 +969,21 @@ def get_parameters_for_rotational_minctracc(resolution,
         resolution_for_rot = 0.056
     else:
         # use the parameters provided
-        if rotation_tmp_dir:
-            rotational_configuration.temp_dir = rotation_tmp_dir
-        if rotation_range:
-            rotational_configuration.rotational_range = rotation_range
-        if rotation_interval:
-            rotational_configuration.rotational_interval = rotation_interval
-        if rotation_params:
-            rotational_configuration.blur_factor              = float(rotation_params.split(',')[0])
-            rotational_configuration.resample_step_factor     = float(rotation_params.split(',')[1])
-            rotational_configuration.registration_step_factor = float(rotation_params.split(',')[2])
-            rotational_configuration.w_translations_factor    = float(rotation_params.split(',')[3])
+        rotational_configuration = RotationalMinctraccConf(
+                                        temp_dir=rotation_tmp_dir if rotation_tmp_dir else
+                                        default_rotational_minctracc_conf.tempdir,
+                                        rotational_range=rotation_range if rotation_range else
+                                        default_rotational_minctracc_conf.rotation_range,
+                                        rotational_interval=rotation_interval if rotation_interval else
+                                        default_rotational_minctracc_conf.rotational_interval,
+                                        blur_factor=float(rotation_params.split(',')[0]) if rotation_params else
+                                        default_rotational_minctracc_conf.blur_factor,
+                                        resample_step_factor=float(rotation_params.split(',')[1]) if rotation_params else
+                                        default_rotational_minctracc_conf.resample_step_factor,
+                                        registration_step_factor=float(rotation_params.split(',')[2]) if rotation_params else
+                                        default_rotational_minctracc_conf.registration_step_factor,
+                                        w_translations_factor=float(rotation_params.split(',')[3]) if rotation_params else
+                                        default_rotational_minctracc_conf.w_translations_factor)
             
     return rotational_configuration, resolution_for_rot
                 
@@ -997,8 +1045,14 @@ def lsq6(imgs        : Sequence[MincAtom],
     
     return Result(stages=s, output=xfm_handlers_to_target)
 
+"""
+This class can be used for the following options:
+--init-model
+--lsq6-target
+--bootstrap 
+"""
 RegistrationTargets = NamedTuple("RegistrationTargets",
-    # what does this mean?
+      # what does this mean?
     [("registration_standard", MincAtom),
      ("xfm_to_standard", XfmAtom),
      ("registration_native", MincAtom)
@@ -1006,28 +1060,21 @@ RegistrationTargets = NamedTuple("RegistrationTargets",
 
 def lsq6_nuc_inorm(imgs : Sequence[MincAtom],
                    registration_targets : RegistrationTargets,
-                   lsq6_method : str,
-                   resolution  : float,
-                   rotation_tmp_dir : str = None,
-                   rotation_range : float = None, 
-                   rotation_interval : float = None,
-                   rotation_params : Any = None):
-    """
-    imgs                 -- 
-    registration_targets -- ???
-    lsq6_method          -- from the options, can be: "lsq6_simple", "lsq6_centre_estimation",
-                            or "lsq6_large_rotations"
-    """       
+                   resolution : float,
+                   lsq6_options,
+                   subject_matter : Optional[str] = None):
     s = Stages()
     
-    # 1) run the actual 6 parameter registration
+    # run the actual 6 parameter registration
     init_target = registration_targets.registration_standard if not registration_targets.registration_native \
                     else registration_targets.registration_native
-    xfm_handlers_source_imgs_to_lsq6_target = s.defer(lsq6(imgs, init_target, lsq6_method, resolution,
-                                                           rotation_tmp_dir, rotation_range, 
-                                                           rotation_interval, rotation_params))
+    xfm_handlers_source_imgs_to_lsq6_target = s.defer(lsq6(imgs, init_target, lsq6_options.lsq6_method, resolution,
+                                                           lsq6_options.large_rotation_tmp_dir, 
+                                                           lsq6_options.large_rotation_range, 
+                                                           lsq6_options.large_rotation_interval, 
+                                                           lsq6_options.large_rotation_parameters))
         
-    # 2) concatenate the native_to_standard transform if we have this transform
+    # concatenate the native_to_standard transform if we have this transform
     xfms_to_final_target_space = []
     if registration_targets.xfm_to_standard:
         xfms_to_final_target_space = [s.defer(xfmconcat([first_xfm.xfm, 
@@ -1036,10 +1083,10 @@ def lsq6_nuc_inorm(imgs : Sequence[MincAtom],
     else:
         xfms_to_final_target_space = [xfm_handler.xfm for xfm_handler in xfm_handlers_source_imgs_to_lsq6_target]
     
-    # 3) resample the input to the final lsq6 space
-    #    we should go back to basics in terms of the file name that we create here. It should
-    #    be fairly basic. Something along the lines of:
-    #    {orig_file_base}_resampled_lsq6.mnc
+    # resample the input to the final lsq6 space
+    # we should go back to basics in terms of the file name that we create here. It should
+    # be fairly basic. Something along the lines of:
+    # {orig_file_base}_resampled_lsq6.mnc
     filenames_wo_ext_lsq6 = [img.filename_wo_ext + "_resampled_lsq6" for img in imgs]
     imgs_in_lsq6_space = [s.defer(mincresample(img=native_img,
                                                xfm=xfm_to_lsq6,
@@ -1048,30 +1095,97 @@ def lsq6_nuc_inorm(imgs : Sequence[MincAtom],
                                                new_name_wo_ext=filename_wo_ext))
                           for native_img,xfm_to_lsq6,filename_wo_ext in zip(imgs,xfms_to_final_target_space,filenames_wo_ext_lsq6)]
     
-    # 4) NUC? (TODO: open up NUC parameters)
-    # 4a) if we have an initial model, resample the mask to native space and run NUC
-    # 4b) if not, simply apply NUC. 
+    # resample the mask from the initial model to native space
+    # we can use it for either the non uniformity correction or
+    # for intensity normalization later on
+    masks_in_native_space = None
+    if registration_targets.registration_standard.mask:
+        # we should apply the non uniformity correction in
+        # native space. Given that there is a mask, we should
+        # resample it to that space using the inverse of the
+        # lsq6 transformation we have so far
+        masks_in_native_space = [s.defer(mincresample(img=registration_targets.registration_standard.mask,
+                                                      xfm=xfm_to_lsq6,
+                                                      like=native_img,
+                                                      extra_flags=['-nearest','-invert']))
+                                 for native_img,xfm_to_lsq6 in zip(imgs,xfms_to_final_target_space)]
     
-    # 5) INORM? apply to the result of 4
+    # NUC
+    nuc_imgs_in_native_space = None
+    if lsq6_options.nuc:
+        # if masks are around, they will be passed along to nu_correct,
+        # if not we create a list with the same length as the number
+        # of images with None values
+        # what we get back here is a list of MincAtoms with NUC files
+        nuc_imgs_in_native_space = [s.defer(nu_correct(src=native_img,
+                                                       resolution=resolution,
+                                                       mask=native_img_mask,
+                                                       subject_matter=subject_matter))
+                                    for native_img,native_img_mask in zip(imgs, 
+                                    masks_in_native_space if masks_in_native_space else [None] * len(imgs))]
     
-    # 6) if we have an initial model, and we ran NUC or INORM, resample this file i final
-    #    LSQ6 space
+    inorm_imgs_in_native_space = None
+    if lsq6_options.inormalize:
+        #TODO: this is still static
+        inorm_conf = default_inormalize_conf
+        input_imgs_for_inorm = nuc_imgs_in_native_space
+        if not input_imgs_for_inorm:
+            # i.e., we did not run non uniformity correction
+            input_imgs_for_inorm = imgs
+        inorm_imgs_in_native_space = [s.defer(inormalize(src=nuc_img,
+                                                         conf=inorm_conf,
+                                                         mask=native_img_mask))
+                                      for nuc_img,native_img_mask in zip(input_imgs_for_inorm,
+                                      masks_in_native_space if masks_in_native_space else [None] * len(input_imgs_for_inorm))]
     
-    # 7) return Result(stages=s, output=Registration(xfms=xfms, avg_img=avg, avg_imgs=avg_imgs))
+    # the only thing left to check is whether we have to resample the NUC/inorm images to LSQ6 space:
+    final_resampled_lsq6_files = imgs_in_lsq6_space
+    if (lsq6_options.nuc and lsq6_options.inormalize) or lsq6_options.inormalize:
+        # the final resampled files should be the normalized files resampled with the 
+        # lsq6 transformation
+        inorm_filenames_wo_ext_lsq6 = [inorm_img.filename_wo_ext + "_resampled_lsq6" for inorm_img in inorm_imgs_in_native_space]
+        final_resampled_lsq6_files = [s.defer(mincresample(img=inorm_img,
+                                                           xfm=xfm_to_lsq6,
+                                                           like=registration_targets.registration_standard,
+                                                           extra_flags=['-sinc'],
+                                                           new_name_wo_ext=inorm_filename_wo_ext))
+                                      for inorm_img,xfm_to_lsq6,inorm_filename_wo_ext in zip(inorm_imgs_in_native_space,
+                                                                                             xfms_to_final_target_space,
+                                                                                             inorm_filenames_wo_ext_lsq6)]
+    elif lsq6_options.nuc:
+        # the final resampled files should be the non uniformity corrected files 
+        # resampled with the lsq6 transformation
+        nuc_filenames_wo_ext_lsq6 = [nuc_img.filename_wo_ext + "_resampled_lsq6" for nuc_img in nuc_imgs_in_native_space]
+        final_resampled_lsq6_files = [s.defer(mincresample(img=nuc_img,
+                                                           xfm=xfm_to_lsq6,
+                                                           like=registration_targets.registration_standard,
+                                                           extra_flags=['-sinc'],
+                                                           new_name_wo_ext=nuc_filename_wo_ext))
+                                      for nuc_img,xfm_to_lsq6,nuc_filename_wo_ext in zip(nuc_imgs_in_native_space,
+                                                                                         xfms_to_final_target_space,
+                                                                                         nuc_filenames_wo_ext_lsq6)]
+    else:
+        # in this case neither non uniformity correction was applied, nor intensity 
+        # normalization, so the initialization of the final_resampled_lsq6_files 
+        # variable is already correct
+        pass 
+    
+    # note that in the return, the regitration target is given as "registration_standard".
+    # the actual registration might have been between the input file and a potential
+    # "registration_native", but since we concatenated that transform with the
+    # native_to_standard.xfm, the "registration_standard" file is the correct target
+    # with respect to the transformation that's returned
+    #
+    # TODO: potentially add more to this return. Perhaps we want to pass along 
+    #       non uniformity corrected / intensity normalized files in native space?
+    return Result(stages=s, output=[XfmHandler(source=src_img,
+                                               target=registration_targets.registration_standard,
+                                               xfm=lsq6_xfm,
+                                               resampled=final_resampled)
+                                    for src_img,lsq6_xfm,final_resampled in 
+                                    zip(imgs,xfms_to_final_target_space,final_resampled_lsq6_files)])
 
-# class RegistrationTargets(object):
-#     """
-#     This class can be used for the following options:
-#     --init-model
-#     --lsq6-target
-#     --bootstrap 
-#     """
-#     registration_standard      = Instance(MincAtom)
-#     xfm_to_standard            = Instance(XfmAtom)
-#     registration_native        = Instance(MincAtom)
 
-
-    
 def get_registration_targets_from_init_model(init_model_standard_file : str,
                                              output_dir    : str,
                                              pipeline_name : str) -> RegistrationTargets:
