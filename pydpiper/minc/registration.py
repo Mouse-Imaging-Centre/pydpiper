@@ -1075,11 +1075,8 @@ def lsq6(imgs, target, lsq6_method, resolution,
     
     return Result(stages=s, output=xfm_handlers_to_target)
 
-def lsq6_nuc_inorm(imgs, registration_targets, lsq6_method,
-                   resolution, subject_matter=None,
-                   rotation_tmp_dir=None, rotation_range=None, 
-                   rotation_interval=None, rotation_params=None,
-                   nuc=False, normalize_imgs=False):
+def lsq6_nuc_inorm(imgs, registration_targets,
+                   resolution, lsq6_options, subject_matter=None):
     """
     imgs                 -- a list of MincAtoms
     registration_targets -- instance of RegistrationTargets
@@ -1095,16 +1092,18 @@ def lsq6_nuc_inorm(imgs, registration_targets, lsq6_method,
         raise ValueError("The argument imgs for lsq6_nuc_inorm need to be of type list/array (of MincAtoms).")
     for minc_atom in imgs:
         if not isinstance(minc_atom, MincAtom):
-            raise ValueError("(Some) elements of the input list to lsq6_nuc_inorm are not MincAtoms.")
+            raise ValueError("(Some) elements of the input list to lsq6_nuc_inorm are not MincAtoms. They are of class: %s" % minc_atom.__class__)
     if not isinstance(registration_targets, RegistrationTargets):
         raise ValueError("The registration_targets arg for lsq6_nuc_inorm is not an instance of RegistrationTargets")
     
     # run the actual 6 parameter registration
     init_target = registration_targets.registration_standard if not registration_targets.registration_native \
                     else registration_targets.registration_native
-    xfm_handlers_source_imgs_to_lsq6_target = s.defer(lsq6(imgs, init_target, lsq6_method, resolution,
-                                                           rotation_tmp_dir, rotation_range, 
-                                                           rotation_interval, rotation_params))
+    xfm_handlers_source_imgs_to_lsq6_target = s.defer(lsq6(imgs, init_target, lsq6_options.lsq6_method, resolution,
+                                                           lsq6_options.large_rotation_tmp_dir, 
+                                                           lsq6_options.large_rotation_range, 
+                                                           lsq6_options.large_rotation_interval, 
+                                                           lsq6_options.large_rotation_parameters))
         
     # concatenate the native_to_standard transform if we have this transform
     xfms_to_final_target_space = []
@@ -1144,7 +1143,7 @@ def lsq6_nuc_inorm(imgs, registration_targets, lsq6_method,
     
     # NUC
     nuc_imgs_in_native_space = None
-    if nuc:
+    if lsq6_options.nuc:
         # if masks are around, they will be passed along to nu_correct,
         # if not we create a list with the same length as the number
         # of images with None values
@@ -1157,7 +1156,7 @@ def lsq6_nuc_inorm(imgs, registration_targets, lsq6_method,
                                     masks_in_native_space if masks_in_native_space else [None] * len(imgs))]
     
     inorm_imgs_in_native_space = None
-    if normalize_imgs:
+    if lsq6_options.inormalize:
         #TODO: this is still static
         inorm_conf = default_inormalize_conf
         input_imgs_for_inorm = nuc_imgs_in_native_space
@@ -1172,7 +1171,7 @@ def lsq6_nuc_inorm(imgs, registration_targets, lsq6_method,
     
     # the only thing left to check is whether we have to resample the NUC/inorm images to LSQ6 space:
     final_resampled_lsq6_files = imgs_in_lsq6_space
-    if (nuc and normalize_imgs) or normalize_imgs:
+    if (lsq6_options.nuc and lsq6_options.inormalize) or lsq6_options.inormalize:
         # the final resampled files should be the normalized files resampled with the 
         # lsq6 transformation
         inorm_filenames_wo_ext_lsq6 = [inorm_img.filename_wo_ext + "_resampled_lsq6" for inorm_img in inorm_imgs_in_native_space]
@@ -1184,7 +1183,7 @@ def lsq6_nuc_inorm(imgs, registration_targets, lsq6_method,
                                       for inorm_img,xfm_to_lsq6,inorm_filename_wo_ext in zip(inorm_imgs_in_native_space,
                                                                                              xfms_to_final_target_space,
                                                                                              inorm_filenames_wo_ext_lsq6)]
-    elif nuc:
+    elif lsq6_options.nuc:
         # the final resampled files should be the non uniformity corrected files 
         # resampled with the lsq6 transformation
         nuc_filenames_wo_ext_lsq6 = [nuc_img.filename_wo_ext + "_resampled_lsq6" for nuc_img in nuc_imgs_in_native_space]

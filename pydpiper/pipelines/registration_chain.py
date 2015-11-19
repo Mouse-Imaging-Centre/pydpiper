@@ -118,7 +118,7 @@ def chain(options):
         for subj_time_pt, subj_filename in subj.time_pt_dict.items():
             all_Minc_Atoms.append(subj_filename)
     # check_MINC_input_files takes strings, so pass along those instead of the actual MincAtoms
-    check_MINC_input_files([minc_atom.get_path() for minc_atom in all_Minc_Atoms])
+    check_MINC_input_files([minc_atom.path for minc_atom in all_Minc_Atoms])
     
     if options.registration.input_space not in Python2RelatedEnums.input_space:
         raise ValueError('unrecognized input space: %s; choices: %s' % (options.registration.input_space, Python2RelatedEnums.input_space))
@@ -134,36 +134,27 @@ def chain(options):
         
         if options.chain.pride_of_models:
             raise NotImplementedError("We currently have not implemented the code that handles the pride of initial models...")
-        
-        # if we are not dealing with a pride of models, we can retrieve a fixed
-        # registration target for all input files:
-        registration_targets = get_registration_targets(init_model=options.lsq6.init_model,
-                                                        lsq6_target=options.lsq6.lsq6_target,
-                                                        bootstrap=options.lsq6.bootstrap,
-                                                        output_dir=options.application.output_directory,
-                                                        pipeline_name=options.application.pipeline_name)
-        
-        # now that we have the  
-        
-        print("Standard file      : %s" % registration_targets.registration_standard.get_path())
-        if registration_targets.registration_standard.mask:
-            print("\nStandard file mask : %s" % registration_targets.registration_standard.mask)
-        if registration_targets.registration_native:
-            print("\nNative file        : %s" % registration_targets.registration_native.get_path())
-            print("\nNative file mask   : %s" % registration_targets.registration_native.mask)
-            print("\nNative to standard : %s" % registration_targets.xfm_to_standard.get_path())
-
-        # TODO: this is a temporary hack in order to test the LSQ6 alignment. For the 
-        # registration chain we probably want to have a function that returns the XfmHandlers
-        # in a similar "shape" as pipeline_subject_info    
-        xfm_handlers_lsq6 = s.defer(lsq6_nuc_inorm(all_Minc_Atoms, registration_targets, options.lsq6.lsq6_method,
-                                           options.registration.resolution, 
-                                           subject_matter=options.registration.subject_matter,
-                                           rotation_tmp_dir=options.lsq6.large_rotation_tmp_dir,
-                                           rotation_range=options.lsq6.large_rotation_range,
-                                           rotation_interval=options.lsq6.large_rotation_interval,
-                                           rotation_params=options.lsq6.large_rotation_parameters,
-                                           nuc=options.lsq6.nuc, normalize_imgs=options.lsq6.inormalize))
+        else:
+            # if we are not dealing with a pride of models, we can retrieve a fixed
+            # registration target for all input files:
+            registration_targets = get_registration_targets(init_model=options.lsq6.init_model,
+                                                            lsq6_target=options.lsq6.lsq6_target,
+                                                            bootstrap=options.lsq6.bootstrap,
+                                                            output_dir=options.application.output_directory,
+                                                            pipeline_name=options.application.pipeline_name)
+            
+            # we want to store the xfm handlers in the same shape as pipeline_subject_info,
+            # as such we will call lsq6_nuc_inorm for each file individually. This returns
+            # a list of XfmHandlers, however, given that we pass the MincAtoms one by one,
+            # we can simply extract the first (and only) element from the list.
+            # s,defer(...)[0]
+            xfm_handlers_dict_lsq6 = map_over_time_pt_dict_in_Subject(
+                                         lambda subj_atom:  s.defer(lsq6_nuc_inorm([subj_atom],
+                                                                                   registration_targets,
+                                                                                   options.registration.resolution,
+                                                                                   options.lsq6,
+                                                                                   subject_matter=options.registration.subject_matter))[0],
+                                         pipeline_subject_info)
         
         
     some_temp_target = None # FIXME just set this right away
