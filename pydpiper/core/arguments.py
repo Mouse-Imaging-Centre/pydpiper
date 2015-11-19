@@ -4,12 +4,14 @@ by PydPiper applications. Some option groups might be mandatory/highly
 recommended to add to your application: e.g. the arguments that deal
 with the execution of your application.
 '''
-from configargparse import ArgParser, Namespace
 
-from pkg_resources import get_distribution
+from pkg_resources import get_distribution      # type: ignore
 import copy
 import os
 import time
+
+from configargparse import ArgParser, Namespace # type: ignore
+from typing import Any, Callable, Sequence
 
 from pydpiper.core.util import raise_
 
@@ -33,7 +35,7 @@ class PydParser(ArgParser):
 #def id(*args, **kwargs):
 #    return args, kwargs
 
-def parse_nullable_int(string):
+def parse_nullable_int(string : str) -> int:
     if string == "None":
         return None
     else:
@@ -43,31 +45,33 @@ class Parser(object): pass
 
 # the leaves of the parse object (these contain the arguments you're interested in)
 class BaseParser(Parser):
-    def __init__(self, argparser, group_name):
-        self.argparser  = argparser
-        self.group_name = group_name
+    def __init__(self, argparser : ArgParser, group_name : str) -> None:
+        self.argparser  = argparser   # type: ArgParser
+        self.group_name = group_name  # type: str
 
 # the internal nodes of the parse object
 class CompoundParser(Parser):
-    def __init__(self, annotated_parsers):
+    def __init__(self, annotated_parsers : Sequence[AnnotatedParser]) -> None:
         """
         annotated_parsers is a list that can hold
         both BaseParser-s and CompoundParser-s.
         """
-        self.parsers  = annotated_parsers
+        self.parsers  = annotated_parsers  # type: Sequence[AnnotatedParser]
 
 class AnnotatedParser(object):
-    def __init__(self, parser, namespace, prefix="", cast=None):
-        self.parser    = parser
-        self.prefix    = prefix
-        self.namespace = namespace
-        self.cast      = cast
+    def __init__(self,
+                 parser    : Parser,
+                 namespace : str,
+                 prefix    : str = "",
+                 cast      : Any = None) -> None:  # TODO: make Callable
+        self.parser    = parser     # type: Parser
+        self.prefix    = prefix     # type: str
+        self.namespace = namespace  # type: str
+        self.cast      = cast       # type: Any
     #parser    = Instance(Parser, factory=lambda : raise_(ValueError("must provide a parser")))
     #prefix    = Str("")
     #namespace = Str("", factory=lambda : raise_(ValueError("must provide a namespace")))
     #cast      = Instance(object, factory=lambda : None) #lambda y: y)
-
-#combine_parsers = CompoundParsers
 
 #Parser = BaseParser ArgParser | CompoundParser([Annotated Parser]) - rose tree with elts at leaves instead of nodes?
 # for more flexibility, you could also add an extra parser at the node, but that doesn't seem to be needed
@@ -81,7 +85,7 @@ class AnnotatedParser(object):
 # I guess you could add a lsq12 parser in the code calling the two pipelines and use it as a default,
 # but this wouldn't happen automagically.
 
-def parse(parser, args):
+def parse(parser : Parser, args : Sequence[str]) -> Namespace:
     default_config_file = os.getenv("PYDPIPER_CONFIG_FILE") #TODO: accepting a comma-separated list might allow more flexibility
     config_files = [default_config_file] if default_config_file else []
 
@@ -151,10 +155,10 @@ def parse(parser, args):
     go_2(parser, current_prefix="", current_ns=main_ns)
     return main_ns
 
-def with_parser(p):
+def with_parser(p : Parser) -> Callable[[str], Namespace]:
     return lambda args: parse(p, args)
 
-def _mk_application_parser():
+def _mk_application_parser() -> Parser:
     """
     The arguments that all applications share:
     --pipeline-name
@@ -205,7 +209,7 @@ def _mk_application_parser():
                    action="store_true",
                    help="Be verbose in what is printed to the screen [default = %(default)s]")
     p.add_argument("--no-verbose", dest="verbose",
-                  action="store_false",
+                   action="store_false",
                    help="Opposite of --verbose [default]")
     p.add_argument("files", type=str, nargs='*', metavar='file',
                    help='Files to process')
@@ -214,7 +218,7 @@ def _mk_application_parser():
 application_parser = BaseParser(_mk_application_parser(), "application")
 
 
-def _mk_execution_parser():
+def _mk_execution_parser() -> Parser:
     parser = ArgParser(add_help=False)
     group = parser.add_argument_group("Executor options",
                         "Options controlling how and where the code is run.")

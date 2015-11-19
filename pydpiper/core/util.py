@@ -1,15 +1,17 @@
 import errno
 import os
 #import os.path
-from functools import reduce
+import functools # type: ignore
 from operator import add
-from typing import Sequence, Tuple
+from typing import Sequence, Tuple, TypeVar
+
+from pydpiper.execution.pipeline import CmdStage
 
 def raise_(err : BaseException):
     """`raise` is a keyword and `raise e` isn't an expression, so can't be used freely"""
     raise err
 
-def explode(filename : str) -> Tupl[str, str, str]:
+def explode(filename : str) -> Tuple[str, str, str]:
     # TODO should this be a namedtuple instead of a tuple? Probably...can still match against, etc.
     """Split a filename into a directory, 'base', and extension
 
@@ -24,11 +26,13 @@ def explode(filename : str) -> Tupl[str, str, str]:
     directory, name = os.path.split(base)
     return (directory, name, ext)
 
+T = TypeVar('T')
+
 def pairs(lst : Sequence[T]) -> Sequence[Tuple[T, T]]:
     return list(zip(lst[:-1], lst[1:]))
 
 def flatten(*xs):
-    return reduce(add, xs, [])
+    return functools.reduce(add, xs, [])
 
 class NotProvided(object):
     """To be used as a datatype indicating no argument with this name was supplied
