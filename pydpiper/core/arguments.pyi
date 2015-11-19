@@ -24,7 +24,7 @@ class AnnotatedParser(object):
     parser    = ...  # type: Parser
     prefix    = ...  # type: str
     namespace = ...  # type: str
-    cast      = ...  # type: Any   #TODO: Callable(...)
+    cast      = ...  # type: Any
     def __init__(self, parser, namespace, prefix='', cast=None): ...
 
 def parse(parser : Parser, args : List[str]): ...

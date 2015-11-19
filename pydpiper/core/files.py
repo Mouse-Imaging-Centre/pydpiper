@@ -1,6 +1,8 @@
 import copy
 import os
 
+from typing import Callable, Union
+
 from .util import explode, NotProvided
 
 class FileAtom(object):
@@ -21,11 +23,16 @@ class FileAtom(object):
                           
                           
     """
-    def __init__(self, name, orig_name=NotProvided, pipeline_sub_dir=None, output_sub_dir=None):
+    
+    def __init__(self,
+                 name : str,
+                 orig_name        : Union[str, NotProvided] = NotProvided(),
+                 pipeline_sub_dir : str = None,
+                 output_sub_dir   : str = None) -> None:
         self.dir, self.filename_wo_ext, self.ext = explode(name)
-        if orig_name is NotProvided:
-            self.orig_path = self.get_path()
-        elif orig_name is None:
+        if isinstance(orig_name, NotProvided):
+            self.orig_path = self.get_path()  # type: str
+        elif isinstance(orig_name, type(None)):
             # is this case even needed? if no orig file, when _isn't_ file itself the orig file?
             self.orig_path = None
         else:
@@ -40,24 +47,31 @@ class FileAtom(object):
             self.output_sub_dir = output_sub_dir
         else:
             self.output_sub_dir = self.filename_wo_ext
+
+    @property
+    def path(self) -> str:
+        return self.get_path()
+
+    def get_path(self) -> str:
+        return os.path.join(self.dir, self.filename_wo_ext + self.ext)
             
-    def __eq__(self, other):
+    def __eq__(self, other) -> bool:
         return (self is other or
-                (self.get_path() == other.get_path()
+                (self.path == other.path
                  and self.__class__ == other.__class__))
     
-    def __repr__(self):
-        return "%s(path=%s, ...)" % (self.__class__,self.get_path()) 
+    def __repr__(self) -> str:
+        return "%s(path=%s, ...)" % (self.__class__,self.path) 
 
-    def get_path(self): 
-        return os.path.join(self.dir, self.filename_wo_ext + self.ext)
-
-    path = property(get_path, "`path` property")
+    # path = property(get_path, "`path` property") # type: ignore
     
-    def get_basename(self):
+    def get_basename(self) -> str:
         return self.filename_wo_ext + self.ext
 
-    def newname_with_fn(self, fn, ext=None, subdir=None):
+    def newname_with_fn(self,
+                        fn     : Callable[[str],str],
+                        ext    : str = None,
+                        subdir : str = None) -> FileAtom:
         """Create a new FileAtom from one which has:
         <filename_wo_ext>.<ext>
         to: 
@@ -80,15 +94,18 @@ class FileAtom(object):
 
         new_dir = os.path.join(self.pipeline_sub_dir, 
                                self.output_sub_dir if self.output_sub_dir else "",
-                               subdir if subdir else "") 
-        filename_wo_ext = fn(self.filename_wo_ext) 
+                               subdir if subdir else "")
+        filename_wo_ext = fn(self.filename_wo_ext)
         fa = copy.copy(self)
         fa.dir = new_dir
         fa.ext = ext or self.ext
         fa.filename_wo_ext = filename_wo_ext
         return fa
 
-    def newname_with_suffix(self, suffix, ext=None, subdir=None):
+    def newname_with_suffix(self,
+                            suffix : str,
+                            ext    : str = None,
+                            subdir : str = None) -> FileAtom:
         """Create a FileAtom representing <dirs>/<file><suffix><.ext>
         from one representing <dirs>/<file><.ext>
 

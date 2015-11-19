@@ -1,8 +1,8 @@
 import shlex
-import typing
+from typing import Any, Callable, Generic, Set, Sequence, TypeVar, Union
 
+from pydpiper.core.files import FileAtom
 from pydpiper.execution.pipeline import PipelineFile, InputFile, OutputFile
-from typing import TypeVar, Generic, Set
 
 class CmdStage(object):
     """A simplified command stage - one could write a simple conversion
@@ -10,21 +10,27 @@ class CmdStage(object):
     (command, memory limits) from dynamic (status, retries) information
     in part because it avoids many empty fields for stages which never
     become part of a `live` pipeline."""
-    def __init__(self, inputs, outputs, cmd, memory=None):  #, conf, cmd):
+    def __init__(self,
+                 inputs  : Sequence[FileAtom],
+                 outputs : Sequence[FileAtom],
+                 cmd     : Sequence[str],
+                 memory  : float = None) -> None:
         # TODO: rather than having separate cmd_stage fn, might want to make inputs/outputs optional here
-        self.inputs  = inputs  # TODO: might be better to derefence inputs -> inputs.path here to save mem
-        self.outputs = outputs
-        #self.conf    = conf            # not needed at present -- see note on render_fn
-        self._cmd    = cmd # TODO: why not expose this publically?
-
-        self.when_runnable_hooks = []  # TODO: make the hooks accessible via the constructor
-        self.when_finished_hooks = []
+        self.inputs  = inputs          # type: Sequence[FileAtom]
+        # TODO: might be better to derefence inputs -> inputs.path here to save mem
+        self.outputs = outputs         # type: Sequence[FileAtom]
+        #self.conf    = conf           # not needed at present -- see note on render_fn
+        self._cmd    = cmd             # type: Sequence[str]
+        # TODO: why not expose this publically?
+        self.when_runnable_hooks = []  # type: List[Callable[[], Any]]
+        # TODO: make the hooks accessible via the constructor?
+        self.when_finished_hooks = []  # type: List[Callable[[], Any]]
         self.memory = memory
     # NB: __hash__ and __eq__ ignore hooks, memory
     # Also, we assume cmd determines inputs, outputs so ignore it in hash/eq calculations
-    def __hash__(self):
+    def __hash__(self) -> int:
         return hash(self.cmd_to_string())
-    def __eq__(self, c):
+    def __eq__(self, c) -> bool:
         return self._cmd == c._cmd
     # Originally I had `render_fn` : inputs, outputs, conf -> [str] instead of `cmd` : [str] to
     # (1) reduce duplication by not encoding the inputs/outputs in two places
@@ -33,28 +39,30 @@ class CmdStage(object):
     # of heterogeneous arrays (and problems with object equality/hashing/reading/printing/...)
     # Using a property, one could write stage.cmd instead of stage.cmd()
     #TODO: not very clear what render means?
-    def render(self):
+    def render(self) -> str:
         #return self.render_fn(self.conf, self.inputs, self.outputs)
         return self.cmd_to_string()
-    def cmd_to_string(self):
+    def cmd_to_string(self) -> str:
         return ' '.join(self._cmd)
-    def to_array(self):
+    def to_seq(self) -> Sequence[str]:
         """Form usable for Python subprocess call."""
         return self._cmd
     #def execute(self, backend):    # could also be elsewhere...
     #    raise NotImplemented
 
-def cmd_stage(cmd): # [string|InputFile|OutputFile] -> CmdStage
-    """'Smart constructor' for command stages using heterogeneous list API of the old command stage"""
-    inputs  = [s for s in cmd if isinstance(s, InputFile)]
-    outputs = [s for s in cmd if isinstance(s, OutputFile)]
-    # we used to store strings/filenames in PipelineFiles (and the InputFile
-    # and OutputFile children). Currently what we store are FileAtoms and
-    # MincAtoms. So it might seem strange in the next line to see s.filename, 
-    # but that is where we currently store those File/MincAtoms. This will
-    # eventually all go away.
-    cmd = [(s.filename.path if isinstance(s, PipelineFile) else s) for s in cmd]
-    return CmdStage(inputs = inputs, outputs = outputs, cmd = cmd)
+# def cmd_stage(cmd : List[Union[str, InputFile, OutputFile]]) -> CmdStage:
+#     """'Smart constructor' for command stages using heterogeneous list API of the old command stage"""
+#     inputs  = [s for s in cmd if isinstance(s, InputFile)]    # type: List[InputFile]
+#     outputs = [s for s in cmd if isinstance(s, OutputFile)]   # type: List[OutputFile]
+#     # we used to store strings/filenames in PipelineFiles (and the InputFile
+#     # and OutputFile children). Currently what we store are FileAtoms and
+#     # MincAtoms. So it might seem strange in the next line to see s.filename, 
+#     # but that is where we currently store those File/MincAtoms. This will
+#     # eventually all go away.
+#     _cmd = [(s.filename.path if isinstance(s, PipelineFile) else s) for s in cmd]  # type: List[str]
+#     return CmdStage(inputs = inputs, outputs = outputs, cmd = _cmd)
+
+T = TypeVar('T')
 
 class Stages(set):
     """A set of stages to be run.  In addition to the usual set operations,
@@ -87,14 +95,14 @@ class Stages(set):
     we create many intermediate structures for which the extra fields of a pipeline
     don't have any meaning, so this might be worth changing for clarity.
     """
-    def defer(self, result):
+    def defer(self, result : Result[T]) -> T:
         self.update(result.stages)
         return result.output
     # FIXME this doesn't remember the order stages were added (see ordereddict/orderedset)
     # so they won't appear in the pipeline-stages.txt file in a nice order ...
 
 # TODO make it possible to inline many inputs somehow (using cooperation from the string formatter?)
-def parse(cmd_str):
+def parse(cmd_str : str) -> CmdStage:
     """Create a CmdStage object from a string.  (Per Jason's suggestion, we could make
     an even more clever parser that simply guesses the output based on position
     or a few flags like -o and tags anything else that looks like a file as input.)
@@ -106,12 +114,12 @@ def parse(cmd_str):
     ['input1.mnc', 'input2.mnc']
     """
     cmd = shlex.split(cmd_str)
-    inputs  = [s[1:] for s in cmd if s[0] == ',']  #TODO what about I(), O() ?
-    outputs = [s[1:] for s in cmd if s[0] == '@']
+    inputs  = [FileAtom(s[1:]) for s in cmd if s[0] == ',']  #TODO what about I(), O() ?
+    outputs = [FileAtom(s[1:]) for s in cmd if s[0] == '@']
     s = CmdStage(inputs = inputs, outputs = outputs, cmd = [c if c[0] not in [',','@'] else c[1:] for c in cmd])
     return s
 
-class Result(object):
-    def __init__(self, stages, output):
-        self.stages = stages
-        self.output = output
+class Result(Generic[T]):
+    def __init__(self, stages : Stages, output : T) -> None:
+        self.stages = stages # type: Stages
+        self.output = output # type: T

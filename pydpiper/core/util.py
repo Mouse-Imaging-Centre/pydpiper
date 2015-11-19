@@ -1,16 +1,15 @@
-#!/usr/bin/env python2.7
-
 import errno
 import os
 #import os.path
 from functools import reduce
 from operator import add
+from typing import Sequence, Tuple
 
-def raise_(err):
+def raise_(err : BaseException):
     """`raise` is a keyword and `raise e` isn't an expression, so can't be used freely"""
     raise err
 
-def explode(filename):
+def explode(filename : str) -> Tupl[str, str, str]:
     # TODO should this be a namedtuple instead of a tuple? Probably...can still match against, etc.
     """Split a filename into a directory, 'base', and extension
 
@@ -25,13 +24,13 @@ def explode(filename):
     directory, name = os.path.split(base)
     return (directory, name, ext)
 
-def pairs(lst):
+def pairs(lst : Sequence[T]) -> Sequence[Tuple[T, T]]:
     return list(zip(lst[:-1], lst[1:]))
 
 def flatten(*xs):
     return reduce(add, xs, [])
 
-class NotProvided(BaseException):
+class NotProvided(object):
     """To be used as a datatype indicating no argument with this name was supplied
     in the situation when None has another sensible meaning, e.g., when a sensible
     default file is available but None indicates *no* file should be used."""
@@ -47,15 +46,16 @@ def ensure_nonnull_return(f):
             return result
     return g
 
-def mkdir_p(path): # race-safe Python2 solution; see http://stackoverflow.com/questions/600268/mkdir-p-functionality-in-python
+def mkdir_p(path : str) -> None: # race-safe Python2 solution; see http://stackoverflow.com/questions/600268/mkdir-p-functionality-in-python
     try:
         os.makedirs(path)
     except OSError as exc:
         if exc.errno == errno.EEXIST and os.path.isdir(path):
             pass
-        else: raise
+        else:
+            raise
 
-def output_directories(stages):
+def output_directories(stages : Set[CmdStage]) -> Set[str]:
     """Directories to be created (currently rather redundant in the presence of subdirectories).
     No need to consider stage inputs - any input already exists or is also the output
     of some previous stage."""

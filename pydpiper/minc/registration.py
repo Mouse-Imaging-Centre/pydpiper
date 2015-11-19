@@ -1,4 +1,3 @@
-from   __future__ import print_function
 import copy
 import os.path
 import shlex
@@ -6,7 +5,8 @@ import subprocess
 import re
 import sys
 
-from typing import NamedTuple, Sequence, Tuple
+import typing
+from typing import NamedTuple, Sequence, Tuple, TypeVar
 
 from pydpiper.minc.files            import MincAtom, XfmAtom
 from pydpiper.minc.containers       import XfmHandler, Registration
@@ -14,13 +14,16 @@ from pydpiper.core.stages     import CmdStage, cmd_stage, Result, Stages
 from pydpiper.core.util       import flatten
 from pydpiper.core.conversion import InputFile, OutputFile
 
-from pyminc.volumes.factory   import volumeFromFile
+from pyminc.volumes.factory   import volumeFromFile  # type: ignore
 
 # TODO canonicalize all names of form 'source', 'src', 'src_img', 'dest', 'target', ... in program
 
 # TODO should these atoms/modules be remade as distinct classes with public outf and stage fields (only)?
 # TODO output_dir (work_dir?) isn't used but could be useful; assert not(subdir and output_dir)?
-def mincblur(img, fwhm, gradient=False, subdir='tmp'): # mnc -> mnc  #, output_dir='.'):
+def mincblur(img      : MincAtom,
+             fwhm     : MincAtom,
+             gradient : bool = False,
+             subdir   : str = 'tmp') -> Result[MincAtom]:
     """
     >>> img = MincAtom(name='/images/img_1.mnc', pipeline_sub_dir='/scratch/some_pipeline_processed/')
     >>> img_blur = mincblur(img=img, fwhm='0.056')
@@ -41,31 +44,17 @@ def mincblur(img, fwhm, gradient=False, subdir='tmp'): # mnc -> mnc  #, output_d
                   + (['-gradient'] if gradient else []))
     return Result(stages=Stages([stage]), output=outf)
 
-def mincresample_simple(img, xfm, like, extra_flags=[], new_name_wo_ext=None, subdir=None): # MincAtom, XfmAtom, MincAtom, [str] -> MincAtom
+def mincresample_simple(img             : MincAtom,
+                        xfm             : XfmAtom,
+                        like            : MincAtom,
+                        extra_flags     : Sequence[str] = [],
+                        new_name_wo_ext : str = None,
+                        subdir          : str = None) -> Result[MincAtom]:
     """
     Resample an image, ignoring mask/labels
-    
-    img             -- MincAtom
-    xfm             -- XfmAtom
-    like            -- MincAtom
-    extra_flags     -- list of strings
+    ...
     new_name_wo_ext -- string indicating a user specified file name (without extension)
     """
-    # argument checking:
-    if not isinstance(img, MincAtom):
-        raise ValueError("The input (img) to mincresample is not a MincAtom.")
-    if not isinstance(xfm, XfmAtom):
-        raise ValueError("The transformation (xfm) to mincresample is not a XfmAtom.")
-    if not isinstance(like, MincAtom):
-        raise ValueError("The like file (like) provided to mincresample is not a MincAtom.")
-    if not isinstance(extra_flags, list):
-        raise ValueError("The additional flags (extra_flags) to mincresample are not provided in a list.")
-    if new_name_wo_ext:
-        if not isinstance(new_name_wo_ext, str):
-            raise ValueError("The new_name_wo_ext argument to mincresample should be a string.")
-    if subdir:
-        if not isinstance(subdir, str):
-            raise ValueError("The subdir argument to mincresample should be a string.")
     
     if not subdir:
         subdir = 'resampled'
@@ -87,12 +76,14 @@ def mincresample_simple(img, xfm, like, extra_flags=[], new_name_wo_ext=None, su
     return Result(stages=Stages([stage]), output=outf)
 
 # TODO mincresample_simple could easily be replaced by a recursive call to mincresample
-def mincresample(img, xfm, like, extra_flags=[], new_name_wo_ext=None, subdir=None): # mnc -> mnc
+def mincresample(img  : MincAtom,
+                 xfm  : XfmAtom,
+                 like : MincAtom,
+                 extra_flags     : Sequence[str] = [],
+                 new_name_wo_ext : str = None,
+                 subdir          : str = None) -> Result[MincAtom]:
     """
-    img             -- MincAtom
-    xfm             -- XfmAtom
-    like            -- MincAtom
-    extra_flags     -- list of strings
+    ...
     new_name_wo_ext -- string indicating a user specified file name (without extension)
     subdir          -- string indicating which subdirectory to output the file in:
     
@@ -130,10 +121,9 @@ def mincresample(img, xfm, like, extra_flags=[], new_name_wo_ext=None, subdir=No
     new_img.labels = new_labels
     return Result(stages=s, output=new_img)
 
-def xfmconcat(xfms, name=None):
+def xfmconcat(xfms : Sequence[XfmAtom],
+              name : str = None) -> Result[XfmAtom]:
     """
-    xfms -- list of XfmAtoms
-    
     >>> stages, xfm = xfmconcat([MincAtom('/tmp/%s' % i, pipeline_sub_dir='/scratch') for i in ['t1.xfm', 't2.xfm']])
     >>> [s.render() for s in stages]
     ['xfmconcat /tmp/t1.xfm /tmp/t2.xfm /scratch/t1/concat_of_t1_and_t2.xfm']
@@ -160,7 +150,9 @@ def xfmconcat(xfms, name=None):
 #       the concept seems odd. It's a concat and a resample?
 #
 #
-def concat(ts, name=None, extra_flags=[]): # TODO remove extra flags OR make ['-sinc'] default
+def concat(ts          : Sequence[XfmHandler],
+           name        : str = None,
+           extra_flags : Sequence[str] = []) -> Result[XfmHandler]: # TODO remove extra flags OR make ['-sinc'] default
     """
     xfmconcat lifted to work on XfmHandlers instead of MincAtoms
     """
@@ -176,7 +168,7 @@ def concat(ts, name=None, extra_flags=[]): # TODO remove extra flags OR make ['-
                                     xfm=t,
                                     resampled=res))
 
-def nu_estimate(src):
+def nu_estimate(src : MincAtom) -> Result[MincAtom]:
     out = src.newname_with_suffix("_nu_estimate", ext=".imp")
 
     # TODO finish dealing with masking as per lines 436-448 of the old LSQ6.py.  (note: the 'singlemask' option there is never used)
@@ -186,19 +178,20 @@ def nu_estimate(src):
                        + (['-mask', src.mask.path] if src.mask else []) + [src.path, out.path])
     return Result(stages=Stages([cmd]), output=out)
 
-def nu_evaluate(img, field): #mnc, file -> result(..., mnc)
+def nu_evaluate(img : MincAtom,
+                field : FileAtom) -> Result[MincAtom]:
     out = img.newname_with_suffix("_nuc")
     cmd = CmdStage(inputs = [img, field], outputs = [out],
                    cmd = ['nu_evaluate', '-clobber', '-mapping', field.path, img.path, out.path])
     return Result(stages=Stages([cmd]), output=out)
 
-def nu_correct(src): # mnc -> result(..., mnc)
+def nu_correct(src : MincAtom) -> Result[MincAtom]:
     s = Stages()
     return Result(stages=s, output=s.defer(nu_evaluate(src, s.defer(nu_estimate(src)))))
 
 INormalizeConf = NamedTuple('INormalizeConf',
                             [('const',  int),
-                             ('method', str)]) # should be enum
+                             ('method', str)]) # TODO: should be enum
 
 default_inormalize_conf = INormalizeConf(const=1000, method='ratioOfMedians')
 # NB the inormalize default is actually '-medianOfRatios'
@@ -207,7 +200,8 @@ default_inormalize_conf = INormalizeConf(const=1000, method='ratioOfMedians')
 # should we put defaults into the classes or populate with None (which will often raise an error if disallowed)
 # and create default objects?
 
-def inormalize(src, conf): # mnc, INormalizeConf -> result(..., mnc)
+def inormalize(src  : MincAtom,
+               conf : INormalizeConf) -> Result[MincAtom]:
     out = src.newname_with_suffix('_inorm')
     cmd = CmdStage(inputs = [src], outputs = [out],
                    cmd = shlex.split('inormalize -clobber -const %s -%s' % (conf.const, conf.method))
@@ -256,7 +250,12 @@ def get_rotational_minctracc_conf(resolution, rotation_params=None, rotation_ran
     """
 
 #FIXME consistently require that masks are explicitely added to inputs array (or not?)
-def rotational_minctracc(source, target, conf, resolution, mask=None, resample_source=False):
+def rotational_minctracc(source : MincAtom,
+                         targe  : MincAtom,
+                         conf   : RotationalMinctraccConf,
+                         resolution      : float,
+                         mask            : MincAtom = None,
+                         resample_source : bool = False):
     """
     source     -- MincAtom (does not have to be blurred)
     target     -- MincAtom (does not have to be blurred)
@@ -381,7 +380,7 @@ NonlinearMinctraccConf = NamedTuple("NonlinearMinctraccConf", _base_part + _nonl
 # should we even keep (hence render) the defaults which are the same as minctracc's?
 # does this even get used in the pipeline?  LSQ6/12 get their own
 # protocols, and many settings here are the minctracc default
-def default_linear_minctracc_conf(transform_type):
+def default_linear_minctracc_conf(transform_type : str) -> MinctraccConf:
     return LinearMinctraccConf(is_nonlinear=False,
                                blur_resolution=None,
                                step_sizes=(0.5,) * 3,
@@ -429,19 +428,24 @@ def space_sep(x):
         return str(x)
 
 # TODO: add memory estimation hook
-def minctracc(source, target, conf, transform=None, transform_name_wo_ext=None, 
-              generation=None, resample_source=False):
+def minctracc(source    : MincAtom,
+              target    : MincAtom,
+              conf      : MinctraccConf,
+              transform : XfmAtom = None,
+              transform_name_wo_ext : str  = None, 
+              generation            : int  = None,
+              resample_source       : bool = False):
     # FIXME Currently broken as neither linear nor nonlinear minctracc
     # configuration objects have all the fields required by this function ...
     """
-    source                -- MincAtom
-    target                -- MincAtom
-    conf                  -- MinctraccConf
-    transform             -- XfmAtom
-    transform_name_wo_ext -- string, to use for the output transformation (without the extension)
-    generation            -- integer, if provided the transformation name will be:
+    source
+    target
+    conf
+    transform
+    transform_name_wo_ext -- to use for the output transformation (without the extension)
+    generation            -- if provided, the transformation name will be:
                              source.filename_wo_ext + "_mincANTS_nlin-" + generation
-    resample_source       -- boolean indicating whether or not to resample the source file 
+    resample_source       -- whether or not to resample the source file 
     
     
     minctracc functionality:
@@ -557,15 +561,18 @@ mincANTS_default_conf = MincANTSConf(
     sim_metric_confs=[default_similarity_metric_conf,
                       default_similarity_metric_conf._replace(use_gradient_image=False)])
 
-def mincANTS(source, target, conf, transform_name_wo_ext=None, generation=None, resample_source=False):
+def mincANTS(source : MincAtom,
+             target : MincAtom,
+             conf   : MincANTSConf,
+             transform_name_wo_ext : str  = None,
+             generation            : int  = None,
+             resample_source       : bool = False) -> Result[XfmHandler]:
     """
-    source                -- MincAtom
-    target                -- MincAtom
-    conf                  -- MincANTSConf
-    transform_name_wo_ext -- string, to use for the output transformation (without the extension)
-    generation            -- integer, if provided the transformation name will be:
+    ...
+    transform_name_wo_ext -- to use for the output transformation (without the extension)
+    generation            -- if provided, the transformation name will be:
                              source.filename_wo_ext + "_mincANTS_nlin-" + generation
-    resample_source       -- boolean indicating whether or not to resample the source file   
+    resample_source       -- whether or not to resample the source file   
     
     Construct a single call to mincANTS.
     Also does blurring according to the specified options
@@ -639,7 +646,10 @@ def mincANTS(source, target, conf, transform_name_wo_ext=None, generation=None, 
 #    return function(imgs=imgs, initial_target=initial_target, nlin_dir=nlin_dir, confs=confs)
     
     
-def mincANTS_NLIN_build_model(imgs, initial_target, nlin_dir, confs):
+def mincANTS_NLIN_build_model(imgs           : Sequence[MincAtom],
+                              initial_target : MincAtom,
+                              confs          : Sequence[MincANTSConf],
+                              nlin_dir       : str) -> Sequence[XfmHandler]:
     """
     This functions runs a hierarchical mincANTS registration on the input
     images (imgs) creating an unbiased average.
@@ -699,18 +709,18 @@ def intrasubject_registrations(subj, conf): # Subject, lsq12_nlin_conf -> Result
 #def multilevel_registration(source, target, registration_function, conf, curr_dir, transform=None):
 #    ...
 
-def multilevel_minctracc(source, target, conf, curr_dir, transform=None):
-    """
-    TODO:
-    conf -- ??? what is the type? 
-    """
+def multilevel_minctracc(source    : MincAtom,
+                         target    : MincAtom,
+                         confs     : Sequence[MinctraccConf],
+                         curr_dir  : str,
+                         transform : XfmAtom = None) -> Result[XfmHandler]:
     # TODO fold curr_dir into conf?
     p = Stages()
-    for conf in conf.single_gen_confs:
+    for conf in confs:
         # having the basic cmdstage fns act on single items rather than arrays is a bit inefficient,
         # e.g., we create many blur stages (which will later be eliminated, but still ...)
-        src_blur  = p.defer(mincblur(source, conf.fwhm)) # TODO use conf.use_gradients
-        dest_blur = p.defer(mincblur(target, conf.fwhm))
+        src_blur  = p.defer(mincblur(source, conf.blur_resolution)) # TODO use conf.use_gradients
+        dest_blur = p.defer(mincblur(target, conf.blur_resolution))
         transform = p.defer(minctracc(src_blur, dest_blur, conf=conf, transform=transform))
     return Result(stages=p,
                   output=XfmHandler(xfm=transform,
@@ -730,23 +740,12 @@ def multilevel_minctracc(source, target, conf, curr_dir, transform=None):
 #    return Result(stages=p, output=transforms)
 
 
-def multilevel_pairwise_minctracc(imgs, # list(MincAtom) 
-                                  conf, 
-                                  transforms=None, 
-                                  like=None, 
-                                  curr_dir="."): 
-    """
-    imgs -- should be array of MincAtoms
-    conf --
-    transforms -- 
-    Pairwise registration of all images"""
-    #check_valid_input_images(imgs)
-    #if type(imgs) != list:
-    #    raise something
-    #for element in imgs:
-    #    if element.__class__ != MincAtom
-    #        raise something
-    
+def multilevel_pairwise_minctracc(imgs       : Sequence[MincAtom], 
+                                  conf       : MinctraccConf, 
+                                  #transforms : Sequence[] = None, 
+                                  like       : MincAtom   = None,
+                                  curr_dir   : str        = ".") -> Result[Sequence[XfmHandler]]:
+    """Pairwise registration of all images"""
     p = Stages()
     output_dir = os.path.join(curr_dir, 'pairs')
     def avg_xfm_from(src_img):
@@ -770,11 +769,6 @@ MultilevelMinctraccConf = NamedTuple('MultilevelMinctraccConf',
    ('single_gen_confs', MinctraccConf), # list of minctracc confs for each generation; could fold res/transform_type into these ...
    ('transform_type', str)])
 
-MinctraccConf = NamedTuple('MinctraccConf',
-    [('transform_type', str),
-     ('w_translations', R3),
-     ('w_rotations', R3)])
-
 # TODO move LSQ12 stuff to an LSQ12 file
 LSQ12_default_conf = MultilevelMinctraccConf(transform_type='lsq12', resolution = NotImplemented,
   single_gen_confs = [])
@@ -787,7 +781,10 @@ LSQ12_default_conf = MultilevelMinctraccConf(transform_type='lsq12', resolution 
 # TODO all this does is call multilevel_pairwise_minctracc and then return an average; fold into that procedure?
 # TODO eliminate/provide default val for resolutions, move resolutions into conf, finish conf ...
 
-def lsq12_pairwise(imgs, conf, lsq12_dir, like=None): #lsq12_dir = pipeline_dir_names.lsq12, like=None):
+def lsq12_pairwise(imgs : Sequence[MincAtom],
+                   conf : LSQ12Conf,
+                   lsq12_dir : str,
+                   like : MincAtom = None) -> Result[Any]: # TODO: FIXME (Any)
     output_dir = os.path.join(lsq12_dir, 'lsq12')
     #conf.transform_type='-lsq12' # hack ... copy? or set external to lsq12 call ? might be better
     p = Stages()
@@ -795,12 +792,17 @@ def lsq12_pairwise(imgs, conf, lsq12_dir, like=None): #lsq12_dir = pipeline_dir_
     avg_img  = p.defer(mincaverage([x.resampled for x in xfms], output_dir=output_dir))
     return Result(stages = p, output = Registration(avg_imgs=[avg_img], avg_img=avg_img, xfms=xfms))
 
+K = TypeVar('K')
+
 """ This is a direct copy of lsq12_pairwise, with the only difference being that
     that takes dictionaries as input for the imgs, and returns the xfmhandlers as
     dictionaries as well. This is necessary (amongst others) for the registration_chain
     as using dictionaries is the easiest way to keep track of the input files. """
-def lsq12_pairwise_on_dictionaries(imgs, conf, lsq12_dir, like=None):
-    l  = [(k,v) for k, v in sorted(imgs.items())]
+def lsq12_pairwise_on_dictionaries(imgs      : Dict[K, MincAtom],
+                                   conf      : LSQ12Conf,
+                                   lsq12_dir : str,
+                                   like      : MincAtom = None):
+    l  = [(k,v) for k, v in sorted(imgs.items())]  # type: List[Tuple[K, MincAtom]]
     ks = [k for k, _ in l]
     vs = [v for _, v in l]
     stages, outputs = lsq12_pairwise(imgs=vs, conf=conf, curr_dir=lsq12_dir, like=like)
@@ -832,58 +834,44 @@ def mincaverage(imgs, name_wo_ext="average", output_dir='.', copy_header_from_fi
                  [avg.path])
     return Result(stages=Stages([s]), output=avg)
 
-def xfmaverage(xfms, output_dir): # [XfmAtom] -> XfmAtom
+def xfmaverage(xfms       : Sequence[MincAtom],
+               output_dir : str) -> Result[XfmAtom]:
+    if len(xfms) == 0:
         raise ValueError("`xfmaverage` arg `xfms` is empty (can't average zero files)")
-    #outf  = xfms[0].xfm.newname_with(fn = lambda _ : 'average') # ugh
-    #outf.orig_path = None #ugh
-    #
-    #
+
     # TODO: the path here is probably not right...
-    #
-    #
     outf  = XfmAtom(name=os.path.join(output_dir, 'transforms/average.xfm'), orig_name=None)
     stage = CmdStage(inputs=xfms, outputs=[outf],
                      cmd=["xfmaverage"] + [x.xfm.path for x in xfms] + [outf.path])
     return Result(stages=Stages([stage]), output=outf)
 
-def xfminvert(xfm):
-    if not isinstance(xfm, XfmAtom):
-        raise ValueError("The input to xfminvert (xfm) should be of type XfmAtom.")
-    
+def xfminvert(xfm : XfmAtom) -> XfmAtom:
     inv_xfm = xfm.newname_with_suffix('_inverted')
     s = CmdStage(inputs=[xfm], outputs=[inv_xfm],
                  cmd=['xfminvert', '-clobber', xfm.path, inv_xfm.path])
     return Result(stages=Stages([s]), output=inv_xfm)
 
-def invert(xfm):
+def invert(xfm : XfmHandler) -> XfmHandler:
     """xfminvert lifted to work on XfmHandlers instead of MincAtoms"""
     s = Stages()
     inv_xfm = s.defer(xfminvert(xfm.xfm))
     return Result(stages=s, #FIXME add a resampling stage to get rid of null `resampled` field?
                   output=XfmHandler(xfm=inv_xfm, source=xfm.target, target=xfm.source, resampled=NotImplemented))
 
-def can_read_MINC_file(filename):
-    """
-    Attempts to read the MINC file with mincinfo, and returns 0 
-    if that call fails
+def can_read_MINC_file(filename : str) -> bool:
+    """Can the MINC file `filename` with be read with `mincinfo`?"""
     
-    filename: string pointing to the MINC file
-    """
-    
-    mincinfoCmd = subprocess.Popen(["mincinfo", filename], 
-                                   stdin=subprocess.PIPE, 
-                                   stdout=subprocess.PIPE, 
-                                   stderr=subprocess.STDOUT, 
+    mincinfoCmd = subprocess.Popen(["mincinfo", filename],
+                                   stdin=subprocess.PIPE,
+                                   stdout=subprocess.PIPE,
+                                   stderr=subprocess.STDOUT,
                                    shell=False)
     # if the following returns anything other than None, the string matched, 
     # and thus indicates that the file could not be read
-    if re.search("Unable to open file", mincinfoCmd.stdout.read()):
-        return False
-    else:
-        return True
-                
+    return re.search("Unable to open file", mincinfoCmd.stdout.read()) is not None
 
-def check_MINC_input_files(args):
+
+def check_MINC_input_files(args : Sequence[MincAtom]):
     """
     This is a general function that checks MINC input files to a pipeline. It uses
     the program mincinfo to test whether the input files are readable MINC files,
@@ -893,9 +881,6 @@ def check_MINC_input_files(args):
     
     args: and array of strings (pointing to the input files)
     """ 
-    if not isinstance(args, list):
-        raise ValueError("The argument args needs to be of type list/array.")
-    
     if len(args) < 1:
         raise ValueError("\nError: no input files are provided. Exiting...\n")
     else:
@@ -955,12 +940,17 @@ def get_parameters_for_rotational_minctracc(resolution,
     return rotational_configuration, resolution_for_rot
                 
     
-def lsq6(imgs, target, lsq6_method, resolution,
-         rotation_tmp_dir=None, rotation_range=None, 
-         rotation_interval=None, rotation_params=None):
+def lsq6(imgs        : Sequence[MincAtom],
+         target      : MincAtom,
+         lsq6_method : str,
+         resolution  : float,
+         rotation_tmp_dir : str   = None,
+         rotation_range   : float = None, 
+         rotation_interval: float = None,
+         rotation_params  : Any   = None) -> Result[Sequence[XfmHandler]]:
     """
-    imgs         -- a list of MincAtoms
-    target       -- MincAtom
+    imgs
+    target
     lsq6_method  -- from the options, can be: "lsq6_simple", "lsq6_centre_estimation",
                             or "lsq6_large_rotations"
                             
@@ -969,19 +959,8 @@ def lsq6(imgs, target, lsq6_method, resolution,
     rotation_range    -- range of x,y,z-search space in degrees
     rotation_interval -- step size in degrees along range
     rotation_params   -- list of 4 values (or "mousebrain"), see rotational_minctracc for more info
-    
-    Return: -- stages
-            -- list of XfmHandlers
     """
     # make sure all variables that are passed along are of the appropriate type:
-    if not isinstance(imgs, list):
-        raise ValueError("The argument imgs for lsq6() need to be of type list/array (of MincAtoms).")
-    for minc_atom in imgs:
-        if not isinstance(minc_atom, MincAtom):
-            raise ValueError("(Some) elements of the input list to lsq6() are not MincAtoms.")
-    if not isinstance(target, MincAtom):
-        raise ValueError("The target arg for lsq6() is not an instance of MincAtom")
-    
     s = Stages()
     xfm_handlers_to_target = []
     
@@ -1018,28 +997,28 @@ def lsq6(imgs, target, lsq6_method, resolution,
     
     return Result(stages=s, output=xfm_handlers_to_target)
 
-def lsq6_nuc_inorm(imgs, registration_targets, lsq6_method,
-                   resolution,
-                   rotation_tmp_dir=None, rotation_range=None, 
-                   rotation_interval=None, rotation_params=None):
+RegistrationTargets = NamedTuple("RegistrationTargets",
+    # what does this mean?
+    [("registration_standard", MincAtom),
+     ("xfm_to_standard", XfmAtom),
+     ("registration_native", MincAtom)
+    ])
+
+def lsq6_nuc_inorm(imgs : Sequence[MincAtom],
+                   registration_targets : RegistrationTargets,
+                   lsq6_method : str,
+                   resolution  : float,
+                   rotation_tmp_dir : str = None,
+                   rotation_range : float = None, 
+                   rotation_interval : float = None,
+                   rotation_params : Any = None):
     """
-    imgs                 -- a list of MincAtoms
-    registration_targets -- instance of RegistrationTargets
+    imgs                 -- 
+    registration_targets -- ???
     lsq6_method          -- from the options, can be: "lsq6_simple", "lsq6_centre_estimation",
                             or "lsq6_large_rotations"
     """       
-    # TODO: is there a better way to do this kind of argument checking for functions?
-    # there will be a fair bit of duplication in several functions... 
     s = Stages()
-    
-    # make sure all variables that are passed along are of the appropriate type:
-    if not isinstance(imgs, list):
-        raise ValueError("The argument imgs for lsq6_nuc_inorm need to be of type list/array (of MincAtoms).")
-    for minc_atom in imgs:
-        if not isinstance(minc_atom, MincAtom):
-            raise ValueError("(Some) elements of the input list to lsq6_nuc_inorm are not MincAtoms.")
-    if not isinstance(registration_targets, RegistrationTargets):
-        raise ValueError("The registration_targets arg for lsq6_nuc_inorm is not an instance of RegistrationTargets")
     
     # 1) run the actual 6 parameter registration
     init_target = registration_targets.registration_standard if not registration_targets.registration_native \
@@ -1091,15 +1070,11 @@ def lsq6_nuc_inorm(imgs, registration_targets, lsq6_method,
 #     xfm_to_standard            = Instance(XfmAtom)
 #     registration_native        = Instance(MincAtom)
 
-RegistrationTargets = NamedTuple("RegistrationTargets",
-    # what does this mean?
-    [("registration_standard", MincAtom),
-     ("xfm_to_standard", XfmAtom),
-     ("registration_native", MincAtom)
-    ])
 
     
-def get_registration_targets_from_init_model(init_model_standard_file, output_dir, pipeline_name):
+def get_registration_targets_from_init_model(init_model_standard_file : str,
+                                             output_dir    : str,
+                                             pipeline_name : str) -> RegistrationTargets:
     """
     An initial model can have two forms:
     
@@ -1166,7 +1141,9 @@ def get_registration_targets_from_init_model(init_model_standard_file, output_di
                                xfm_to_standard=xfm_to_standard,
                                registration_native=registration_native)
 
-def verify_correct_lsq6_target_options(init_model, lsq6_target, bootstrap):
+def verify_correct_lsq6_target_options(init_model  : MincAtom,
+                                       lsq6_target : MincAtom,
+                                       bootstrap   : bool) -> None:
     """
     This function can be called using the parameters that are set using 
     the flags:
@@ -1191,20 +1168,23 @@ def verify_correct_lsq6_target_options(init_model, lsq6_target, bootstrap):
     
 
 
-def get_registration_targets(init_model, lsq6_target, bootstrap,
-                             output_dir, pipeline_name,
-                             first_input_file = None):
+def get_registration_targets(init_model    : str,
+                             lsq6_target   : str,
+                             bootstrap     : bool,
+                             output_dir    : str,
+                             pipeline_name : str,
+                             first_input_file : str = None):
     """
-    init_model       : value of the flag --init-model (is None, or points 
-                       to a MINC file in standard space
-    lsq6_target      : value of the flag --lsq6-target (is None, or points 
-                       to a target MINC file)
-    bootstrap        : value of the flag --bootstrap (is True or False)
+    init_model       : value of the flag --init-model (is None, or the name
+                       of a MINC file in standard space
+    lsq6_target      : value of the flag --lsq6-target (is None, or the name
+                       of a target MINC file)
+    bootstrap        : value of the flag --bootstrap
     output_dir       : value of the flag --output-dir (top level directory 
                        of the entire process
     pipeline_name    : value of the flag  --pipeline-name
-    first_input_file : is None or points to the first input file. This argument
-                       only needs to be specified when --boostrap is True
+    first_input_file : is None or the name of the first input file. This argument
+                       only needs to be specified when --bootstrap is True
     """
     # first check that exactly one of the target methods was chosen
     verify_correct_lsq6_target_options(init_model, lsq6_target, bootstrap)
@@ -1239,7 +1219,7 @@ def get_registration_targets(init_model, lsq6_target, bootstrap,
         return get_registration_targets_from_init_model(init_model, output_dir, pipeline_name)
 
  
-def get_resolution_from_file(input_file):
+def get_resolution_from_file(input_file : str) -> float:
     """
     input_file -- string pointing to an existing MINC file
     """

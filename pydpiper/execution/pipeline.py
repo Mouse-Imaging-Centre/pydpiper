@@ -2,7 +2,7 @@
 
 from __future__ import print_function
 
-import networkx as nx
+import networkx as nx  # type: ignore
 import os
 import sys
 import signal
@@ -14,8 +14,10 @@ from collections import defaultdict
 from datetime import datetime
 from subprocess import call, check_output
 from shlex import split
-from multiprocessing import Process, Event
+from multiprocessing import Process, Event # type: ignore
 import logging
+import functools
+from typing import Any
 
 from pydpiper.core.util import mkdir_p
 
@@ -29,14 +31,14 @@ except:
 #os.environ["PYRO_LOGFILE"]  = os.path.splitext(os.path.basename(__file__))[0] + ".log"
 # TODO name the server logfile more descriptively
 
-logger = logging
+logger = logging # type: Any
 #logger = logging.getLogger(__name__)
-logger.basicConfig(filename="pipeline.log", level=logging.os.getenv("PYDPIPER_LOGLEVEL", "INFO"),
+logger.basicConfig(filename="pipeline.log", level=os.getenv("PYDPIPER_LOGLEVEL", "INFO"),
                    datefmt="%Y-%m-%d %H:%M:%S",
                    format="[%(asctime)s.%(msecs)03d,"
-                          +__name__+",%(levelname)s] %(message)s")
+                          +__name__+",%(levelname)s] %(message)s") # type: ignore
                 
-import Pyro4
+import Pyro4  # type: ignore
 from . import pipeline_executor as pe
 
 Pyro4.config.SERVERTYPE = pe.Pyro4.config.SERVERTYPE
@@ -45,7 +47,7 @@ LOOP_INTERVAL = 5
 STAGE_RETRY_INTERVAL = 1
 SUBDEBUG = 5
 
-sys.excepthook = Pyro4.util.excepthook
+sys.excepthook = Pyro4.util.excepthook # type: ignore
 
 class PipelineFile(object):
     def __init__(self, filename):
@@ -684,7 +686,7 @@ class Pipeline(object):
     # a better interface might be (self, [stage]) -> { MemAmount : (NumStages, [Stage]) }
     # or maybe the same in a heap (to facilitate getting N stages with most memory)
     def executor_memory_required(self, stages):
-        s = max(stages, key=lambda i: self.stages[i].mem)
+        s = max(stages, key=lambda i: self.stages[i].mem) #type: ignore
         return self.stages[s].mem
 
     # this can't be a loop since we call it via sockets and don't want to block the socket forever
@@ -902,14 +904,15 @@ def launchServer(pipeline, options):
     
     # is the server going to be verbose or not?
     if options.verbose:
-        def verboseprint(*args):
-            # Print each argument separately so caller doesn't need to
-            # stuff everything to be printed into a single string
-            for arg in args:
-                print(arg,)
-            print()
+        #def verboseprint(*args):
+        #    # Print each argument separately so caller doesn't need to
+        #    # stuff everything to be printed into a single string
+        #    for arg in args:
+        #        print(arg,)
+        #    print()
+        verboseprint = lambda *args: (map(print, args), print())
     else:
-        verboseprint = lambda *a: None
+        verboseprint = lambda *args: None
     
     # getIpAddress is similar to socket.gethostbyname(...)
     # but uses a hack to attempt to avoid returning localhost (127....)
@@ -1037,7 +1040,7 @@ def flatten_pipeline(p):
         else:
             return 0 
                 
-    return sorted([(i, str(p.stages[i]), p.G.predecessors(i)) for i in p.G.nodes_iter()],cmp=post)
+    return sorted([(i, str(p.stages[i]), p.G.predecessors(i)) for i in p.G.nodes_iter()], key=functools.cmp_to_key(post))
 
 def pipelineDaemon(pipeline, options, programName=None):
     """Launches Pyro server and (if specified by options) pipeline executors"""

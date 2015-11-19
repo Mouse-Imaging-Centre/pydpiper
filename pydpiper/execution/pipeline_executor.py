@@ -4,9 +4,9 @@ from __future__ import print_function
 import time
 import sys
 import os
-from configargparse import ArgParser
+from configargparse import ArgParser  # type: ignore
 from datetime import datetime
-from multiprocessing import Process, Pool
+from multiprocessing import Process, Pool # type: ignore
 import subprocess
 import shlex
 import pydpiper.execution.queueing as q
@@ -15,7 +15,8 @@ import logging
 import socket
 import signal
 import threading
-import Pyro4
+import Pyro4       # type: ignore
+from typing import Any
 
 Pyro4.config.SERVERTYPE = "multiplex"
 
@@ -25,10 +26,10 @@ WAIT_TIMEOUT = 5.0
 HEARTBEAT_INTERVAL = 10.0
 #SHUTDOWN_TIME = WAIT_TIMEOUT + LATENCY_TOLERANCE
 
-logger = logging
+logger = logging # type: Any
 #logger = logging.getLogger(__name__)
 
-sys.excepthook = Pyro4.util.excepthook
+sys.excepthook = Pyro4.util.excepthook  # type: ignore
 
 def addExecutorArgumentGroup(parser):
     group = parser.add_argument_group("Executor options",
