@@ -4,28 +4,30 @@ from pydpiper.minc.files import MincAtom
 from pydpiper.minc.containers import XfmHandler
 from pydpiper.minc.registration import concat, invert
 
+from typing import List, Optional, Tuple
+
 #TODO find the nicest API (currently determinants_at_fwhms, but still weird)
 #and write documentation indicating it
 
-def lin_from_nlin(xfm): # xfm -> xfm
+def lin_from_nlin(xfm : XfmHandler) -> Result[XfmHandler]:
     # TODO add dir argument
     out_xfm = xfm.xfm.newname_with_suffix("_linear_part")
-    stage = CmdStage(inputs=[xfm.source, xfm.xfm], outputs=[out_xfm],
-                     cmd = ['lin_from_nlin', '-clobber', '-lsq12'] \
-                         + (['-mask', xfm.source.mask] if xfm.source.mask else []) \
-                         + [xfm.source.path, xfm.xfm.path, out_xfm.path])
+    stage = CmdStage(inputs=(xfm.source, xfm.xfm), outputs=(out_xfm,),
+                     cmd = (['lin_from_nlin', '-clobber', '-lsq12']
+                            + (['-mask', xfm.source.mask.path] if xfm.source.mask else [])
+                            + [xfm.source.path, xfm.xfm.path, out_xfm.path]))
     return Result(stages=Stages([stage]),
                   output=XfmHandler(xfm=out_xfm, source=xfm.source,
                                     target=xfm.target))
 
-def minc_displacement(xfm): # xfm -> mnc
+def minc_displacement(xfm : XfmHandler) -> Result[MincAtom]:
     # TODO add dir argument
     output_grid = xfm.xfm.newname_with_suffix("_displacement", ext='.mnc')
-    stage = CmdStage(inputs=[xfm.source, xfm.xfm], outputs=[output_grid],
+    stage = CmdStage(inputs=(xfm.source, xfm.xfm), outputs=(output_grid,),
                      cmd=['minc_displacement', '-clobber', xfm.source.path, xfm.xfm.path, output_grid.path])
     return Result(stages=Stages([stage]), output=output_grid)
 
-def mincblob(op, grid): # str, mnc -> mnc
+def mincblob(op : str, grid : MincAtom) -> Result[MincAtom]:
     """
     Low-level mincblob wrapper -- use `determinant` instead to actually compute a determinant ...
     >>> stages = mincblob('determinant', MincAtom("/images/img_1.mnc", pipeline_sub_dir="/tmp")).stages
@@ -36,12 +38,12 @@ def mincblob(op, grid): # str, mnc -> mnc
     if op not in ["determinant", "trace", "translation", "magnitude"]:
         raise ValueError('mincblob: invalid operation %s' % op)
     out_grid = grid.newname_with_suffix('_' + op)
-    s = CmdStage(inputs=[grid], outputs=[out_grid],
+    s = CmdStage(inputs=(grid,), outputs=(out_grid,),
                  cmd=['mincblob', '-clobber', '-' + op, grid.path, out_grid.path])
     return Result(stages=Stages([s]), output=out_grid)
     #TODO add a 'before' to newname_with, e.g., before="grid" -> disp._grid.mnc
 
-def det_and_log_det(displacement_grid, fwhm):
+def det_and_log_det(displacement_grid : MincAtom, fwhm : float) -> Result[MincAtom]:
     s = Stages()
     # NB naming doesn't correspond with the (automagic) file naming: d-1 <=> det(f), det <=> det+1(f)
     det = s.defer(determinant(s.defer(smooth_vector(source=displacement_grid, fwhm=fwhm))
@@ -49,7 +51,7 @@ def det_and_log_det(displacement_grid, fwhm):
     log_det = s.defer(mincmath(op='log', vols=[det]))
     return Result(stages=s, output={ 'det': det, 'log_det': log_det})
 
-def nlin_part(xfm, inv_xfm=None): # xfm -> xfm
+def nlin_part(xfm : XfmHandler, inv_xfm : Optional[XfmHandler] = None) -> Result[XfmHandler]:
     """Compute the nonlinear part of a transform as follows:
     go forwards across xfm and then backwards across the linear part
     of the inverse xfm (by first calculating the inverse or using the one supplied) 
@@ -65,7 +67,7 @@ def nlin_part(xfm, inv_xfm=None): # xfm -> xfm
     xfm = s.defer(concat([xfm, inv_lin_part]))
     return Result(stages=s, output=xfm)
 
-def nlin_displacement(xfm, inv_xfm=None): # xfm -> mnc
+def nlin_displacement(xfm : XfmHandler, inv_xfm : Optional[XfmHandler] = None) -> Result[MincAtom]:
     # "minc_displacement <=< nlin_part"
     
     s = Stages()
@@ -73,10 +75,11 @@ def nlin_displacement(xfm, inv_xfm=None): # xfm -> mnc
                   output=s.defer(minc_displacement(
                          s.defer(nlin_part(xfm, inv_xfm)))))
 
-def determinants_at_fwhms(xfm, blur_fwhms, inv_xfm=None):
+def determinants_at_fwhms(xfm        : XfmHandler,
+                          blur_fwhms : str, # TODO: change back to List[float]
+                          inv_xfm    : Optional[XfmHandler] = None)   \
+                       -> Result[Tuple[List[MincAtom], List[MincAtom]]]:
     """
-    blur_fwhms -- string with comma separated blurring kernels
-    
     Takes a transformation (xfm) containing
     both lsq12 (scaling and shearing, the 6-parameter
     rotations/translations should not be part of this) and
@@ -100,8 +103,10 @@ def determinants_at_fwhms(xfm, blur_fwhms, inv_xfm=None):
     #for blur in blur_fwhms: # throws away the results
     #    s.defer(det_and_log_det(nlin_disp, blur))
     #    s.defer(det_and_log_det(full_disp, blur))
-    nlin_dets = [(fwhm, s.defer(det_and_log_det(nlin_disp, fwhm))) for fwhm in blur_fwhms.split(',')]
-    full_dets = [(fwhm, s.defer(det_and_log_det(full_disp, fwhm))) for fwhm in blur_fwhms.split(',')]
+    nlin_dets = [(fwhm, s.defer(det_and_log_det(nlin_disp, float(fwhm))))
+                 for fwhm in blur_fwhms.split(',')]
+    full_dets = [(fwhm, s.defer(det_and_log_det(full_disp, float(fwhm))))
+                 for fwhm in blur_fwhms.split(',')]
     # won't work when additional xfm is specified for nlin_dets:
     #(nlin_dets, full_dets) = [[(fwhm, s.defer(det_and_log_det(disp, fwhm))) for fwhm in blur_fwhms]
     #                          for disp in (nlin_disp, full_disp)]
@@ -109,33 +114,34 @@ def determinants_at_fwhms(xfm, blur_fwhms, inv_xfm=None):
     #could return a different isomorphic presentation of this big structure...
     return Result(stages=s, output=(nlin_dets, full_dets))
     
-def mincmath(op, vols, const=None, new_name=None):
+def mincmath(op       : str,
+             vols     : List[MincAtom],
+             const    : Optional[float] = None,
+             new_name : Optional[str]   = None) -> Result[MincAtom]:
     """
     Low-level/stupid interface to mincmath
-    
-    Assumption: vols is provided as a list
     """
-    const = str(const) if const is not None else None
-    name = new_name if new_name else \
-      ('_' + op + '_' + ((const + '_') if const else '') + 
-       '_'.join([vol.filename_wo_ext for vol in vols]))
+    _const = str(const) if const is not None else None  # type: Optional[str]
+    name = (new_name if new_name else
+            ('_' + op + '_' + ((_const + '_') if _const else '') + 
+             '_'.join([vol.filename_wo_ext for vol in vols])))
     outf = vols[0].newname_with_suffix(name)
-    s = CmdStage(inputs=vols, outputs=[outf],
-                 cmd=['mincmath', '-clobber', '-2'] \
-                 + (['-const', const] if const else []) \
-                 + ['-' + op] + [v.path for v in vols] + [outf.path])
+    s = CmdStage(inputs=tuple(vols), outputs=(outf,),
+                 cmd=(['mincmath', '-clobber', '-2']
+                   + (['-const', _const] if _const else [])
+                   + ['-' + op] + [v.path for v in vols] + [outf.path]))
     return Result(stages=Stages([s]), output=outf)
 
-def determinant(displacement_grid):
+def determinant(displacement_grid : MincAtom) -> Result[MincAtom]:
     s = Stages()
     det_m_1 = s.defer(mincblob(op='determinant', grid=displacement_grid))
     det = s.defer(mincmath(op='add', const=1, vols=[det_m_1]))
     return Result(stages=s, output=det)
 
-def smooth_vector(source, fwhm):
+def smooth_vector(source : MincAtom, fwhm : float) -> Result[MincAtom]:
     outf = source.newname_with_suffix("_smooth_fwhm%s" % fwhm) # TODO smooth_displacement_?
     cmd  = ['smooth_vector', '--clobber', '--filter', '--fwhm=%s' % fwhm,
             source.path, outf.path]
-    stage = CmdStage(inputs=[source], outputs=[outf], cmd=cmd)
+    stage = CmdStage(inputs=(source,), outputs=(outf,), cmd=cmd)
     return Result(stages=Stages([stage]), output=outf)
 

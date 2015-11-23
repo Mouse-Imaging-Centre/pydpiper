@@ -6,7 +6,7 @@ from collections import defaultdict
 import os
 import sys
 
-from atom.api import Atom, Int, Str, Dict, Enum, Instance
+from typing import Any, List, Tuple
 
 from pydpiper.minc.analysis import determinants_at_fwhms, invert
 from pydpiper.core.stages import Result
@@ -45,48 +45,54 @@ from pydpiper.core.arguments import (application_parser,
 
 # some data structures used in this pipeline:
 
-class ChainConf(Atom):
-    #input_space            = Enum('native', 'lsq6', 'lsq12') # FIXME put here?
-    common_time_point      = Instance(int)
-    # could make this a Fraction or a Decimal to represent, e.g., day 18.5, etc.
-    # (float would be dangerous since we want to use these values as indices, etc.)
-    common_time_point_name = Str("common")
-    csv_file               = Instance(str)
-    pride_of_models        = Instance(str)
+class ChainConf(object):
+    def __init__(self, common_time_point : int,
+                 csv_file                : str,
+                 pride_of_models         : str,
+                 common_time_point_name  : str = "common") -> None:
+        # could make this a Fraction or a Decimal to represent, e.g., day 18.5, etc.
+        # (float would be dangerous since we want to use these values as indices, etc.)
+        self.common_time_point = common_time_point
+        self.csv_file = csv_file
+        self.common_time_point_name = common_time_point_name
+        self.pride_of_models = pride_of_models
 
-class Subject(Atom):
+V = TypeVar('V')
+
+class Subject(Generic[V]):
     """
     A Subject contains the intersubject_registration_time_pt and a dictionary
-    that maps timepoints to scans/data related to this Subject. (these can be
-    stored for instance as string, FileAtoms/MincAtoms or XfmHandler) 
+    that maps timepoints to scans/data of type `V` related to this Subject.
+    (Here V could be - for instance - str, FileAtom/MincAtom or XfmHandler).
     """
-    intersubject_registration_time_pt = Instance(int)
-    time_pt_dict   = Dict()    # TODO: get validation (key=Int) to work? ...
+    def __init__(self,
+                 intersubject_registration_time_pt : Int,
+                 time_pt_dict                      : Optional[Dict[int, V]] = None):
+        # TODO: change the time_pt datatype to decimal or similar to allow, e.g., 18.5?
+        self.intersubject_registration_time_pt = intersubject_registration_time_pt  # type: int
+        self.time_pt_dict = time_pt_dict or dict()                                  # type: Dict[int, V]
 
     # compare by fields, not pointer
-    def __eq__(self, other):
+    def __eq__(self, other) -> bool:
         return (self is other or
                 (self.intersubject_registration_time_pt == other.intersubject_registration_time_pt
                  and self.time_pt_dict == other.time_pt_dict
                  and self.__class__ == other.__class__))
     # ugh; also, should this be type(self) == ... ?
 
-    def get_intersubject_registration_image(self):
+    # TODO: change name? This might not be an 'image'
+    @property
+    def intersubject_registration_image(self) -> V:
         return self.time_pt_dict[self.intersubject_registration_time_pt]
 
-    # TODO: change name? This might not be an 'image'
-    intersubject_registration_image = property(get_intersubject_registration_image,
-                                               'intersubject_registration_image property')
-    
-    def __repr__(self):
+    def __repr__(self) -> str:
         return "Subject(inter_sub_time_pt: %s, time_pt_dict keys: %s ... (values not shown))" % (self.intersubject_registration_time_pt,
           self.time_pt_dict.keys())
     
 class TimePointError(Exception):
     pass
 
-
-def chain(options):
+def chain(options : ChainConf):
     """Create a registration chain pipeline from the given options."""
 
     # TODO:
@@ -221,7 +227,7 @@ def chain(options):
                                                    confs=full_hierarchy))
         dict_intersubj_atom_to_xfm = { xfm.source : xfm for xfm in intersubj_xfms.xfms }
 
-    return Result(stages=s, output=())
+    #return Result(stages=s, output=())
     ## within-subject registration
     # In the toy scenario below: 
     # subject A    A_time_1   ->   A_time_2   ->   A_time_3
@@ -254,7 +260,11 @@ def chain(options):
     
     return Result(stages=s, output=(final_non_rigid_xfms, subject_determinants))
                  
-def map_over_time_pt_dict_in_Subject(f, d):
+K = TypeVar('K')
+T = TypeVar('T')
+U = TypeVar('U')
+
+def map_over_time_pt_dict_in_Subject(f : Callable[[T], U], d : Dict[K, Subject[T]]) -> Dict[K, Subject[U]]:
     """Map `f` non-destructively (if `f` is) over (the values of)
     the inner time_pt_dict of a { subject : Subject }
     
@@ -265,9 +275,9 @@ def map_over_time_pt_dict_in_Subject(f, d):
     ...        's2' : Subject(intersubject_registration_time_pt=4, time_pt_dict= {4:'4',5:'5'}) })
     True
     """
-    new_d = {}
+    new_d = {}  # type: Dict[K, Subject[T]]
     for s_id, subj in d.items():
-        new_time_pt_dict = {}
+        new_time_pt_dict = {}  # type: Dict[int, U]
         for t,x in subj.time_pt_dict.items():
             new_time_pt_dict[t] = f(x)
         new_subj = Subject(intersubject_registration_time_pt = subj.intersubject_registration_time_pt,

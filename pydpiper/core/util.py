@@ -3,7 +3,7 @@ import os
 #import os.path
 import functools # type: ignore
 from operator import add
-from typing import Sequence, Tuple, TypeVar
+from typing import List, Set, Tuple, TypeVar
 
 from pydpiper.execution.pipeline import CmdStage
 
@@ -28,7 +28,7 @@ def explode(filename : str) -> Tuple[str, str, str]:
 
 T = TypeVar('T')
 
-def pairs(lst : Sequence[T]) -> Sequence[Tuple[T, T]]:
+def pairs(lst : List[T]) -> List[Tuple[T, T]]:
     return list(zip(lst[:-1], lst[1:]))
 
 def flatten(*xs):
@@ -49,15 +49,6 @@ def ensure_nonnull_return(f):
         else:
             return result
     return g
-
-def mkdir_p(path : str) -> None: # race-safe Python2 solution; see http://stackoverflow.com/questions/600268/mkdir-p-functionality-in-python
-    try:
-        os.makedirs(path)
-    except OSError as exc:
-        if exc.errno == errno.EEXIST and os.path.isdir(path):
-            pass
-        else:
-            raise
 
 def output_directories(stages : Set[CmdStage]) -> Set[str]:
     """Directories to be created (currently rather redundant in the presence of subdirectories).

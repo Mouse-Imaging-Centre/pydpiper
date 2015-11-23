@@ -71,7 +71,7 @@ class FileAtom(object):
     def newname_with_fn(self,
                         fn     : Callable[[str],str],
                         ext    : str = None,
-                        subdir : str = None) -> FileAtom:
+                        subdir : str = None) -> 'FileAtom':
         """Create a new FileAtom from one which has:
         <filename_wo_ext>.<ext>
         to: 
@@ -105,7 +105,7 @@ class FileAtom(object):
     def newname_with_suffix(self,
                             suffix : str,
                             ext    : str = None,
-                            subdir : str = None) -> FileAtom:
+                            subdir : str = None) -> 'FileAtom':
         """Create a FileAtom representing <dirs>/<file><suffix><.ext>
         from one representing <dirs>/<file><.ext>
 

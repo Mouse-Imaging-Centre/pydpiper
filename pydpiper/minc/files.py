@@ -3,19 +3,13 @@ from pydpiper.core.files import FileAtom
 
 import typing
 
+# NB: the types for this module are defined in a stub file in order to constrain the type
+# of `newname_with_*` functions to return an object of the same class rather than a general FileAtom
+
 class MincAtom(FileAtom):
-    """
-    mask   -- MincAtom
-    labels -- MincAtom
-    """
-    def __init__(self,
-                 name : str,
-                 orig_name : str = NotProvided,
-                 pipeline_sub_dir : str = None,
-                 output_sub_dir : str = None, 
-                 mask : MincAtom = None,
-                 labels : MincAtom = None) -> None:
-        super(self.__class__, self).__init__(name=name, orig_name=orig_name, 
+    def __init__(self, name, orig_name=NotProvided(), pipeline_sub_dir=None,
+                 output_sub_dir=None, mask=None, labels=None):
+        super(self.__class__, self).__init__(name=name, orig_name=orig_name,
                                              pipeline_sub_dir=pipeline_sub_dir,
                                              output_sub_dir=output_sub_dir)
         self.mask   = mask

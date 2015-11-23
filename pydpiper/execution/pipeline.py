@@ -19,8 +19,6 @@ import logging
 import functools
 from typing import Any
 
-from pydpiper.core.util import mkdir_p
-
 try:
     from sys import intern
 except:
@@ -266,7 +264,7 @@ class Pipeline(object):
         self.outputDir = self.options.output_directory or os.getcwd()
 
         self.log_dir = os.path.join(self.outputDir, 'logs')
-        mkdir_p(self.log_dir)
+        os.makedirs(self.log_dir, exist_ok=True)
 
         if self.options.queue_type == "pbs" and self.options.local:
             # redirect the standard output to a text file

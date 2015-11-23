@@ -1,5 +1,5 @@
 import shlex
-from typing import Any, Callable, Generic, Set, Sequence, TypeVar, Union
+from typing import Any, Callable, Generic, Iterable, List, Set, Tuple, TypeVar, Union
 
 from pydpiper.core.files import FileAtom
 from pydpiper.execution.pipeline import PipelineFile, InputFile, OutputFile
@@ -11,16 +11,19 @@ class CmdStage(object):
     in part because it avoids many empty fields for stages which never
     become part of a `live` pipeline."""
     def __init__(self,
-                 inputs  : Sequence[FileAtom],
-                 outputs : Sequence[FileAtom],
-                 cmd     : Sequence[str],
+                 # `List`s don't work here because mutable containers must be _invariant_
+                 # (see en.wikipedia.org/wiki/Covariance_and_contravariance_(computer_science));
+                 # instead, we abuse variadic tuples to simulate immutable lists:
+                 inputs  : Tuple[FileAtom, ...],
+                 outputs : Tuple[FileAtom, ...],
+                 cmd     : List[str],
                  memory  : float = None) -> None:
         # TODO: rather than having separate cmd_stage fn, might want to make inputs/outputs optional here
-        self.inputs  = inputs          # type: Sequence[FileAtom]
+        self.inputs  = inputs          # type: Tuple[FileAtom, ...]
         # TODO: might be better to derefence inputs -> inputs.path here to save mem
-        self.outputs = outputs         # type: Sequence[FileAtom]
+        self.outputs = outputs         # type: Tuple[FileAtom, ...]
         #self.conf    = conf           # not needed at present -- see note on render_fn
-        self._cmd    = cmd             # type: Sequence[str]
+        self._cmd    = cmd             # type: List[str]
         # TODO: why not expose this publically?
         self.when_runnable_hooks = []  # type: List[Callable[[], Any]]
         # TODO: make the hooks accessible via the constructor?
@@ -44,7 +47,7 @@ class CmdStage(object):
         return self.cmd_to_string()
     def cmd_to_string(self) -> str:
         return ' '.join(self._cmd)
-    def to_seq(self) -> Sequence[str]:
+    def to_seq(self) -> List[str]:
         """Form usable for Python subprocess call."""
         return self._cmd
     #def execute(self, backend):    # could also be elsewhere...
@@ -95,7 +98,9 @@ class Stages(set):
     we create many intermediate structures for which the extra fields of a pipeline
     don't have any meaning, so this might be worth changing for clarity.
     """
-    def defer(self, result : Result[T]) -> T:
+    def __init__(self, e : Union[Iterable[CmdStage], List[CmdStage]] = ()) -> None:
+        super(self.__class__, self).__init__(iter(e))
+    def defer(self, result : 'Result[T]') -> T:
         self.update(result.stages)
         return result.output
     # FIXME this doesn't remember the order stages were added (see ordereddict/orderedset)
@@ -114,8 +119,8 @@ def parse(cmd_str : str) -> CmdStage:
     ['input1.mnc', 'input2.mnc']
     """
     cmd = shlex.split(cmd_str)
-    inputs  = [FileAtom(s[1:]) for s in cmd if s[0] == ',']  #TODO what about I(), O() ?
-    outputs = [FileAtom(s[1:]) for s in cmd if s[0] == '@']
+    inputs  = tuple([FileAtom(s[1:]) for s in cmd if s[0] == ','])  #TODO what about I(), O() ?
+    outputs = tuple([FileAtom(s[1:]) for s in cmd if s[0] == '@'])
     s = CmdStage(inputs = inputs, outputs = outputs, cmd = [c if c[0] not in [',','@'] else c[1:] for c in cmd])
     return s
 

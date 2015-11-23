@@ -11,7 +11,7 @@ import os
 import time
 
 from configargparse import ArgParser, Namespace # type: ignore
-from typing import Any, Callable, Sequence
+from typing import Any, Callable, List
 
 from pydpiper.core.util import raise_
 
@@ -55,12 +55,12 @@ class BaseParser(Parser):
 
 # the internal nodes of the parse object
 class CompoundParser(Parser):
-    def __init__(self, annotated_parsers : Sequence[AnnotatedParser]) -> None:
+    def __init__(self, annotated_parsers : List[AnnotatedParser]) -> None:
         """
         annotated_parsers is a list that can hold
         both BaseParser-s and CompoundParser-s.
         """
-        self.parsers  = annotated_parsers  # type: Sequence[AnnotatedParser]
+        self.parsers  = annotated_parsers  # type: List[AnnotatedParser]
 
 class AnnotatedParser(object):
     def __init__(self,
@@ -89,7 +89,7 @@ class AnnotatedParser(object):
 # I guess you could add a lsq12 parser in the code calling the two pipelines and use it as a default,
 # but this wouldn't happen automagically.
 
-def parse(parser : Parser, args : Sequence[str]) -> Namespace:
+def parse(parser : Parser, args : List[str]) -> Namespace:
     default_config_file = os.getenv("PYDPIPER_CONFIG_FILE") #TODO: accepting a comma-separated list might allow more flexibility
     config_files = [default_config_file] if default_config_file else []
 
