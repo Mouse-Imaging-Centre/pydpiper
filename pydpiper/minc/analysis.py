@@ -1,6 +1,5 @@
-from pydpiper.core.stages import Stages, CmdStage
-from pydpiper.core.containers import Result
-from pydpiper.minc.files import MincAtom
+from pydpiper.core.stages import Stages, CmdStage, Result
+from pydpiper.minc.files import MincAtom, xfmToMinc
 from pydpiper.minc.containers import XfmHandler
 from pydpiper.minc.registration import concat, invert
 
@@ -21,8 +20,9 @@ def lin_from_nlin(xfm : XfmHandler) -> Result[XfmHandler]:
                                     target=xfm.target))
 
 def minc_displacement(xfm : XfmHandler) -> Result[MincAtom]:
-    # TODO add dir argument
-    output_grid = xfm.xfm.newname_with_suffix("_displacement", ext='.mnc')
+    # TODO: add dir argument
+    # TODO: this coercion is lame
+    output_grid = xfmToMinc(xfm.xfm.newname_with_suffix("_displacement", ext='.mnc'))
     stage = CmdStage(inputs=(xfm.source, xfm.xfm), outputs=(output_grid,),
                      cmd=['minc_displacement', '-clobber', xfm.source.path, xfm.xfm.path, output_grid.path])
     return Result(stages=Stages([stage]), output=output_grid)
@@ -43,13 +43,13 @@ def mincblob(op : str, grid : MincAtom) -> Result[MincAtom]:
     return Result(stages=Stages([s]), output=out_grid)
     #TODO add a 'before' to newname_with, e.g., before="grid" -> disp._grid.mnc
 
-def det_and_log_det(displacement_grid : MincAtom, fwhm : float) -> Result[MincAtom]:
+def det_and_log_det(displacement_grid : MincAtom, fwhm : float) -> Result[Tuple[MincAtom, MincAtom]]:
     s = Stages()
-    # NB naming doesn't correspond with the (automagic) file naming: d-1 <=> det(f), det <=> det+1(f)
+    # TODO: naming doesn't correspond with the (automagic) file naming: d-1 <=> det(f), det <=> det+1(f)
     det = s.defer(determinant(s.defer(smooth_vector(source=displacement_grid, fwhm=fwhm))
                            if fwhm else displacement_grid))
     log_det = s.defer(mincmath(op='log', vols=[det]))
-    return Result(stages=s, output={ 'det': det, 'log_det': log_det})
+    return Result(stages=s, output=(det, log_det))
 
 def nlin_part(xfm : XfmHandler, inv_xfm : Optional[XfmHandler] = None) -> Result[XfmHandler]:
     """Compute the nonlinear part of a transform as follows:
@@ -78,13 +78,14 @@ def nlin_displacement(xfm : XfmHandler, inv_xfm : Optional[XfmHandler] = None) -
 def determinants_at_fwhms(xfm        : XfmHandler,
                           blur_fwhms : str, # TODO: change back to List[float]
                           inv_xfm    : Optional[XfmHandler] = None)   \
-                       -> Result[Tuple[List[MincAtom], List[MincAtom]]]:
+                       -> Result[Tuple[List[Tuple[float, Tuple[MincAtom, MincAtom]]],  \
+                                       List[Tuple[float, Tuple[MincAtom, MincAtom]]]]]:
     """
     Takes a transformation (xfm) containing
     both lsq12 (scaling and shearing, the 6-parameter
     rotations/translations should not be part of this) and
     non-linear parts of a subject to a common/shared average
-    and returns the determinants of both the (forward) non linear
+    and returns the determinants of both the (forward) nonlinear
     part of the xfm at the given fwhms as well as the determinants
     of the full (forward) transformation.  The inverse transform
     may optionally be specified to avoid its recomputation (e.g.,
@@ -99,14 +100,11 @@ def determinants_at_fwhms(xfm        : XfmHandler,
     nlin_disp = s.defer(nlin_displacement(xfm=xfm, inv_xfm=inv_xfm))
     full_disp = s.defer(minc_displacement(xfm))
     # TODO add the option to add additional xfm?  (do we even need this? used in mbm etc but might be trivial)
-    
-    #for blur in blur_fwhms: # throws away the results
-    #    s.defer(det_and_log_det(nlin_disp, blur))
-    #    s.defer(det_and_log_det(full_disp, blur))
-    nlin_dets = [(fwhm, s.defer(det_and_log_det(nlin_disp, float(fwhm))))
-                 for fwhm in blur_fwhms.split(',')]
-    full_dets = [(fwhm, s.defer(det_and_log_det(full_disp, float(fwhm))))
-                 for fwhm in blur_fwhms.split(',')]
+   
+    fwhms = [float(x) for x in blur_fwhms.split(',')]
+ 
+    nlin_dets = [(fwhm, s.defer(det_and_log_det(nlin_disp, fwhm))) for fwhm in fwhms]
+    full_dets = [(fwhm, s.defer(det_and_log_det(full_disp, fwhm))) for fwhm in fwhms]
     # won't work when additional xfm is specified for nlin_dets:
     #(nlin_dets, full_dets) = [[(fwhm, s.defer(det_and_log_det(disp, fwhm))) for fwhm in blur_fwhms]
     #                          for disp in (nlin_disp, full_disp)]

@@ -5,8 +5,7 @@ import subprocess
 import re
 import sys
 
-import typing
-from typing import Any, List, NamedTuple, Optional, Tuple, TypeVar
+from typing import Any, cast, Generic, List, NamedTuple, Optional, Tuple, TypeVar
 
 from pydpiper.core.files      import FileAtom
 from pydpiper.core.stages     import CmdStage, Result, Stages
@@ -369,7 +368,7 @@ def rotational_minctracc(source : MincAtom,
     # that is explicitly provided:
     # TODO: shouldn't this use the mask if it's provided rather than the target mask?
     mask_for_command = target.mask if target.mask else mask
-    cmd = CmdStage(inputs = (source, target) + ((mask_for_command,) if mask_for_command else ()),
+    cmd = CmdStage(inputs  = (source, target) + cast(tuple, ((mask_for_command,) if mask_for_command else ())),  # if-expression not recognized as a tuple; see mpypy/issues/622
                    outputs = (out_xfm,),
         cmd = ["rotational_minctracc.py", 
                "-t", conf.temp_dir, 
@@ -586,12 +585,18 @@ def minctracc(source    : MincAtom,
                                     xfm=out_xfm,
                                     resampled=resampled))
 
-SimilarityMetricConf = NamedTuple('SimilarityMetricConf',
+class SimilarityMetricConf(NamedTuple('SimilarityMetricConf',
     [("metric", str),
      ("weight", float),
      ("blur_resolution", float),
      ("radius_or_bins", float),
-     ("use_gradient_image", bool)])
+     ("use_gradient_image", bool)])):
+    def replace(self, **kwargs) -> SimilarityMetricConf:
+        return self._replace(self, **kwargs) # type: ignore
+    # TODO: actually want to add this method to *all* namedtuples
+    # (or at least teach mypy about _replace)
+    # TODO: note kwargs isn't checked here -- what to do?
+
 
 default_similarity_metric_conf = SimilarityMetricConf(
     metric="CC",
@@ -617,7 +622,7 @@ mincANTS_default_conf = MincANTSConf(
     use_mask=True,
     default_resolution=None,
     sim_metric_confs=[default_similarity_metric_conf,
-                      default_similarity_metric_conf._replace(use_gradient_image=False)])
+                      default_similarity_metric_conf.replace(use_gradient_image=False)])
 
 def mincANTS(source : MincAtom,
              target : MincAtom,
@@ -671,8 +676,7 @@ def mincANTS(source : MincAtom,
                           str(sim_metric_conf.weight), str(sim_metric_conf.radius_or_bins)])
         subcmd = "'" + "".join([sim_metric_conf.metric, '[', inner, ']']) + "'"
         similarity_cmds.extend(["-m", subcmd])
-    stage = CmdStage(inputs = (source, target) + tuple(similarity_inputs) + ((target.mask,) if target.mask else ()),
-                     # hard to use cmd_stage wrapper here due to complicated subcmds ...
+    stage = CmdStage(inputs = (source, target) + tuple(similarity_inputs) + cast(tuple, ((target.mask,) if target.mask else ())), # need to cast to tuple due to mypy bug; see mypy/issues/622
                      outputs = (out_xfm,),
                      cmd = ['mincANTS', '3',
                             '--number-of-affine-iterations', '0']
@@ -701,12 +705,22 @@ def mincANTS(source : MincAtom,
 #    function  = functions[reg_method]  #...[conf.nlin_reg_method] ???
 #
 #    return function(imgs=imgs, initial_target=initial_target, nlin_dir=nlin_dir, confs=confs)
-    
+
+T = TypeVar('T')
+
+class WithAvgImgs(Generic[T]):
+    def __init__(self,
+                 output   : T,
+                 avg_imgs : List[MincAtom],
+                 avg_img  : MincAtom) -> None:
+        self.output   = output
+        self.avg_imgs = avg_imgs
+        self.avg_img  = avg_img
     
 def mincANTS_NLIN_build_model(imgs           : List[MincAtom],
                               initial_target : MincAtom,
                               confs          : List[MincANTSConf],
-                              nlin_dir       : str) -> Result[List[XfmHandler]]:
+                              nlin_dir       : str) -> Result[WithAvgImgs[List[XfmHandler]]]:
     """
     This functions runs a hierarchical mincANTS registration on the input
     images (imgs) creating an unbiased average.
@@ -724,14 +738,51 @@ def mincANTS_NLIN_build_model(imgs           : List[MincAtom],
         # number the generations starting at 1, enumerate will start at 0
         avg  = s.defer(mincaverage([xfm.resampled for xfm in xfms], name_wo_ext='nlin-%d' % (i+1), output_dir=nlin_dir))
         avg_imgs.append(avg)
-    return Result(stages=s, output=Registration(xfms=xfms, avg_img=avg, avg_imgs=avg_imgs))
+    return Result(stages=s, output=WithAvgImgs(output=xfms, avg_img=avg, avg_imgs=avg_imgs))
 
 def LSQ12_NLIN(source, target, conf):
     raise NotImplementedError
 
+
+# some stuff for the registration chain.
+# The Subject class moved here since `intrasubject_registrations` was also here.
+
+V = TypeVar('V')
+
+class Subject(Generic[V]):
+    """
+    A Subject contains the intersubject_registration_time_pt and a dictionary
+    that maps timepoints to scans/data of type `V` related to this Subject.
+    (Here V could be - for instance - str, FileAtom/MincAtom or XfmHandler).
+    """
+    def __init__(self,
+                 intersubject_registration_time_pt : int,
+                 time_pt_dict                      : Optional[Dict[int, V]] = None)  -> None:
+        # TODO: change the time_pt datatype to decimal or rational to allow, e.g., 18.5?
+        self.intersubject_registration_time_pt = intersubject_registration_time_pt  # type: int
+        self.time_pt_dict = time_pt_dict or dict()                                  # type: Dict[int, V]
+
+    # compare by fields, not pointer
+    def __eq__(self, other) -> bool:
+        return (self is other or
+                (self.__class__ == other.__class__
+                 and self.intersubject_registration_time_pt == other.intersubject_registration_time_pt
+                 and self.time_pt_dict == other.time_pt_dict))
+    # ugh; also, should this be type(self) == ... ?
+
+    # TODO: change name? This might not be an 'image'
+    @property
+    def intersubject_registration_image(self) -> V:
+        return self.time_pt_dict[self.intersubject_registration_time_pt]
+
+    def __repr__(self) -> str:
+        return ("Subject(inter_sub_time_pt: %s, time_pt_dict keys: %s ... (values not shown))"
+                % (self.intersubject_registration_time_pt, self.time_pt_dict.keys()))
+
 def intrasubject_registrations(subj : Subject, conf : MincANTSConf) \
                             -> Result[Tuple[List[Tuple[int, XfmHandler]], int]]:
     """
+    
     subj -- Subject (has a intersubject_registration_time_pt and a time_pt_dict 
             that maps timepoints to individual subjects
     
@@ -768,9 +819,11 @@ def intrasubject_registrations(subj : Subject, conf : MincANTSConf) \
 #def multilevel_registration(source, target, registration_function, conf, curr_dir, transform=None):
 #    ...
 
+MultilevelMinctraccConf = List[MinctraccConf] # ??
+
 def multilevel_minctracc(source    : MincAtom,
                          target    : MincAtom,
-                         confs     : List[MinctraccConf],
+                         confs     : MultilevelMinctraccConf,
                          curr_dir  : str,
                          transform : XfmAtom = None) -> Result[XfmHandler]:
     # TODO fold curr_dir into conf?
@@ -800,7 +853,7 @@ def multilevel_minctracc(source    : MincAtom,
 
 
 def multilevel_pairwise_minctracc(imgs       : List[MincAtom],
-                                  conf       : List[MinctraccConf],
+                                  conf       : MultilevelMinctraccConf,
                                   #transforms : List[] = None,
                                   like       : MincAtom   = None,
                                   curr_dir   : str        = ".") -> Result[List[XfmHandler]]:
@@ -811,7 +864,7 @@ def multilevel_pairwise_minctracc(imgs       : List[MincAtom],
         """Compute xfm from src_img to each other img, average them, and resample along the result"""
         # TODO to save creation of lots of duplicate blurs, could use multilevel_minctracc_all,
         # being careful not to register the img against itself
-        xfms = [p.defer(multilevel_minctracc(src_img, target_img, conf=conf, curr_dir=output_dir))
+        xfms = [p.defer(multilevel_minctracc(src_img, target_img, confs=conf, curr_dir=output_dir))
                 for target_img in imgs if src_img != target_img]   # TODO src_img.name != ....name ??
         avg_xfm = p.defer(xfmaverage(xfms, output_dir=curr_dir))
         res  = p.defer(mincresample(img=src_img,
@@ -823,11 +876,13 @@ def multilevel_pairwise_minctracc(imgs       : List[MincAtom],
                                                           ## does putting `target = res` make sense? could a sum be used?
     return Result(stages=p, output=[avg_xfm_from(img) for img in imgs])
 
-MultilevelMinctraccConf = NamedTuple('MultilevelMinctraccConf',
-  [#('resolution', float),   # TODO: used to choose step size...shouldn't be here
-   ('single_gen_confs', MinctraccConf) # list of minctracc confs for each generation; could fold res/transform_type into these ...
+#MultilevelMinctraccConf = NamedTuple('MultilevelMinctraccConf',
+#  [#('resolution', float),   # TODO: used to choose step size...shouldn't be here
+#   ('single_gen_confs', MinctraccConf) # list of minctracc confs for each generation; could fold res/transform_type into these ...
    #('transform_type', str)])
-  ])
+#  ])
+# OR:
+
 
 # TODO move LSQ12 stuff to an LSQ12 file
 #LSQ12_default_conf = MultilevelMinctraccConf(transform_type='lsq12', resolution = NotImplemented,
@@ -842,16 +897,16 @@ LSQ12Conf = MultilevelMinctraccConf
                 none is provided. """
 # TODO all this does is call multilevel_pairwise_minctracc and then return an average; fold into that procedure?
 # TODO eliminate/provide default val for resolutions, move resolutions into conf, finish conf ...
-def lsq12_pairwise(imgs : List[MincAtom],
-                   conf : MultilevelMinctraccConf, # TODO: override transform_type field?
+def lsq12_pairwise(imgs  : List[MincAtom],
+                   conf  : MultilevelMinctraccConf, # TODO: override transform_type field?
                    lsq12_dir : str,
-                   like : MincAtom = None) -> Result[Any]: # TODO: FIXME (Any)
+                   like : MincAtom = None) -> Result[WithAvgImgs[List[XfmHandler]]]:
     output_dir = os.path.join(lsq12_dir, 'lsq12')
     #conf.transform_type='-lsq12' # hack ... copy? or set external to lsq12 call ? might be better
     p = Stages()
     xfms = p.defer(multilevel_pairwise_minctracc(imgs=imgs, conf=conf, like=like, curr_dir=output_dir))
     avg_img  = p.defer(mincaverage([x.resampled for x in xfms], output_dir=output_dir))
-    return Result(stages = p, output = Registration(avg_imgs=[avg_img], avg_img=avg_img, xfms=xfms))
+    return Result(stages = p, output = WithAvgImgs(avg_imgs=[avg_img], avg_img=avg_img, output=xfms))
 
 K = TypeVar('K')
 
@@ -862,15 +917,17 @@ K = TypeVar('K')
 def lsq12_pairwise_on_dictionaries(imgs      : Dict[K, MincAtom],
                                    conf      : LSQ12Conf,
                                    lsq12_dir : str,
-                                   like      : Optional[MincAtom] = None):
-    s  = Stages()
-    l  = [(k,v) for k, v in sorted(imgs.items())]  # type: List[Tuple[K, MincAtom]]
-    ks = [k for k, _ in l]
-    vs = [v for _, v in l]
-    output = s.defer(lsq12_pairwise(imgs=vs, conf=conf, lsq12_dir=lsq12_dir, like=like))
-    return Result(stages=s, output=Registration(avg_imgs=output.avg_imgs,
-                                                avg_img=output.avg_img,
-                                                xfms=dict(zip(ks, output.xfms))))
+                                   like      : Optional[MincAtom] = None)  \
+                                -> Result[WithAvgImgs[Dict[K, XfmHandler]]]:
+    s   = Stages()
+    l   = [(k,v) for k, v in sorted(imgs.items())]  # type: List[Tuple[K, MincAtom]]
+    ks  = [k for k, _ in l]
+    vs  = [v for _, v in l]
+    res = s.defer(lsq12_pairwise(imgs=vs, conf=conf, lsq12_dir=lsq12_dir, like=like))
+    return Result(stages=s, output=WithAvgImgs(output=dict(zip(ks, res.output)),
+                                               avg_imgs=res.avg_imgs,
+                                               avg_img=res.avg_img))
+                                               
 
 def mincaverage(imgs        : List[MincAtom],
                 name_wo_ext : str = "average",

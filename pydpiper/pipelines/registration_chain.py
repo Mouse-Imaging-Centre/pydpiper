@@ -10,7 +10,7 @@ from typing import Any, List, Tuple
 
 from pydpiper.minc.analysis import determinants_at_fwhms, invert
 from pydpiper.core.stages import Result
-from pydpiper.minc.registration import (Stages, mincANTS_NLIN_build_model, mincANTS_default_conf,
+from pydpiper.minc.registration import (Subject, Stages, mincANTS_NLIN_build_model, mincANTS_default_conf,
                                         MincANTSConf, mincANTS, intrasubject_registrations, mincaverage, 
                                         concat, check_MINC_input_files, get_registration_targets,
                                         lsq6_nuc_inorm, get_resolution_from_file)
@@ -57,37 +57,7 @@ class ChainConf(object):
         self.common_time_point_name = common_time_point_name
         self.pride_of_models = pride_of_models
 
-V = TypeVar('V')
 
-class Subject(Generic[V]):
-    """
-    A Subject contains the intersubject_registration_time_pt and a dictionary
-    that maps timepoints to scans/data of type `V` related to this Subject.
-    (Here V could be - for instance - str, FileAtom/MincAtom or XfmHandler).
-    """
-    def __init__(self,
-                 intersubject_registration_time_pt : Int,
-                 time_pt_dict                      : Optional[Dict[int, V]] = None):
-        # TODO: change the time_pt datatype to decimal or similar to allow, e.g., 18.5?
-        self.intersubject_registration_time_pt = intersubject_registration_time_pt  # type: int
-        self.time_pt_dict = time_pt_dict or dict()                                  # type: Dict[int, V]
-
-    # compare by fields, not pointer
-    def __eq__(self, other) -> bool:
-        return (self is other or
-                (self.intersubject_registration_time_pt == other.intersubject_registration_time_pt
-                 and self.time_pt_dict == other.time_pt_dict
-                 and self.__class__ == other.__class__))
-    # ugh; also, should this be type(self) == ... ?
-
-    # TODO: change name? This might not be an 'image'
-    @property
-    def intersubject_registration_image(self) -> V:
-        return self.time_pt_dict[self.intersubject_registration_time_pt]
-
-    def __repr__(self) -> str:
-        return "Subject(inter_sub_time_pt: %s, time_pt_dict keys: %s ... (values not shown))" % (self.intersubject_registration_time_pt,
-          self.time_pt_dict.keys())
     
 class TimePointError(Exception):
     pass

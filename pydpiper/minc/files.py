@@ -1,10 +1,12 @@
 from pydpiper.core.util  import NotProvided
 from pydpiper.core.files import FileAtom
 
+from copy import deepcopy
 import typing
 
 # NB: the types for this module are defined in a stub file in order to constrain the type
-# of `newname_with_*` functions to return an object of the same class rather than a general FileAtom
+# of `newname_with_*` functions to return an object of the same class rather than a general FileAtom.
+# If you add a function here and the typechecker can't see it being exported, that's why.
 
 class MincAtom(FileAtom):
     def __init__(self, name, orig_name=NotProvided(), pipeline_sub_dir=None,
@@ -25,3 +27,11 @@ class XfmAtom(FileAtom):
     remains unchanged
     """
     pass
+
+# nasty coercion just because newname_with returns an object of the same type
+def xfmToMinc(xfm):
+    mnc = copy.deepcopy(xfm)
+    mnc.__class__ = MincAtom
+    mnc.mask = None
+    mnc.labels = None
+    return mnc
