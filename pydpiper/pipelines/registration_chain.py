@@ -6,16 +6,17 @@ from collections import defaultdict
 import os
 import sys
 
-from typing import Any, List, Tuple
+from argparse import Namespace
+from typing import Any, Callable, Dict, List, Tuple, TypeVar
 
 from pydpiper.minc.analysis import determinants_at_fwhms, invert
 from pydpiper.core.stages import Result
 from pydpiper.minc.registration import (Subject, Stages, mincANTS_NLIN_build_model, mincANTS_default_conf,
                                         MincANTSConf, mincANTS, intrasubject_registrations, mincaverage, 
                                         concat, check_MINC_input_files, get_registration_targets,
-                                        lsq6_nuc_inorm, get_resolution_from_file)
+                                        lsq6_nuc_inorm, get_resolution_from_file, XfmHandler)
 from pydpiper.minc.files import MincAtom
-from pydpiper.execution.application import execute
+from pydpiper.execution.application import execute  # type: ignore
 #from pydpiper.pipelines.LSQ6 import lsq6
 #from configargparse import ArgParser
 from pydpiper.core.arguments import (application_parser,
@@ -27,7 +28,7 @@ from pydpiper.core.arguments import (application_parser,
                                      parse,
                                      AnnotatedParser, BaseParser, CompoundParser,
                                      RegistrationConf,
-                                     Python2RelatedEnums)
+                                     InputSpace, LSQ6Method)
 
 
 # TODO (general for all option records, not just for the registration chain):
@@ -62,7 +63,7 @@ class ChainConf(object):
 class TimePointError(Exception):
     pass
 
-def chain(options : ChainConf):
+def chain(options : Any):
     """Create a registration chain pipeline from the given options."""
 
     # TODO:
@@ -72,6 +73,8 @@ def chain(options : ChainConf):
     # that are performed (inter-subject registration, lsq6 using
     # multiple initial models) are applied to subsets of the entire 
     # data, making it harder to keep the mapping simple/straightforward
+
+    chain_opts = options.chain # type : ChainConf
 
     s = Stages()
     
@@ -85,21 +88,21 @@ def chain(options : ChainConf):
     
     pipeline_subject_info = map_over_time_pt_dict_in_Subject(
                                      lambda subj_str:  MincAtom(name=subj_str, pipeline_sub_dir=pipeline_processed_dir),
-                                     subject_info)
+                                     subject_info)  # type: Dict[str, Subject[MincAtom]]
     
     # verify that in input files are proper MINC files, and that there 
     # are no duplicates in the filenames
-    all_Minc_Atoms = []
+    all_Minc_atoms = []  # type: List[MincAtom]
     for s_id, subj in pipeline_subject_info.items():
         for subj_time_pt, subj_filename in subj.time_pt_dict.items():
-            all_Minc_Atoms.append(subj_filename)
+            all_Minc_atoms.append(subj_filename)
     # check_MINC_input_files takes strings, so pass along those instead of the actual MincAtoms
-    check_MINC_input_files([minc_atom.path for minc_atom in all_Minc_Atoms])
+    check_MINC_input_files([minc_atom.path for minc_atom in all_Minc_atoms])
     
-    if options.registration.input_space not in Python2RelatedEnums.input_space:
-        raise ValueError('unrecognized input space: %s; choices: %s' % (options.registration.input_space, Python2RelatedEnums.input_space))
+    if options.registration.input_space not in InputSpace.__members__:
+        raise ValueError('unrecognized input space: %s; choices: %s' % (options.registration.input_space, ','.join(InputSpace.__members__)))
     
-    if options.registration.input_space == 'native':
+    if options.registration.input_space == InputSpace.native:
         # for the registration chain, a bootstrap model is somewhat ill-defined, because
         # it's unclear what "the first input file" is. As such, when this option is chosen
         # we should prompt the user to use --lsq6-target instead
@@ -130,10 +133,10 @@ def chain(options : ChainConf):
                                                                                    options.registration.resolution,
                                                                                    options.lsq6,
                                                                                    subject_matter=options.registration.subject_matter))[0],
-                                         pipeline_subject_info)
+                                         pipeline_subject_info)  # type: Dict[str, Subject[XfmHandler]]
         
         
-    some_temp_target = None # FIXME just set this right away
+    some_temp_target = None # type: MincAtom  # FIXME just set this right away
 
     # NB currently LSQ6 expects an array of files, but we have a map.
     # possibilities:
@@ -157,8 +160,8 @@ def chain(options : ChainConf):
     #                                 |
     #                            group_wise registration on time point 2
     #
-    dict_intersubj_atom_to_xfm = {}
-    if options.registration.input_space == 'lsq6' or options.registration.input_space == 'lsq12':
+    dict_intersubj_atom_to_xfm = {}  # type: Dict[MincAtom, XfmHandler]
+    if options.registration.input_space in (InputSpace.lsq6, InputSpace.lsq12):
         intersubj_imgs = { s_id : subj.intersubject_registration_image
                           for s_id, subj in pipeline_subject_info.items() }
     else:
@@ -174,14 +177,14 @@ def chain(options : ChainConf):
     
     # input files that started off in native space have been aligned rigidly 
     # by this point in the code (i.e., lsq6)
-    if options.registration.input_space == 'lsq6' or options.registration.input_space == 'native':
+    if options.registration.input_space in [InputSpace.lsq6, InputSpace.native]:
         raise NotImplementedError("We currently have not implemented the code for 'input space': %s" % options.registration.input_space)
     #intersubj_xfms = lsq12_NLIN_build_model_on_dictionaries(imgs=intersubj_imgs,
         #                                                        conf=conf,
         #                                                        lsq12_dir=lsq12_directory
                                                                 #, like={atlas_from_init_model_at_this_tp}
         #                                                        )
-    elif options.registration.input_space == 'lsq12':
+    elif options.registration.input_space == InputSpace.lsq12:
         #TODO: write reader that creates a mincANTS configuration out of an input protocol 
         if not some_temp_target:
             some_temp_target = s.defer(mincaverage(imgs=list(intersubj_imgs.values()),
@@ -195,7 +198,7 @@ def chain(options : ChainConf):
                                                    initial_target=some_temp_target, # this doesn't make sense yet
                                                    nlin_dir=pipeline_nlin_common_dir,
                                                    confs=full_hierarchy))
-        dict_intersubj_atom_to_xfm = { xfm.source : xfm for xfm in intersubj_xfms.xfms }
+        dict_intersubj_atom_to_xfm = { xfm.source : xfm for xfm in intersubj_xfms.output }
 
     #return Result(stages=s, output=())
     ## within-subject registration
@@ -234,7 +237,8 @@ K = TypeVar('K')
 T = TypeVar('T')
 U = TypeVar('U')
 
-def map_over_time_pt_dict_in_Subject(f : Callable[[T], U], d : Dict[K, Subject[T]]) -> Dict[K, Subject[U]]:
+def map_over_time_pt_dict_in_Subject(f : Callable[[T], U],
+                                     d : Dict[K, Subject[T]]) -> Dict[K, Subject[U]]:
     """Map `f` non-destructively (if `f` is) over (the values of)
     the inner time_pt_dict of a { subject : Subject }
     
@@ -248,12 +252,12 @@ def map_over_time_pt_dict_in_Subject(f : Callable[[T], U], d : Dict[K, Subject[T
     new_d = {}  # type: Dict[K, Subject[T]]
     for s_id, subj in d.items():
         new_time_pt_dict = {}  # type: Dict[int, U]
-        for t,x in subj.time_pt_dict.items():
+        for t, x in subj.time_pt_dict.items():
             new_time_pt_dict[t] = f(x)
         new_subj = Subject(intersubject_registration_time_pt = subj.intersubject_registration_time_pt,
-                           time_pt_dict   = new_time_pt_dict)
+                           time_pt_dict = new_time_pt_dict)  # type: Subject[U]
         new_d[s_id] = new_subj
-    return new_d
+    return new_d # type: Dict[K, Subject[U]]
 
 def parse_common(string):
     truthy_strings = ['1','True','true','T','t']

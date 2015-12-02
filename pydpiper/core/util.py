@@ -3,9 +3,19 @@ import os
 #import os.path
 import functools # type: ignore
 from operator import add
+from enum import Enum
 from typing import List, Set, Tuple, TypeVar
 
 from pydpiper.execution.pipeline import CmdStage
+
+class AutoNumber(Enum):
+    # from docs.python.org/3/library/enum.html since apparently it's
+    # not worth putting these into the stdlib ...
+    def __new__(cls):
+        value = len(cls.__members__) + 1
+        obj = object.__new__(cls)
+        obj._value_ = value
+        return obj
 
 def raise_(err : BaseException):
     """`raise` is a keyword and `raise e` isn't an expression, so can't be used freely"""

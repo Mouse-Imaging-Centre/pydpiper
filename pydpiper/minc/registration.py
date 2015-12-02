@@ -757,7 +757,7 @@ class Subject(Generic[V]):
     """
     def __init__(self,
                  intersubject_registration_time_pt : int,
-                 time_pt_dict                      : Optional[Dict[int, V]] = None)  -> None:
+                 time_pt_dict                      : Optional[Dict[int, V]] = None) -> None:
         # TODO: change the time_pt datatype to decimal or rational to allow, e.g., 18.5?
         self.intersubject_registration_time_pt = intersubject_registration_time_pt  # type: int
         self.time_pt_dict = time_pt_dict or dict()                                  # type: Dict[int, V]
@@ -997,7 +997,7 @@ def check_MINC_input_files(args : List[str]) -> None:
     This is a general function that checks MINC input files to a pipeline. It uses
     the program mincinfo to test whether the input files are readable MINC files,
     and ensures that the input files have distinct filenames. (A directory is created
-    for each inputfile based on the filename without extension, which means that 
+    for each input file based on the filename without extension, which means that 
     filenames need to be distinct)
     
     args: names of input files
@@ -1024,6 +1024,33 @@ def check_MINC_input_files(args : List[str]) -> None:
                              "unique names for all input files.\n")
         seen.add(fileBase)
 
+
+# data structures to hold setting for the parameter settings we know about:
+mousebrain = { 'res' : 0.056 }
+human      = { 'res' : 1.00  }
+# we want to set the parameters such that 
+# blur          ->  560 micron (10 * resolution)
+# resample step ->  224 micron ( 4 * resolution)
+# registr. step ->  560 micron (10 * resolution)
+# w_trans       ->  448 micron ( 8 * resolution)
+# simplex       -> 1120 micron (20 * resolution)
+# so we simply need to set the resolution to establish this:
+#resolution_for_rot = 0.056
+# could also use an Enum here, although a dict can be extended
+known_settings = { 'mousebrain' : mousebrain,
+                   'human'      : human       }
+
+## under construction
+# TODO it's silly for rotation_params to be overloaded like this - make another parser flag?
+# def parse_rotational_minctracc_params(rotation_params : str) -> Tuple[RotationalMinctraccConf, float]:
+#     if rotation_params in known_settings:
+#         resolution = known_settings[rotation_params]
+#     else:
+#         blur_factor, resample_step_factor, registration_step_factor, w_translations_factor = (
+#             [float(x) for x in rotation_params.split(',')])
+#     return config, resolution
+        
+
 def get_parameters_for_rotational_minctracc(resolution,
                                             rotation_tmp_dir=None, rotation_range=None, 
                                             rotation_interval=None, rotation_params=None):
@@ -1035,15 +1062,9 @@ def get_parameters_for_rotational_minctracc(resolution,
     rotational_configuration = default_rotational_minctracc_conf
     resolution_for_rot = resolution
     # for mouse brains we have fixed parameters:
-    if rotation_params == "mousebrain":
-        # we want to set the parameters such that 
-        # blur          ->  560 micron (10 * resolution)
-        # resample step ->  224 micron ( 4 * resolution)
-        # registr. step ->  560 micron (10 * resolution)
-        # w_trans       ->  448 micron ( 8 * resolution)
-        # simplex       -> 1120 micron (20 * resolution)
-        # so we simply need to set the resolution to establish this:
-        resolution_for_rot = 0.056
+    #if rotation_params == "mousebrain":
+    if rotation_params in known_settings:
+        resolution_for_rot = known_settings[rotation_params]
     else:
         # use the parameters provided
         blur_factor, resample_step_factor, registration_step_factor, w_translations_factor = (
@@ -1053,45 +1074,48 @@ def get_parameters_for_rotational_minctracc(resolution,
         # (but then how to override with None?)
         rotational_configuration = RotationalMinctraccConf(
                                         temp_dir=rotation_tmp_dir if rotation_tmp_dir else
-                                        default_rotational_minctracc_conf.tempdir,
+                                          default_rotational_minctracc_conf.tempdir,
                                         rotational_range=rotation_range if rotation_range else
-                                        default_rotational_minctracc_conf.rotation_range,
+                                          default_rotational_minctracc_conf.rotation_range,
                                         rotational_interval=rotation_interval if rotation_params else
-                                        default_rotational_minctracc_conf.rotational_interval,
+                                          default_rotational_minctracc_conf.rotational_interval,
                                         blur_factor=blur_factor if rotation_params else default_rotational_minctracc_conf.blur_factor,
-                                        resample_step_factor=resample_step_factor if rotation_params else default_rotational_minctracc_conf.resample_step_factor,
+                                          resample_step_factor=resample_step_factor if rotation_params else default_rotational_minctracc_conf.resample_step_factor,
                                         registration_step_factor=registration_step_factor if rotation_params else
-                                        default_rotational_minctracc_conf.registration_step_factor,
+                                          default_rotational_minctracc_conf.registration_step_factor,
                                         w_translations_factor=w_translations_factor if rotation_params else
-                                        default_rotational_minctracc_conf.w_translations_factor)
+                                          default_rotational_minctracc_conf.w_translations_factor)
             
     return rotational_configuration, resolution_for_rot
-                
+
+class LSQ6Conf(object):
+    def __init__(self,
+                 # TODO make possible configurations depend on the lsq6_method:
+                 lsq6_method : str,
+                 rotation_tmp_dir  : Optional[str] = None,
+                 rotation_range    : Optional[float] = None,
+                 rotation_interval : Optional[float] = None,
+                 rotation_params   : Optional[Any]   = None) -> None:
+
+        # when the lsq6_method is lsq6_large_rotations, these specify:
+        # rotation_tmp_dir  -- temp directory used for I/O in rotational_minctracc
+        # rotation_range    -- range of x,y,z-search space in degrees
+        # rotation_interval -- step size in degrees along range
+        # rotation_params   -- list of 4 values (or "mousebrain"), see rotational_minctracc for more info
+        self.lsq6_method = lsq6_method
+        self.rotation_tmp_dir  = rotation_tmp_dir
+        self.rotation_range    = rotation_range
+        self.rotation_interval = rotation_interval
+        self.rotation_params   = rotation_params
+
     
 def lsq6(imgs        : List[MincAtom],
          target      : MincAtom,
-         lsq6_method : str,
          resolution  : float,
-         rotation_tmp_dir : Optional[str]   = None,
-         rotation_range   : Optional[float] = None, 
-         rotation_interval: Optional[float] = None,
-         rotation_params  : Optional[Any]   = None) -> Result[List[XfmHandler]]:
-    # TODO: make a LSQ6 configuration object
-    """
-    imgs
-    target
-    lsq6_method  -- from the options, can be: "lsq6_simple", "lsq6_centre_estimation",
-                            or "lsq6_large_rotations"
-                            
-    when the lsq6_method is lsq6_large_rotations, these specify:
-    rotation_tmp_dir  -- temp directory used for I/O in rotational_minctracc
-    rotation_range    -- range of x,y,z-search space in degrees
-    rotation_interval -- step size in degrees along range
-    rotation_params   -- list of 4 values (or "mousebrain"), see rotational_minctracc for more info
-    """
+         conf        : LSQ6Conf) -> Result[List[XfmHandler]]:
 
     s = Stages()
-    xfm_handlers_to_target = []  # type: List[XfmHandler]
+    xfms_to_target = []  # type: List[XfmHandler]
     
     ############################################################################
     # alignment
@@ -1099,32 +1123,34 @@ def lsq6(imgs        : List[MincAtom],
     #
     # Calling rotational_minctracc
     #
-    if lsq6_method == "lsq6_large_rotations":
+    if conf.lsq6_method == "lsq6_large_rotations":
         rotational_configuration, resolution_for_rot = \
-            get_parameters_for_rotational_minctracc(resolution, rotation_tmp_dir,
-                                                    rotation_range, rotation_interval,
-                                                    rotation_params) 
+            get_parameters_for_rotational_minctracc(resolution, conf.rotation_tmp_dir,
+                                                    conf.rotation_range, conf.rotation_interval,
+                                                    conf.rotation_params)
         # now call rotational_minctracc on all input images 
-        xfm_handlers_to_target = [s.defer(rotational_minctracc(source=img, target=target,
-                                                               conf=rotational_configuration,
-                                                               resolution=resolution_for_rot))
+        xfms_to_target = [s.defer(rotational_minctracc(source=img, target=target,
+                                                       conf=rotational_configuration,
+                                                       resolution=resolution_for_rot))
                                   for img in imgs]
     #
     # Center estimation
     #
-    if lsq6_method == "lsq6_centre_estimation":
+    elif conf.lsq6_method == "lsq6_centre_estimation":
         raise NotImplementedError("lsq6_centre_estimation is not implemented yet...")
     #
     # Simple lsq6 (files already roughly aligned)
     #
-    if lsq6_method == "lsq6_simple":
+    elif conf.lsq6_method == "lsq6_simple":
         raise NotImplementedError("lsq6_simple is not implemented yet...")
+    else:
+        raise ValueError("bad lsq6 method: %s" % conf.lsq6_method)
     
     ############################################################################
     # TODO: resample input files ???
     ############################################################################
     
-    return Result(stages=s, output=xfm_handlers_to_target)
+    return Result(stages=s, output=xfms_to_target)
 
 """
 This class can be used for the following options:
@@ -1152,30 +1178,32 @@ def lsq6_nuc_inorm(imgs                 : List[MincAtom],
     # run the actual 6 parameter registration
     init_target = registration_targets.registration_standard if not registration_targets.registration_native \
                     else registration_targets.registration_native
-    xfm_handlers_source_imgs_to_lsq6_target = s.defer(lsq6(imgs, init_target, lsq6_options.lsq6_method, resolution,
-                                                           lsq6_options.large_rotation_tmp_dir, 
-                                                           lsq6_options.large_rotation_range, 
-                                                           lsq6_options.large_rotation_interval, 
-                                                           lsq6_options.large_rotation_parameters))
+    source_imgs_to_lsq6_target_xfms = s.defer(lsq6(imgs=imgs, target=init_target,
+                                                   resolution=resolution, conf=lsq6_options))
+                                                   # lsq6_options.lsq6_method, resolution,
+                                                   # lsq6_options.large_rotation_tmp_dir, 
+                                                   # lsq6_options.large_rotation_range, 
+                                                   # lsq6_options.large_rotation_interval, 
+                                                   # lsq6_options.large_rotation_parameters))
         
     # concatenate the native_to_standard transform if we have this transform
     xfms_to_final_target_space = ([s.defer(xfmconcat([first_xfm.xfm, 
                                                      registration_targets.xfm_to_standard]))
-                                    for first_xfm in xfm_handlers_source_imgs_to_lsq6_target]
+                                    for first_xfm in source_imgs_to_lsq6_target_xfms]
                                   if registration_targets.xfm_to_standard else
-                                    [xfm_handler.xfm for xfm_handler in xfm_handlers_source_imgs_to_lsq6_target])
+                                    [xfm_handler.xfm for xfm_handler in source_imgs_to_lsq6_target_xfms])
     
     # resample the input to the final lsq6 space
     # we should go back to basics in terms of the file name that we create here. It should
     # be fairly basic. Something along the lines of:
     # {orig_file_base}_resampled_lsq6.mnc
-    filenames_wo_ext_lsq6 = [img.filename_wo_ext + "_resampled_lsq6" for img in imgs]
-    imgs_in_lsq6_space = [s.defer(mincresample(img=native_img,
-                                               xfm=xfm_to_lsq6,
-                                               like=registration_targets.registration_standard,
-                                               extra_flags=['-sinc'],
-                                               new_name_wo_ext=filename_wo_ext))
-                          for native_img,xfm_to_lsq6,filename_wo_ext in zip(imgs,xfms_to_final_target_space,filenames_wo_ext_lsq6)]
+    imgs_in_lsq6_space = [s.defer(mincresample(
+                                      img=native_img,
+                                      xfm=xfm_to_lsq6,
+                                      like=registration_targets.registration_standard,
+                                      extra_flags=['-sinc'],
+                                      new_name_wo_ext=native_img.filename_wo_ext + "_resampled_lsq6"))
+                          for native_img, xfm_to_lsq6 in zip(imgs, xfms_to_final_target_space)]
     
     # resample the mask from the initial model to native space
     # we can use it for either the non uniformity correction or
@@ -1189,7 +1217,7 @@ def lsq6_nuc_inorm(imgs                 : List[MincAtom],
         masks_in_native_space = [s.defer(mincresample(img=registration_targets.registration_standard.mask,
                                                       xfm=xfm_to_lsq6,
                                                       like=native_img,
-                                                      extra_flags=['-nearest','-invert']))
+                                                      extra_flags=['-nearest', '-invert']))
                                  for native_img, xfm_to_lsq6 in zip(imgs,xfms_to_final_target_space)]
     
     # NUC
@@ -1203,17 +1231,16 @@ def lsq6_nuc_inorm(imgs                 : List[MincAtom],
                                                        resolution=resolution,
                                                        mask=native_img_mask,
                                                        subject_matter=subject_matter))
-                                    for native_img, native_img_mask in zip(imgs, 
-                                    masks_in_native_space if masks_in_native_space else [None] * len(imgs))]
+                                    for native_img, native_img_mask 
+                                    in zip(imgs, 
+                                           masks_in_native_space if masks_in_native_space
+                                             else [None] * len(imgs))]
     
     inorm_imgs_in_native_space = None  # type: List[MincAtom]
     if lsq6_options.inormalize:
         #TODO: this is still static
         inorm_conf = default_inormalize_conf
-        input_imgs_for_inorm = nuc_imgs_in_native_space
-        if not input_imgs_for_inorm:
-            # i.e., we did not run non uniformity correction
-            input_imgs_for_inorm = imgs
+        input_imgs_for_inorm = nuc_imgs_in_native_space if nuc_imgs_in_native_space else imgs
         inorm_imgs_in_native_space = [s.defer(inormalize(src=nuc_img,
                                                          conf=inorm_conf,
                                                          mask=native_img_mask))
@@ -1225,27 +1252,28 @@ def lsq6_nuc_inorm(imgs                 : List[MincAtom],
     if (lsq6_options.nuc and lsq6_options.inormalize) or lsq6_options.inormalize:
         # the final resampled files should be the normalized files resampled with the 
         # lsq6 transformation
-        inorm_filenames_wo_ext_lsq6 = [inorm_img.filename_wo_ext + "_resampled_lsq6" for inorm_img in inorm_imgs_in_native_space]
-        final_resampled_lsq6_files = [s.defer(mincresample(img=inorm_img,
-                                                           xfm=xfm_to_lsq6,
-                                                           like=registration_targets.registration_standard,
-                                                           extra_flags=['-sinc'],
-                                                           new_name_wo_ext=inorm_filename_wo_ext))
-                                      for inorm_img,xfm_to_lsq6,inorm_filename_wo_ext in zip(inorm_imgs_in_native_space,
-                                                                                             xfms_to_final_target_space,
-                                                                                             inorm_filenames_wo_ext_lsq6)]
+        final_resampled_lsq6_files = [s.defer(mincresample(
+                                                img=inorm_img,
+                                                xfm=xfm_to_lsq6,
+                                                like=registration_targets.registration_standard,
+                                                extra_flags=['-sinc'],
+                                                new_name_wo_ext=inorm_img.filename_wo_ext + "resampled_lsq6"))
+                                      for inorm_img, xfm_to_lsq6
+                                      in zip(inorm_imgs_in_native_space,
+                                             xfms_to_final_target_space)]
     elif lsq6_options.nuc:
         # the final resampled files should be the non uniformity corrected files 
         # resampled with the lsq6 transformation
         nuc_filenames_wo_ext_lsq6 = [nuc_img.filename_wo_ext + "_resampled_lsq6" for nuc_img in nuc_imgs_in_native_space]
         final_resampled_lsq6_files = [s.defer(mincresample(img=nuc_img,
-                                                           xfm=xfm_to_lsq6,
-                                                           like=registration_targets.registration_standard,
-                                                           extra_flags=['-sinc'],
-                                                           new_name_wo_ext=nuc_filename_wo_ext))
-                                      for nuc_img,xfm_to_lsq6,nuc_filename_wo_ext in zip(nuc_imgs_in_native_space,
-                                                                                         xfms_to_final_target_space,
-                                                                                         nuc_filenames_wo_ext_lsq6)]
+                                                  xfm=xfm_to_lsq6,
+                                                  like=registration_targets.registration_standard,
+                                                  extra_flags=['-sinc'],
+                                                  new_name_wo_ext=nuc_filename_wo_ext))
+                                      for nuc_img, xfm_to_lsq6, nuc_filename_wo_ext
+                                      in zip(nuc_imgs_in_native_space,
+                                             xfms_to_final_target_space,
+                                             nuc_filenames_wo_ext_lsq6)]
     else:
         # in this case neither non uniformity correction was applied, nor intensity 
         # normalization, so the initialization of the final_resampled_lsq6_files 

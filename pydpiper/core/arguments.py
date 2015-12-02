@@ -13,15 +13,23 @@ import time
 from configargparse import ArgParser, Namespace # type: ignore
 from typing import Any, Callable, List
 
-from pydpiper.core.util import raise_
+from pydpiper.core.util import raise_, AutoNumber
 
 # TODO: should the pipeline-specific argument handling be located here
 # or in that pipeline's module?  Makes more sense (general stuff
 # can still go here)
 
-class Python2RelatedEnums():
-    input_space = ['native', 'lsq6', 'lsq12']
-    lsq6_method = ['lsq6_simple', 'lsq6_centre_estimation', 'lsq6_large_rotations']
+# TODO: some of this stuff doesn't belong in core/ ...
+# Similarly, these enums probably don't belong here.
+class InputSpace(AutoNumber):
+    native = ()
+    lsq6   = ()
+    lsq12  = ()
+
+class LSQ6Method(AutoNumber):
+    lsq6_simple            = ()
+    lsq6_centre_estimation = ()
+    lsq6_large_rotations   = ()
 
 class PydParser(ArgParser):
     # Some sneakiness... override the format_epilog method
@@ -159,7 +167,7 @@ def parse(parser : Parser, args : List[str]) -> Namespace:
     go_2(parser, current_prefix="", current_ns=main_ns)
     return main_ns
 
-def with_parser(p : Parser) -> Callable[[str], Namespace]:
+def with_parser(p : Parser) -> Callable[[List[str]], Namespace]:
     return lambda args: parse(p, args)
 
 def _mk_application_parser() -> Parser:
@@ -299,7 +307,9 @@ def _mk_registration_parser():
     #                                  "....")
     p = ArgParser(add_help=False)
     p.add_argument("--input-space", dest="input_space",
-                   choices=['native', 'lsq6', 'lsq12'], default="native", 
+                   type=lambda x: InputSpace[x], # type: ignore # mypy/issues/741
+                   default=InputSpace.native,
+                   choices=[x for x, _ in InputSpace.__members__],
                    help="Option to specify space of input-files. Can be native (default), lsq6, lsq12. "
                         "Native means that there is no prior formal alignent between the input files "
                         "yet. lsq6 means that the input files have been aligned using translations "
