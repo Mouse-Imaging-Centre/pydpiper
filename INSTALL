@@ -6,20 +6,11 @@ Using the Downloads button, access the .tar.gz or .zip file.
 Unzip and untar and change into the source directory (e.g. cd pydpiper)
 Run: python setup.py install 
 
-Dependencies: 
+System dependencies:
 
-Pyro4 - http://pythonhosted.org/Pyro4
-NetworkX - http://networkx.lanl.gov/
-ConfigArgParse - https://pypi.python.org/pypi/ConfigArgParse
-Py.test - http://pytest.org/
-Traits - https://pypi.python.org/pypi/traits
-pyminc - https://github.com/Mouse-Imaging-Centre/pyminc
-graphviz - http://www.graphviz.org/
-pygraphviz - http://pygraphviz.github.io/
 minc-toolkit - https://github.com/BIC-MNI/minc-toolkit
 minc-stuffs - https://github.com/Mouse-Imaging-Centre/minc-stuffs
+graphviz - http://www.graphviz.org/ (optional)
 
-In Ubuntu (tested on 12.04), run: 
-	apt-get install python-networkx
-	pip install pyro
-	pip install pytest
+Various Python libraries are also required (see `setup.py` for details); these should
+be installed automatically by setuptools when the above command is run.

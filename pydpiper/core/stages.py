@@ -31,6 +31,7 @@ class CmdStage(object):
         self.memory = memory
     # NB: __hash__ and __eq__ ignore hooks, memory
     # Also, we assume cmd determines inputs, outputs so ignore it in hash/eq calculations
+    # FIXME: we should make the CmdStage fields immutable (via properties) to prevent hashing-related bugs
     def __hash__(self) -> int:
         return hash(self.cmd_to_string())
     def __eq__(self, c) -> bool:

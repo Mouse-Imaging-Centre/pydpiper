@@ -79,7 +79,7 @@ def chain(options : Any):
     s = Stages()
     
     with open(options.chain.csv_file, 'r') as f:
-        subject_info = parse_csv(f, options.chain.common_time_point)
+        subject_info = parse_csv(rows=f, common_time_pt=options.chain.common_time_point)
     
     pipeline_processed_dir = os.path.join(options.application.output_directory, options.application.pipeline_name + "_processed")
     pipeline_lsq12_common_dir = os.path.join(options.application.output_directory, options.application.pipeline_name + "_lsq12_" + options.chain.common_time_point_name)
@@ -99,8 +99,9 @@ def chain(options : Any):
     # check_MINC_input_files takes strings, so pass along those instead of the actual MincAtoms
     check_MINC_input_files([minc_atom.path for minc_atom in all_Minc_atoms])
     
-    if options.registration.input_space not in InputSpace.__members__:
-        raise ValueError('unrecognized input space: %s; choices: %s' % (options.registration.input_space, ','.join(InputSpace.__members__)))
+    if options.registration.input_space not in InputSpace.__members__.values():
+        raise ValueError('unrecognized input space: %s; choices: %s' %
+                         (options.registration.input_space, ','.join(InputSpace.__members__)))
     
     if options.registration.input_space == InputSpace.native:
         # for the registration chain, a bootstrap model is somewhat ill-defined, because
@@ -112,7 +113,8 @@ def chain(options : Any):
                              "flag to specify a target for the lsq6 stage, or use an initial model.")
         
         if options.chain.pride_of_models:
-            raise NotImplementedError("We currently have not implemented the code that handles the pride of initial models...")
+            raise NotImplementedError(
+                "We currently have not implemented the code that handles the pride of initial models...")
         else:
             # if we are not dealing with a pride of models, we can retrieve a fixed
             # registration target for all input files:
@@ -178,7 +180,8 @@ def chain(options : Any):
     # input files that started off in native space have been aligned rigidly 
     # by this point in the code (i.e., lsq6)
     if options.registration.input_space in [InputSpace.lsq6, InputSpace.native]:
-        raise NotImplementedError("We currently have not implemented the code for 'input space': %s" % options.registration.input_space)
+        raise NotImplementedError("We currently have not implemented the code for 'input space': %s" %
+                                  options.registration.input_space)
     #intersubj_xfms = lsq12_NLIN_build_model_on_dictionaries(imgs=intersubj_imgs,
         #                                                        conf=conf,
         #                                                        lsq12_dir=lsq12_directory
@@ -190,9 +193,9 @@ def chain(options : Any):
             some_temp_target = s.defer(mincaverage(imgs=list(intersubj_imgs.values()),
                                            name_wo_ext="avg_of_input_files",
                                            output_dir=pipeline_nlin_common_dir))
-        conf1 = MincANTSConf(default_resolution=options.registration.resolution,
-                             iterations="100x100x100x0")
-        conf2 = MincANTSConf(default_resolution=options.registration.resolution)
+        conf1 = mincANTS_default_conf._replace(default_resolution=options.registration.resolution,
+                                               iterations="100x100x100x0")
+        conf2 = mincANTS_default_conf._replace(default_resolution=options.registration.resolution)
         full_hierarchy = [conf1, conf2]
         intersubj_xfms = s.defer(mincANTS_NLIN_build_model(imgs=list(intersubj_imgs.values()),
                                                    initial_target=some_temp_target, # this doesn't make sense yet
@@ -282,7 +285,7 @@ def parse_csv(rows, common_time_pt): # row iterator, int -> { subject_id(str) : 
     """
     Read subject information from a csv file containing at least the columns
     'subject_id', 'timepoint', and 'filename', and optionally a 'bitfield' column
-    'is_common' containing one 1 per subject and 0 or empty fields for the other scans.
+    'is_common' containing up to one '1' per subject and '0' or empty fields for the other scans.
     
     Return a dictionary from subject IDs to `Subject`s.
 
@@ -291,7 +294,7 @@ def parse_csv(rows, common_time_pt): # row iterator, int -> { subject_id(str) : 
     ...   == { 's1' : Subject(intersubject_registration_time_pt=1, time_pt_dict={ 1 : 's1_1.mnc'})})
     True
     """
-    subject_info = defaultdict(Subject)
+    subject_info = defaultdict(lambda: Subject(intersubject_registration_time_pt=None))
     # Populate the subject -> Subject dictionary from the rows"""
     for row in csv.DictReader(rows):
         try:
@@ -424,7 +427,8 @@ if __name__ == "__main__":
     # when options are gathered? 
     if not options.registration.resolution:
         
-        # still a bit of a hack I guess...
+        # TODO: enforce existence of resolution as early as possible, e.g.,
+        # by creating a mutually exclusive options group
         
         if options.lsq6.init_model:
             # Ha! an initial model always points to the file in standard space, so we 

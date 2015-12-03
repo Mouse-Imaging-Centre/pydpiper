@@ -57,11 +57,11 @@ class FileAtom(object):
             
     def __eq__(self, other) -> bool:
         return (self is other or
-                (self.path == other.path
-                 and self.__class__ == other.__class__))
+                (self.__class__ == other.__class__
+                 and self.path == other.path))
     
     def __repr__(self) -> str:
-        return "%s(path=%s, ...)" % (self.__class__,self.path) 
+        return "%s(path=%s, ...)" % (self.__class__, self.path)
 
     # path = property(get_path, "`path` property") # type: ignore
     
@@ -69,7 +69,7 @@ class FileAtom(object):
         return self.filename_wo_ext + self.ext
 
     def newname_with_fn(self,
-                        fn     : Callable[[str],str],
+                        fn     : Callable[[str], str],
                         ext    : str = None,
                         subdir : str = None) -> 'FileAtom':
         """Create a new FileAtom from one which has:
