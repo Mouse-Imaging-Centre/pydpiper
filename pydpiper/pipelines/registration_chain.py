@@ -220,7 +220,9 @@ def chain(options : Any):
     # 5) C_time_1   ->   C_time_2
     # 6) C_time_2   ->   C_time_3    
     
-    chain_xfms = { s_id : s.defer(intrasubject_registrations(subj, MincANTSConf(default_resolution=options.registration.resolution)))
+    chain_xfms = { s_id : s.defer(intrasubject_registrations(
+                                    subj,
+                                    mincANTS_default_conf._replace(default_resolution=options.registration.resolution)))
                    for s_id, subj in pipeline_subject_info.items() }
 
     # create transformation from each subject to the final common time point average
@@ -231,7 +233,7 @@ def chain(options : Any):
     subject_determinants = map_over_time_pt_dict_in_Subject(
         lambda xfm: s.defer(determinants_at_fwhms(xfm=s.defer(invert(xfm)),
                                                   inv_xfm=xfm,
-                                                  blur_fwhms=options.stats_kernels)),
+                                                  blur_fwhms=options.stats.stats_kernels)),
         final_non_rigid_xfms)
     
     return Result(stages=s, output=(final_non_rigid_xfms, subject_determinants))
@@ -445,7 +447,7 @@ if __name__ == "__main__":
     print("Ha! The registration resolution is: %s\n" % options.registration.resolution)
     # *** *** *** *** *** *** *** *** ***
 
-    chain_stages, _ = chain(options)
+    chain_stages = chain(options).stages
 
     execute(chain_stages, options)
     

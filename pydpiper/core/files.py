@@ -54,11 +54,15 @@ class FileAtom(object):
 
     def get_path(self) -> str:
         return os.path.join(self.dir, self.filename_wo_ext + self.ext)
-            
+
+    # TODO: are these the most reasonable definitions of __eq__ and __hash__?
     def __eq__(self, other) -> bool:
         return (self is other or
                 (self.__class__ == other.__class__
                  and self.path == other.path))
+
+    def __hash__(self) -> int:
+        return self.path.__hash__()
     
     def __repr__(self) -> str:
         return "%s(path=%s, ...)" % (self.__class__, self.path)

@@ -48,7 +48,7 @@ class CmdStage(object):
         return self.cmd_to_string()
     def cmd_to_string(self) -> str:
         return ' '.join(self._cmd)
-    def to_seq(self) -> List[str]:
+    def to_array(self) -> List[str]:
         """Form usable for Python subprocess call."""
         return self._cmd
     #def execute(self, backend):    # could also be elsewhere...

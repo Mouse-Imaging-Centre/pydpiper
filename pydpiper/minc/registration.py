@@ -700,8 +700,8 @@ def mincANTS(source: MincAtom,
                           output_sub_dir=source.output_sub_dir)
 
     similarity_cmds = []    # type: List[str]
-    similarity_inputs = []  # type: List[MincAtom]  #set()  # type: Set[MincAtom]
-    # TODO: should be set, but `MincAtom`s aren't hashable
+    similarity_inputs = set()  # type: Set[MincAtom]
+    # TODO: similarity_inputs should be a set, but `MincAtom`s aren't hashable
     for sim_metric_conf in conf.sim_metric_confs:
         if sim_metric_conf.blur_resolution is not None:
             src = s.defer(mincblur(source, fwhm=sim_metric_conf.blur_resolution,
@@ -711,8 +711,8 @@ def mincANTS(source: MincAtom,
         else:
             src = source
             dest = target
-        similarity_inputs.append(src)
-        similarity_inputs.append(dest)
+        similarity_inputs.add(src)
+        similarity_inputs.add(dest)
         inner = ','.join([src.path, dest.path,
                           str(sim_metric_conf.weight), str(sim_metric_conf.radius_or_bins)])
         subcmd = "'" + "".join([sim_metric_conf.metric, '[', inner, ']']) + "'"
@@ -971,17 +971,16 @@ def lsq12_pairwise(imgs: List[MincAtom],
 
 K = TypeVar('K')
 
-""" This is a direct copy of lsq12_pairwise, with the only difference being that
-    it takes dictionaries as input for the imgs, and returns the xfmhandlers as
-    dictionaries as well. This is necessary (amongst others) for the registration_chain
-    as using dictionaries is the easiest way to keep track of the input files. """
-
 
 def lsq12_pairwise_on_dictionaries(imgs: Dict[K, MincAtom],
                                    conf: LSQ12Conf,
                                    lsq12_dir: str,
                                    like: Optional[MincAtom] = None) \
         -> Result[WithAvgImgs[Dict[K, XfmHandler]]]:
+    """ This is a direct copy of lsq12_pairwise, with the only difference being that
+    it takes dictionaries as input for the imgs, and returns the xfmhandlers as
+    dictionaries as well. This is necessary (amongst others) for the registration_chain
+    as using dictionaries is the easiest way to keep track of the input files. """
     s = Stages()
     l = [(k, v) for k, v in sorted(imgs.items())]  # type: List[Tuple[K, MincAtom]]
     ks = [k for k, _ in l]
