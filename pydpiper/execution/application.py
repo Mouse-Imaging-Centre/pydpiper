@@ -5,6 +5,7 @@ import logging
 import networkx as nx
 import sys
 import os
+from typing import NamedTuple
 
 from pydpiper.execution.pipeline import Pipeline, pipelineDaemon
 from pydpiper.execution.queueing import runOnQueueingSystem
@@ -12,25 +13,21 @@ from pydpiper.execution.pipeline_executor import addExecutorArgumentGroup, ensur
 from pydpiper.core.util import output_directories
 from pydpiper.core.conversion import convertCmdStage
 
-from   atom.api import Atom, Bool
-#import atom.api as atom
-
 PYDPIPER_VERSION = pkg_resources.get_distribution("pydpiper").version # pylint: disable=E1101
 
 logger = logging.getLogger(__name__)
 
-class ExecutionOptions(Atom):
-    use_backup_files = Bool(True)
-    create_graph     = Bool(False)
-    execute          = Bool(True)
-    # ... TODO: put remainder of executor args, ..., here?
+ExecutionOptions = NamedTuple('ExecutionOptions', [('use_backup_files', bool),
+                                                   ('create_graph', bool),
+                                                   ('execute', bool)])
+#    # ... TODO: put remainder of executor args, ..., here?
 
 def addApplicationArgumentGroup(parser):
     group = parser.add_argument_group("General application options", "General options for all pydpiper applications.")
-    group.add_argument("--restart", dest="restart", 
+    group.add_argument("--restart", dest="restart",
                                action="store_false", default=True,
                                help="Restart pipeline using backup files. [default = %(default)s]")
-    group.add_argument("--no-restart", dest="restart", 
+    group.add_argument("--no-restart", dest="restart",
                                action="store_false", help="Opposite of --restart")
     # TODO: instead of prefixing all subdirectories (logs, backups, processed, ...)
     # with the pipeline name/date, we could create one identifying directory

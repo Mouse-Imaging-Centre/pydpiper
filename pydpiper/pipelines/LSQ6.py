@@ -27,12 +27,6 @@ LSQ6_default_conf = LSQ6Conf(init_model="whatever")
 #  w_translations=...
 #  )
 
-def lsq6_hierarchical_minctracc(sources, target, conf): # [mnc], mnc, conf -> [xfm] ???
-    # do we want to return additional pieces as in the case of hierarchical nonlinear registration?
-    # speed isn't such an issue (in, e.g., our use case of adding some brains to a pipeline)
-    # but the change in the average would have to propagate through the other stages ...
-    pass #return multilevel_minctracc(source, target, conf=conf)
-
 def lsq6_pipeline_part(options):
     """Run a pipeline from its command-line inputs"""
     # TODO shouldn't options.initial_model already be a MincFile?
@@ -82,23 +76,3 @@ def lsq6(imgs, target, options): # [mnc], mnc, LSQ6Conf -> Result(..., output=??
 # TODO make higher-order way to run part of a pipeline on certain images, then create new xfmhs with replaced inputs/resampled files
 # (idea: images have same 'geometry'/coordinates but may be modified, e.g., tagged kidney tip images)
 # may need to supply some fns to determine how to get/set outputs as our interfaces aren't uniform enough to know this in general
-
-
-def lsq6_nuc_inorm(imgs, target, options): # [mnc], mnc, Lsq6Conf -> Result(..., output=???)
-
-    s = Stages()
-
-    lsq6_xfms = s.defer(lsq6(imgs, target, options))
-
-    if options.nu_correct:
-        imgs = [s.defer(nu_correct(img)) for img in imgs]
-
-    if options.inormalize:
-        imgs = [s.defer(inormalize(img)) for img in imgs]
-
-    resampled_imgs = [s.defer(resample(img=img, xfm=xfm, like=lsq6_target)) for img, xfm in zip(imgs, lsq6_xfms)]  #TODO extra flags?
-
-    lsq6_xfms = [XfmHandler(source=x.source, target=x.target, xfm=xfm.xfm, resampled=resampled)
-                 for xfm, resampled in zip(lsq6_xfms, resampled_imgs)]
-
-    return Result(stages=s, output=lsq6_xfms)

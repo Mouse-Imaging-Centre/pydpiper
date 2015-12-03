@@ -5,11 +5,11 @@ import subprocess
 import re
 import sys
 
-from typing import Any, cast, Generic, List, NamedTuple, Optional, Tuple, TypeVar
+from typing import Any, cast, Dict, Generic, List, NamedTuple, Optional, Set, Tuple, TypeVar
 
 from pydpiper.core.files      import FileAtom
 from pydpiper.core.stages     import CmdStage, Result, Stages
-from pydpiper.core.util       import pairs
+from pydpiper.core.util       import pairs, AutoEnum
 from pydpiper.core.conversion import InputFile, OutputFile
 from pydpiper.minc.files      import MincAtom, XfmAtom
 from pydpiper.minc.containers import XfmHandler
@@ -226,11 +226,16 @@ def nu_correct(src : MincAtom,
                                                                                 mask=mask, 
                                                                                 subject_matter=subject_matter)))))
 
+class INormalizeMethod(AutoEnum):
+    # the unusual capitalization here is a hack to avoid having to implement __repr__
+    # when passing these to the shell
+    ratioOfMeans = ratioOfMedians = meanOfRatios = meanOfLogRatios = medianOfRatios = ()
+
 INormalizeConf = NamedTuple('INormalizeConf',
                             [('const',  int),
-                             ('method', str)]) # TODO: should be enum
+                             ('method', INormalizeMethod)])
 
-default_inormalize_conf = INormalizeConf(const=1000, method='ratioOfMedians')
+default_inormalize_conf = INormalizeConf(const=1000, method=INormalizeMethod.ratioOfMedians)
 # NB the inormalize default is actually '-medianOfRatios'
 # FIXME how do we want to deal with situations where our defaults differ from the tools' defaults,
 # and in the latter case should we output the actual settings if the user doesn't explicitly set them?
@@ -396,10 +401,22 @@ def rotational_minctracc(source : MincAtom,
 
 R3 = Tuple[float, float, float]
 
+class LinearTransType(AutoEnum):
+    lsq3  = ()
+    lsq6  = ()
+    lsq7  = ()
+    lsq9  = ()
+    lsq10 = ()
+    lsq12 = ()
+    procrustes = ()
+
+class Objective(AutoEnum):
+    # again name these so that <...>.name returns the appropriate string to pass to minctracc
+    xcorr = diff = sqdiff = label = chamfer = corrcoeff = opticalflow = ()  # TODO: does this work?
+
 LinearMinctraccConf = NamedTuple("LinearMinctraccConf",
                                  [("simplex", float),
-                                  ("transform_type", str),
-                                  # TODO: Enum(None, 'lsq3', 'lsq6', 'lsq7', 'lsq9', 'lsq10', 'lsq12', 'procrustes')
+                                  ("transform_type", Optional[LinearTransType]),
                                   ("tolerance", float),
                                   ("w_rotations", R3),
                                   ("w_translations", R3),
@@ -412,15 +429,13 @@ NonlinearMinctraccConf = NamedTuple("NonlinearMinctraccConf",
                                      ("stiffness", float),
                                      ("weight", float),
                                      ("similarity", float),
-                                     ("objective", str),
-                                     # TODO: Enum(None,'xcorr','diff','sqdiff','label', 'chamfer','corrcoeff','opticalflow')
+                                     ("objective", Optional[Objective]),
                                      ("lattice_diameter", R3),
                                      ("sub_lattice", int),
                                      ("max_def_magnitude", R3)])
 
 MinctraccConf = NamedTuple('MinctraccConf',
-                           [# common part:
-                            ("step_sizes", R3),
+                           [("step_sizes", R3),
                             ("blur_resolution", float),
                             ("use_masks", bool),
                             ("linear_conf",    Optional[LinearMinctraccConf]),
@@ -438,7 +453,8 @@ def default_linear_minctracc_conf(transform_type : str) -> LinearMinctraccConf:
                                w_rotations=(0.0174533, 0.0174533, 0.0174533),
                                w_translations=(1.0, 1.0, 1.0))
 
-default_lsq6_minctracc_conf, default_lsq12_minctracc_conf = [default_linear_minctracc_conf(x) for x in ('lsq6', 'lsq12')]
+default_lsq6_minctracc_conf, default_lsq12_minctracc_conf =  \
+  [default_linear_minctracc_conf(x)for x in (LinearTransType.lsq6, LinearTransType.lsq12)]
 
 # TODO: I'm not sure about these defaults.. they should be
 # based on the resolution of the input files. This will 
@@ -447,7 +463,7 @@ default_lsq6_minctracc_conf, default_lsq12_minctracc_conf = [default_linear_minc
 # (Could also use a None here and/or make this explode via a property if accessed;
 # see XfmHandler `resampled` field)
 _step_size = 0.5
-_step_sizes = (_step_size, _step_size, _step_size) # type: R3
+_step_sizes = (_step_size, _step_size, _step_size)  # type: R3
 _diam = 3 * _step_size
 _lattice_diameter = (_diam, _diam, _diam) # type: R3
 default_nonlinear_minctracc_conf = NonlinearMinctraccConf(
@@ -459,7 +475,7 @@ default_nonlinear_minctracc_conf = NonlinearMinctraccConf(
     use_simplex=True,
     stiffness=0.98,
     weight=0.8,
-    objective='corrcoeff',
+    objective=Objective.corrcoeff,
     lattice_diameter=_lattice_diameter,
     sub_lattice=6,
     max_def_magnitude=None)
@@ -512,9 +528,9 @@ def minctracc(source    : MincAtom,
     if lin_conf is None and nlin_conf is None:
         raise ValueError("minctracc: no linear or nonlinear configuration specified")
     
-    if lin_conf is not None and lin_conf.transform_type not in [None, 'pat', 'lsq3', 'lsq6', 'lsq7', 'lsq9', 'lsq10', 'lsq12', 'procrustes']:
+    if lin_conf is not None and lin_conf.transform_type not in LinearTransType.__members__:
         raise ValueError("minctracc: invalid transform type %s" % lin_conf.transform_type)
-    # TODO: the above isn't needed if an enumeration is used
+    # TODO: probably not needed since we're using an enum
     if transform_name_wo_ext:
         out_xfm = XfmAtom(name=os.path.join(source.pipeline_sub_dir, source.output_sub_dir, 'transforms',
                                             "%s.xfm" % (transform_name_wo_ext)),
@@ -542,7 +558,7 @@ def minctracc(source    : MincAtom,
 
     # TODO: FIXME: currently broken in the presence of None fields; should fall back to our defaults
     # and/or minctracc's own defaults.
-    stage = CmdStage(cmd = ['minctracc', '-clobber', '-debug', '-xcorr']
+    stage = CmdStage(cmd = ['minctracc', '-clobber', '-debug', '-xcorr']  # TODO: remove hard-coded `xcorr`?
                      + (['-transformation', transform.path] if transform else [])
                      + (['-' + lin_conf.transform_type]
                         if lin_conf and lin_conf.transform_type else [])
@@ -591,8 +607,8 @@ class SimilarityMetricConf(NamedTuple('SimilarityMetricConf',
      ("blur_resolution", float),
      ("radius_or_bins", float),
      ("use_gradient_image", bool)])):
-    def replace(self, **kwargs) -> SimilarityMetricConf:
-        return self._replace(self, **kwargs) # type: ignore
+    def replace(self, **kwargs) -> 'SimilarityMetricConf':
+        return self._replace(**kwargs)  # type: ignore
     # TODO: actually want to add this method to *all* namedtuples
     # (or at least teach mypy about _replace)
     # TODO: note kwargs isn't checked here -- what to do?

@@ -20,7 +20,7 @@ class CmdStage(object):
                  memory  : float = None) -> None:
         # TODO: rather than having separate cmd_stage fn, might want to make inputs/outputs optional here
         self.inputs  = inputs          # type: Tuple[FileAtom, ...]
-        # TODO: might be better to derefence inputs -> inputs.path here to save mem
+        # TODO: might be better to dereference inputs -> inputs.path here to save mem
         self.outputs = outputs         # type: Tuple[FileAtom, ...]
         #self.conf    = conf           # not needed at present -- see note on render_fn
         self._cmd    = cmd             # type: List[str]

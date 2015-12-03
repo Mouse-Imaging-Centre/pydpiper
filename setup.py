@@ -16,6 +16,7 @@ setup(name='pydpiper',
         'ConfigArgParse',
         'networkx',
         #'pygraphviz',
+        'pyminc',
         'Pyro4',
         'pytest',
         'typing'
