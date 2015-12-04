@@ -4,10 +4,10 @@ import shlex
 import subprocess
 import re
 import sys
-from typing import Any, cast, Dict, Generic, List, NamedTuple, Optional, Set, Tuple, TypeVar
+from typing import Any, cast, Dict, Generic, List, Optional, Set, Tuple, TypeVar
 from pydpiper.core.files import FileAtom
 from pydpiper.core.stages import CmdStage, Result, Stages
-from pydpiper.core.util import pairs, AutoEnum
+from pydpiper.core.util import pairs, AutoEnum, NamedTuple
 from pydpiper.core.conversion import InputFile, OutputFile
 from pydpiper.minc.files import MincAtom, XfmAtom
 from pydpiper.minc.containers import XfmHandler
@@ -43,10 +43,54 @@ def mincblur(img: MincAtom,
     return Result(stages=Stages((stage,)), output=outf)
 
 
+def mincaverage(imgs: List[MincAtom],
+                name_wo_ext: str = "average",
+                output_dir: str = '.',
+                copy_header_from_first_input: bool = False):
+    """
+    By default mincaverage only copies header information over to the output
+    file that is shared by all input files (xspace, yspace, zspace information etc.)
+    In some cases however, you might want to have some of the non-standard header
+    information. Use the copy_header_from_first_input argument for this, and it
+    will add the -copy_header flag to mincaverage
+    """
+    if len(imgs) == 0:
+        raise ValueError("`mincaverage` arg `imgs` is empty (can't average zero files)")
+    # TODO: propagate masks/labels??
+    avg = MincAtom(name=os.path.join(output_dir, '%s.mnc' % name_wo_ext), orig_name=None)
+    sdfile = MincAtom(name=os.path.join(output_dir, '%s_sd.mnc' % name_wo_ext), orig_name=None)
+    additional_flags = ["-copy_header"] if copy_header_from_first_input else []  # type: List[str]
+    s = CmdStage(inputs=tuple(imgs), outputs=(avg, sdfile),
+                 cmd=['mincaverage', '-clobber', '-normalize',
+                      '-max_buffer_size_in_kb', '409620'] + additional_flags +
+                     ['-sdfile', sdfile.path] +
+                     [img.path for img in imgs] +
+                     [avg.path])
+    return Result(stages=Stages([s]), output=avg)
+
+
+def pmincaverage(imgs: List[MincAtom],
+                 name_wo_ext: str = "average",
+                 output_dir: str = '.',
+                 copy_header_from_first_input: bool = False):
+    if copy_header_from_first_input:
+        # TODO: should be logged, not printed?
+        print("Warning: pmincaverage doesn't implement copy_header; use mincaverage instead", sys.stderr)
+    avg = MincAtom(name=os.path.join(output_dir, "%s.mnc" % name_wo_ext), orig_name=None)
+    s = CmdStage(inputs=tuple(imgs), outputs=(avg,),
+                 cmd=["pmincaverage", "--clobber"] + [img.path for img in imgs] + [avg.path])
+    return Result(stages=Stages([s]), output=avg)
+
+
+class Interpolation(AutoEnum):
+    trilinear = tricubic = sinc = nearest_neighbour = ()
+
+
 def mincresample_simple(img: MincAtom,
                         xfm: XfmAtom,
                         like: MincAtom,
                         extra_flags: List[str] = [],
+                        interpolation: Optional[Interpolation] = None,
                         new_name_wo_ext: str = None,
                         subdir: str = None) -> Result[MincAtom]:
     """
@@ -71,7 +115,9 @@ def mincresample_simple(img: MincAtom,
         cmd=['mincresample', '-clobber', '-2',
              '-transform %s' % xfm.path,
              '-like %s' % like.path,
-             img.path, outf.path] + list(extra_flags))
+             img.path, outf.path]
+            + (['-' + interpolation.name] if interpolation else [])
+            + list(extra_flags))
     return Result(stages=Stages([stage]), output=outf)
 
 
@@ -80,6 +126,7 @@ def mincresample(img: MincAtom,
                  xfm: XfmAtom,
                  like: MincAtom,
                  extra_flags: List[str] = [],
+                 interpolation: Interpolation = None,
                  new_name_wo_ext: str = None,
                  subdir: str = None) -> Result[MincAtom]:
     """
@@ -97,27 +144,23 @@ def mincresample(img: MincAtom,
 
     s = Stages()
 
-    # when resampling a mask, make sure we use nearest neighbor resampling:
-    # TODO: separate optional field for resampling method to avoid this ugliness?
-    resample_flags = ["-sinc"]  # TODO: add more
-    mask_extra_flags = ([f for f in extra_flags if f not in resample_flags]
-                        + (["-nearest_neighbour"] if "-nearest_neighbour"
-                                                     not in extra_flags else []))
     # don't scale label values:
-    label_extra_flags = (mask_extra_flags
+    label_extra_flags = (extra_flags
                          + (['-keep_real_range'] if "-keep_real_range"
-                                                    not in mask_extra_flags else []))
+                                                    not in extra_flags else []))
 
     new_img = s.defer(mincresample_simple(img=img, xfm=xfm, like=like,
                                           extra_flags=extra_flags,
                                           new_name_wo_ext=new_name_wo_ext,
                                           subdir=subdir))
     new_img.mask = s.defer(mincresample_simple(img=img.mask, xfm=xfm, like=like,
-                                               extra_flags=mask_extra_flags,
+                                               extra_flags=extra_flags,
+                                               interpolation=Interpolation.nearest_neighbour,
                                                new_name_wo_ext=new_name_wo_ext + "_mask",
                                                subdir=subdir)) if img.mask is not None else None
     new_img.labels = s.defer(mincresample_simple(img=img.labels, xfm=xfm, like=like,
                                                  extra_flags=label_extra_flags,
+                                                 interpolation=Interpolation.nearest_neighbour,
                                                  new_name_wo_ext=new_name_wo_ext + "_labels",
                                                  subdir=subdir)) if img.labels is not None else None
 
@@ -160,16 +203,18 @@ def xfmconcat(xfms: List[XfmAtom],
 #
 def concat(ts: List[XfmHandler],
            name: str = None,
-           extra_flags: List[str] = []) -> Result[XfmHandler]:  # TODO remove extra flags OR make ['-sinc'] default
+           interpolation: Optional[Interpolation] = None,  # remove or make `sinc` default?
+           extra_flags: List[str] = []) -> Result[XfmHandler]:
     """
-    xfmconcat lifted to work on XfmHandlers instead of MincAtoms
+    xfmconcat lifted to work on XfmHandlers instead of XfmAtoms
     """
     s = Stages()
     t = s.defer(xfmconcat([t.xfm for t in ts], name=name))
     res = s.defer(mincresample(img=ts[0].source,
                                xfm=t,
                                like=ts[-1].target,
-                               extra_flags=["-sinc"]))  # TODO move extra flags to mincresample?
+                               interpolation=interpolation,
+                               extra_flags=extra_flags))
     return Result(stages=s,
                   output=XfmHandler(source=ts[0].source,
                                     target=ts[-1].target,
@@ -237,7 +282,7 @@ def nu_correct(src: MincAtom,
 
 class INormalizeMethod(AutoEnum):
     # the unusual capitalization here is a hack to avoid having to implement __repr__
-    # when passing these to the shell
+    # when passing these to the shell - don't change it!
     ratioOfMeans = ratioOfMedians = meanOfRatios = meanOfLogRatios = medianOfRatios = ()
 
 
@@ -301,29 +346,12 @@ default_rotational_minctracc_conf = RotationalMinctraccConf(
     temp_dir="/dev/shm")
 
 
-def get_rotational_minctracc_conf(resolution, rotation_params=None, rotation_range=None,
-                                  rotation_interval=None, rotation_tmp_dir=None,
-                                  subject_matter=None):
-    """
-    The parameters for rotational minctracc are set based on the resolution of the input files.
-    If not explicitly specified, most parameters are muliples of that resolution.
-    
-    resolution - int/float indicating the resolution of the input files
-    rotation_params - a list with 4 integer elements indicating multiples of the resolution: 
-                     [blur factor,
-                     resample factor,
-                     registration factor,
-                     w_translation factor]
-     
-    """
-
-
 # FIXME consistently require that masks are explicitely added to inputs array (or not?)
 def rotational_minctracc(source: MincAtom,
                          target: MincAtom,
                          conf: RotationalMinctraccConf,
                          resolution: float,
-                         mask: MincAtom = None,
+                         mask: MincAtom = None,  # TODO: add mask, resample_source to conf ??
                          resample_source: bool = False) -> Result[XfmHandler]:
     """
     source     -- MincAtom (does not have to be blurred)
@@ -404,9 +432,9 @@ def rotational_minctracc(source: MincAtom,
                         "/dev/null"] + (['-m', mask_for_command.path] if mask_for_command else []))
     s.update(Stages([cmd]))
 
-    resampled = NotImplemented
-    if resample_source:
-        resampled = s.defer(mincresample(img=source, xfm=out_xfm, like=target, extra_flags=['-sinc']))
+    resampled = (s.defer(mincresample(img=source, xfm=out_xfm, like=target,
+                                      interpolation=Interpolation.sinc))
+                 if resample_source else None)
 
     return Result(stages=s,
                   output=XfmHandler(source=source,
@@ -464,7 +492,7 @@ MinctraccConf = NamedTuple('MinctraccConf',
 # should we even keep (hence render) the defaults which are the same as minctracc's?
 # does this even get used in the pipeline?  LSQ6/12 get their own
 # protocols, and many settings here are the minctracc default
-def default_linear_minctracc_conf(transform_type: str) -> LinearMinctraccConf:
+def default_linear_minctracc_conf(transform_type: LinearTransType) -> LinearMinctraccConf:
     return LinearMinctraccConf(simplex=1,
                                transform_type=transform_type,
                                tolerance=0.001,
@@ -614,7 +642,8 @@ def minctracc(source: MincAtom,
 
     # note accessing a None resampled field from an XfmHandler is an error (by property magic),
     # so the possibility of `resampled` being None isn't as annoying as it looks
-    resampled = (s.defer(mincresample(img=source, xfm=out_xfm, like=target, extra_flags=['-sinc']))
+    resampled = (s.defer(mincresample(img=source, xfm=out_xfm, like=target,
+                                      interpolation=Interpolation.sinc))
                  if resample_source else None)
 
     return Result(stages=s,
@@ -699,7 +728,7 @@ def mincANTS(source: MincAtom,
                           pipeline_sub_dir=source.pipeline_sub_dir,
                           output_sub_dir=source.output_sub_dir)
 
-    similarity_cmds = []    # type: List[str]
+    similarity_cmds = []       # type: List[str]
     similarity_inputs = set()  # type: Set[MincAtom]
     # TODO: similarity_inputs should be a set, but `MincAtom`s aren't hashable
     for sim_metric_conf in conf.sim_metric_confs:
@@ -730,7 +759,8 @@ def mincANTS(source: MincAtom,
                '-o', out_xfm.path]
             + (['-x', target.mask.path] if conf.use_mask and target.mask else []))
     s.add(stage)
-    resampled = (s.defer(mincresample(img=source, xfm=out_xfm, like=target, extra_flags=['-sinc']))
+    resampled = (s.defer(mincresample(img=source, xfm=out_xfm, like=target,
+                                      interpolation=Interpolation.sinc))
                  if resample_source else None)  # type: Optional[MincAtom]
     return Result(stages=s,
                   output=XfmHandler(source=source,
@@ -766,7 +796,8 @@ class WithAvgImgs(Generic[T]):
 def mincANTS_NLIN_build_model(imgs: List[MincAtom],
                               initial_target: MincAtom,
                               confs: List[MincANTSConf],
-                              nlin_dir: str) -> Result[WithAvgImgs[List[XfmHandler]]]:
+                              nlin_dir: str,
+                              mincaverage = mincaverage) -> Result[WithAvgImgs[List[XfmHandler]]]:
     """
     This functions runs a hierarchical mincANTS registration on the input
     images (imgs) creating an unbiased average.
@@ -776,12 +807,14 @@ def mincANTS_NLIN_build_model(imgs: List[MincAtom],
     resampled input files, which is then used as the target for the next
     round of registrations. 
     """
+    if len(confs) == 0:
+        raise ValueError("No configurations supplied ...")
     s = Stages()
     avg = initial_target
     avg_imgs = []  # type: List[MincAtom]
     for i, conf in enumerate(confs):
-        xfms = [s.defer(mincANTS(source=img, target=avg, conf=conf, generation=i + 1, resample_source=True)) for img in
-                imgs]
+        xfms = [s.defer(mincANTS(source=img, target=avg, conf=conf, generation=i+1, resample_source=True))
+                for img in imgs]
         # number the generations starting at 1, enumerate will start at 0
         avg = s.defer(
             mincaverage([xfm.resampled for xfm in xfms], name_wo_ext='nlin-%d' % (i + 1), output_dir=nlin_dir))
@@ -879,20 +912,21 @@ def multilevel_minctracc(source: MincAtom,
                          target: MincAtom,
                          confs: MultilevelMinctraccConf,
                          curr_dir: str,
-                         transform: XfmAtom = None) -> Result[XfmHandler]:
+                         transform: Optional[XfmAtom] = None) -> Result[XfmHandler]:
     # TODO fold curr_dir into conf?
+    if len(confs) == 0:  # not a "registration" at all; also, src_blur/target_blur will be undefined ...
+        raise ValueError("No configurations supplied")
     p = Stages()
     for conf in confs:
         # having the basic cmdstage fns act on single items rather than arrays is a bit inefficient,
         # e.g., we create many blur stages (which will later be eliminated, but still ...)
-        src_blur = p.defer(mincblur(source, conf.blur_resolution))  # TODO use conf.use_gradients
-        dest_blur = p.defer(mincblur(target, conf.blur_resolution))
-        transform = p.defer(minctracc(src_blur, dest_blur, conf=conf, transform=transform))
+        src_blur    = p.defer(mincblur(source, fwhm=conf.blur_resolution))  # FIXME! need to set gradient=...
+        target_blur = p.defer(mincblur(target, fwhm=conf.blur_resolution))  # but not included in MinctraccConf
+        transform   = p.defer(minctracc(src_blur, target_blur, conf=conf, transform=transform))
     return Result(stages=p,
                   output=XfmHandler(xfm=transform,
                                     source=src_blur,
-                                    target=dest_blur,
-                                    resampled=None))
+                                    target=target_blur))
 
 
 # """Multilevel registration of many images to a single target"""
@@ -926,7 +960,7 @@ def multilevel_pairwise_minctracc(imgs: List[MincAtom],
         res = p.defer(mincresample(img=src_img,
                                    xfm=avg_xfm,
                                    like=like or src_img,
-                                   extra_flags=["-sinc"]))
+                                   interpolation=Interpolation.sinc))
         return XfmHandler(xfm=avg_xfm, source=src_img,
                           target=None, resampled=res)  ##FIXME the None here borks things interface-wise ...
         ## does putting `target = res` make sense? could a sum be used?
@@ -960,7 +994,8 @@ LSQ12Conf = MultilevelMinctraccConf
 def lsq12_pairwise(imgs: List[MincAtom],
                    conf: MultilevelMinctraccConf,  # TODO: override transform_type field?
                    lsq12_dir: str,
-                   like: MincAtom = None) -> Result[WithAvgImgs[List[XfmHandler]]]:
+                   like: MincAtom = None,
+                   mincaverage = mincaverage) -> Result[WithAvgImgs[List[XfmHandler]]]:
     output_dir = os.path.join(lsq12_dir, 'lsq12')
     # conf.transform_type='-lsq12' # hack ... copy? or set external to lsq12 call ? might be better
     p = Stages()
@@ -989,32 +1024,6 @@ def lsq12_pairwise_on_dictionaries(imgs: Dict[K, MincAtom],
     return Result(stages=s, output=WithAvgImgs(output=dict(zip(ks, res.output)),
                                                avg_imgs=res.avg_imgs,
                                                avg_img=res.avg_img))
-
-
-def mincaverage(imgs: List[MincAtom],
-                name_wo_ext: str = "average",
-                output_dir: str = '.',
-                copy_header_from_first_input: bool = False):
-    """
-    By default mincaverage only copies header information over to the output
-    file that is shared by all input files (xspace, yspace, zspace information etc.)
-    In some cases however, you might want to have some of the non-standard header
-    information. Use the copy_header_from_first_input argument for this, and it
-    will add the -copy_header flag to mincaverage
-    """
-    if len(imgs) == 0:
-        raise ValueError("`mincaverage` arg `imgs` is empty (can't average zero files)")
-    # TODO: propagate masks/labels??
-    avg = MincAtom(name=os.path.join(output_dir, '%s.mnc' % name_wo_ext), orig_name=None)
-    sdfile = MincAtom(name=os.path.join(output_dir, '%s_sd.mnc' % name_wo_ext), orig_name=None)
-    additional_flags = ["-copy_header"] if copy_header_from_first_input else []  # type: List[str]
-    s = CmdStage(inputs=tuple(imgs), outputs=(avg, sdfile),
-                 cmd=['mincaverage', '-clobber', '-normalize',
-                      '-max_buffer_size_in_kb', '409620'] + additional_flags +
-                     ['-sdfile', sdfile.path] +
-                     [img.path for img in imgs] +
-                     [avg.path])
-    return Result(stages=Stages([s]), output=avg)
 
 
 def xfmaverage(xfms: List[XfmAtom],
@@ -1094,58 +1103,60 @@ human = {'res': 1.00}
 # simplex       -> 1120 micron (20 * resolution)
 # so we simply need to set the resolution to establish this:
 # resolution_for_rot = 0.056
-# could also use an Enum here, although a dict can be extended
+# could also use an Enum here, although a dict (or subclasses) can be extended
 known_settings = {'mousebrain': mousebrain,
                   'human': human}
 
 
 ## under construction
-# TODO it's silly for rotation_params to be overloaded like this - make another parser flag?
-# def parse_rotational_minctracc_params(rotation_params : str) -> Tuple[RotationalMinctraccConf, float]:
-#     if rotation_params in known_settings:
-#         resolution = known_settings[rotation_params]
-#     else:
-#         blur_factor, resample_step_factor, registration_step_factor, w_translations_factor = (
-#             [float(x) for x in rotation_params.split(',')])
-#     return config, resolution
+# TODO it's silly for rotation_params to be overloaded like this - make another parser flag (--subject-matter)
+#def parse_rotational_minctracc_params(rotation_params : str) -> Tuple[RotationalMinctraccConf, float]:
+#    if rotation_params in known_settings:
+#        resolution = known_settings[rotation_params]
+#    else:
+#        blur_factor, resample_step_factor, registration_step_factor, w_translations_factor = (
+#            [float(x) for x in rotation_params.split(',')])
+#    return config, resolution
 
 
-def get_parameters_for_rotational_minctracc(resolution,
+def get_parameters_for_rotational_minctracc(resolution,  # TODO why do most arguments default to None?
                                             rotation_tmp_dir=None, rotation_range=None,
                                             rotation_interval=None, rotation_params=None):
     """
-    returns the proper combination of a rotation_minctracc configuration and
+    returns the proper combination of a rotational_minctracc configuration and
     a value for the resolution such that the "mousebrain" option for 
     the --lsq6-large-rotations-parameters flag works.
+
+    The parameters for rotational minctracc are set based on the resolution of the input files.
+    If not explicitly specified, most parameters are multiples of that resolution.
+
+    resolution - int/float indicating the resolution of the input files
+    rotation_params - a list with 4 integer elements indicating multiples of the resolution:
+                     [blur factor,
+                     resample factor,
+                     registration factor,
+                     w_translation factor]
     """
-    rotational_configuration = default_rotational_minctracc_conf
-    resolution_for_rot = resolution
+    rotational_configuration = default_rotational_minctracc_conf.maybe_replace(
+                                 temp_dir=rotation_tmp_dir,
+                                 rotational_range=rotation_range,
+                                 rotational_interval=rotation_interval)
+    rotational_resolution    = resolution
     # for mouse brains we have fixed parameters:
     # if rotation_params == "mousebrain":
     if rotation_params in known_settings:
-        resolution_for_rot = known_settings[rotation_params]
+        rotational_resolution = known_settings[rotation_params]
     else:
-        # use the parameters provided
-        blur_factor, resample_step_factor, registration_step_factor, w_translations_factor = (
-            [float(x) for x in rotation_params.split(',')] if rotation_params else [None] * 4)
+        if rotation_params:
+            blur_factor, resample_step_factor, registration_step_factor, w_translations_factor = (
+                [float(x) for x in rotation_params.split(',')])
+            rotational_configuration = rotational_configuration.replace(
+                                         blur_factor=blur_factor,
+                                         resample_step_factor=resample_step_factor,
+                                         registration_step_factor=registration_step_factor,
+                                         w_translations_factor=w_translations_factor)
 
-        # TODO: simplify this, using _replace or a wrapper to ignore None values
-        # (but then how to override with None?)
-        rotational_configuration = RotationalMinctraccConf(
-            temp_dir=rotation_tmp_dir if rotation_tmp_dir else
-            default_rotational_minctracc_conf.tempdir,
-            rotational_range=rotation_range if rotation_range else
-            default_rotational_minctracc_conf.rotation_range,
-            rotational_interval=rotation_interval if rotation_params else
-            default_rotational_minctracc_conf.rotational_interval,
-            blur_factor=blur_factor if rotation_params else default_rotational_minctracc_conf.blur_factor,
-            resample_step_factor=resample_step_factor if rotation_params else default_rotational_minctracc_conf.resample_step_factor,
-            registration_step_factor=registration_step_factor if rotation_params else
-            default_rotational_minctracc_conf.registration_step_factor,
-            w_translations_factor=w_translations_factor if rotation_params else
-            default_rotational_minctracc_conf.w_translations_factor)
-
-    return rotational_configuration, resolution_for_rot
+    return rotational_configuration, rotational_resolution
 
 
 class LSQ6Conf(object):
@@ -1211,15 +1222,13 @@ def lsq6(imgs: List[MincAtom],
     return Result(stages=s, output=xfms_to_target)
 
 
-"""
-This class can be used for the following options:
---init-model
---lsq6-target
---bootstrap 
-"""
-
-
 class RegistrationTargets(object):
+    """
+    This class can be used for the following options:
+    --init-model
+    --lsq6-target
+    --bootstrap
+    """
     # what does this mean?
     def __init__(self,
                  registration_standard: MincAtom,
@@ -1263,7 +1272,7 @@ def lsq6_nuc_inorm(imgs: List[MincAtom],
         img=native_img,
         xfm=xfm_to_lsq6,
         like=registration_targets.registration_standard,
-        extra_flags=['-sinc'],
+        interpolation=Interpolation.sinc,
         new_name_wo_ext=native_img.filename_wo_ext + "_resampled_lsq6"))
                           for native_img, xfm_to_lsq6 in zip(imgs, xfms_to_final_target_space)]
 
@@ -1279,7 +1288,8 @@ def lsq6_nuc_inorm(imgs: List[MincAtom],
         masks_in_native_space = [s.defer(mincresample(img=registration_targets.registration_standard.mask,
                                                       xfm=xfm_to_lsq6,
                                                       like=native_img,
-                                                      extra_flags=['-nearest', '-invert']))
+                                                      interpolation=Interpolation.nearest_neighbour,
+                                                      extra_flags=['-invert']))
                                  for native_img, xfm_to_lsq6 in zip(imgs, xfms_to_final_target_space)]
 
     # NUC
@@ -1320,7 +1330,7 @@ def lsq6_nuc_inorm(imgs: List[MincAtom],
             img=inorm_img,
             xfm=xfm_to_lsq6,
             like=registration_targets.registration_standard,
-            extra_flags=['-sinc'],
+            interpolation=Interpolation.sinc,
             new_name_wo_ext=inorm_img.filename_wo_ext + "resampled_lsq6"))
                                       for inorm_img, xfm_to_lsq6
                                       in zip(inorm_imgs_in_native_space,
@@ -1333,7 +1343,7 @@ def lsq6_nuc_inorm(imgs: List[MincAtom],
         final_resampled_lsq6_files = [s.defer(mincresample(img=nuc_img,
                                                            xfm=xfm_to_lsq6,
                                                            like=registration_targets.registration_standard,
-                                                           extra_flags=['-sinc'],
+                                                           interpolation=Interpolation.sinc,
                                                            new_name_wo_ext=nuc_filename_wo_ext))
                                       for nuc_img, xfm_to_lsq6, nuc_filename_wo_ext
                                       in zip(nuc_imgs_in_native_space,

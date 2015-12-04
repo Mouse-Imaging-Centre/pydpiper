@@ -74,7 +74,7 @@ def chain(options : Any):
     # multiple initial models) are applied to subsets of the entire 
     # data, making it harder to keep the mapping simple/straightforward
 
-    chain_opts = options.chain # type : ChainConf
+    chain_opts = options.chain  # type : ChainConf
 
     s = Stages()
     
@@ -104,14 +104,10 @@ def chain(options : Any):
                          (options.registration.input_space, ','.join(InputSpace.__members__)))
     
     if options.registration.input_space == InputSpace.native:
-        # for the registration chain, a bootstrap model is somewhat ill-defined, because
-        # it's unclear what "the first input file" is. As such, when this option is chosen
-        # we should prompt the user to use --lsq6-target instead
         if options.lsq6.bootstrap:
             raise ValueError("\nA bootstrap model is ill-defined for the registration chain. "
-                             "(Which file is the first input file?). Please use the --lsq6-target "
+                             "(Which file is the 'first' input file?). Please use the --lsq6-target "
                              "flag to specify a target for the lsq6 stage, or use an initial model.")
-        
         if options.chain.pride_of_models:
             raise NotImplementedError(
                 "We currently have not implemented the code that handles the pride of initial models...")

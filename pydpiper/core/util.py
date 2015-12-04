@@ -2,18 +2,32 @@ import os
 import functools  # type: ignore
 from operator import add
 from enum import Enum
-from typing import List, Set, Tuple, TypeVar
+import typing
+from typing import Any, Callable, List, Set, Tuple, TypeVar
 from pydpiper.execution.pipeline import CmdStage
 
 
 class AutoEnum(Enum):
-    # from docs.python.org/3/library/enum.html since apparently it's
-    # not worth putting these into the stdlib ...
+    """An enumeration that doesn't require you to explicitly give the injection.
+    Copied from docs.python.org/3/library/enum.html since apparently it's
+    not worth including in the stdlib ..."""
     def __new__(cls):
         value = len(cls.__members__) + 1
         obj = object.__new__(cls)
         obj._value_ = value
         return obj
+
+
+def NamedTuple(name : str, fields : List[Tuple[str, Callable[[Any], Any]]]):
+    """Like typing.NamedTuple, but with some extra functions for (non-destructively) updating fields."""
+    class N(typing.NamedTuple(name, fields)):
+        def replace(self, **kwargs) -> 'N':
+            return self._replace(**kwargs)
+        def maybe_replace(self, **kwargs) -> 'N':
+            """Use keyword args whose values are non-null to replace fields of the tuple."""
+            return self._replace(**{ k : v for (k, v) in kwargs.items() if v is not None })
+    N.__name__ = name
+    return N
 
 
 def raise_(err: BaseException):

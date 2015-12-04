@@ -1,15 +1,16 @@
-import argparse
 import os
 import sys
 
-from pydpiper.minc.registration import lsq12_pairwise
+from pydpiper.core.arguments import (AnnotatedParser, execution_parser, lsq6_parser,
+                                     lsq12_parser, registration_parser, application_parser, parse)
+from pydpiper.execution.application import execute
+from pydpiper.minc.registration import lsq12_pairwise, LSQ12Conf
 from pydpiper.minc.files import MincAtom
 
-# TODO why camel case here?
 # TODO what is this for -- arbitrary lsq12 registration (including a single src/target) or pairwise lsq12?
 
 
-def parse_LSQ12_protocol(f): # handle -> LSQ12Conf
+def parse_LSQ12_protocol(f) -> LSQ12Conf:
     """Parse a protocol file and, if possible, return a protocol object
     of type `constructor` (e.g., LSQ12Conf) - though one which may be only partly
     filled in."""
@@ -36,10 +37,16 @@ def LSQ12_pipeline(options):
     return lsq12_pairwise(imgs, conf, output_dir=options.pipeline_directory or os.getcwd())
 
 def main(args):
-    parser = argparse.ArgumentParser() # TODO setup arguments
-    addLSQ12ArgumentGroup(parser)
-    options = parser.parse_args(args[1:])
-    stages, _ = LSQ12_pipeline(options)
+    p = CompoundParser(
+          [AnnotatedParser(parser=execution_parser, namespace='execution'),
+           AnnotatedParser(parser=application_parser, namespace='application'),
+           AnnotatedParser(parser=registration_parser, namespace='registration', cast=RegistrationConf),
+           AnnotatedParser(parser=lsq6_parser, namespace='lsq6'),
+           AnnotatedParser(parser=lsq12_parser, namespace='lsq12')])
+
+    # TODO could abstract and then parametrize by prefix/ns ??
+    options = parse(p, sys.argv[1:])
+    stages = LSQ12_pipeline(options).stages
     execute(stages, options)
 
 if __name__ == '__main__':
