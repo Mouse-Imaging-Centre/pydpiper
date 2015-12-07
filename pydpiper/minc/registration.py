@@ -1,16 +1,15 @@
-import copy
 import os.path
 import shlex
 import subprocess
-import re
 import sys
 from typing import Any, cast, Dict, Generic, List, Optional, Set, Tuple, TypeVar
+
 from pydpiper.core.files import FileAtom
 from pydpiper.core.stages import CmdStage, Result, Stages
 from pydpiper.core.util import pairs, AutoEnum, NamedTuple
-from pydpiper.core.conversion import InputFile, OutputFile
 from pydpiper.minc.files import MincAtom, XfmAtom
 from pydpiper.minc.containers import XfmHandler
+
 from pyminc.volumes.factory import volumeFromFile  # type: ignore
 
 
@@ -24,17 +23,16 @@ def mincblur(img: MincAtom,
              subdir: str = 'tmp') -> Result[MincAtom]:
     """
     >>> img = MincAtom(name='/images/img_1.mnc', pipeline_sub_dir='/scratch/some_pipeline_processed/')
-    >>> img_blur = mincblur(img=img, fwhm='0.056')
+    >>> img_blur = mincblur(img=img, fwhm=0.056)
     >>> img_blur.output.path
     '/scratch/some_pipeline_processed/img_1/tmp/img_1_fwhm0.056_blur.mnc'
     >>> [i.render() for i in img_blur.stages]
-    ['mincblur -clobber -no_apodize -fwhm 0.056 /images/img_1.mnc /scratch/some_pipeline_processed/img_1/tmp/img_1_fwhm0.056.mnc']
+    ['mincblur -clobber -no_apodize -fwhm 0.056 /images/img_1.mnc /scratch/some_pipeline_processed/img_1/tmp/img_1_fwhm0.056']
     """
     suffix = "_dxyz" if gradient else "_blur"
     outf = img.newname_with_suffix("_fwhm%s" % fwhm + suffix, subdir=subdir)
     stage = CmdStage(
         inputs=(img,), outputs=(outf,),
-        # this used to a function render_fn : conf, inf, outf -> string
         # drop last 9 chars from output filename since mincblur
         # automatically adds "_blur.mnc/_dxyz.mnc" and Python
         # won't lift this length calculation automatically ...
@@ -89,7 +87,7 @@ class Interpolation(AutoEnum):
 def mincresample_simple(img: MincAtom,
                         xfm: XfmAtom,
                         like: MincAtom,
-                        extra_flags: List[str] = [],
+                        extra_flags: Tuple[str] =(),
                         interpolation: Optional[Interpolation] = None,
                         new_name_wo_ext: str = None,
                         subdir: str = None) -> Result[MincAtom]:
@@ -125,7 +123,7 @@ def mincresample_simple(img: MincAtom,
 def mincresample(img: MincAtom,
                  xfm: XfmAtom,
                  like: MincAtom,
-                 extra_flags: List[str] = [],
+                 extra_flags: Tuple[str] = (),
                  interpolation: Interpolation = None,
                  new_name_wo_ext: str = None,
                  subdir: str = None) -> Result[MincAtom]:
@@ -137,7 +135,7 @@ def mincresample(img: MincAtom,
     >>> img  = MincAtom('/tmp/img_1.mnc')
     >>> like = MincAtom('/tmp/img_2.mnc')
     >>> xfm  = XfmAtom('/tmp/trans.xfm')
-    >>> stages, resampled = mincresample(img=img, xfm=xfm, like=like, extra_flags=[])
+    >>> stages, resampled = mincresample(img=img, xfm=xfm, like=like)
     >>> [x.render() for x in stages]
     ['mincresample -clobber -2 -transform /tmp/trans.xfm -like /tmp/img_2.mnc /tmp/img_1.mnc /micehome/bdarwin/git/pydpiper/img_1/resampled/trans-resampled.mnc']
     """
@@ -146,8 +144,8 @@ def mincresample(img: MincAtom,
 
     # don't scale label values:
     label_extra_flags = (extra_flags
-                         + (['-keep_real_range'] if "-keep_real_range"
-                                                    not in extra_flags else []))
+                         + (('-keep_real_range',) if "-keep_real_range"
+                                                    not in extra_flags else ()))
 
     new_img = s.defer(mincresample_simple(img=img, xfm=xfm, like=like,
                                           extra_flags=extra_flags,
@@ -174,7 +172,7 @@ def mincresample(img: MincAtom,
 def xfmconcat(xfms: List[XfmAtom],
               name: str = None) -> Result[XfmAtom]:
     """
-    >>> stages, xfm = xfmconcat([MincAtom('/tmp/%s' % i, pipeline_sub_dir='/scratch') for i in ['t1.xfm', 't2.xfm']])
+    >>> stages, xfm = xfmconcat([XfmAtom('/tmp/%s' % i, pipeline_sub_dir='/scratch') for i in ['t1.xfm', 't2.xfm']])
     >>> [s.render() for s in stages]
     ['xfmconcat /tmp/t1.xfm /tmp/t2.xfm /scratch/t1/concat_of_t1_and_t2.xfm']
     """
@@ -204,7 +202,7 @@ def xfmconcat(xfms: List[XfmAtom],
 def concat(ts: List[XfmHandler],
            name: str = None,
            interpolation: Optional[Interpolation] = None,  # remove or make `sinc` default?
-           extra_flags: List[str] = []) -> Result[XfmHandler]:
+           extra_flags: Tuple[str] = ()) -> Result[XfmHandler]:
     """
     xfmconcat lifted to work on XfmHandlers instead of XfmAtoms
     """
@@ -956,7 +954,7 @@ def multilevel_pairwise_minctracc(imgs: List[MincAtom],
         # being careful not to register the img against itself
         xfms = [p.defer(multilevel_minctracc(src_img, target_img, confs=conf, curr_dir=output_dir))
                 for target_img in imgs if src_img != target_img]  # TODO src_img.name != ....name ??
-        avg_xfm = p.defer(xfmaverage(xfms, output_dir=curr_dir))
+        avg_xfm = p.defer(xfmaverage([xfm.xfm for xfm in xfms], output_dir=curr_dir))
         res = p.defer(mincresample(img=src_img,
                                    xfm=avg_xfm,
                                    like=like or src_img,
@@ -1045,6 +1043,7 @@ def xfminvert(xfm: XfmAtom) -> Result[XfmAtom]:
     return Result(stages=Stages([s]), output=inv_xfm)
 
 
+# TODO: find better names for xfminvert/invert
 def invert(xfm: XfmHandler) -> Result[XfmHandler]:
     """xfminvert lifted to work on XfmHandlers instead of MincAtoms"""
     s = Stages()
@@ -1289,7 +1288,7 @@ def lsq6_nuc_inorm(imgs: List[MincAtom],
                                                       xfm=xfm_to_lsq6,
                                                       like=native_img,
                                                       interpolation=Interpolation.nearest_neighbour,
-                                                      extra_flags=['-invert']))
+                                                      extra_flags=('-invert',)))
                                  for native_img, xfm_to_lsq6 in zip(imgs, xfms_to_final_target_space)]
 
     # NUC

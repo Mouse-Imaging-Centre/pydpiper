@@ -4,6 +4,7 @@ from operator import add
 from enum import Enum
 import typing
 from typing import Any, Callable, List, Set, Tuple, TypeVar
+
 from pydpiper.execution.pipeline import CmdStage
 
 

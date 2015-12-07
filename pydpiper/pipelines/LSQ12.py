@@ -28,9 +28,9 @@ def LSQ12_pipeline(options):
     # be called within a pipeline; this one sets up mapped mincfiles, cmd-line stuff, ...
     imgs = [MincAtom(f) for f in options.files]
     if options.reg_protocol:
-        pass # opts = parse_lsq12_protocol
-    ### determine LSQ12 settings by overriding defaults with
-    ### any settings present in protocol file, if it exists
+        pass  # opts = parse_lsq12_protocol
+    # determine LSQ12 settings by overriding defaults with
+    # any settings present in protocol file, if it exists
     conf = None
     # could add a hook to print a message announcing completion, output files,
     # add more stages here to make a CSV

@@ -5,12 +5,12 @@ recommended to add to your application: e.g. the arguments that deal
 with the execution of your application.
 '''
 
-from pkg_resources import get_distribution      # type: ignore
+from pkg_resources import get_distribution       # type: ignore
 import copy
 import os
 import time
 
-from configargparse import ArgParser, Namespace # type: ignore
+from configargparse import ArgParser, Namespace  # type: ignore
 from typing import Any, Callable, List
 
 from pydpiper.core.util import raise_, AutoEnum
@@ -65,10 +65,7 @@ class AnnotatedParser(object):
         self.prefix    = prefix     # type: str
         self.namespace = namespace  # type: str
         self.cast      = cast       # type: Any
-    #parser    = Instance(Parser, factory=lambda : raise_(ValueError("must provide a parser")))
-    #prefix    = Str("")
-    #namespace = Str("", factory=lambda : raise_(ValueError("must provide a namespace")))
-    #cast      = Instance(object, factory=lambda : None) #lambda y: y)
+        #cast      = Instance(object, factory=lambda : None) #lambda y: y)
 
 # the leaves of the parse object (these contain the arguments you're interested in)
 class BaseParser(Parser):

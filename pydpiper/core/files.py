@@ -12,7 +12,7 @@ class FileAtom(object):
         self.dir
         self.filename_wo_ext
         self.ext
-        
+
         self.pipeline_sub_dir - in pipeline terms, this would be the _lsq6, _lsq12, _nlin or
                             _processed directory. If not provided, the current working directory
                             is used.
@@ -23,15 +23,17 @@ class FileAtom(object):
                           
                           
     """
+    # TODO this documentation should be made self-explanatory rather than referring to the old code
+    # or assumed pipeline structure (unless this is documented elsewhere)
     
     def __init__(self,
-                 name : str,
-                 orig_name        : Union[str, NotProvided] = NotProvided(),
+                 name             : str,
+                 orig_name        : Union[str, None, NotProvided] = NotProvided(),
                  pipeline_sub_dir : str = None,
                  output_sub_dir   : str = None) -> None:
         self.dir, self.filename_wo_ext, self.ext = explode(name)
         if isinstance(orig_name, NotProvided):
-            self.orig_path = self.get_path()  # type: str
+            self.orig_path = self.path  # type: str
         elif isinstance(orig_name, type(None)):
             # is this case even needed? if no orig file, when _isn't_ file itself the orig file?
             self.orig_path = None
@@ -50,10 +52,11 @@ class FileAtom(object):
 
     @property
     def path(self) -> str:
-        return self.get_path()
-
-    def get_path(self) -> str:
+        #return self.get_path()
         return os.path.join(self.dir, self.filename_wo_ext + self.ext)
+
+    #def get_path(self) -> str:
+    #    return os.path.join(self.dir, self.filename_wo_ext + self.ext)
 
     # TODO: are these the most reasonable definitions of __eq__ and __hash__?
     def __eq__(self, other) -> bool:
@@ -84,15 +87,15 @@ class FileAtom(object):
         # (we use absolute paths so the tests are deterministic without requiring postprocessing)
         >>> f1 = FileAtom(name='/project/images/img_1.mnc', pipeline_sub_dir="/scratch/pipeline/")
         >>> f2 = f1.newname_with_fn(fn=lambda n: n + '_fwhm0.056')
-        >>> f2.get_path()
+        >>> f2.path
         '/scratch/pipeline/img_1/img_1_fwhm0.056.mnc'
-        >>> f1.get_path()
+        >>> f1.path
         '/project/images/img_1.mnc'
         >>> f3 = FileAtom(name='/project/images/img_3.mnc', pipeline_sub_dir="/scratch/pipeline/")
         >>> f4 = f3.newname_with_fn(fn=lambda n: n + '_inormalize', subdir="tmp")
-        >>> f4.get_path()
+        >>> f4.path
         '/scratch/pipeline/img_3/tmp/img_3_inormalize.mnc'
-        >>> f3.get_path()
+        >>> f3.path
         '/project/images/img_3.mnc'
         """
 

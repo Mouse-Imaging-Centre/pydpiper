@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 
-from __future__ import print_function, absolute_import
 import csv
 from collections import defaultdict
 import os
