@@ -62,7 +62,7 @@ class ChainConf(object):
 class TimePointError(Exception):
     pass
 
-def chain(options : Any):
+def chain(options):
     """Create a registration chain pipeline from the given options."""
 
     # TODO:
@@ -79,10 +79,13 @@ def chain(options : Any):
     
     with open(options.chain.csv_file, 'r') as f:
         subject_info = parse_csv(rows=f, common_time_pt=options.chain.common_time_point)
-    
-    pipeline_processed_dir = os.path.join(options.application.output_directory, options.application.pipeline_name + "_processed")
-    pipeline_lsq12_common_dir = os.path.join(options.application.output_directory, options.application.pipeline_name + "_lsq12_" + options.chain.common_time_point_name)
-    pipeline_nlin_common_dir = os.path.join(options.application.output_directory, options.application.pipeline_name + "_nlin_" + options.chain.common_time_point_name)
+
+    output_dir    = options.application.pipeline_name
+    pipeline_name = options.application.pipeline_name
+
+    pipeline_processed_dir = os.path.join(output_dir, pipeline_name + "_processed")
+    pipeline_lsq12_common_dir = os.path.join(output_dir, pipeline_name + "_lsq12_" + options.chain.common_time_point_name)
+    pipeline_nlin_common_dir = os.path.join(output_dir, pipeline_name + "_nlin_" + options.chain.common_time_point_name)
     
     
     pipeline_subject_info = map_over_time_pt_dict_in_Subject(
@@ -116,8 +119,8 @@ def chain(options : Any):
             registration_targets = get_registration_targets(init_model=options.lsq6.init_model,
                                                             lsq6_target=options.lsq6.lsq6_target,
                                                             bootstrap=options.lsq6.bootstrap,
-                                                            output_dir=options.application.output_directory,
-                                                            pipeline_name=options.application.pipeline_name)
+                                                            output_dir=output_dir,
+                                                            pipeline_name=pipeline_name)
             
             # we want to store the xfm handlers in the same shape as pipeline_subject_info,
             # as such we will call lsq6_nuc_inorm for each file individually. This returns
@@ -445,5 +448,3 @@ if __name__ == "__main__":
     chain_stages = chain(options).stages
 
     execute(chain_stages, options)
-    
-    

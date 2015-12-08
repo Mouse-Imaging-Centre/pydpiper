@@ -1,8 +1,9 @@
 import os.path
+import random
 import shlex
 import subprocess
 import sys
-from typing import Any, cast, Dict, Generic, List, Optional, Set, Tuple, TypeVar
+from typing import Any, cast, Dict, Generic, Iterable, List, Optional, Set, Tuple, TypeVar
 
 from pydpiper.core.files import FileAtom
 from pydpiper.core.stages import CmdStage, Result, Stages
@@ -799,8 +800,8 @@ def mincANTS_NLIN_build_model(imgs: List[MincAtom],
     """
     This functions runs a hierarchical mincANTS registration on the input
     images (imgs) creating an unbiased average.
-    The mincANTS configuration (confs) that is passed in, should be 
-    passed in an array of configurations for each of the levels/generations.
+    The mincANTS configuration `confs` that is passed in should be
+    a list of configurations for each of the levels/generations.
     After each round of registrations, an average is created out of the 
     resampled input files, which is then used as the target for the next
     round of registrations. 
@@ -942,18 +943,26 @@ def multilevel_minctracc(source: MincAtom,
 def multilevel_pairwise_minctracc(imgs: List[MincAtom],
                                   conf: MultilevelMinctraccConf,
                                   # transforms : List[] = None,
+                                  max_pairs : int,
+                                  # max_pairs doesn't even make sense for a non-pairwise MinctraccConf,
+                                  # suggesting that the pairwise conf being a list of confs is inappropriate
                                   like: MincAtom = None,
                                   curr_dir: str = ".") -> Result[List[XfmHandler]]:
-    """Pairwise registration of all images"""
+    """Pairwise registration of all images.
+    max_pairs - number of images to register each image against. (Currently we might register against one fewer.)"""
     p = Stages()
     output_dir = os.path.join(curr_dir, 'pairs')
 
-    def avg_xfm_from(src_img):
-        """Compute xfm from src_img to each other img, average them, and resample along the result"""
+    if max_pairs < 2:
+        raise ValueError("must register at least two pairs")
+
+    def avg_xfm_from(src_img     : MincAtom,
+                     target_imgs : List[MincAtom]):
+        """Compute xfm from src_img to each target img, average them, and resample along the result"""
         # TODO to save creation of lots of duplicate blurs, could use multilevel_minctracc_all,
         # being careful not to register the img against itself
         xfms = [p.defer(multilevel_minctracc(src_img, target_img, confs=conf, curr_dir=output_dir))
-                for target_img in imgs if src_img != target_img]  # TODO src_img.name != ....name ??
+                for target_img in target_imgs if src_img != target_img]  # TODO src_img.name != ....name ??
         avg_xfm = p.defer(xfmaverage([xfm.xfm for xfm in xfms], output_dir=curr_dir))
         res = p.defer(mincresample(img=src_img,
                                    xfm=avg_xfm,
@@ -961,9 +970,15 @@ def multilevel_pairwise_minctracc(imgs: List[MincAtom],
                                    interpolation=Interpolation.sinc))
         return XfmHandler(xfm=avg_xfm, source=src_img,
                           target=None, resampled=res)  ##FIXME the None here borks things interface-wise ...
-        ## does putting `target = res` make sense? could a sum be used?
+        # does putting `target = res` make sense? could a sum be used?
 
-    return Result(stages=p, output=[avg_xfm_from(img) for img in imgs])
+    if max_pairs is not None:
+        return Result(stages=p, output=[avg_xfm_from(img, target_imgs=imgs) for img in imgs])
+    else:
+        random.seed(tuple([img.path for img in imgs]))  # TODO this should be even higher in the program text ...
+        target_imgs = random.sample(imgs, max_pairs + 1)
+        return Result(stages=p, output=[avg_xfm_from(img, target_imgs=random.sample(imgs, max_pairs))
+                                        for img in imgs])  # might use one fewer image ...
 
 
 # MultilevelMinctraccConf = NamedTuple('MultilevelMinctraccConf',

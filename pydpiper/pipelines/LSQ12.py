@@ -1,15 +1,14 @@
+import csv
 import os
 import sys
 
 from pydpiper.core.arguments import (AnnotatedParser, execution_parser, lsq6_parser,
-                                     lsq12_parser, registration_parser, application_parser, parse)
+                                     lsq12_parser, registration_parser, application_parser, parse, CompoundParser)
 from pydpiper.execution.application import execute
 from pydpiper.minc.registration import lsq12_pairwise, LSQ12Conf
 from pydpiper.minc.files import MincAtom
 
-# TODO what is this for -- arbitrary lsq12 registration (including a single src/target) or pairwise lsq12?
-
-
+# TODO why use this strange format instead of, e.g., csv?
 def parse_LSQ12_protocol(f) -> LSQ12Conf:
     """Parse a protocol file and, if possible, return a protocol object
     of type `constructor` (e.g., LSQ12Conf) - though one which may be only partly
@@ -18,6 +17,11 @@ def parse_LSQ12_protocol(f) -> LSQ12Conf:
     d = {}
     for l in csvReader:
         d[l[0]] = l[1:]
+    keys = tuple(d.keys())
+    raise NotImplementedError
+
+
+    return default_LSQ12_conf.replace(**d)
     #for k, v in d.items():
     #    if k
 
@@ -37,8 +41,10 @@ def LSQ12_pipeline(options):
     return lsq12_pairwise(imgs, conf, output_dir=options.pipeline_directory or os.getcwd())
 
 def main(args):
+    # this is probably too much heavy machinery since the options aren't tree-shaped; could just use previous style
     p = CompoundParser(
-          [AnnotatedParser(parser=execution_parser, namespace='execution'),
+          [execution_parser,
+           AnnotatedParser(parser=execution_parser, namespace='execution'),
            AnnotatedParser(parser=application_parser, namespace='application'),
            AnnotatedParser(parser=registration_parser, namespace='registration', cast=RegistrationConf),
            AnnotatedParser(parser=lsq6_parser, namespace='lsq6'),

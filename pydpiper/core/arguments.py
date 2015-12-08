@@ -5,15 +5,14 @@ recommended to add to your application: e.g. the arguments that deal
 with the execution of your application.
 '''
 
-from pkg_resources import get_distribution       # type: ignore
+from pkg_resources import get_distribution  # type: ignore
 import copy
 import os
 import time
-
 from configargparse import ArgParser, Namespace  # type: ignore
 from typing import Any, Callable, List
+from pydpiper.core.util import raise_, AutoEnum, NamedTuple
 
-from pydpiper.core.util import raise_, AutoEnum
 
 # TODO: should the pipeline-specific argument handling be located here
 # or in that pipeline's module?  Makes more sense (general stuff
@@ -23,13 +22,15 @@ from pydpiper.core.util import raise_, AutoEnum
 # Similarly, these enums probably don't belong here.
 class InputSpace(AutoEnum):
     native = ()
-    lsq6   = ()
-    lsq12  = ()
+    lsq6 = ()
+    lsq12 = ()
+
 
 class LSQ6Method(AutoEnum):
-    lsq6_simple            = ()
+    lsq6_simple = ()
     lsq6_centre_estimation = ()
-    lsq6_large_rotations   = ()
+    lsq6_large_rotations = ()
+
 
 class PydParser(ArgParser):
     # Some sneakiness... override the format_epilog method
@@ -43,46 +44,52 @@ class PydParser(ArgParser):
             self.epilog = ""
         return self.epilog
 
+
 # TODO delete/move to util?
-#def id(*args, **kwargs):
+# def id(*args, **kwargs):
 #    return args, kwargs
 
-def parse_nullable_int(string : str) -> int:
+def parse_nullable_int(string: str) -> int:
     if string == "None":
         return None
     else:
         return int(string)
 
+
 class Parser(object): pass
+
 
 class AnnotatedParser(object):
     def __init__(self,
-                 parser    : Parser,
-                 namespace : str,
-                 prefix    : str = "",
-                 cast      : Callable[[Any], Any] = None) -> None:  # TODO: remove Any
-        self.parser    = parser     # type: Parser
-        self.prefix    = prefix     # type: str
+                 parser: Parser,
+                 namespace: str,
+                 prefix: str = "",
+                 cast: Callable[[Any], Any] = None) -> None:  # TODO: remove Any
+        self.parser = parser  # type: Parser
+        self.prefix = prefix  # type: str
         self.namespace = namespace  # type: str
-        self.cast      = cast       # type: Any
-        #cast      = Instance(object, factory=lambda : None) #lambda y: y)
+        self.cast = cast  # type: Any
+        # cast      = Instance(object, factory=lambda : None) #lambda y: y)
+
 
 # the leaves of the parse object (these contain the arguments you're interested in)
 class BaseParser(Parser):
-    def __init__(self, argparser : ArgParser, group_name : str) -> None:
-        self.argparser  = argparser   # type: ArgParser
+    def __init__(self, argparser: ArgParser, group_name: str) -> None:
+        self.argparser = argparser  # type: ArgParser
         self.group_name = group_name  # type: str
+
 
 # the internal nodes of the parse object
 class CompoundParser(Parser):
-    def __init__(self, annotated_parsers : List[AnnotatedParser]) -> None:
+    def __init__(self, annotated_parsers: List[AnnotatedParser]) -> None:
         """
         annotated_parsers is a list that can hold
         both BaseParser-s and CompoundParser-s.
         """
-        self.parsers  = annotated_parsers  # type: List[AnnotatedParser]
+        self.parsers = annotated_parsers  # type: List[AnnotatedParser]
 
-#Parser = BaseParser ArgParser | CompoundParser([Annotated Parser]) - rose tree with elts at leaves instead of nodes?
+
+# Parser = BaseParser ArgParser | CompoundParser([Annotated Parser]) - rose tree with elts at leaves instead of nodes?
 # for more flexibility, you could also add an extra parser at the node, but that doesn't seem to be needed
 # (you can always add an extra leaf at that node) (~isomorphic?)
 
@@ -94,8 +101,10 @@ class CompoundParser(Parser):
 # I guess you could add a lsq12 parser in the code calling the two pipelines and use it as a default,
 # but this wouldn't happen automagically.
 
-def parse(parser : Parser, args : List[str]) -> Namespace:
-    default_config_file = os.getenv("PYDPIPER_CONFIG_FILE") #TODO: accepting a comma-separated list might allow more flexibility
+# TODO tighten up the type somehow by adding type variables to a Parser ...?
+def parse(parser: Parser, args: List[str]) -> Namespace:
+    default_config_file = os.getenv(
+        "PYDPIPER_CONFIG_FILE")  # TODO: accepting a comma-separated list might allow more flexibility
     config_files = [default_config_file] if default_config_file else []
 
     # First, build a parser that's aware of all options
@@ -114,16 +123,18 @@ def parse(parser : Parser, args : List[str]) -> Namespace:
                 ss = copy.deepcopy(new_a.option_strings)
                 for ix, s in enumerate(new_a.option_strings):
                     if s.startswith("--"):
-                        ss[ix] = "" + current_prefix + "-" + s[2:] # "" was "-"
+                        ss[ix] = "" + current_prefix + "-" + s[2:]  # "" was "-"
                     else:
-                        raise NotImplementedError("sorry, I only understand flags starting with `--` at the moment, but got %s" % s)
+                        raise NotImplementedError(
+                            "sorry, I only understand flags starting with `--` at the moment, but got %s" % s)
                 new_a.option_strings = ss
                 g._add_action(new_a)
         elif isinstance(p, CompoundParser):
             for q in p.parsers:
                 go_1(q.parser, current_prefix + "-" + q.prefix)
         else:
-            raise TypeError("parser %s wasn't a %s (%s or %s) but a %s" % (p, Parser, BaseParser, CompoundParser, p.__class__))
+            raise TypeError(
+                "parser %s wasn't a %s (%s or %s) but a %s" % (p, Parser, BaseParser, CompoundParser, p.__class__))
 
     go_1(parser, "")
 
@@ -151,9 +162,14 @@ def parse(parser : Parser, args : List[str]) -> Namespace:
                 ns = Namespace()
                 if q.namespace in current_ns.__dict__:
                     raise ValueError("Namespace field '%s' already in use" % q.namespace)
+                    # TODO could also allow, say, a None
                 else:
                     # gross but how to write n-ary identity fn that behaves sensibly on single arg??
-                    current_ns.__dict__[q.namespace] = ns # q.cast(**vars(ns)) if q.cast else ns
+                    current_ns.__dict__[q.namespace] = ns  # q.cast(**vars(ns)) if q.cast else ns
+                    # FIXME this casting doesn't work for configurations with positional arguments,
+                    # which aren't unpacked correctly -- better to use a namedtuple
+                    # (making all arguments keyword-only also works, but then you have to supply
+                    # often meaningless defaults in the __init__)
                 go_2(q.parser, current_prefix=current_prefix + "-" + q.prefix, current_ns=ns)
                 # TODO current_ns or current_namespace or ns or namespace?
         else:
@@ -164,10 +180,12 @@ def parse(parser : Parser, args : List[str]) -> Namespace:
     go_2(parser, current_prefix="", current_ns=main_ns)
     return main_ns
 
-def with_parser(p : Parser) -> Callable[[List[str]], Namespace]:
+
+def with_parser(p: Parser) -> Callable[[List[str]], Namespace]:
     return lambda args: parse(p, args)
 
-def _mk_application_parser() -> Parser:
+
+def _mk_application_parser(p: ArgParser) -> ArgParser:
     """
     The arguments that all applications share:
     --pipeline-name
@@ -182,54 +200,55 @@ def _mk_application_parser() -> Parser:
     --no-verbose
     files (left over arguments (0 or more is allowed)
     """
-    p = ArgParser(add_help=False)
-    #group = parser.add_argument_group("General application options",
-    #                                  "General options for all pydpiper applications.")
-    p.add_argument("--restart", dest="restart",
-                       action="store_false", default=True,
-                       help="Restart pipeline using backup files. [default = %(default)s]")
-    p.add_argument("--pipeline-name", dest="pipeline_name", type=str,
-                       default=time.strftime("pipeline-%d-%m-%Y-at-%H-%m-%S"),
-                       help="Name of pipeline and prefix for models.")
+    # p = ArgParser(add_help=False)
+    g = p.add_argument_group("General application options",
+                             "General options for all pydpiper applications.")
+    g.add_argument("--restart", dest="restart",
+                   action="store_false", default=True,
+                   help="Restart pipeline using backup files. [default = %(default)s]")
+    g.add_argument("--pipeline-name", dest="pipeline_name", type=str,
+                   default=time.strftime("pipeline-%d-%m-%Y-at-%H-%m-%S"),
+                   help="Name of pipeline and prefix for models.")
 
-    p.add_argument("--no-restart", dest="restart",
-                        action="store_false", help="Opposite of --restart")
+    g.add_argument("--no-restart", dest="restart",
+                   action="store_false", help="Opposite of --restart")
     # TODO instead of prefixing all subdirectories (logs, backups, processed, ...)
     # with the pipeline name/date, we could create one identifying directory
     # and put these other directories inside
-    p.add_argument("--output-dir", dest="output_directory",
+    g.add_argument("--output-dir", dest="output_directory",
                    type=str, default='',
                    help="Directory where output data and backups will be saved.")
-    p.add_argument("--create-graph", dest="create_graph",
+    g.add_argument("--create-graph", dest="create_graph",
                    action="store_true", default=False,
                    help="Create a .dot file with graphical representation of pipeline relationships [default = %(default)s]")
-    p.set_defaults(execute=True)
-    p.set_defaults(verbose=False)
-    p.add_argument("--execute", dest="execute",
+    g.set_defaults(execute=True)
+    g.set_defaults(verbose=False)
+    g.add_argument("--execute", dest="execute",
                    action="store_true",
                    help="Actually execute the planned commands [default = %(default)s]")
-    p.add_argument("--no-execute", dest="execute",
+    g.add_argument("--no-execute", dest="execute",
                    action="store_false",
                    help="Opposite of --execute")
-    p.add_argument("--version", action="version",
-                   version="%(prog)s ("+get_distribution("pydpiper").version+")") # pylint: disable=E1101
-    p.add_argument("--verbose", dest="verbose",
+    g.add_argument("--version", action="version",
+                   version="%(prog)s (" + get_distribution("pydpiper").version + ")")  # pylint: disable=E1101
+    g.add_argument("--verbose", dest="verbose",
                    action="store_true",
                    help="Be verbose in what is printed to the screen [default = %(default)s]")
-    p.add_argument("--no-verbose", dest="verbose",
+    g.add_argument("--no-verbose", dest="verbose",
                    action="store_false",
                    help="Opposite of --verbose [default]")
-    p.add_argument("files", type=str, nargs='*', metavar='file',
+    g.add_argument("files", type=str, nargs='*', metavar='file',
                    help='Files to process')
     return p
 
-application_parser = BaseParser(_mk_application_parser(), "application")
+
+application_parser = BaseParser(_mk_application_parser(ArgParser(add_help=False)), "application")
 
 
-def _mk_execution_parser() -> ArgParser:
-    parser = ArgParser(add_help=False)
-    group = parser.add_argument_group("Executor options",
-                        "Options controlling how and where the code is run.")
+def _mk_execution_parser(p: ArgParser) -> ArgParser:
+    # parser = ArgParser(add_help=False)
+    group = p.add_argument_group("Executor options",
+                                 "Options controlling how and where the code is run.")
     group.add_argument("--uri-file", dest="urifile",
                        type=str, default=None,
                        help="Location for uri file if NameServer is not used. If not specified, default is current working directory.")
@@ -243,12 +262,12 @@ def _mk_execution_parser() -> ArgParser:
                        type=int, default=-1,
                        help="Number of independent executors to launch. [Default = %(default)s. Code will not run without an explicit number specified.]")
     group.add_argument("--max-failed-executors", dest="max_failed_executors",
-                      type=int, default=2,
-                      help="Maximum number of failed executors before we stop relaunching. [Default = %(default)s]")
+                       type=int, default=2,
+                       help="Maximum number of failed executors before we stop relaunching. [Default = %(default)s]")
     # TODO: add corresponding --monitor-heartbeats
     group.add_argument("--no-monitor-heartbeats", dest="monitor_heartbeats",
-                      action="store_false",
-                      help="Don't assume executors have died if they don't check in with the server (NOTE: this can hang your pipeline if an executor crashes).")
+                       action="store_false",
+                       help="Don't assume executors have died if they don't check in with the server (NOTE: this can hang your pipeline if an executor crashes).")
     group.add_argument("--time", dest="time",
                        type=str, default=None,
                        help="Wall time to request for each server/executor in the format hh:mm:ss. Required only if --queue-type=pbs. Current default on PBS is 48:00:00.")
@@ -282,56 +301,67 @@ def _mk_execution_parser() -> ArgParser:
     group.add_argument("--time-to-accept-jobs", dest="time_to_accept_jobs",
                        type=int,
                        help="The number of minutes after which an executor will not accept new jobs anymore. This can be useful when running executors on a batch system where other (competing) jobs run for a limited amount of time. The executors can behave in a similar way by given them a rough end time. [Default = %(default)s]")
-    group.add_argument('--local', dest="local", action='store_true', help="Don't submit anything to any specified queueing system but instead run as a server/executor")
+    group.add_argument('--local', dest="local", action='store_true',
+                       help="Don't submit anything to any specified queueing system but instead run as a server/executor")
     group.add_argument("--config-file", type=str, metavar='config_file', is_config_file=True,
                        required=False, help='Config file location')
     group.add_argument("--prologue-file", type=str, metavar='file',
                        help="Location of a shell script to inline into PBS submit script to set paths, load modules, etc.")
-    group.add_argument("--min-walltime", dest="min_walltime", type=int, default = 0,
-            help="Min walltime (s) allowed by the queuing system [Default = %(default)s]")
-    group.add_argument("--max-walltime", dest="max_walltime", type=int, default = None,
-            help="Max walltime (s) allowed for jobs on the queuing system, or infinite if None [Default = %(default)s]")
+    group.add_argument("--min-walltime", dest="min_walltime", type=int, default=0,
+                       help="Min walltime (s) allowed by the queuing system [Default = %(default)s]")
+    group.add_argument("--max-walltime", dest="max_walltime", type=int, default=None,
+                       help="Max walltime (s) allowed for jobs on the queuing system, or infinite if None [Default = %(default)s]")
     group.add_argument("--default-job-mem", dest="default_job_mem",
-                       type=float, default = 1.75,
+                       type=float, default=1.75,
                        help="Memory (in GB) to allocate to jobs which don't make a request. [Default=%(default)s]")
-    return parser
+    return p
 
-execution_parser = BaseParser(_mk_execution_parser(), 'execution')
 
-def _mk_registration_parser() -> ArgParser:
-    #group = parser.add_argument_group("General registration options",
-    #                                  "....")
-    p = ArgParser(add_help=False)
-    p.add_argument("--input-space", dest="input_space",
+execution_parser = BaseParser(_mk_execution_parser(ArgParser(add_help=False)), 'execution')
+
+
+def _mk_registration_parser(p: ArgParser) -> ArgParser:
+    g = p.add_argument_group("General registration options",
+                             "....")
+    # p = ArgParser(add_help=False)
+    g.add_argument("--input-space", dest="input_space",
                    type=lambda x: InputSpace[x],  # type: ignore # mypy/issues/741
                    default=InputSpace.native,
-                   #choices=[x for x, _ in InputSpace.__members__.items()],
+                   # choices=[x for x, _ in InputSpace.__members__.items()],
                    help="Option to specify space of input-files. Can be native (default), lsq6, lsq12. "
                         "Native means that there is no prior formal alignment between the input files "
                         "yet. lsq6 means that the input files have been aligned using translations "
                         "and rotations; the code will continue with a 12 parameter alignment. lsq12 "
                         "means that the input files are fully linearly aligned. Only non-linear "
                         "registrations are performed. [Default=%(default)s]")
-    p.add_argument("--resolution", dest="resolution",
+    g.add_argument("--resolution", dest="resolution",
                    type=float, default=None,
                    help="Specify the resolution at which you want the registration to be run. "
                         "If not specified, the resolution of the target of your pipeline will "
                         "be used. [Default=%(default)s]")
-    p.add_argument("--subject-matter", dest="subject_matter",
+    g.add_argument("--subject-matter", dest="subject_matter",
                    type=str, default=None,
                    help="Specify the subject matter for the pipeline. This will set the parameters "
                         "for multiple programs based on the overall size of the subject matter. Instead "
                         "of using the resolution of the files. Currently supported option is: \"mousebrain\" "
                         "[Default=%(default)s]")
-    return p
+    return p  # g?
 
-registration_parser = BaseParser(_mk_registration_parser(), "general")
+
+p = ArgParser
+
+registration_parser = BaseParser(_mk_registration_parser(ArgParser(add_help=False)), "general")
 
 # TODO: where should this live?
-class RegistrationConf(object):
-    def __init__(self, input_space : InputSpace, resolution : float):
-        self.input_space = input_space
-        self.resolution  = resolution
+
+RegistrationConf = NamedTuple("RegistrationConf", [("input_space", InputSpace),
+                                                   ("resolution", float)])
+
+
+# class RegistrationConf(object):
+#    def __init__(self, input_space : InputSpace, resolution : float):
+#        self.input_space = input_space
+#        self.resolution  = resolution
 
 def _mk_lsq6_parser():
     p = ArgParser(add_help=False)
@@ -339,6 +369,7 @@ def _mk_lsq6_parser():
     p.set_defaults(nuc=True)
     p.set_defaults(inormalize=True)
     p.set_defaults(copy_header_info=False)
+    # TODO: should this actually be part of the LSQ6 component?  What would it return in this case?
     p.set_defaults(run_lsq6=True)
     p.add_argument("--run-lsq6", dest="run_lsq6",
                    action="store_true",
@@ -349,20 +380,20 @@ def _mk_lsq6_parser():
     p.add_argument("--init-model", dest="init_model",
                    type=str, default=None,
                    help="File in standard space in the initial model. The initial model "
-                   "can also have a file in native space and potentially a transformation "
-                   "file. See our wiki (https://wiki.mouseimaging.ca/) for detailed "
-                   "information on initial models. [Default = %(default)s]")
+                        "can also have a file in native space and potentially a transformation "
+                        "file. See our wiki (https://wiki.mouseimaging.ca/) for detailed "
+                        "information on initial models. [Default = %(default)s]")
     p.add_argument("--lsq6-target", dest="lsq6_target",
                    type=str, default=None,
                    help="File to be used as the target for the 6 parameter alignment. "
-                   "[Default = %(default)s]")
+                        "[Default = %(default)s]")
     p.add_argument("--bootstrap", dest="bootstrap",
                    action="store_true", default=False,
                    help="Use the first input file to the pipeline as the target for the "
-                   "6 parameter alignment. [Default = %(default)s]")
+                        "6 parameter alignment. [Default = %(default)s]")
     # TODO: do we need to implement this option? This was for Kieran Short, but the procedure
     # he will be using in the future most likely will not involve this option.
-    #group.add_argument("--lsq6-alternate-data-prefix", dest="lsq6_alternate_prefix",
+    # group.add_argument("--lsq6-alternate-data-prefix", dest="lsq6_alternate_prefix",
     #                   type=str, default=None,
     #                   help="Specify a prefix for an augmented data set to use for the 6 parameter "
     #                   "alignment. Assumptions: there is a matching alternate file for each regular input "
@@ -376,42 +407,42 @@ def _mk_lsq6_parser():
     p.add_argument("--lsq6-simple", dest="lsq6_method",
                    action="store_const", const="lsq6_simple",
                    help="Run a 6 parameter alignment assuming that the input files are roughly "
-                   "aligned: same space, similar orientation. Keep in mind that if you use an "
-                   "initial model with both a standard and a native space, the assumption is "
-                   "that the input files are already roughly aligned to the native space. "
-                   "Three iterations are run: 1st is 17 times stepsize blur, 2nd is 9 times "
-                   "stepsize gradient, 3rd is 4 times stepsize blur. [Default = %(default)s]")
+                        "aligned: same space, similar orientation. Keep in mind that if you use an "
+                        "initial model with both a standard and a native space, the assumption is "
+                        "that the input files are already roughly aligned to the native space. "
+                        "Three iterations are run: 1st is 17 times stepsize blur, 2nd is 9 times "
+                        "stepsize gradient, 3rd is 4 times stepsize blur. [Default = %(default)s]")
     p.add_argument("--lsq6-centre-estimation", dest="lsq6_method",
                    action="store_const", const="lsq6_centre_estimation",
                    help="Run a 6 parameter alignment assuming that the input files have a "
-                   "similar orientation, but are scanned in different coils/spaces. [Default = %(default)s]")
+                        "similar orientation, but are scanned in different coils/spaces. [Default = %(default)s]")
     p.add_argument("--lsq6-large-rotations", dest="lsq6_method",
                    action="store_const", const="lsq6_large_rotations",
                    help="Run a 6 parameter alignment assuming that the input files have a random "
-                   "orientation and are scanned in different coils/spaces. A brute force search over "
-                   "the x,y,z rotation space is performed to find the best 6 parameter alignment. "
-                   "[Default = %(default)s]")
+                        "orientation and are scanned in different coils/spaces. A brute force search over "
+                        "the x,y,z rotation space is performed to find the best 6 parameter alignment. "
+                        "[Default = %(default)s]")
     p.add_argument("--lsq6-large-rotations-tmp-dir", dest="large_rotation_tmp_dir",
                    type=str, default="/dev/shm/",
                    help="Specify the directory that rotational_minctracc.py uses for temporary files. "
-                   "By default we use /dev/shm/, because this program involves a lot of I/O, and "
-                   "this is probably one of the fastest way to provide this. [Default = %(default)s]")
+                        "By default we use /dev/shm/, because this program involves a lot of I/O, and "
+                        "this is probably one of the fastest way to provide this. [Default = %(default)s]")
     p.add_argument("--lsq6-large-rotations-parameters", dest="large_rotation_parameters",
                    type=str, default="10,4,10,8",
                    help="Settings for the large rotation alignment. factor=factor based on smallest file "
-                   "resolution: 1) blur factor, 2) resample step size factor, 3) registration step size "
-                   "factor, 4) w_translations factor  ***** if you are working with mouse brain data "
-                   " the defaults do not have to be based on the file resolution; a default set of "
-                   " settings works for all mouse brain. In order to use those setting, specify: "
-                   "\"mousebrain\" as the argument for this option. ***** [default = %(default)s]")
+                        "resolution: 1) blur factor, 2) resample step size factor, 3) registration step size "
+                        "factor, 4) w_translations factor  ***** if you are working with mouse brain data "
+                        " the defaults do not have to be based on the file resolution; a default set of "
+                        " settings works for all mouse brain. In order to use those setting, specify: "
+                        "\"mousebrain\" as the argument for this option. ***** [default = %(default)s]")
     p.add_argument("--lsq6-rotational-range", dest="large_rotation_range",
                    type=int, default=50,
                    help="Settings for the rotational range in degrees when running the large rotation "
-                   "alignment. [Default = %(default)s]")
+                        "alignment. [Default = %(default)s]")
     p.add_argument("--lsq6-rotational-interval", dest="large_rotation_interval",
                    type=int, default=10,
                    help="Settings for the rotational interval in degrees when running the large rotation "
-                   "alignment. [Default = %(default)s]")
+                        "alignment. [Default = %(default)s]")
     p.add_argument("--nuc", dest="nuc",
                    action="store_true",
                    help="Perform non-uniformity correction. [Default = %(default)s]")
@@ -421,37 +452,40 @@ def _mk_lsq6_parser():
     p.add_argument("--inormalize", dest="inormalize",
                    action="store_true",
                    help="Normalize the intensities after lsq6 alignment and nuc, if done. "
-                   "[Default = %(default)s] ")
+                        "[Default = %(default)s] ")
     p.add_argument("--no-inormalize", dest="inormalize",
                    action="store_false",
                    help="If specified, do not perform intensity normalization. Opposite of --inormalize.")
     p.add_argument("--copy-header-info-to-average", dest="copy_header_info",
                    action="store_true",
                    help="Copy the MINC header information of the first input file into the "
-                   "average that is created. [Default = %(default)s] ")
+                        "average that is created. [Default = %(default)s] ")
     p.add_argument("--no-copy-header-info-to-average", dest="copy_header_info",
                    action="store_false",
                    help="Opposite of --copy-header-info-to-average.")
     p.add_argument("--lsq6-protocol", dest="lsq6_protocol",
                    type=str, default=None,
                    help="Specify an lsq6 protocol that overrides the default setting for stages in "
-                   "the 6 parameter minctracc call. Parameters must be specified as in the following \n"
-                   "example: applications_testing/test_data/minctracc_example_linear_protocol.csv \n"
-                   "[Default = %(default)s].")
+                        "the 6 parameter minctracc call. Parameters must be specified as in the following \n"
+                        "example: applications_testing/test_data/minctracc_example_linear_protocol.csv \n"
+                        "[Default = %(default)s].")
     return p
 
+
 lsq6_parser = BaseParser(_mk_lsq6_parser(), "LSQ6")
+
 
 # TODO: where should this live?
 class LSQ6Conf(object):
     def __init__(self, lsq6_method):
         self.lsq6_method = lsq6_method
-    #lsq6_method = Enum('lsq6_simple', 'lsq6_centre_estimation', 'lsq6_large_rotations')
-    # more to be added...
+        # lsq6_method = Enum('lsq6_simple', 'lsq6_centre_estimation', 'lsq6_large_rotations')
+        # more to be added...
+
 
 def _mk_stats_parser():
     p = ArgParser(add_help=False)
-    #p.add_argument_group("Statistics options",
+    # p.add_argument_group("Statistics options",
     #                      "Options for calculating statistics.")
     default_fwhms = "0.5,0.2,0.1"
     p.set_defaults(stats_kernels=default_fwhms)
@@ -467,13 +501,15 @@ def _mk_stats_parser():
                    help="comma separated list of blurring kernels for analysis. [Default = %(default)s].")
     return p
 
+
 stats_parser = BaseParser(_mk_stats_parser(), "stats")
+
 
 def _mk_chain_parser():
     p = ArgParser(add_help=False)
-    #p.add_argument("Registration chain options",
+    # p.add_argument("Registration chain options",
     #               "Options for processing longitudinal data.")
-#    addGeneralRegistrationArguments(group)
+    #    addGeneralRegistrationArguments(group)
     p.add_argument("--csv-file", dest="csv_file",
                    type=str, required=True,
                    help="The spreadsheet with information about your input data. "
@@ -493,31 +529,37 @@ def _mk_chain_parser():
                         "the mapping using the \"is_common\" column. [Default = %(default)s]")
     p.add_argument("--common-time-point-name", dest="common_time_point_name",
                    type=str, default="common",
-                   help="Option to specify a name for the common time point. This is useful for the "                   "creation of more readable output file names. Default is \"common\". Note "                     "that the common time point is the one created by an iterative group-wise "                     "registration (inter-subject).")
-    #TODO: add information about the pride of models to the code in such a way that it
+                   help="Option to specify a name for the common time point. This is useful for the "
+                        "creation of more readable output file names. Default is \"common\". Note "
+                        "that the common time point is the one created by an iterative group-wise "
+                        "registration (inter-subject).")
+    # TODO: add information about the pride of models to the code in such a way that it
     # is reflected on GitHub
     p.add_argument("--pride-of-models", dest="pride_of_models",
                    type=str, default=None,
                    help="Specify the top level directory of the \"pride\" of models. "
-                   "The idea is that you might want to use different initial models for "
-                   "the time points in your data. [Default = %(default)s]")
+                        "The idea is that you might want to use different initial models for "
+                        "the time points in your data. [Default = %(default)s]")
     return p
 
+
 chain_parser = BaseParser(_mk_chain_parser(), "chain")
+
 
 # TODO: probably doesn't belong here ... do we need to move them again to the
 # modules where complementary code is?
 def _mk_lsq12_parser():
     p = ArgParser(add_help=False)
-    #group = parser.add_argument_group("LSQ12 registration options",
+    # group = parser.add_argument_group("LSQ12 registration options",
     #                                  "Options for performing a pairwise, affine registration")
     p.add_argument("--lsq12-max-pairs", dest="lsq12_max_pairs",
                    type=parse_nullable_int, default=25,
-                   help="Maximum number of pairs to register together ('None' implies all pairs).  [Default = %(default)s]")
+                   help="Maximum number of pairs to register together ('None' implies all pairs). "
+                        "[Default = %(default)s]")
     p.add_argument("--lsq12-likefile", dest="lsq12_likeFile",
                    type=str, default=None,
                    help="Can optionally specify a like file for resampling at the end of pairwise "
-                   "alignment. Default is None, which means that the input file will be used. [Default = %(default)s]")
+                        "alignment. Default is None, which means that the input file will be used. [Default = %(default)s]")
     p.add_argument("--lsq12-protocol", dest="lsq12_protocol",
                    type=str, default=None,
                    help="Can optionally specify a registration protocol that is different from defaults. "
@@ -526,12 +568,29 @@ def _mk_lsq12_parser():
                         "[Default = %(default)s].")
     return p
 
+
 lsq12_parser = BaseParser(_mk_lsq12_parser(), "LSQ12")
 
-#FIXME: move to test/
-#mbm_p = CompoundParser([AnnotatedParser(parser=lsq6_parser, prefix='lsq6', namespace="lsq6"), AnnotatedParser(parser=lsq12_parser, namespace="lsq12", prefix="lsq12")])
-#two_mbms = CompoundParser([AnnotatedParser(parser=mbm_p, prefix="mbm1", namespace="mbm1"), AnnotatedParser(parser=mbm_p, prefix="mbm2")])  #, namespace="mbm2")])
-#four_mbms = CompoundParser([AnnotatedParser(parser=two_mbms, prefix="first-two-mbms", namespace="first-two"), AnnotatedParser(parser=two_mbms, prefix="next-two-mbms", namespace="next-two")])
-#result = with_parser(four_mbms)(["--first-two-mbms-mbm1-lsq12-max-pairs", "10"]) #(['--lsq6-rotation-interval=30'])
 
-#print(result)
+def _mk_nlin_parser(p: ArgParser):
+    group = p.add_argument_group("Nonlinear registration options",
+                                 "Options for performing a non-linear registration")
+    group.add_argument("--registration-method", dest="reg_method",
+                       default="mincANTS", type=str,
+                       help="Specify whether to use minctracc or mincANTS for non-linear registrations. "
+                            "[Default = %(default)s]")
+    group.add_argument("--nlin-protocol", dest="nlin_protocol",
+                       type=str, default=None,
+                       help="Can optionally specify a registration protocol that is different from defaults. "
+                            "Parameters must be specified as in either or the following examples: \n"
+                            "applications_testing/test_data/minctracc_example_nlin_protocol.csv \n"
+                            "applications_testing/test_data/mincANTS_example_nlin_protocol.csv \n"
+                            "[Default = %(default)s]")
+
+# FIXME: move to test/
+# mbm_p = CompoundParser([AnnotatedParser(parser=lsq6_parser, prefix='lsq6', namespace="lsq6"), AnnotatedParser(parser=lsq12_parser, namespace="lsq12", prefix="lsq12")])
+# two_mbms = CompoundParser([AnnotatedParser(parser=mbm_p, prefix="mbm1", namespace="mbm1"), AnnotatedParser(parser=mbm_p, prefix="mbm2")])  #, namespace="mbm2")])
+# four_mbms = CompoundParser([AnnotatedParser(parser=two_mbms, prefix="first-two-mbms", namespace="first-two"), AnnotatedParser(parser=two_mbms, prefix="next-two-mbms", namespace="next-two")])
+# result = with_parser(four_mbms)(["--first-two-mbms-mbm1-lsq12-max-pairs", "10"]) #(['--lsq6-rotation-interval=30'])
+
+# print(result)
