@@ -768,8 +768,9 @@ def mincANTS(source: MincAtom,
                                     resampled=resampled))
 
 
-# def lsq12_NLIN_build_model(...):
-#    raise NotImplemented
+def lsq12_nlin_build_model(imgs, lsq12_conf, nlin_conf, resolution):
+    lsq12_result = lsq12_pairwise(imgs=imgs, like=NotImplemented,
+                                  conf=lsq12_conf, lsq12_dir=NotImplemented)
 
 # def NLIN_build_model(imgs, initial_target, reg_method, nlin_dir, confs):
 #    functions = { 'mincANTS'  : mincANTS_NLIN,
@@ -819,11 +820,6 @@ def mincANTS_NLIN_build_model(imgs: List[MincAtom],
             mincaverage([xfm.resampled for xfm in xfms], name_wo_ext='nlin-%d' % (i + 1), output_dir=nlin_dir))
         avg_imgs.append(avg)
     return Result(stages=s, output=WithAvgImgs(output=xfms, avg_img=avg, avg_imgs=avg_imgs))
-
-
-def LSQ12_NLIN(source, target, conf):
-    raise NotImplementedError
-
 
 # some stuff for the registration chain.
 # The Subject class moved here since `intrasubject_registrations` was also here.

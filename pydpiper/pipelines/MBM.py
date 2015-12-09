@@ -8,12 +8,11 @@ from pydpiper.core.stages     import Result, Stages
 #from ..core.containers import Result
 #TODO fix up imports, naming, stuff in registration vs. pipelines, ...
 from pydpiper.minc.files        import MincAtom
-from pydpiper.pipelines.LSQ6    import LSQ6
-from pydpiper.minc.registration import LSQ12_NLIN_build_model
+from pydpiper.minc.registration import lsq6, lsq12_nlin_build_model
 from pydpiper.minc.analysis     import determinants_at_fwhms
 from pydpiper.core.arguments    import (lsq6_parser, lsq12_parser, nlin_parser, stats_parser, CompoundParser,
-                                        AnnotatedParser, application_parser, parse)
-from pydpiper.core.execution    import execute
+                                        AnnotatedParser, application_parser, parse, registration_parser)
+from pydpiper.execution.application    import execute
 
 # TODO abstract out some common configuration functionality and think about argparsing ...
 
@@ -41,16 +40,19 @@ def mbm(options):
     # TODO could also allow pluggable pipeline parts e.g. LSQ6 could be substituted out for the modified LSQ6
     # for the kidney tips, etc...
     pipeline_dir = os.path.join('.', options.pipeline_name)
-    #curr_dir = os.path.join(os.getcwd(), conf.pipeline_name, '/processed')
     imgs = [MincAtom(name, pipeline_sub_dir=pipeline_dir) for name in options.application.files]
 
     s = Stages()
-    
-    lsq6_result = s.defer(LSQ6(imgs=imgs, conf=options.lsq6,
-                               output_dir=pipeline_dir))
 
-    lsq12_nlin_result = s.defer(LSQ12_NLIN_build_model(
-        imgs=[xfm.resampled for xfm in lsq6_result],
+    resolution = options.registration.resolution
+
+    lsq6_result = s.defer(lsq6(imgs=imgs,
+                               target=NotImplemented,
+                               resolution=resolution,
+                               conf=options.lsq6))
+
+    lsq12_nlin_result = s.defer(lsq12_nlin_build_model(
+        imgs=[xfm.resampled for xfm in lsq6_result], resolution=resolution,
         lsq12_conf = options.lsq12_conf, nlin_conf=options.nlin_conf))
 
     determinants = [s.defer(determinants_at_fwhms(xfm, blur_fwhms=options.stats.stats_kernels))
@@ -67,7 +69,7 @@ mbm_parser = CompoundParser(
 if __name__ == "__main__":
     p = CompoundParser(
           [AnnotatedParser(parser=mbm_parser, namespace='mbm'),
-           AnnotatedParser(parser=application_parser, namespace='application')
+           AnnotatedParser(parser=application_parser, namespace='application'),
            AnnotatedParser(parser=registration_parser, namespace='registration')
            ])
     options = parse(p, sys.argv[1:])

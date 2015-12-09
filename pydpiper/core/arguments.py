@@ -123,7 +123,7 @@ def parse(parser: Parser, args: List[str]) -> Namespace:
                 ss = copy.deepcopy(new_a.option_strings)
                 for ix, s in enumerate(new_a.option_strings):
                     if s.startswith("--"):
-                        ss[ix] = "" + current_prefix + "-" + s[2:]  # "" was "-"
+                        ss[ix] = "-" + current_prefix + "" + s[2:]  # "" was "-"
                     else:
                         raise NotImplementedError(
                             "sorry, I only understand flags starting with `--` at the moment, but got %s" % s)
@@ -150,7 +150,7 @@ def parse(parser: Parser, args: List[str]) -> Namespace:
                 ss = copy.deepcopy(new_a.option_strings)
                 for ix, s in enumerate(new_a.option_strings):
                     if s.startswith("--"):
-                        ss[ix] = "" + current_prefix + "-" + s[2:]
+                        ss[ix] = "-" + current_prefix + "" + s[2:]
                     else:
                         raise NotImplementedError
                     new_a.option_strings = ss
@@ -545,22 +545,22 @@ def _mk_chain_parser():
 
 chain_parser = BaseParser(_mk_chain_parser(), "chain")
 
-
 # TODO: probably doesn't belong here ... do we need to move them again to the
 # modules where complementary code is?
 def _mk_lsq12_parser():
     p = ArgParser(add_help=False)
     # group = parser.add_argument_group("LSQ12 registration options",
     #                                  "Options for performing a pairwise, affine registration")
-    p.add_argument("--lsq12-max-pairs", dest="lsq12_max_pairs",
+    p.add_argument("--lsq12-max-pairs", dest="max_pairs",
                    type=parse_nullable_int, default=25,
                    help="Maximum number of pairs to register together ('None' implies all pairs). "
                         "[Default = %(default)s]")
-    p.add_argument("--lsq12-likefile", dest="lsq12_likeFile",
+    p.add_argument("--lsq12-likefile", dest="like_file",
                    type=str, default=None,
-                   help="Can optionally specify a like file for resampling at the end of pairwise "
-                        "alignment. Default is None, which means that the input file will be used. [Default = %(default)s]")
-    p.add_argument("--lsq12-protocol", dest="lsq12_protocol",
+                   help="Can optionally specify a 'like'-file for resampling at the end of pairwise "
+                        "alignment. Default is None, which means that the input file will be used. "
+                        "[Default = %(default)s]")
+    p.add_argument("--lsq12-protocol", dest="protocol",
                    type=str, default=None,
                    help="Can optionally specify a registration protocol that is different from defaults. "
                         "Parameters must be specified as in the following example: \n"
@@ -586,11 +586,6 @@ def _mk_nlin_parser(p: ArgParser):
                             "applications_testing/test_data/minctracc_example_nlin_protocol.csv \n"
                             "applications_testing/test_data/mincANTS_example_nlin_protocol.csv \n"
                             "[Default = %(default)s]")
+    return p
 
-# FIXME: move to test/
-# mbm_p = CompoundParser([AnnotatedParser(parser=lsq6_parser, prefix='lsq6', namespace="lsq6"), AnnotatedParser(parser=lsq12_parser, namespace="lsq12", prefix="lsq12")])
-# two_mbms = CompoundParser([AnnotatedParser(parser=mbm_p, prefix="mbm1", namespace="mbm1"), AnnotatedParser(parser=mbm_p, prefix="mbm2")])  #, namespace="mbm2")])
-# four_mbms = CompoundParser([AnnotatedParser(parser=two_mbms, prefix="first-two-mbms", namespace="first-two"), AnnotatedParser(parser=two_mbms, prefix="next-two-mbms", namespace="next-two")])
-# result = with_parser(four_mbms)(["--first-two-mbms-mbm1-lsq12-max-pairs", "10"]) #(['--lsq6-rotation-interval=30'])
-
-# print(result)
+nlin_parser = BaseParser(_mk_nlin_parser(ArgParser(add_help=False)), group_name='nlin')

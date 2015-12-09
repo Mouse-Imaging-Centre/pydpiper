@@ -1,6 +1,4 @@
 #import shlex
-from atom.api import Atom, Bool, Str, Enum
-
 #TODO s/MincAtom/MincFile/g
 
 from pydpiper.core.stages       import CmdStage, Result, Stages
@@ -8,7 +6,7 @@ from pydpiper.core.util         import raise_
 from pydpiper.minc.files        import MincAtom
 from pydpiper.minc.registration import multilevel_minctracc, nu_correct, inormalize
 
-class LSQ6Conf(Atom):
+class LSQ6Conf(object):
     initial_transform = Enum(None, 'identity')
     init_model = Str()
     nu_correct = Bool(True)
