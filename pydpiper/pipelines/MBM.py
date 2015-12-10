@@ -1,17 +1,17 @@
-#!/usr/bin/env python2.7
+#!/usr/bin/env python3
 
 import os.path
 import configargparse
 import sys
 
-from pydpiper.core.stages     import Result, Stages
-#from ..core.containers import Result
+from pydpiper.core.stages       import Result, Stages
 #TODO fix up imports, naming, stuff in registration vs. pipelines, ...
 from pydpiper.minc.files        import MincAtom
-from pydpiper.minc.registration import lsq6, lsq12_nlin_build_model
+from pydpiper.minc.registration import lsq6_nuc_inorm, lsq12_nlin_build_model
 from pydpiper.minc.analysis     import determinants_at_fwhms
 from pydpiper.core.arguments    import (lsq6_parser, lsq12_parser, nlin_parser, stats_parser, CompoundParser,
-                                        AnnotatedParser, application_parser, parse, registration_parser)
+                                        AnnotatedParser, application_parser, parse, registration_parser,
+                                        execution_parser)
 from pydpiper.execution.application    import execute
 
 # TODO abstract out some common configuration functionality and think about argparsing ...
@@ -39,21 +39,22 @@ def mbm(options):
 
     # TODO could also allow pluggable pipeline parts e.g. LSQ6 could be substituted out for the modified LSQ6
     # for the kidney tips, etc...
-    pipeline_dir = os.path.join('.', options.pipeline_name)
+    pipeline_dir = os.path.join('.', options.application.pipeline_name)
     imgs = [MincAtom(name, pipeline_sub_dir=pipeline_dir) for name in options.application.files]
 
     s = Stages()
 
     resolution = options.registration.resolution
 
-    lsq6_result = s.defer(lsq6(imgs=imgs,
-                               target=NotImplemented,
-                               resolution=resolution,
-                               conf=options.lsq6))
+    lsq6_result = s.defer(lsq6_nuc_inorm(imgs=imgs,
+                                         resolution=resolution,
+                          # FIXME: why do we have to call get_registration_targets *outside* of lsq6_nuc_inorm?
+                                         registration_targets=NotImplemented,
+                                         lsq6_options=options.mbm.lsq6))
 
     lsq12_nlin_result = s.defer(lsq12_nlin_build_model(
         imgs=[xfm.resampled for xfm in lsq6_result], resolution=resolution,
-        lsq12_conf = options.lsq12_conf, nlin_conf=options.nlin_conf))
+        lsq12_conf=options.mbm.lsq12, nlin_conf=options.mbm.nlin))
 
     determinants = [s.defer(determinants_at_fwhms(xfm, blur_fwhms=options.stats.stats_kernels))
                     for xfm in lsq12_nlin_result.xfms]
@@ -70,7 +71,8 @@ if __name__ == "__main__":
     p = CompoundParser(
           [AnnotatedParser(parser=mbm_parser, namespace='mbm'),
            AnnotatedParser(parser=application_parser, namespace='application'),
-           AnnotatedParser(parser=registration_parser, namespace='registration')
+           AnnotatedParser(parser=registration_parser, namespace='registration'),
+           AnnotatedParser(parser=execution_parser, namespace='execution')
            ])
     options = parse(p, sys.argv[1:])
     stages, _ = mbm(options)

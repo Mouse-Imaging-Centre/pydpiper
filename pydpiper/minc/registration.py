@@ -3,6 +3,7 @@ import random
 import shlex
 import subprocess
 import sys
+
 from typing import Any, cast, Dict, Generic, Iterable, List, Optional, Set, Tuple, TypeVar
 
 from pydpiper.core.files import FileAtom
@@ -249,15 +250,13 @@ def nu_estimate(src: MincAtom,
             raise ValueError(
                 "The value for subject_matter in nu_estimate should be either 'human' or 'mousebrain'. It is: '%s.'" % subject_matter)
 
-    mask_for_nu_est = src.mask.path if src.mask else None
-    if mask:
-        mask_for_nu_est = mask.path
+    mask_for_nu_est = src.mask if src.mask else mask
 
     cmd = CmdStage(inputs=(src,), outputs=(out,),
                    cmd=shlex.split(
                        "nu_estimate -clobber -iterations 100 -stop 0.001 -fwhm 0.15 -shrink 4 -lambda 5.0e-02")
                        + ["-distance", str(distance_value)] + (
-                       ['-mask', mask_for_nu_est] if mask_for_nu_est else []) + [src.path, out.path])
+                       ['-mask', mask_for_nu_est.path] if mask_for_nu_est else []) + [src.path, out.path])
     return Result(stages=Stages([cmd]), output=out)
 
 
@@ -308,17 +307,42 @@ def inormalize(src: MincAtom,
     """
     out = src.newname_with_suffix('_inorm')
 
-    mask_for_inormalize = mask
-    if not mask:
-        # by default the mask in a MincAtom is None, so
-        # we can safely assign it
-        mask_for_inormalize = src.mask
+    mask_for_inormalize = mask or src.mask
 
     cmd = CmdStage(inputs=(src,), outputs=(out,),
                    cmd=shlex.split('inormalize -clobber -const %s -%s' % (conf.const, conf.method))
                        + (['-mask', mask_for_inormalize.path] if mask_for_inormalize else [])
                        + [src.path, out.path])
     return Result(stages=Stages([cmd]), output=out)
+
+
+def xfmaverage(xfms: List[XfmAtom],
+               output_dir: str) -> Result[XfmAtom]:
+    if len(xfms) == 0:
+        raise ValueError("`xfmaverage` arg `xfms` is empty (can't average zero files)")
+
+    # TODO: the path here is probably not right...
+    outf = XfmAtom(name=os.path.join(output_dir, 'transforms/average.xfm'), orig_name=None)
+    stage = CmdStage(inputs=tuple(xfms), outputs=(outf,),
+                     cmd=["xfmaverage"] + [x.path for x in xfms] + [outf.path])
+    return Result(stages=Stages([stage]), output=outf)
+
+
+def xfminvert(xfm: XfmAtom) -> Result[XfmAtom]:
+    inv_xfm = xfm.newname_with_suffix('_inverted')  # type: XfmAtom
+    s = CmdStage(inputs=(xfm,), outputs=(inv_xfm,),
+                 cmd=['xfminvert', '-clobber', xfm.path, inv_xfm.path])
+    return Result(stages=Stages([s]), output=inv_xfm)
+
+
+# TODO: find better names for xfminvert/invert
+def invert(xfm: XfmHandler) -> Result[XfmHandler]:
+    """xfminvert lifted to work on XfmHandlers instead of MincAtoms"""
+    s = Stages()
+    inv_xfm = s.defer(xfminvert(xfm.xfm))  # type: XfmAtom
+    return Result(stages=s,
+                  output=XfmHandler(xfm=inv_xfm,
+                                    source=xfm.target, target=xfm.source, resampled=None))
 
 
 # TODO: a lot of these things were Instance((int,float)) so that
@@ -652,17 +676,17 @@ def minctracc(source: MincAtom,
                                     resampled=resampled))
 
 
-class SimilarityMetricConf(NamedTuple('SimilarityMetricConf',
-                                      [("metric", str),
-                                       ("weight", float),
-                                       ("blur_resolution", float),
-                                       ("radius_or_bins", float),
-                                       ("use_gradient_image", bool)])):
-    def replace(self, **kwargs) -> 'SimilarityMetricConf':
-        return self._replace(**kwargs)  # type: ignore
-        # TODO: actually want to add this method to *all* namedtuples
-        # (or at least teach mypy about _replace)
-        # TODO: note kwargs isn't checked here -- what to do?
+SimilarityMetricConf = NamedTuple('SimilarityMetricConf',
+                                  [("metric", str),
+                                   ("weight", float),
+                                   ("blur_resolution", float),
+                                   ("radius_or_bins", float),
+                                   ("use_gradient_image", bool)])
+#    def replace(self, **kwargs) -> 'SimilarityMetricConf':
+ #       return self._replace(**kwargs)  # type: ignore
+#        # TODO: actually want to add this method to *all* namedtuples
+ #       # (or at least teach mypy about _replace)
+#        # TODO: note kwargs isn't checked here -- what to do?
 
 
 default_similarity_metric_conf = SimilarityMetricConf(
@@ -767,11 +791,6 @@ def mincANTS(source: MincAtom,
                                     xfm=out_xfm,
                                     resampled=resampled))
 
-
-def lsq12_nlin_build_model(imgs, lsq12_conf, nlin_conf, resolution):
-    lsq12_result = lsq12_pairwise(imgs=imgs, like=NotImplemented,
-                                  conf=lsq12_conf, lsq12_dir=NotImplemented)
-
 # def NLIN_build_model(imgs, initial_target, reg_method, nlin_dir, confs):
 #    functions = { 'mincANTS'  : mincANTS_NLIN,
 #                  'minctracc' : minctracc_NLIN }
@@ -793,6 +812,71 @@ class WithAvgImgs(Generic[T]):
         self.avg_img = avg_img
 
 
+def minctracc_NLIN_build_model(imgs: List[MincAtom],
+                               initial_target: MincAtom,
+                               confs: List[Any],
+                               nlin_dir: str) -> Result[WithAvgImgs[List[XfmHandler]]]:  # TODO: add resolution parameter:
+    if len(confs) == 0:
+        raise ValueError("No configurations supplied ...")
+    s = Stages()
+    avg = initial_target
+    avg_imgs = []
+    for i, conf in enumerate(confs, start=1):
+        xfms = [s.defer(minctracc(source=img, target=avg, conf=conf, generation=i, resample_source=True))
+                for img in imgs]
+        avg = s.defer(mincaverage([xfm.resampled for xfm in xfms], name_wo_ext='nlin-%d' % i, output_dir=nlin_dir))
+        avg_imgs.append(avg)
+    return Result(stages=s, output=WithAvgImgs(output=xfms, avg_img=avg, avg_imgs=avg_imgs))
+
+
+def build_model_using(registration_proc):
+    def build_model(imgs: List[MincAtom],
+                    initial_target: MincAtom,
+                    confs: List[Any],
+                    registration_proc,
+                    nlin_dir: str) -> Result[WithAvgImgs[List[XfmHandler]]]:
+          if len(confs) == 0:
+              raise ValueError("No configurations supplied ...")
+          s = Stages()
+          avg = initial_target
+          avg_imgs = []
+          for i, conf in enumerate(confs, start=1):
+              xfms = [s.defer(registration_proc(source=img, target=avg, conf=conf, generation=i, resample_source=True))
+                      for img in imgs]
+              avg = s.defer(mincaverage([xfm.resampled for xfm in xfms], name_wo_ext='nlin-%d' % i, output_dir=nlin_dir))
+              avg_imgs.append(avg)
+          return Result(stages=s, output=WithAvgImgs(output=xfms, avg_img=avg, avg_imgs=avg_imgs))
+    return build_model
+
+def general_build_model(imgs: List[MincAtom],
+                        initial_target: MincAtom,
+                        registration_proc,
+                        confs: List[MincANTSConf],
+                        nlin_dir: str,
+                        mincaverage = mincaverage) -> Result[WithAvgImgs[List[XfmHandler]]]:
+    """
+    This functions runs a hierarchical mincANTS registration on the input
+    images (imgs) creating an unbiased average.
+    The mincANTS configuration `confs` that is passed in should be
+    a list of configurations for each of the levels/generations.
+    After each round of registrations, an average is created out of the
+    resampled input files, which is then used as the target for the next
+    round of registrations.
+    """
+    if len(confs) == 0:
+        raise ValueError("No configurations supplied ...")
+    s = Stages()
+    avg = initial_target
+    avg_imgs = []  # type: List[MincAtom]
+    for i, conf in enumerate(confs, start=1):
+        xfms = [s.defer(registration_proc(source=img, target=avg, conf=conf, generation=i, resample_source=True))
+                for img in imgs]
+        avg = s.defer(mincaverage([xfm.resampled for xfm in xfms], name_wo_ext='nlin-%d' % i, output_dir=nlin_dir))
+        avg_imgs.append(avg)
+    return Result(stages=s, output=WithAvgImgs(output=xfms, avg_img=avg, avg_imgs=avg_imgs))
+
+mincANTS_NLIN_build_model = build_model_using(mincANTS)
+
 def mincANTS_NLIN_build_model(imgs: List[MincAtom],
                               initial_target: MincAtom,
                               confs: List[MincANTSConf],
@@ -812,12 +896,10 @@ def mincANTS_NLIN_build_model(imgs: List[MincAtom],
     s = Stages()
     avg = initial_target
     avg_imgs = []  # type: List[MincAtom]
-    for i, conf in enumerate(confs):
-        xfms = [s.defer(mincANTS(source=img, target=avg, conf=conf, generation=i+1, resample_source=True))
+    for i, conf in enumerate(confs, start=1):
+        xfms = [s.defer(mincANTS(source=img, target=avg, conf=conf, generation=i, resample_source=True))
                 for img in imgs]
-        # number the generations starting at 1, enumerate will start at 0
-        avg = s.defer(
-            mincaverage([xfm.resampled for xfm in xfms], name_wo_ext='nlin-%d' % (i + 1), output_dir=nlin_dir))
+        avg = s.defer(mincaverage([xfm.resampled for xfm in xfms], name_wo_ext='nlin-%d' % i, output_dir=nlin_dir))
         avg_imgs.append(avg)
     return Result(stages=s, output=WithAvgImgs(output=xfms, avg_img=avg, avg_imgs=avg_imgs))
 
@@ -974,7 +1056,7 @@ def multilevel_pairwise_minctracc(imgs: List[MincAtom],
         random.seed(tuple([img.path for img in imgs]))  # TODO this should be even higher in the program text ...
         target_imgs = random.sample(imgs, max_pairs + 1)
         return Result(stages=p, output=[avg_xfm_from(img, target_imgs=random.sample(imgs, max_pairs))
-                                        for img in imgs])  # might use one fewer image ...
+                                        for img in imgs])  # FIXME might use one fewer image than `max_pairs`...
 
 
 # MultilevelMinctraccConf = NamedTuple('MultilevelMinctraccConf',
@@ -985,7 +1067,7 @@ def multilevel_pairwise_minctracc(imgs: List[MincAtom],
 # OR:
 
 
-# TODO move LSQ12 stuff to an LSQ12 file
+# TODO move LSQ12 stuff to an LSQ12 file?
 # LSQ12_default_conf = MultilevelMinctraccConf(transform_type='lsq12', resolution = NotImplemented,
 #                                             single_gen_confs = [])
 
@@ -1035,33 +1117,17 @@ def lsq12_pairwise_on_dictionaries(imgs: Dict[K, MincAtom],
                                                avg_img=res.avg_img))
 
 
-def xfmaverage(xfms: List[XfmAtom],
-               output_dir: str) -> Result[XfmAtom]:
-    if len(xfms) == 0:
-        raise ValueError("`xfmaverage` arg `xfms` is empty (can't average zero files)")
-
-    # TODO: the path here is probably not right...
-    outf = XfmAtom(name=os.path.join(output_dir, 'transforms/average.xfm'), orig_name=None)
-    stage = CmdStage(inputs=tuple(xfms), outputs=(outf,),
-                     cmd=["xfmaverage"] + [x.path for x in xfms] + [outf.path])
-    return Result(stages=Stages([stage]), output=outf)
+def lsq12_nlin_build_model(imgs       : List[MincAtom],
+                           lsq12_conf : LSQ12Conf,
+                           nlin_conf,
+                           resolution : float) -> Result[List[XfmHandler]]:
+    lsq12_result = lsq12_pairwise(imgs=imgs, like=NotImplemented,
+                                  conf=lsq12_conf, lsq12_dir=NotImplemented)
+    nlin_result  = build_model_using([xfm.target for xfm in lsq12_result],
+                                 conf=nlin_conf)
 
 
-def xfminvert(xfm: XfmAtom) -> Result[XfmAtom]:
-    inv_xfm = xfm.newname_with_suffix('_inverted')  # type: XfmAtom
-    s = CmdStage(inputs=(xfm,), outputs=(inv_xfm,),
-                 cmd=['xfminvert', '-clobber', xfm.path, inv_xfm.path])
-    return Result(stages=Stages([s]), output=inv_xfm)
 
-
-# TODO: find better names for xfminvert/invert
-def invert(xfm: XfmHandler) -> Result[XfmHandler]:
-    """xfminvert lifted to work on XfmHandlers instead of MincAtoms"""
-    s = Stages()
-    inv_xfm = s.defer(xfminvert(xfm.xfm))  # type: XfmAtom
-    return Result(stages=s,
-                  output=XfmHandler(xfm=inv_xfm,
-                                    source=xfm.target, target=xfm.source, resampled=None))
 
 
 def can_read_MINC_file(filename: str) -> bool:
@@ -1257,8 +1323,7 @@ def lsq6_nuc_inorm(imgs: List[MincAtom],
     s = Stages()
 
     # run the actual 6 parameter registration
-    init_target = registration_targets.registration_standard if not registration_targets.registration_native \
-        else registration_targets.registration_native
+    init_target = registration_targets.registration_native or registration_targets.registration_standard
     source_imgs_to_lsq6_target_xfms = s.defer(lsq6(imgs=imgs, target=init_target,
                                                    resolution=resolution, conf=lsq6_options))
     # lsq6_options.lsq6_method, resolution,
@@ -1323,13 +1388,12 @@ def lsq6_nuc_inorm(imgs: List[MincAtom],
         # TODO: this is still static
         inorm_conf = default_inormalize_conf
         input_imgs_for_inorm = nuc_imgs_in_native_space if nuc_imgs_in_native_space else imgs
-        inorm_imgs_in_native_space = [s.defer(inormalize(src=nuc_img,
-                                                         conf=inorm_conf,
-                                                         mask=native_img_mask))
-                                      for nuc_img, native_img_mask in zip(input_imgs_for_inorm,
-                                                                          masks_in_native_space if masks_in_native_space else [
-                                                                                                                                  None] * len(
-                                                                              input_imgs_for_inorm))]
+        inorm_imgs_in_native_space = (
+            [s.defer(inormalize(src=nuc_img,
+                                conf=inorm_conf,
+                                mask=native_img_mask))
+             for nuc_img, native_img_mask in zip(input_imgs_for_inorm,
+                                                 masks_in_native_space or [None] * len(input_imgs_for_inorm))])
 
     # the only thing left to check is whether we have to resample the NUC/inorm images to LSQ6 space:
     final_resampled_lsq6_files = imgs_in_lsq6_space
@@ -1337,11 +1401,11 @@ def lsq6_nuc_inorm(imgs: List[MincAtom],
         # the final resampled files should be the normalized files resampled with the 
         # lsq6 transformation
         final_resampled_lsq6_files = [s.defer(mincresample(
-            img=inorm_img,
-            xfm=xfm_to_lsq6,
-            like=registration_targets.registration_standard,
-            interpolation=Interpolation.sinc,
-            new_name_wo_ext=inorm_img.filename_wo_ext + "resampled_lsq6"))
+                                                img=inorm_img,
+                                                xfm=xfm_to_lsq6,
+                                                like=registration_targets.registration_standard,
+                                                interpolation=Interpolation.sinc,
+                                                new_name_wo_ext=inorm_img.filename_wo_ext + "resampled_lsq6"))
                                       for inorm_img, xfm_to_lsq6
                                       in zip(inorm_imgs_in_native_space,
                                              xfms_to_final_target_space)]
@@ -1474,7 +1538,7 @@ def verify_correct_lsq6_target_options(init_model: str,
                          "--lsq6-target, --init-model, --bootstrap. Don't know which "
                          "target to use...\n")
 
-
+# TODO: why is this separate
 def get_registration_targets(init_model: str,
                              lsq6_target: str,
                              bootstrap: bool,

@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 import csv
 from collections import defaultdict
@@ -126,7 +126,7 @@ def chain(options):
             # as such we will call lsq6_nuc_inorm for each file individually. This returns
             # a list of XfmHandlers, however, given that we pass the MincAtoms one by one,
             # we can simply extract the first (and only) element from the list.
-            # s,defer(...)[0]
+            # s.defer(...)[0]
             xfm_handlers_dict_lsq6 = map_over_time_pt_dict_in_Subject(
                                          lambda subj_atom:  s.defer(lsq6_nuc_inorm([subj_atom],
                                                                                    registration_targets,
@@ -191,9 +191,9 @@ def chain(options):
             some_temp_target = s.defer(mincaverage(imgs=list(intersubj_imgs.values()),
                                            name_wo_ext="avg_of_input_files",
                                            output_dir=pipeline_nlin_common_dir))
-        conf1 = mincANTS_default_conf._replace(default_resolution=options.registration.resolution,
-                                               iterations="100x100x100x0")
-        conf2 = mincANTS_default_conf._replace(default_resolution=options.registration.resolution)
+        conf1 = mincANTS_default_conf.replace(default_resolution=options.registration.resolution,
+                                              iterations="100x100x100x0")
+        conf2 = mincANTS_default_conf.replace(default_resolution=options.registration.resolution)
         full_hierarchy = [conf1, conf2]
         intersubj_xfms = s.defer(mincANTS_NLIN_build_model(imgs=list(intersubj_imgs.values()),
                                                    initial_target=some_temp_target, # this doesn't make sense yet
