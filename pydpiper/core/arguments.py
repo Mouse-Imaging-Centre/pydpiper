@@ -64,7 +64,7 @@ class AnnotatedParser(object):
                  parser: Parser,
                  namespace: str,
                  # this causes some problems if not supplied - you get '---stuff-like-this'
-                 prefix: str = "", #None,  # = "",
+                 prefix: str = None,  # = "",
                  cast: Callable[[Any], Any] = None) -> None:  # TODO: remove Any
         self.parser = parser  # type: Parser
         self.prefix = prefix  # type: str
@@ -124,7 +124,7 @@ def parse(parser: Parser, args: List[str]) -> Namespace:
                 ss = copy.deepcopy(new_a.option_strings)
                 for ix, s in enumerate(new_a.option_strings):
                     if s.startswith("--"):
-                        ss[ix] = "-" + current_prefix + "" + s[2:]  # "" was "-"
+                        ss[ix] = "-" + current_prefix + "-" + s[2:]  # "" was "-"
                     else:
                         raise NotImplementedError(
                             "sorry, I only understand flags starting with `--` at the moment, but got %s" % s)
@@ -132,7 +132,7 @@ def parse(parser: Parser, args: List[str]) -> Namespace:
                 g._add_action(new_a)
         elif isinstance(p, CompoundParser):
             for q in p.parsers:
-                go_1(q.parser, current_prefix + '-' + q.prefix)
+                go_1(q.parser, current_prefix + (('-' + q.prefix) if q.prefix is not None else ''))
         else:
             raise TypeError(
                 "parser %s wasn't a %s (%s or %s) but a %s" % (p, Parser, BaseParser, CompoundParser, p.__class__))
@@ -151,7 +151,7 @@ def parse(parser: Parser, args: List[str]) -> Namespace:
                 ss = copy.deepcopy(new_a.option_strings)
                 for ix, s in enumerate(new_a.option_strings):
                     if s.startswith("--"):
-                        ss[ix] = "-" + current_prefix + "" + s[2:]
+                        ss[ix] = "-" + current_prefix + "-" + s[2:]
                     else:
                         raise NotImplementedError
                     new_a.option_strings = ss
@@ -171,7 +171,8 @@ def parse(parser: Parser, args: List[str]) -> Namespace:
                     # which aren't unpacked correctly -- better to use a namedtuple
                     # (making all arguments keyword-only also works, but then you have to supply
                     # often meaningless defaults in the __init__)
-                go_2(q.parser, current_prefix=current_prefix + "-" + q.prefix, current_ns=ns)
+                go_2(q.parser, current_prefix=current_prefix + (('-' + q.prefix) if q.prefix is not None else ''),
+                     current_ns=ns)
                 # TODO current_ns or current_namespace or ns or namespace?
         else:
             raise TypeError("parser %s wasn't a %s (%s or %s) but a %s" %
