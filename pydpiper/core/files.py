@@ -3,28 +3,28 @@ import os
 
 from typing import Callable, Union
 
-from .util import explode, NotProvided
+from pydpiper.core.util import explode, NotProvided
 
 class FileAtom(object):
     """
-        What is stored:
+    What is stored:
         self.orig_path -- original input file, full file name and path (/path/filename.ext), can be None
         self.dir
         self.filename_wo_ext
         self.ext
-
-        self.pipeline_sub_dir - in pipeline terms, this would be the _lsq6, _lsq12, _nlin or
-                            _processed directory. If not provided, the current working directory
-                            is used.
-        self.output_sub_dir - in terms of the old code, this is the sub directory that is the 
-                            main output directory for this file. For instance for an input file
-                            called img_1.mnc, the value for this would/could be "img_1". If the 
-                            output_sub_dir is not provided, the self.filename_wo_ext is used. 
-                          
-                          
+    The last two fields (and their corresponding constructor parameters) are used only when creating derived
+    files from this file via its newname_* methods:
+        self.pipeline_sub_dir - a path to a directory to act as a sort of root directory for deriving new
+                            files from this one.  The file need not be inside its pipeline_sub_dir.
+                            If not provided, the current working directory is used.  (MICe pipeline examples:
+                            the _lsq6, _lsq12, _nlin, and _processed directories.)
+        self.output_sub_dir - a relative path to a directory in which to create new files derived from the file
+                            (inside of the pipeline_sub_dir).  The value of this field is inherited
+                            unchanged by the new file.  If `output_sub_dir` is not provided when constructing
+                            a FileAtom, its filename_wo_ext is used; for instance,
+                            if the filename is "relative/img_1.mnc", the output_sub_dir becomes "img_1/".
     """
-    # TODO this documentation should be made self-explanatory rather than referring to the old code
-    # or assumed pipeline structure (unless this is documented elsewhere)
+    # TODO this documentation should still be more clear and explain why you'd want to use these features/fields
     
     def __init__(self,
                  name             : str,

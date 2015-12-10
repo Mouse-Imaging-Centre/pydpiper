@@ -63,7 +63,8 @@ class AnnotatedParser(object):
     def __init__(self,
                  parser: Parser,
                  namespace: str,
-                 prefix: str = "",
+                 # this causes some problems if not supplied - you get '---stuff-like-this'
+                 prefix: str = "", #None,  # = "",
                  cast: Callable[[Any], Any] = None) -> None:  # TODO: remove Any
         self.parser = parser  # type: Parser
         self.prefix = prefix  # type: str
@@ -131,7 +132,7 @@ def parse(parser: Parser, args: List[str]) -> Namespace:
                 g._add_action(new_a)
         elif isinstance(p, CompoundParser):
             for q in p.parsers:
-                go_1(q.parser, current_prefix + "-" + q.prefix)
+                go_1(q.parser, current_prefix + '-' + q.prefix)
         else:
             raise TypeError(
                 "parser %s wasn't a %s (%s or %s) but a %s" % (p, Parser, BaseParser, CompoundParser, p.__class__))

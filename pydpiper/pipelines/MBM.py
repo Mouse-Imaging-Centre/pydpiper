@@ -7,7 +7,7 @@ import sys
 from pydpiper.core.stages       import Result, Stages
 #TODO fix up imports, naming, stuff in registration vs. pipelines, ...
 from pydpiper.minc.files        import MincAtom
-from pydpiper.minc.registration import lsq6_nuc_inorm, lsq12_nlin_build_model
+from pydpiper.minc.registration import lsq6_nuc_inorm, lsq12_nlin_build_model, get_registration_targets
 from pydpiper.minc.analysis     import determinants_at_fwhms
 from pydpiper.core.arguments    import (lsq6_parser, lsq12_parser, nlin_parser, stats_parser, CompoundParser,
                                         AnnotatedParser, application_parser, parse, registration_parser,
@@ -46,10 +46,18 @@ def mbm(options):
 
     resolution = options.registration.resolution
 
+    output_dir = pipeline_name = options.application.pipeline_name
+
+    # FIXME: why do we have to call get_registration_targets *outside* of lsq6_nuc_inorm?
+    registration_targets = get_registration_targets(init_model=options.mbm.lsq6.init_model,
+                                                    lsq6_target=options.mbm.lsq6.lsq6_target,
+                                                    bootstrap=options.mbm.lsq6.bootstrap,
+                                                    output_dir=output_dir,
+                                                    pipeline_name=pipeline_name)
+
     lsq6_result = s.defer(lsq6_nuc_inorm(imgs=imgs,
                                          resolution=resolution,
-                          # FIXME: why do we have to call get_registration_targets *outside* of lsq6_nuc_inorm?
-                                         registration_targets=NotImplemented,
+                                         registration_targets=registration_targets,
                                          lsq6_options=options.mbm.lsq6))
 
     lsq12_nlin_result = s.defer(lsq12_nlin_build_model(

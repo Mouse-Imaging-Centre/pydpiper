@@ -5,7 +5,6 @@ from collections import defaultdict
 import os
 import sys
 
-from argparse import Namespace
 from typing import Any, Callable, Dict, List, Tuple, TypeVar
 
 from pydpiper.minc.analysis import determinants_at_fwhms, invert
@@ -16,8 +15,6 @@ from pydpiper.minc.registration import (Subject, Stages, mincANTS_NLIN_build_mod
                                         lsq6_nuc_inorm, get_resolution_from_file, XfmHandler)
 from pydpiper.minc.files import MincAtom
 from pydpiper.execution.application import execute  # type: ignore
-#from pydpiper.pipelines.LSQ6 import lsq6
-#from configargparse import ArgParser
 from pydpiper.core.arguments import (application_parser,
                                      chain_parser,
                                      execution_parser,
