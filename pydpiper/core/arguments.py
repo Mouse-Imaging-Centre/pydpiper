@@ -14,13 +14,7 @@ from pydpiper.core.util import raise_, AutoEnum, NamedTuple
 # TODO: should the pipeline-specific argument handling be located here
 # or in that pipeline's module?  Makes more sense (general stuff
 # can still go here)
-
-# TODO: some of this stuff doesn't belong in core/ ...
-# Similarly, these enums probably don't belong here.
-class InputSpace(AutoEnum):
-    native = ()
-    lsq6 = ()
-    lsq12 = ()
+from pydpiper.minc.registration import InputSpace
 
 
 class LSQ6Method(AutoEnum):
@@ -170,13 +164,16 @@ def parse(parser: Parser, args: List[str]) -> Namespace:
                     # TODO could also allow, say, a None
                 else:
                     # gross but how to write n-ary identity fn that behaves sensibly on single arg??
-                    current_ns.__dict__[q.namespace] = ns  # q.cast(**vars(ns)) if q.cast else ns
+                    current_ns.__dict__[q.namespace] = ns #q.cast(**vars(ns)) if q.cast else ns
                     # FIXME this casting doesn't work for configurations with positional arguments,
                     # which aren't unpacked correctly -- better to use a namedtuple
                     # (making all arguments keyword-only also works, but then you have to supply
                     # often meaningless defaults in the __init__)
                 go_2(q.parser, current_prefix=current_prefix + (('-' + q.prefix) if q.prefix is not None else ''),
                      current_ns=ns)
+                # what happens here is type checking. If a cast function is provided, we're populating some
+                # configuration with the options we now have in the namespace to ensure that the types are all correct
+                current_ns.__dict__[q.namespace] = q.cast(**vars(current_ns.__dict__[q.namespace])) if q.cast else current_ns.__dict__[q.namespace]
                 # TODO current_ns or current_namespace or ns or namespace?
         else:
             raise TypeError("parser %s wasn't a %s (%s or %s) but a %s" %
@@ -356,12 +353,11 @@ def _mk_registration_parser(p: ArgParser) -> ArgParser:
 
 p = ArgParser
 
-registration_parser = BaseParser(_mk_registration_parser(ArgParser(add_help=False)), "general")
+registration_parser = BaseParser(_mk_registration_parser(ArgParser(add_help=False)), "registration")
 
 # TODO: where should this live?
 
-RegistrationConf = NamedTuple("RegistrationConf", [("input_space", InputSpace),
-                                                   ("resolution", float)])
+
 
 
 # class RegistrationConf(object):
@@ -479,13 +475,6 @@ def _mk_lsq6_parser():
 
 
 lsq6_parser = BaseParser(_mk_lsq6_parser(), "LSQ6")
-
-
-# TODO: where should this live?
-class LSQ6Conf(object):
-    def __init__(self, lsq6_method):
-        self.lsq6_method = lsq6_method
-        # more to be added...
 
 
 def _mk_stats_parser():

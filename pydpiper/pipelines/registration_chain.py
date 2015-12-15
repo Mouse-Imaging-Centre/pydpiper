@@ -12,7 +12,8 @@ from pydpiper.core.stages import Result
 from pydpiper.minc.registration import (Subject, Stages, mincANTS_NLIN_build_model, mincANTS_default_conf,
                                         MincANTSConf, mincANTS, intrasubject_registrations, mincaverage, 
                                         concat, check_MINC_input_files, get_registration_targets,
-                                        lsq6_nuc_inorm, get_resolution_from_file, XfmHandler)
+                                        lsq6_nuc_inorm, get_resolution_from_file, XfmHandler, LSQ6Conf,
+                                        RegistrationConf, InputSpace,)
 from pydpiper.minc.files import MincAtom
 from pydpiper.execution.application import execute  # type: ignore
 from pydpiper.core.arguments import (application_parser,
@@ -22,9 +23,7 @@ from pydpiper.core.arguments import (application_parser,
                                      registration_parser,
                                      stats_parser,
                                      parse,
-                                     AnnotatedParser, BaseParser, CompoundParser,
-                                     RegistrationConf,
-                                     InputSpace, LSQ6Method)
+                                     AnnotatedParser, BaseParser, CompoundParser, LSQ6Method)
 
 
 # TODO (general for all option records, not just for the registration chain):
@@ -411,16 +410,16 @@ if __name__ == "__main__":
           [AnnotatedParser(parser=execution_parser, namespace='execution'),
            AnnotatedParser(parser=application_parser, namespace='application'),
            AnnotatedParser(parser=registration_parser, namespace='registration', cast=RegistrationConf),
-           AnnotatedParser(parser=chain_parser, namespace='chain'), # cast=ChainConf),
-           AnnotatedParser(parser=lsq6_parser, namespace='lsq6'),
+           AnnotatedParser(parser=lsq6_parser, namespace='lsq6', cast=LSQ6Conf),
            AnnotatedParser(parser=lsq12_parser, namespace='lsq12'), # should be MBM or build_model ...
            #AnnotatedParser(parser=BaseParser(addLSQ12ArgumentGroup), namespace='lsq12-inter-subj'),
            #addNLINArgumentGroup,
-           AnnotatedParser(parser=stats_parser, namespace='stats')])
+           AnnotatedParser(parser=stats_parser, namespace='stats'),
+           AnnotatedParser(parser=chain_parser, namespace='chain') ])# cast=ChainConf)])
     
     # TODO could abstract and then parametrize by prefix/ns ??
     options = parse(p, sys.argv[1:])
-    
+
     # TODO: the registration resolution should be set somewhat outside
     # of any actual function? Maybe the right time to set this, is here
     # when options are gathered? 
@@ -428,16 +427,17 @@ if __name__ == "__main__":
         
         # TODO: enforce existence of resolution as early as possible, e.g.,
         # by creating a mutually exclusive options group
-        
+        resolution = None
         if options.lsq6.init_model:
             # Ha! an initial model always points to the file in standard space, so we 
             # can directly use this file to get the resolution from
-            options.registration.resolution = get_resolution_from_file(options.lsq6.init_model)
+            resolution = get_resolution_from_file(options.lsq6.init_model)
         if options.lsq6.bootstrap:
-            options.registration.resolution = get_resolution_from_file(options.application.files[0])
+            resolution = get_resolution_from_file(options.application.files[0])
         if options.lsq6.lsq6_target:
-            options.registration.resolution = get_resolution_from_file(options.lsq6.lsq6_target)
-            
+            resolution = get_resolution_from_file(options.lsq6.lsq6_target)
+        options.registration = options.registration.replace(resolution = resolution)
+
     if not options.registration.resolution:
         raise ValueError("Crap... couldn't get the registration resolution...")
     
