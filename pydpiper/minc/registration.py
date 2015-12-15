@@ -1242,9 +1242,11 @@ class InputSpace(AutoEnum):
     lsq6 = ()
     lsq12 = ()
 
+
 RegistrationConf = NamedTuple("RegistrationConf", [("input_space", InputSpace),
                                                    ("resolution", float),
                                                    ("subject_matter", Optional[str])])
+
 
 def LSQ6ConfCast(lsq6_args):
     # the reason we have this cast function, is that
@@ -1259,48 +1261,20 @@ def LSQ6ConfCast(lsq6_args):
                                            conf_to_return.bootstrap)
     return conf_to_return
 
-# LSQ6Conf = NamedTuple("LSQ6Conf",
-#                       [("lsq6_method": str),
-#                        ("large_rotation_tmp_dir": Optional[str]),
-# ()])
 
-
-class LSQ6Conf(object):
-    def __init__(self,
-                 # TODO make possible configurations depend on the lsq6_method:
-                 lsq6_method: str,
-                 large_rotation_tmp_dir: Optional[str],
-                 large_rotation_range: Optional[float],
-                 large_rotation_interval: Optional[float],
-                 large_rotation_parameters: Optional[str],
-                 bootstrap: bool,
-                 copy_header_info: bool,
-                 init_model: Optional[str],
-                 inormalize: bool,
-                 nuc: bool,
-                 run_lsq6: bool,
-                 lsq6_protocol: Optional[str],
-                 lsq6_target: Optional[str]
-                 ) -> None:
-        # when the lsq6_method is lsq6_large_rotations, these specify:
-        # rotation_tmp_dir  -- temp directory used for I/O in rotational_minctracc
-        # rotation_range    -- range of x,y,z-search space in degrees
-        # rotation_interval -- step size in degrees along range
-        # rotation_params   -- list of 4 values (or "mousebrain"), see rotational_minctracc for more info
-        self.lsq6_method = lsq6_method
-        self.rotation_tmp_dir = large_rotation_tmp_dir
-        self.rotation_range = large_rotation_range
-        self.rotation_interval = large_rotation_interval
-        self.rotation_params = large_rotation_parameters
-        self.bootstrap = bootstrap
-        self.copy_header_info = copy_header_info
-        self.inormalize = inormalize
-        self.init_model = init_model
-        self.nuc = nuc
-        self.run_lsq6 = run_lsq6
-        self.lsq6_protocol = lsq6_protocol
-        self.lsq6_target = lsq6_target
-
+LSQ6Conf = NamedTuple("LSQ6Conf", [("lsq6_method", str),
+                                   ("rotation_tmp_dir", Optional[str]),
+                                   ("rotation_range", Optional[float]),
+                                   ("rotation_interval", Optional[float]),
+                                   ("rotation_params", Optional[str]),
+                                   ("bootstrap", bool),
+                                   ("copy_header_info", bool),
+                                   ("init_model", Optional[str]),
+                                   ("inormalize", bool),
+                                   ("nuc", bool),
+                                   ("run_lsq6", bool),
+                                   ("lsq6_protocol", Optional[str]),
+                                   ("lsq6_target", Optional[str])])
 
 
 def lsq6(imgs: List[MincAtom],

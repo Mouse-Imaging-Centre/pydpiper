@@ -424,12 +424,12 @@ def _mk_lsq6_parser():
                         "orientation and are scanned in different coils/spaces. A brute force search over "
                         "the x,y,z rotation space is performed to find the best 6 parameter alignment. "
                         "[Default = %(default)s]")
-    p.add_argument("--lsq6-large-rotations-tmp-dir", dest="large_rotation_tmp_dir",
+    p.add_argument("--lsq6-large-rotations-tmp-dir", dest="rotation_tmp_dir",
                    type=str, default="/dev/shm/",
                    help="Specify the directory that rotational_minctracc.py uses for temporary files. "
                         "By default we use /dev/shm/, because this program involves a lot of I/O, and "
                         "this is probably one of the fastest way to provide this. [Default = %(default)s]")
-    p.add_argument("--lsq6-large-rotations-parameters", dest="large_rotation_parameters",
+    p.add_argument("--lsq6-large-rotations-parameters", dest="rotation_params",
                    type=str, default="10,4,10,8",
                    help="Settings for the large rotation alignment. factor=factor based on smallest file "
                         "resolution: 1) blur factor, 2) resample step size factor, 3) registration step size "
@@ -437,11 +437,11 @@ def _mk_lsq6_parser():
                         " the defaults do not have to be based on the file resolution; a default set of "
                         " settings works for all mouse brain. In order to use those setting, specify: "
                         "\"mousebrain\" as the argument for this option. ***** [default = %(default)s]")
-    p.add_argument("--lsq6-rotational-range", dest="large_rotation_range",
+    p.add_argument("--lsq6-rotational-range", dest="rotation_range",
                    type=int, default=50,
                    help="Settings for the rotational range in degrees when running the large rotation "
                         "alignment. [Default = %(default)s]")
-    p.add_argument("--lsq6-rotational-interval", dest="large_rotation_interval",
+    p.add_argument("--lsq6-rotational-interval", dest="rotation_interval",
                    type=int, default=10,
                    help="Settings for the rotational interval in degrees when running the large rotation "
                         "alignment. [Default = %(default)s]")
