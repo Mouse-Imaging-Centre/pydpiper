@@ -345,11 +345,6 @@ def invert(xfm: XfmHandler) -> Result[XfmHandler]:
                                     source=xfm.target, target=xfm.source, resampled=None))
 
 
-# TODO: a lot of these things were Instance((int,float)) so that
-# formatting would be preserved, e.g., a value of 10 wouldn't be printed as
-# 10.0 ... now, though, defining an IntFloat alias has no effect since
-# no dynamic tests are done.  Would such an alias be useful documentation?
-# Unclear ...
 RotationalMinctraccConf = NamedTuple('RotationalMinctraccConf',
                                      [("blur_factor", float),
                                       ("resample_step_factor", float),
@@ -439,10 +434,10 @@ def rotational_minctracc(source: MincAtom,
     # TODO: shouldn't this use the mask if it's provided rather than the target mask?
     mask_for_command = target.mask if target.mask else mask
     cmd = CmdStage(inputs=(source, target) + cast(tuple, ((mask_for_command,) if mask_for_command else ())),
-                   # if-expression not recognized as a tuple; see mpypy/issues/622
+                   # if-expression not recognized as a tuple; see mypy/issues/622
                    outputs=(out_xfm,),
                    cmd=["rotational_minctracc.py",
-                        "-t", conf.temp_dir,
+                        "-t", conf.temp_dir,  # TODO don't use a given option if not supplied (i.e., None)
                         "-w", str(w_translation_stepsize),
                         "-s", str(resample_stepsize),
                         "-g", str(registration_stepsize),
@@ -1069,7 +1064,7 @@ def multilevel_pairwise_minctracc(imgs: List[MincAtom],
 
 # TODO move LSQ12 stuff to an LSQ12 file?
 # LSQ12_default_conf = MultilevelMinctraccConf(transform_type='lsq12', resolution = NotImplemented,
-#                                             single_gen_confs = [])
+#                                              single_gen_confs = [])
 
 LSQ12Conf = MultilevelMinctraccConf
 
@@ -1124,7 +1119,8 @@ def lsq12_nlin_build_model(imgs       : List[MincAtom],
     lsq12_result = lsq12_pairwise(imgs=imgs, like=NotImplemented,
                                   conf=lsq12_conf, lsq12_dir=NotImplemented)
     nlin_result  = build_model_using([xfm.target for xfm in lsq12_result],
-                                 conf=nlin_conf)
+                                     conf=nlin_conf)
+    return nlin_result
 
 
 
@@ -1196,8 +1192,10 @@ known_settings = {'mousebrain': mousebrain,
 
 
 def get_parameters_for_rotational_minctracc(resolution,  # TODO why do most arguments default to None?
-                                            rotation_tmp_dir=None, rotation_range=None,
-                                            rotation_interval=None, rotation_params=None):
+                                            rotation_tmp_dir=None,
+                                            rotation_range=None,
+                                            rotation_interval=None,
+                                            rotation_params=None):
     """
     returns the proper combination of a rotational_minctracc configuration and
     a value for the resolution such that the "mousebrain" option for 
@@ -1258,6 +1256,8 @@ class LSQ6Conf(object):
 def lsq6(imgs: List[MincAtom],
          target: MincAtom,
          resolution: float,
+         output_dir,
+         pipeline_name,
          conf: LSQ6Conf) -> Result[List[XfmHandler]]:
     s = Stages()
     xfms_to_target = []  # type: List[XfmHandler]
@@ -1270,9 +1270,11 @@ def lsq6(imgs: List[MincAtom],
     #
     if conf.lsq6_method == "lsq6_large_rotations":
         rotational_configuration, resolution_for_rot = \
-            get_parameters_for_rotational_minctracc(resolution, conf.rotation_tmp_dir,
-                                                    conf.rotation_range, conf.rotation_interval,
-                                                    conf.rotation_params)
+            get_parameters_for_rotational_minctracc(resolution=resolution,
+                                                    rotation_tmp_dir=conf.large_rotation_tmp_dir,
+                                                    rotation_range=conf.large_rotation_range,
+                                                    rotation_interval=conf.large_rotation_interval,
+                                                    rotation_params=conf.large_rotation_parameters)
         # now call rotational_minctracc on all input images 
         xfms_to_target = [s.defer(rotational_minctracc(source=img, target=target,
                                                        conf=rotational_configuration,
@@ -1467,18 +1469,16 @@ def get_registration_targets_from_init_model(init_model_standard_file: str,
 
     # first things first, is this a nice MINC file:
     if not can_read_MINC_file(init_model_standard_file):
-        raise ValueError("\nError: can not read the following initial model file: %s\n" % init_model_standard_file)
+        raise ValueError("Error: can not read the following initial model file: %s" % init_model_standard_file)
     init_model_dir, standard_file_base = os.path.split(os.path.splitext(init_model_standard_file)[0])
     init_model_standard_mask = os.path.join(init_model_dir, standard_file_base + "_mask.mnc")
     # this mask file is a prerequisite, so we need to test it
     if not can_read_MINC_file(init_model_standard_mask):
-        raise ValueError("\nError (initial model): can not read/find the mask file for the standard space: %s\n"
+        raise ValueError("Error (initial model): can not read/find the mask file for the standard space: %s"
                          % init_model_standard_mask)
 
     registration_standard = MincAtom(name=init_model_standard_file,
-                                     orig_name=init_model_standard_file,
                                      mask=MincAtom(name=init_model_standard_mask,
-                                                   orig_name=init_model_standard_mask,
                                                    pipeline_sub_dir=init_model_output_dir),
                                      pipeline_sub_dir=init_model_output_dir)
 
@@ -1488,9 +1488,9 @@ def get_registration_targets_from_init_model(init_model_standard_file: str,
     init_model_native_to_standard = os.path.join(init_model_dir, standard_file_base + "_native_to_standard.xfm")
     if os.path.exists(init_model_native_file):
         if not can_read_MINC_file(init_model_native_file):
-            raise ValueError("\nError: can not read the following initial model file: %s\n" % init_model_native_file)
+            raise ValueError("Error: can not read the following initial model file: %s" % init_model_native_file)
         if not can_read_MINC_file(init_model_native_mask):
-            raise ValueError("\nError: can not read the following initial model file (required native mask): %s\n"
+            raise ValueError("Error: can not read the following initial model file (required native mask): %s"
                              % init_model_native_mask)
         registration_native = MincAtom(name=init_model_native_file,
                                        orig_name=init_model_native_file,
@@ -1531,32 +1531,41 @@ def verify_correct_lsq6_target_options(init_model: str,
                                     init_model != None,
                                     lsq6_target != None))
     if number_of_target_options == 0:
-        raise ValueError("\nError: please specify a target for the 6 parameter alignment. "
-                         "Options are: --lsq6-target, --init-model, --bootstrap.\n")
+        raise ValueError("Error: please specify a target for the 6 parameter alignment. "
+                         "Options are: --lsq6-target, --init-model, --bootstrap.")
     if number_of_target_options > 1:
-        raise ValueError("\nError: please specify only one of the following options: "
+        raise ValueError("Error: please specify only one of the following options: "
                          "--lsq6-target, --init-model, --bootstrap. Don't know which "
-                         "target to use...\n")
+                         "target to use...")
 
-# TODO: why is this separate
-def get_registration_targets(init_model: str,
-                             lsq6_target: str,
-                             bootstrap: bool,
-                             output_dir: str,
-                             pipeline_name: str,
-                             first_input_file: str = None):
+# TODO: why is this separate?
+#def get_registration_targets(init_model: str,
+#                             lsq6_target: str,
+#                             bootstrap: bool,
+#                             output_dir: str,
+#                             pipeline_name: str,
+#                             first_input_file: str = None):
     """
     init_model       : value of the flag --init-model (is None, or the name
                        of a MINC file in standard space
     lsq6_target      : value of the flag --lsq6-target (is None, or the name
                        of a target MINC file)
     bootstrap        : value of the flag --bootstrap
-    output_dir       : value of the flag --output-dir (top level directory 
+    output_dir       : value of the flag --output-dir (top level directory
                        of the entire process
     pipeline_name    : value of the flag  --pipeline-name
     first_input_file : is None or the name of the first input file. This argument
                        only needs to be specified when --bootstrap is True
     """
+def registration_targets(lsq6_conf: LSQ6Conf,
+                         gen_conf):
+
+    lsq6_target   = lsq6_conf.lsq6_target
+    bootstrap     = lsq6_conf.bootstrap
+    init_model    = lsq6_conf.init_model
+    output_dir    = gen_conf.output_directory
+    pipeline_name = gen_conf.pipeline_name
+
     # first check that exactly one of the target methods was chosen
     verify_correct_lsq6_target_options(init_model, lsq6_target, bootstrap)
 
@@ -1566,7 +1575,6 @@ def get_registration_targets(init_model: str,
         if not can_read_MINC_file(lsq6_target):
             raise ValueError("\nError (lsq6 target): can not read MINC file: %s\n" % lsq6_target)
         target_file = MincAtom(name=lsq6_target,
-                               orig_name=lsq6_target,
                                pipeline_sub_dir=os.path.join(output_dir, pipeline_name +
                                                              "_target_file"))
         return RegistrationTargets(registration_standard=target_file,
@@ -1574,17 +1582,16 @@ def get_registration_targets(init_model: str,
                                    registration_native=None)
     if bootstrap:
         if not first_input_file:
-            raise ValueError("\nError: (developer's error) the function "
-                             "get_registration_targets is called with bootstrap=True "
+            raise ValueError("BUG: the function "
+                             "`registration_targets` is called with bootstrap=True "
                              "but the first input file to the pipeline was not passed "
-                             "along. Don't know which file to use as target for LSQ6.\n")
+                             "along. Don't know which file to use as target for LSQ6.")
         if not can_read_MINC_file(first_input_file):
-            raise ValueError("\nError (bootstrap file): can not read MINC file: %s\n" % first_input_file)
+            raise ValueError("Error (bootstrap file): can not read MINC file: %s\n" % first_input_file)
         bootstrap_file = MincAtom(name=first_input_file,
-                                  orig_name=first_input_file,
                                   pipeline_sub_dir=os.path.join(output_dir, pipeline_name +
                                                                 "_bootstrap_file"))
-        return (RegistrationTargets(registration_standard=bootstrap_file))
+        return RegistrationTargets(registration_standard=bootstrap_file)
 
     if init_model:
         return get_registration_targets_from_init_model(init_model, output_dir, pipeline_name)

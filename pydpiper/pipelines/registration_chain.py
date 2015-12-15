@@ -113,23 +113,23 @@ def chain(options):
         else:
             # if we are not dealing with a pride of models, we can retrieve a fixed
             # registration target for all input files:
-            registration_targets = get_registration_targets(init_model=options.lsq6.init_model,
-                                                            lsq6_target=options.lsq6.lsq6_target,
-                                                            bootstrap=options.lsq6.bootstrap,
-                                                            output_dir=output_dir,
-                                                            pipeline_name=pipeline_name)
+            registration_targets = registration_targets(init_model=options.lsq6.init_model,
+                                                        lsq6_target=options.lsq6.lsq6_target,
+                                                        bootstrap=options.lsq6.bootstrap,
+                                                        output_dir=output_dir,
+                                                        pipeline_name=pipeline_name)
             
             # we want to store the xfm handlers in the same shape as pipeline_subject_info,
-            # as such we will call lsq6_nuc_inorm for each file individually. This returns
-            # a list of XfmHandlers, however, given that we pass the MincAtoms one by one,
-            # we can simply extract the first (and only) element from the list.
-            # s.defer(...)[0]
+            # as such we will call lsq6_nuc_inorm for each file individually and simply extract
+            # the first (and only) element from the resulting list via s.defer(...)[0].
             xfm_handlers_dict_lsq6 = map_over_time_pt_dict_in_Subject(
-                                         lambda subj_atom:  s.defer(lsq6_nuc_inorm([subj_atom],
-                                                                                   registration_targets,
-                                                                                   options.registration.resolution,
-                                                                                   options.lsq6,
-                                                                                   subject_matter=options.registration.subject_matter))[0],
+                                         lambda subj_atom:
+                                           s.defer(lsq6_nuc_inorm([subj_atom],
+                                                                  registration_targets=registration_targets,
+                                                                  resolution=options.registration.resolution,
+                                                                  lsq6_options=options.lsq6,
+                                                                  subject_matter=options.registration.subject_matter)
+                                                   )[0],
                                          pipeline_subject_info)  # type: Dict[str, Subject[XfmHandler]]
         
         
@@ -388,17 +388,19 @@ def final_transforms(pipeline_subject_info, intersubj_xfms_dict, chain_xfms_dict
         # so we will assign the concatenated transform to the target of each 
         # transform we are adding 
         for time_pt, transform in chain_transforms[index_of_common_time_pt:]:
-            current_xfm_to_common = s.defer(concat([s.defer(invert(transform)),current_xfm_to_common], name="%s%s_to_common" % (s_id, time_pt))) # TODO: naming
+            current_xfm_to_common = s.defer(concat([s.defer(invert(transform)), current_xfm_to_common],
+                                                   name="%s%s_to_common" % (s_id, time_pt)))  # TODO: naming
             new_time_pt_dict[time_pt] = current_xfm_to_common
         # we need to do something similar moving backwards: make sure to reset
         # the current_xfm_to_common here!
         current_xfm_to_common = intersubj_xfms_dict[subj.intersubject_registration_image]
         for time_pt, transform in chain_transforms[index_of_common_time_pt-1::-1]:
-            current_xfm_to_common = s.defer(concat([transform,current_xfm_to_common], name="%s%s_to_common" % (s_id, time_pt)))
+            current_xfm_to_common = s.defer(concat([transform, current_xfm_to_common],
+                                                   name="%s%s_to_common" % (s_id, time_pt)))
             new_time_pt_dict[time_pt] = current_xfm_to_common
         
         new_subj = Subject(intersubject_registration_time_pt = subj.intersubject_registration_time_pt,
-                           time_pt_dict   = new_time_pt_dict)
+                           time_pt_dict = new_time_pt_dict)
         new_d[s_id] = new_subj
     return Result(stages=s, output=new_d)
 

@@ -1,9 +1,6 @@
-'''
-This file will contain argument option groups that can be used 
-by PydPiper applications. Some option groups might be mandatory/highly
-recommended to add to your application: e.g. the arguments that deal
-with the execution of your application.
-'''
+"""
+TODO write some useful documentation
+"""
 
 from pkg_resources import get_distribution  # type: ignore
 import copy
@@ -64,13 +61,14 @@ class AnnotatedParser(object):
                  parser: Parser,
                  namespace: str,
                  # this causes some problems if not supplied - you get '---stuff-like-this'
+                 # FIXME currently checking for None avoids this situation, but "" still produces it -
+                 # checking for the latter might be better
                  prefix: str = None,  # = "",
                  cast: Callable[[Any], Any] = None) -> None:  # TODO: remove Any
         self.parser = parser  # type: Parser
         self.prefix = prefix  # type: str
         self.namespace = namespace  # type: str
-        self.cast = cast  # type: Any
-        # cast      = Instance(object, factory=lambda : None) #lambda y: y)
+        self.cast = cast      # type: Any
 
 
 # the leaves of the parse object (these contain the arguments you're interested in)
@@ -103,6 +101,12 @@ class CompoundParser(Parser):
 # but this wouldn't happen automagically.
 
 # TODO tighten up the type somehow by adding type variables to a Parser ...?
+# know problems with this setup:
+#   - some features don't work, e.g., mutually exclusive groups (arguments are added but the group itself is erased)
+#   - will break on arguments not starting with '--'
+#   - FIXME reports too many things as positional args ('files') for the parsers that support this
+#     (possible solution: get positional args from overall parse somehow ... how to know which parser this is from
+#      and enforce that only a single parser accepts such args?)
 def parse(parser: Parser, args: List[str]) -> Namespace:
     default_config_file = os.getenv(
         "PYDPIPER_CONFIG_FILE")  # TODO: accepting a comma-separated list might allow more flexibility
@@ -146,7 +150,7 @@ def parse(parser: Parser, args: List[str]) -> Namespace:
     def go_2(p, current_prefix, current_ns):
         if isinstance(p, BaseParser):
             new_p = ArgParser(default_config_files=config_files)
-            for ix, a in enumerate(p.argparser._actions):
+            for a in (p.argparser._actions):
                 new_a = copy.copy(a)
                 ss = copy.deepcopy(new_a.option_strings)
                 for ix, s in enumerate(new_a.option_strings):
@@ -200,7 +204,7 @@ def _mk_application_parser(p: ArgParser) -> ArgParser:
     --version
     --verbose
     --no-verbose
-    files (left over arguments (0 or more is allowed)
+    files - leftover arguments (0 or more are allowed)
     """
     # p = ArgParser(add_help=False)
     g = p.add_argument_group("General application options",
@@ -400,7 +404,7 @@ def _mk_lsq6_parser():
     #                   help="Specify a prefix for an augmented data set to use for the 6 parameter "
     #                   "alignment. Assumptions: there is a matching alternate file for each regular input "
     #                   "file, e.g. input files are: input_1.mnc input_2.mnc ... input_n.mnc. If the "
-    #                   "string provided for this flag is \"aug_\", then the following files should exists: "
+    #                   "string provided for this flag is \"aug_\", then the following files should exist: "
     #                   "aug_input_1.mnc aug_input_2.mnc ... aug_input_n.mnc. These files are assumed to be "
     #                   "in the same orientation/location as the regular input files.  They will be used for "
     #                   "for the 6 parameter alignment. The transformations will then be used to transform "
@@ -481,7 +485,6 @@ lsq6_parser = BaseParser(_mk_lsq6_parser(), "LSQ6")
 class LSQ6Conf(object):
     def __init__(self, lsq6_method):
         self.lsq6_method = lsq6_method
-        # lsq6_method = Enum('lsq6_simple', 'lsq6_centre_estimation', 'lsq6_large_rotations')
         # more to be added...
 
 
@@ -546,6 +549,7 @@ def _mk_chain_parser():
 
 
 chain_parser = BaseParser(_mk_chain_parser(), "chain")
+
 
 # TODO: probably doesn't belong here ... do we need to move them again to the
 # modules where complementary code is?

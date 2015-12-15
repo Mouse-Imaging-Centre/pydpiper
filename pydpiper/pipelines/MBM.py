@@ -1,18 +1,16 @@
 #!/usr/bin/env python3
 
 import os.path
-import configargparse
-import sys
 
 from pydpiper.core.stages       import Result, Stages
 #TODO fix up imports, naming, stuff in registration vs. pipelines, ...
 from pydpiper.minc.files        import MincAtom
-from pydpiper.minc.registration import lsq6_nuc_inorm, lsq12_nlin_build_model, get_registration_targets
+from pydpiper.minc.registration import lsq6_nuc_inorm, lsq12_nlin_build_model, registration_targets
 from pydpiper.minc.analysis     import determinants_at_fwhms
 from pydpiper.core.arguments    import (lsq6_parser, lsq12_parser, nlin_parser, stats_parser, CompoundParser,
-                                        AnnotatedParser, application_parser, parse, registration_parser,
-                                        execution_parser)
-from pydpiper.execution.application    import execute
+                                        AnnotatedParser)
+from pydpiper.execution.application    import mk_application
+
 
 # TODO abstract out some common configuration functionality and think about argparsing ...
 
@@ -49,39 +47,38 @@ def mbm(options):
     output_dir = pipeline_name = options.application.pipeline_name
 
     # FIXME: why do we have to call get_registration_targets *outside* of lsq6_nuc_inorm?
-    registration_targets = get_registration_targets(init_model=options.mbm.lsq6.init_model,
-                                                    lsq6_target=options.mbm.lsq6.lsq6_target,
-                                                    bootstrap=options.mbm.lsq6.bootstrap,
-                                                    output_dir=output_dir,
-                                                    pipeline_name=pipeline_name)
+    targets = registration_targets(lsq6_conf=options.mbm.lsq6,
+                                   gen_conf=options.application)
 
     lsq6_result = s.defer(lsq6_nuc_inorm(imgs=imgs,
                                          resolution=resolution,
-                                         registration_targets=registration_targets,
+                                         registration_targets=targets,
                                          lsq6_options=options.mbm.lsq6))
 
-    lsq12_nlin_result = s.defer(lsq12_nlin_build_model(
-        imgs=[xfm.resampled for xfm in lsq6_result], resolution=resolution,
-        lsq12_conf=options.mbm.lsq12, nlin_conf=options.mbm.nlin))
+    lsq12_nlin_result = s.defer(lsq12_nlin_build_model(imgs=[xfm.resampled for xfm in lsq6_result],
+                                                       resolution=resolution,
+                                                       lsq12_conf=options.mbm.lsq12, nlin_conf=options.mbm.nlin))
 
     determinants = [s.defer(determinants_at_fwhms(xfm, blur_fwhms=options.stats.stats_kernels))
                     for xfm in lsq12_nlin_result.xfms]
 
     return Result(stages=s, output=determinants)  # TODO: add more outputs
 
+# TODO write a function 'ordinary_parser' ...
 mbm_parser = CompoundParser(
                [AnnotatedParser(parser=lsq6_parser, namespace='lsq6'),
                 AnnotatedParser(parser=lsq12_parser, namespace='lsq12'),
                 AnnotatedParser(parser=nlin_parser, namespace='nlin'),
                 AnnotatedParser(parser=stats_parser, namespace='stats')])
 
+mbm_application = mk_application(parsers=[AnnotatedParser(parser=mbm_parser, namespace='mbm')],
+                                 pipeline=mbm)
+
+
+# stuff to do:
+# - reduce no. of args to get_initial_targets by taking the whole conf objects instead of small pieces
+# - write fn to get resolution (with similar caveats)
+# - fix bug re: positional arguments
+
 if __name__ == "__main__":
-    p = CompoundParser(
-          [AnnotatedParser(parser=mbm_parser, namespace='mbm'),
-           AnnotatedParser(parser=application_parser, namespace='application'),
-           AnnotatedParser(parser=registration_parser, namespace='registration'),
-           AnnotatedParser(parser=execution_parser, namespace='execution')
-           ])
-    options = parse(p, sys.argv[1:])
-    stages, _ = mbm(options)
-    execute(stages, options)
+    mbm_application()

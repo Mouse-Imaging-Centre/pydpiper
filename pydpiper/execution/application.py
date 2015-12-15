@@ -5,15 +5,18 @@ import logging
 import networkx as nx
 import sys
 import os
-from typing import NamedTuple
+from typing import NamedTuple, List, Callable, Any
 
+from pydpiper.core.stages import Result
+from pydpiper.core.arguments import (CompoundParser, AnnotatedParser, application_parser,
+                                     registration_parser, execution_parser, parse)
 from pydpiper.execution.pipeline import Pipeline, pipelineDaemon
 from pydpiper.execution.queueing import runOnQueueingSystem
 from pydpiper.execution.pipeline_executor import addExecutorArgumentGroup, ensure_exec_specified
 from pydpiper.core.util import output_directories
 from pydpiper.core.conversion import convertCmdStage
 
-PYDPIPER_VERSION = pkg_resources.get_distribution("pydpiper").version # pylint: disable=E1101
+PYDPIPER_VERSION = pkg_resources.get_distribution("pydpiper").version  # pylint: disable=E1101
 
 logger = logging.getLogger(__name__)
 
@@ -144,6 +147,19 @@ def execute(stages, options):
     
     execution_proc = backend(options)
     execution_proc(pipeline, options)
+
+
+def mk_application(parsers: List[AnnotatedParser], pipeline: Callable[[Any], Result[Any]]) -> Callable[[], Any]:
+    """Wire up a pure-python pipeline application into a command-line application."""
+    # TODO the type isn't very precise ...
+    p = CompoundParser([AnnotatedParser(parser=application_parser, namespace='application'),
+                        AnnotatedParser(parser=registration_parser, namespace='registration'),
+                        AnnotatedParser(parser=execution_parser, namespace='execution')
+                        ] + parsers)
+    def f():
+        options = parse(p, sys.argv[1:])
+        execute(pipeline(options).stages, options)
+    return f
 
 
 def backend(options):

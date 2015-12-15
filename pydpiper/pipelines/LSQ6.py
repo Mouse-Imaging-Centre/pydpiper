@@ -1,29 +1,10 @@
-#import shlex
+#!/usr/bin/env python3
 #TODO s/MincAtom/MincFile/g
 
 from pydpiper.core.stages       import CmdStage, Result, Stages
 from pydpiper.core.util         import raise_
 from pydpiper.minc.files        import MincAtom
 from pydpiper.minc.registration import multilevel_minctracc, nu_correct, inormalize
-
-class LSQ6Conf(object):
-    initial_transform = Enum(None, 'identity')
-    init_model = Str()
-    nu_correct = Bool(True)
-    inormalize = Bool(True)
-
-LSQ6_default_conf = LSQ6Conf(init_model="whatever")
-#TODO should this be a list of single-generation confs ?? less indexing once created ...
-#TODO many fields same as -lsq12 ... could use inheritance or whatever ...
-#TODO why even have a default when we can just make a default protocol? unless we
-# have two-way parsing/serializing from protocol files ...
-#default_hierarchical_minctracc_conf = HierarchicalMinctraccConf(
-#  blur=...,
-#  step_size=...
-#  gradient=...
-#  simplex=...
-#  w_translations=...
-#  )
 
 def lsq6_pipeline_part(options):
     """Run a pipeline from its command-line inputs"""
@@ -74,3 +55,6 @@ def lsq6(imgs, target, options): # [mnc], mnc, LSQ6Conf -> Result(..., output=??
 # TODO make higher-order way to run part of a pipeline on certain images, then create new xfmhs with replaced inputs/resampled files
 # (idea: images have same 'geometry'/coordinates but may be modified, e.g., tagged kidney tip images)
 # may need to supply some fns to determine how to get/set outputs as our interfaces aren't uniform enough to know this in general
+
+if __name__ == "__main__":
+    pass

@@ -33,7 +33,7 @@ class FileAtom(object):
                  output_sub_dir   : str = None) -> None:
         self.dir, self.filename_wo_ext, self.ext = explode(name)
         if isinstance(orig_name, NotProvided):
-            self.orig_path = self.path  # type: str
+            self.orig_path = name  # type: str
         elif isinstance(orig_name, type(None)):
             # is this case even needed? if no orig file, when _isn't_ file itself the orig file?
             self.orig_path = None
