@@ -1,4 +1,5 @@
 import os.path
+import os
 import random
 import shlex
 import subprocess
@@ -1132,7 +1133,10 @@ def lsq12_nlin_build_model(imgs       : List[MincAtom],
 
 def can_read_MINC_file(filename: str) -> bool:
     """Can the MINC file `filename` with be read with `mincinfo`?"""
-    return subprocess.call(["mincinfo", filename]) == 0
+    devnull = open(os.devnull, 'w')
+    returncode = subprocess.call(["mincinfo", filename], stdout=devnull, stderr=devnull) == 0
+    devnull.close()
+    return returncode
 
 
 def check_MINC_input_files(args: List[str]) -> None:
@@ -1235,24 +1239,70 @@ def get_parameters_for_rotational_minctracc(resolution,  # TODO why do most argu
     return rotational_configuration, rotational_resolution
 
 
+class InputSpace(AutoEnum):
+    native = ()
+    lsq6 = ()
+    lsq12 = ()
+
+RegistrationConf = NamedTuple("RegistrationConf", [("input_space", InputSpace),
+                                                   ("resolution", float),
+                                                   ("subject_matter", Optional[str])])
+
+def LSQ6ConfCast(lsq6_args):
+    # the reason we have this cast function, is that
+    # it allows us specify types for the actual configuration,
+    # but not have defaults for them.
+    conf_to_return = LSQ6Conf(**lsq6_args)
+    # we're being nice programmers, and we'll already check whether
+    # the correct
+    if conf_to_return.run_lsq6:
+        verify_correct_lsq6_target_options(conf_to_return.init_model,
+                                           conf_to_return.lsq6_target,
+                                           conf_to_return.bootstrap)
+    return conf_to_return
+
+# LSQ6Conf = NamedTuple("LSQ6Conf",
+#                       [("lsq6_method": str),
+#                        ("large_rotation_tmp_dir": Optional[str]),
+# ()])
+
+
 class LSQ6Conf(object):
     def __init__(self,
                  # TODO make possible configurations depend on the lsq6_method:
                  lsq6_method: str,
-                 rotation_tmp_dir: Optional[str] = None,
-                 rotation_range: Optional[float] = None,
-                 rotation_interval: Optional[float] = None,
-                 rotation_params: Optional[Any] = None) -> None:
+                 large_rotation_tmp_dir: Optional[str],
+                 large_rotation_range: Optional[float],
+                 large_rotation_interval: Optional[float],
+                 large_rotation_parameters: Optional[str],
+                 bootstrap: bool,
+                 copy_header_info: bool,
+                 init_model: Optional[str],
+                 inormalize: bool,
+                 nuc: bool,
+                 run_lsq6: bool,
+                 lsq6_protocol: Optional[str],
+                 lsq6_target: Optional[str]
+                 ) -> None:
         # when the lsq6_method is lsq6_large_rotations, these specify:
         # rotation_tmp_dir  -- temp directory used for I/O in rotational_minctracc
         # rotation_range    -- range of x,y,z-search space in degrees
         # rotation_interval -- step size in degrees along range
         # rotation_params   -- list of 4 values (or "mousebrain"), see rotational_minctracc for more info
         self.lsq6_method = lsq6_method
-        self.rotation_tmp_dir = rotation_tmp_dir
-        self.rotation_range = rotation_range
-        self.rotation_interval = rotation_interval
-        self.rotation_params = rotation_params
+        self.rotation_tmp_dir = large_rotation_tmp_dir
+        self.rotation_range = large_rotation_range
+        self.rotation_interval = large_rotation_interval
+        self.rotation_params = large_rotation_parameters
+        self.bootstrap = bootstrap
+        self.copy_header_info = copy_header_info
+        self.inormalize = inormalize
+        self.init_model = init_model
+        self.nuc = nuc
+        self.run_lsq6 = run_lsq6
+        self.lsq6_protocol = lsq6_protocol
+        self.lsq6_target = lsq6_target
+
 
 
 def lsq6(imgs: List[MincAtom],
@@ -1261,6 +1311,9 @@ def lsq6(imgs: List[MincAtom],
          conf: LSQ6Conf) -> Result[List[XfmHandler]]:
     s = Stages()
     xfms_to_target = []  # type: List[XfmHandler]
+
+    if not conf.run_lsq6:
+        raise ValueError("You silly person... you've called lsq6(), but also specified --no-run-lsq6. That's not a very sensible combination of things.")
 
     ############################################################################
     # alignment
