@@ -410,7 +410,7 @@ if __name__ == "__main__":
           [AnnotatedParser(parser=execution_parser, namespace='execution'),
            AnnotatedParser(parser=application_parser, namespace='application'),
            AnnotatedParser(parser=registration_parser, namespace='registration', cast=RegistrationConf),
-           AnnotatedParser(parser=lsq6_parser, namespace='lsq6', cast=LSQ6Conf),
+           lsq6_parser,
            AnnotatedParser(parser=lsq12_parser, namespace='lsq12'), # should be MBM or build_model ...
            #AnnotatedParser(parser=BaseParser(addLSQ12ArgumentGroup), namespace='lsq12-inter-subj'),
            #addNLINArgumentGroup,

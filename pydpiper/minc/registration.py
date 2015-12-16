@@ -5,6 +5,7 @@ import shlex
 import subprocess
 import sys
 
+from configargparse import Namespace
 from typing import Any, cast, Dict, Generic, Iterable, List, Optional, Set, Tuple, TypeVar
 
 from pydpiper.core.files import FileAtom
@@ -1242,24 +1243,20 @@ class InputSpace(AutoEnum):
     lsq6 = ()
     lsq12 = ()
 
+class TargetType(AutoEnum):
+    initial_model = bootstrap = registration_target = ()
+
 
 RegistrationConf = NamedTuple("RegistrationConf", [("input_space", InputSpace),
                                                    ("resolution", float),
-                                                   ("subject_matter", Optional[str])])
+                                                   ("subject_matter", Optional[str]),
+                                                   #("target_type", TargetType),
+                                                   #("target_file", Optional[str])
+                                                   ])
 
 
-def LSQ6ConfCast(lsq6_args):
-    # the reason we have this cast function, is that
-    # it allows us specify types for the actual configuration,
-    # but not have defaults for them.
-    conf_to_return = LSQ6Conf(**lsq6_args)
-    # we're being nice programmers, and we'll already check whether
-    # the correct
-    if conf_to_return.run_lsq6:
-        verify_correct_lsq6_target_options(conf_to_return.init_model,
-                                           conf_to_return.lsq6_target,
-                                           conf_to_return.bootstrap)
-    return conf_to_return
+def to_registration_conf(ns : Namespace) -> RegistrationConf:
+    raise NotImplementedException
 
 
 LSQ6Conf = NamedTuple("LSQ6Conf", [("lsq6_method", str),
@@ -1267,14 +1264,38 @@ LSQ6Conf = NamedTuple("LSQ6Conf", [("lsq6_method", str),
                                    ("rotation_range", Optional[float]),
                                    ("rotation_interval", Optional[float]),
                                    ("rotation_params", Optional[str]),
-                                   ("bootstrap", bool),
                                    ("copy_header_info", bool),
-                                   ("init_model", Optional[str]),
+                                   #("bootstrap", bool),
+                                   #("init_model", Optional[str]),
+                                   #("lsq6_target", Optional[str]),
+                                   ("target_type", TargetType),
+                                   ("target_file", Optional[str]),
                                    ("inormalize", bool),
                                    ("nuc", bool),
                                    ("run_lsq6", bool),
                                    ("lsq6_protocol", Optional[str]),
-                                   ("lsq6_target", Optional[str])])
+                                   ])
+
+
+def to_lsq6_conf(lsq6_args : Namespace) -> LSQ6Conf:
+    # the reason we have this cast function, is that
+    # it allows us specify types for the actual configuration,
+    # but not have defaults for them.
+    target_type, target_file = verify_correct_lsq6_target_options(init_model=lsq6_args.init_model,
+                                                                  bootstrap=lsq6_args.bootstrap,
+                                                                  lsq6_target=lsq6_args.lsq6_target)
+    new_args = lsq6_args.__dict__.copy()
+    for k in ["init_model", "bootstrap", "lsq6_target"]:
+        del new_args[k]
+    new_args["target_type"] = target_type
+    new_args["target_file"] = target_file
+    return  LSQ6Conf(**new_args)
+    # we're being nice programmers, and we'll already check whether
+    # the correct
+    #if conf_to_return.run_lsq6:
+    #    verify_correct_lsq6_target_options(conf_to_return.init_model,
+    #                                       conf_to_return.lsq6_target,
+    #                                       conf_to_return.bootstrap)
 
 
 def lsq6(imgs: List[MincAtom],
@@ -1539,10 +1560,10 @@ def get_registration_targets_from_init_model(init_model_standard_file: str,
                                xfm_to_standard=xfm_to_standard,
                                registration_native=registration_native)
 
-
+# TODO should this just accept an object with the three relevant fields?
 def verify_correct_lsq6_target_options(init_model: str,
                                        lsq6_target: str,
-                                       bootstrap: bool) -> None:
+                                       bootstrap: bool) -> Tuple[TargetType, Optional[str]]:
     """
     This function can be called using the parameters that are set using 
     the flags:
@@ -1550,13 +1571,13 @@ def verify_correct_lsq6_target_options(init_model: str,
     --lsq6-target
     --bootstrap
     
-    it will check that exactly one of the options is provided and raises 
-    an error otherwise
+    it will check that exactly one of the options is provided, returning a filename (or None) tagged with
+    the chosen target type, and raises an error otherwise.
     """
     # check how many options have been specified that can be used as the initial target
-    number_of_target_options = sum((bootstrap != False,
-                                    init_model != None,
-                                    lsq6_target != None))
+    number_of_target_options = sum((bootstrap is not False,
+                                    init_model is not None,
+                                    lsq6_target is not None))
     if number_of_target_options == 0:
         raise ValueError("Error: please specify a target for the 6 parameter alignment. "
                          "Options are: --lsq6-target, --init-model, --bootstrap.")
@@ -1564,55 +1585,46 @@ def verify_correct_lsq6_target_options(init_model: str,
         raise ValueError("Error: please specify only one of the following options: "
                          "--lsq6-target, --init-model, --bootstrap. Don't know which "
                          "target to use...")
+    if init_model:
+        return TargetType.initial_model, init_model
+    elif bootstrap:
+        return TargetType.bootstrap, None
+    elif lsq6_target:
+        return TargetType.target, lsq6_target
+
 
 # TODO: why is this separate?
-#def get_registration_targets(init_model: str,
-#                             lsq6_target: str,
-#                             bootstrap: bool,
-#                             output_dir: str,
-#                             pipeline_name: str,
-#                             first_input_file: str = None):
-    """
-    init_model       : value of the flag --init-model (is None, or the name
-                       of a MINC file in standard space
-    lsq6_target      : value of the flag --lsq6-target (is None, or the name
-                       of a target MINC file)
-    bootstrap        : value of the flag --bootstrap
-    output_dir       : value of the flag --output-dir (top level directory
-                       of the entire process
-    pipeline_name    : value of the flag  --pipeline-name
-    first_input_file : is None or the name of the first input file. This argument
-                       only needs to be specified when --bootstrap is True
-    """
 def registration_targets(lsq6_conf: LSQ6Conf,
-                         gen_conf):
+                         app_conf,
+                         first_input_file: Optional[str] = None):
 
-    lsq6_target   = lsq6_conf.lsq6_target
-    bootstrap     = lsq6_conf.bootstrap
-    init_model    = lsq6_conf.init_model
-    output_dir    = gen_conf.output_directory
-    pipeline_name = gen_conf.pipeline_name
+    target_type   = lsq6_conf.target_type
+    target_file   = lsq6_conf.target_file
+    output_dir    = app_conf.output_directory
+    pipeline_name = app_conf.pipeline_name
+    # TODO currently the 'files' must come from the app_conf, but we might want to supply them separately
+    # (e.g., for a pipeline which takes files in a csv but for which, e.g., bootstrap is still meaningful)
 
-    # first check that exactly one of the target methods was chosen
-    verify_correct_lsq6_target_options(init_model, lsq6_target, bootstrap)
-
+    target_file = lsq6_conf.target_file
     # if we are dealing with either an lsq6 target or a bootstrap model
     # create the appropriate directories for those
-    if lsq6_target is not None:
-        if not can_read_MINC_file(lsq6_target):
-            raise ValueError("\nError (lsq6 target): can not read MINC file: %s\n" % lsq6_target)
-        target_file = MincAtom(name=lsq6_target,
+    if target_type == TargetType.registration_target:
+        if not can_read_MINC_file(target_file):
+            raise ValueError("Cannot read MINC file: %s" % target_file)
+        target_file = MincAtom(name=target_file,
                                pipeline_sub_dir=os.path.join(output_dir, pipeline_name +
                                                              "_target_file"))
         return RegistrationTargets(registration_standard=target_file,
                                    xfm_to_standard=None,
                                    registration_native=None)
-    if bootstrap:
-        if not first_input_file:
-            raise ValueError("BUG: the function "
-                             "`registration_targets` is called with bootstrap=True "
-                             "but the first input file to the pipeline was not passed "
-                             "along. Don't know which file to use as target for LSQ6.")
+    elif target_type == TargetType.bootstrap:
+        if target_file is not None:
+            raise ValueError("BUG: bootstrap was chosen but a file was specified ...")
+        if first_input_file is None:
+            raise ValueError("Bootstrap was chosen but no input files supplied "
+                             "(possibly a bug: I'm probably only looking at input files specified "
+                             "on the command line, so if you supplied them in a CSV "
+                             "I might not have noticed (or this might not make sense) ...")
         if not can_read_MINC_file(first_input_file):
             raise ValueError("Error (bootstrap file): can not read MINC file: %s\n" % first_input_file)
         bootstrap_file = MincAtom(name=first_input_file,
@@ -1620,8 +1632,10 @@ def registration_targets(lsq6_conf: LSQ6Conf,
                                                                 "_bootstrap_file"))
         return RegistrationTargets(registration_standard=bootstrap_file)
 
-    if init_model:
-        return get_registration_targets_from_init_model(init_model, output_dir, pipeline_name)
+    elif target_type == TargetType.initial_model:
+        return get_registration_targets_from_init_model(target_file, output_dir, pipeline_name)
+    else:
+        raise ValueError("Invalid target type: %s" % reg_conf.target_type)
 
 
 def get_resolution_from_file(input_file: str) -> float:

@@ -48,7 +48,8 @@ def mbm(options):
 
     # FIXME: why do we have to call get_registration_targets *outside* of lsq6_nuc_inorm?
     targets = registration_targets(lsq6_conf=options.mbm.lsq6,
-                                   gen_conf=options.application)
+                                   app_conf=options.application,
+                                   first_input_file=options.application.files[0])
 
     lsq6_result = s.defer(lsq6_nuc_inorm(imgs=imgs,
                                          resolution=resolution,
@@ -66,7 +67,7 @@ def mbm(options):
 
 # TODO write a function 'ordinary_parser' ...
 mbm_parser = CompoundParser(
-               [AnnotatedParser(parser=lsq6_parser, namespace='lsq6'),
+               [lsq6_parser,
                 AnnotatedParser(parser=lsq12_parser, namespace='lsq12'),
                 AnnotatedParser(parser=nlin_parser, namespace='nlin'),
                 AnnotatedParser(parser=stats_parser, namespace='stats')])

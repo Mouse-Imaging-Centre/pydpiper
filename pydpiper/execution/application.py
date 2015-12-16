@@ -1,4 +1,3 @@
-from configargparse import ArgParser
 import time
 import pkg_resources
 import logging
@@ -57,25 +56,7 @@ def addApplicationArgumentGroup(parser):
                                action="store_false",
                                help="Opposite of --verbose [default]")
     group.add_argument("files", type=str, nargs='*', metavar='file',
-                        help='Files to process')
-
-# Some sneakiness... Using the following lines, it's possible
-# to add an epilog to the parser that is written to screen
-# verbatim. That way in the help file you can show an example
-# of what an lsq6/nlin protocol should look like.
-class MyParser(ArgParser):
-    def format_epilog(self, formatter):
-        if not self.epilog:
-            self.epilog = ""
-        return self.epilog
-
-def create_parser():
-    default_config_file = os.getenv("PYDPIPER_CONFIG_FILE")
-    files = [default_config_file] if default_config_file is not None else []
-    parser = MyParser(default_config_files=files)
-    addExecutorArgumentGroup(parser)
-    addApplicationArgumentGroup(parser)
-    return parser
+                       help='Files to process')
 
 
 def output_dir(options):

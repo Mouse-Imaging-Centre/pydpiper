@@ -14,7 +14,7 @@ from pydpiper.core.util import raise_, AutoEnum, NamedTuple
 # TODO: should the pipeline-specific argument handling be located here
 # or in that pipeline's module?  Makes more sense (general stuff
 # can still go here)
-from pydpiper.minc.registration import InputSpace
+from pydpiper.minc.registration import InputSpace, to_lsq6_conf
 
 
 class LSQ6Method(AutoEnum):
@@ -144,7 +144,7 @@ def parse(parser: Parser, args: List[str]) -> Namespace:
     def go_2(p, current_prefix, current_ns):
         if isinstance(p, BaseParser):
             new_p = ArgParser(default_config_files=config_files)
-            for a in (p.argparser._actions):
+            for a in p.argparser._actions:
                 new_a = copy.copy(a)
                 ss = copy.deepcopy(new_a.option_strings)
                 for ix, s in enumerate(new_a.option_strings):
@@ -154,7 +154,7 @@ def parse(parser: Parser, args: List[str]) -> Namespace:
                         raise NotImplementedError
                     new_a.option_strings = ss
                 new_p._add_action(new_a)
-            used_args, _rest = new_p.parse_known_args(args, namespace=current_ns)
+            _used_args, _rest = new_p.parse_known_args(args, namespace=current_ns)
             # TODO: could continue parsing from `_rest` instead of original `args`
         elif isinstance(p, CompoundParser):
             for q in p.parsers:
@@ -164,7 +164,7 @@ def parse(parser: Parser, args: List[str]) -> Namespace:
                     # TODO could also allow, say, a None
                 else:
                     # gross but how to write n-ary identity fn that behaves sensibly on single arg??
-                    current_ns.__dict__[q.namespace] = ns #q.cast(**vars(ns)) if q.cast else ns
+                    current_ns.__dict__[q.namespace] = ns
                     # FIXME this casting doesn't work for configurations with positional arguments,
                     # which aren't unpacked correctly -- better to use a namedtuple
                     # (making all arguments keyword-only also works, but then you have to supply
@@ -173,7 +173,8 @@ def parse(parser: Parser, args: List[str]) -> Namespace:
                      current_ns=ns)
                 # what happens here is type checking. If a cast function is provided, we're populating some
                 # configuration with the options we now have in the namespace to ensure that the types are all correct
-                current_ns.__dict__[q.namespace] = q.cast(**vars(current_ns.__dict__[q.namespace])) if q.cast else current_ns.__dict__[q.namespace]
+                current_ns.__dict__[q.namespace] = (q.cast(current_ns.__dict__[q.namespace]) #(q.cast(**vars(current_ns.__dict__[q.namespace]))
+                                                    if q.cast else current_ns.__dict__[q.namespace])
                 # TODO current_ns or current_namespace or ns or namespace?
         else:
             raise TypeError("parser %s wasn't a %s (%s or %s) but a %s" %
@@ -351,19 +352,8 @@ def _mk_registration_parser(p: ArgParser) -> ArgParser:
     return p  # g?
 
 
-p = ArgParser
-
 registration_parser = BaseParser(_mk_registration_parser(ArgParser(add_help=False)), "registration")
 
-# TODO: where should this live?
-
-
-
-
-# class RegistrationConf(object):
-#    def __init__(self, input_space : InputSpace, resolution : float):
-#        self.input_space = input_space
-#        self.resolution  = resolution
 
 def _mk_lsq6_parser():
     p = ArgParser(add_help=False)
@@ -379,6 +369,7 @@ def _mk_lsq6_parser():
     p.add_argument("--no-run-lsq6", dest="run_lsq6",
                    action="store_false",
                    help="Opposite of --run-lsq6")
+    # TODO should be part of some mutually exclusive group ...
     p.add_argument("--init-model", dest="init_model",
                    type=str, default=None,
                    help="File in standard space in the initial model. The initial model "
@@ -387,12 +378,12 @@ def _mk_lsq6_parser():
                         "information on initial models. [Default = %(default)s]")
     p.add_argument("--lsq6-target", dest="lsq6_target",
                    type=str, default=None,
-                   help="File to be used as the target for the 6 parameter alignment. "
+                   help="File to be used as the target for the initial (often 6-parameter) alignment. "
                         "[Default = %(default)s]")
     p.add_argument("--bootstrap", dest="bootstrap",
                    action="store_true", default=False,
                    help="Use the first input file to the pipeline as the target for the "
-                        "6 parameter alignment. [Default = %(default)s]")
+                        "initial (often 6-parameter) alignment. [Default = %(default)s]")
     # TODO: do we need to implement this option? This was for Kieran Short, but the procedure
     # he will be using in the future most likely will not involve this option.
     # group.add_argument("--lsq6-alternate-data-prefix", dest="lsq6_alternate_prefix",
@@ -405,7 +396,6 @@ def _mk_lsq6_parser():
     #                   "in the same orientation/location as the regular input files.  They will be used for "
     #                   "for the 6 parameter alignment. The transformations will then be used to transform "
     #                   "the regular input files, with which the pipeline will continue.")
-
     p.add_argument("--lsq6-simple", dest="lsq6_method",
                    action="store_const", const="lsq6_simple",
                    help="Run a 6 parameter alignment assuming that the input files are roughly "
@@ -474,7 +464,9 @@ def _mk_lsq6_parser():
     return p
 
 
-lsq6_parser = BaseParser(_mk_lsq6_parser(), "LSQ6")
+# the cast is basically mandatory, while it's easy to change the namespace if needed, so
+# upgraded this from a BaseParser to an AnnotatedParser
+lsq6_parser = AnnotatedParser(parser=BaseParser(_mk_lsq6_parser(), "LSQ6"), namespace="lsq6", cast=to_lsq6_conf)
 
 
 def _mk_stats_parser():
