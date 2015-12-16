@@ -10,10 +10,10 @@ from typing import Any, Callable, Dict, List, Tuple, TypeVar
 from pydpiper.minc.analysis import determinants_at_fwhms, invert
 from pydpiper.core.stages import Result
 from pydpiper.minc.registration import (Subject, Stages, mincANTS_NLIN_build_model, mincANTS_default_conf,
-                                        MincANTSConf, mincANTS, intrasubject_registrations, mincaverage, 
+                                        MincANTSConf, mincANTS, intrasubject_registrations, mincaverage,
                                         concat, check_MINC_input_files, get_registration_targets,
                                         lsq6_nuc_inorm, get_resolution_from_file, XfmHandler, LSQ6Conf,
-                                        RegistrationConf, InputSpace,)
+                                        RegistrationConf, InputSpace, LSQ12Conf, lsq12_nlin_build_model)
 from pydpiper.minc.files import MincAtom
 from pydpiper.execution.application import execute  # type: ignore
 from pydpiper.core.arguments import (application_parser,
@@ -161,36 +161,41 @@ def chain(options):
         intersubj_imgs = { s_id : subj.intersubject_registration_image
                           for s_id, subj in pipeline_subject_info.items() }
     else:
-        # TODO: the intersubj_imgs should now be extracted from the
         # lsq6 aligned images
-        raise NotImplementedError("We currently have not implemented the code for 'input space': %s" % options.registration.input_space)
+        # okay, a bit confusing... but earlier on when we ran the lsq6 alignment,
+        # we stored the xfmhandlers within the Subject dictionary. So when we call
+        # xfmhandler.intersubject_registration_image, this time that returns an
+        # actual xfmhandler. From which we want to extract the resampled file (in
+        # order to continue the registration with)
+        intersubj_imgs = { s_id : xfmhandler_subject.intersubject_registration_image.resampled
+                          for s_id, xfmhandler_subject in xfm_handlers_dict_lsq6.items() }
     
     if options.application.verbose:
         print("\nImages that are used for the inter-subject registration:")
         print("ID\timage")
         for subject in intersubj_imgs:
-            print(subject + '\t' + intersubj_imgs[subject].orig_path)  
-    
+            print(subject + '\t' + intersubj_imgs[subject].path)
+
+    conf1 = mincANTS_default_conf.replace(default_resolution=options.registration.resolution,
+                                          iterations="100x100x100x0")
+    conf2 = mincANTS_default_conf.replace(default_resolution=options.registration.resolution)
+    full_hierarchy = [conf1, conf2]
+
     # input files that started off in native space have been aligned rigidly 
     # by this point in the code (i.e., lsq6)
     if options.registration.input_space in [InputSpace.lsq6, InputSpace.native]:
-        raise NotImplementedError("We currently have not implemented the code for 'input space': %s" %
-                                  options.registration.input_space)
-    #intersubj_xfms = lsq12_NLIN_build_model_on_dictionaries(imgs=intersubj_imgs,
-        #                                                        conf=conf,
-        #                                                        lsq12_dir=lsq12_directory
-                                                                #, like={atlas_from_init_model_at_this_tp}
-        #                                                        )
+        intersubj_xfms = lsq12_nlin_build_model(imgs=list(intersubj_imgs.values()),
+                                                lsq12_conf=options.lsq12,
+                                                nlin_conf=full_hierarchy,
+                                                resolution=options.registration.resolution,
+                                                lsq12_dir=pipeline_lsq12_common_dir)
+                                                #, like={atlas_from_init_model_at_this_tp}
     elif options.registration.input_space == InputSpace.lsq12:
         #TODO: write reader that creates a mincANTS configuration out of an input protocol 
         if not some_temp_target:
             some_temp_target = s.defer(mincaverage(imgs=list(intersubj_imgs.values()),
                                            name_wo_ext="avg_of_input_files",
                                            output_dir=pipeline_nlin_common_dir))
-        conf1 = mincANTS_default_conf.replace(default_resolution=options.registration.resolution,
-                                              iterations="100x100x100x0")
-        conf2 = mincANTS_default_conf.replace(default_resolution=options.registration.resolution)
-        full_hierarchy = [conf1, conf2]
         intersubj_xfms = s.defer(mincANTS_NLIN_build_model(imgs=list(intersubj_imgs.values()),
                                                    initial_target=some_temp_target, # this doesn't make sense yet
                                                    nlin_dir=pipeline_nlin_common_dir,
@@ -409,7 +414,7 @@ if __name__ == "__main__":
            AnnotatedParser(parser=application_parser, namespace='application'),
            AnnotatedParser(parser=registration_parser, namespace='registration', cast=RegistrationConf),
            AnnotatedParser(parser=lsq6_parser, namespace='lsq6', cast=LSQ6Conf),
-           AnnotatedParser(parser=lsq12_parser, namespace='lsq12'), # should be MBM or build_model ...
+           AnnotatedParser(parser=lsq12_parser, namespace='lsq12', cast=LSQ12Conf), # should be MBM or build_model ...
            #AnnotatedParser(parser=BaseParser(addLSQ12ArgumentGroup), namespace='lsq12-inter-subj'),
            #addNLINArgumentGroup,
            AnnotatedParser(parser=stats_parser, namespace='stats'),

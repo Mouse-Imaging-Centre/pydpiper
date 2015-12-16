@@ -541,6 +541,13 @@ def _mk_lsq12_parser():
     p = ArgParser(add_help=False)
     # group = parser.add_argument_group("LSQ12 registration options",
     #                                  "Options for performing a pairwise, affine registration")
+    p.set_defaults(run_lsq12=True)
+    p.add_argument("--run-lsq12", dest="run_lsq12",
+                   action="store_true",
+                   help="Actually run the 12 parameter alignment [default = %(default)s]")
+    p.add_argument("--no-run-lsq12", dest="run_lsq12",
+                   action="store_false",
+                   help="Opposite of --run-lsq12")
     p.add_argument("--lsq12-max-pairs", dest="max_pairs",
                    type=parse_nullable_int, default=25,
                    help="Maximum number of pairs to register together ('None' implies all pairs). "
