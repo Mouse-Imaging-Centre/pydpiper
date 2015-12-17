@@ -826,54 +826,6 @@ def minctracc_NLIN_build_model(imgs: List[MincAtom],
     return Result(stages=s, output=WithAvgImgs(output=xfms, avg_img=avg, avg_imgs=avg_imgs))
 
 
-def build_model_using(registration_proc):
-    def build_model(imgs: List[MincAtom],
-                    initial_target: MincAtom,
-                    confs: List[Any],
-                    registration_proc,
-                    nlin_dir: str) -> Result[WithAvgImgs[List[XfmHandler]]]:
-          if len(confs) == 0:
-              raise ValueError("No configurations supplied ...")
-          s = Stages()
-          avg = initial_target
-          avg_imgs = []
-          for i, conf in enumerate(confs, start=1):
-              xfms = [s.defer(registration_proc(source=img, target=avg, conf=conf, generation=i, resample_source=True))
-                      for img in imgs]
-              avg = s.defer(mincaverage([xfm.resampled for xfm in xfms], name_wo_ext='nlin-%d' % i, output_dir=nlin_dir))
-              avg_imgs.append(avg)
-          return Result(stages=s, output=WithAvgImgs(output=xfms, avg_img=avg, avg_imgs=avg_imgs))
-    return build_model
-
-def general_build_model(imgs: List[MincAtom],
-                        initial_target: MincAtom,
-                        registration_proc,
-                        confs: List[MincANTSConf],
-                        nlin_dir: str,
-                        mincaverage = mincaverage) -> Result[WithAvgImgs[List[XfmHandler]]]:
-    """
-    This functions runs a hierarchical mincANTS registration on the input
-    images (imgs) creating an unbiased average.
-    The mincANTS configuration `confs` that is passed in should be
-    a list of configurations for each of the levels/generations.
-    After each round of registrations, an average is created out of the
-    resampled input files, which is then used as the target for the next
-    round of registrations.
-    """
-    if len(confs) == 0:
-        raise ValueError("No configurations supplied ...")
-    s = Stages()
-    avg = initial_target
-    avg_imgs = []  # type: List[MincAtom]
-    for i, conf in enumerate(confs, start=1):
-        xfms = [s.defer(registration_proc(source=img, target=avg, conf=conf, generation=i, resample_source=True))
-                for img in imgs]
-        avg = s.defer(mincaverage([xfm.resampled for xfm in xfms], name_wo_ext='nlin-%d' % i, output_dir=nlin_dir))
-        avg_imgs.append(avg)
-    return Result(stages=s, output=WithAvgImgs(output=xfms, avg_img=avg, avg_imgs=avg_imgs))
-
-mincANTS_NLIN_build_model = build_model_using(mincANTS)
-
 def mincANTS_NLIN_build_model(imgs: List[MincAtom],
                               initial_target: MincAtom,
                               confs: List[MincANTSConf],
