@@ -21,7 +21,7 @@ def four_mbm_parser(two_mbm_parser):
 
 @pytest.fixture()
 def two_mbm_parse(two_mbm_parser):
-    return parse(two_mbm_parser, ["--mbm1-lsq12-max-pairs=22"])
+    return parse(two_mbm_parser, ["--mbm1-lsq12-max-pairs=22", "--mbm1-bootstrap", "--mbm2-bootstrap"])
 
 
 @pytest.fixture()
@@ -29,7 +29,9 @@ def four_mbm_parse(four_mbm_parser):
     return parse(four_mbm_parser, ["--first-two-mbm1-lsq12-max-pairs=22",
                                    "--first-two-mbm2-lsq12-max-pairs=23",
                                    "--last-two-mbm1-lsq12-max-pairs=24",
-                                   "--last-two-mbm2-lsq12-max-pairs=25"])
+                                   "--last-two-mbm2-lsq12-max-pairs=25",
+                                   "--first-two-mbm1-bootstrap", "--first-two-mbm2-bootstrap",
+                                   "--last-two-mbm1-bootstrap", "--last-two-mbm2-bootstrap"])
 
 
 def is_recursive_subnamespace(n1, n2):
