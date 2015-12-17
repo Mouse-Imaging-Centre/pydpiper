@@ -11,7 +11,7 @@ from pydpiper.minc.analysis import determinants_at_fwhms, invert
 from pydpiper.core.stages import Result
 from pydpiper.minc.registration import (Subject, Stages, mincANTS_NLIN_build_model, mincANTS_default_conf,
                                         MincANTSConf, mincANTS, intrasubject_registrations, mincaverage, 
-                                        concat, check_MINC_input_files, get_registration_targets,
+                                        concat, check_MINC_input_files, registration_targets,
                                         lsq6_nuc_inorm, get_resolution_from_file, XfmHandler, LSQ6Conf,
                                         RegistrationConf, InputSpace,)
 from pydpiper.minc.files import MincAtom
@@ -69,6 +69,7 @@ def chain(options):
     # multiple initial models) are applied to subsets of the entire 
     # data, making it harder to keep the mapping simple/straightforward
 
+
     chain_opts = options.chain  # type : ChainConf
 
     s = Stages()
@@ -112,11 +113,8 @@ def chain(options):
         else:
             # if we are not dealing with a pride of models, we can retrieve a fixed
             # registration target for all input files:
-            registration_targets = registration_targets(init_model=options.lsq6.init_model,
-                                                        lsq6_target=options.lsq6.lsq6_target,
-                                                        bootstrap=options.lsq6.bootstrap,
-                                                        output_dir=output_dir,
-                                                        pipeline_name=pipeline_name)
+            targets = registration_targets(lsq6_conf=options.lsq6,
+                                           app_conf=options.application)
             
             # we want to store the xfm handlers in the same shape as pipeline_subject_info,
             # as such we will call lsq6_nuc_inorm for each file individually and simply extract
@@ -124,7 +122,7 @@ def chain(options):
             xfm_handlers_dict_lsq6 = map_over_time_pt_dict_in_Subject(
                                          lambda subj_atom:
                                            s.defer(lsq6_nuc_inorm([subj_atom],
-                                                                  registration_targets=registration_targets,
+                                                                  registration_targets=targets,
                                                                   resolution=options.registration.resolution,
                                                                   lsq6_options=options.lsq6,
                                                                   subject_matter=options.registration.subject_matter)
@@ -409,37 +407,30 @@ if __name__ == "__main__":
     p = CompoundParser(
           [AnnotatedParser(parser=execution_parser, namespace='execution'),
            AnnotatedParser(parser=application_parser, namespace='application'),
-           AnnotatedParser(parser=registration_parser, namespace='registration', cast=RegistrationConf),
+           # TODO: either switch back to automatically unpacking as part of `parse`
+           # or write a helper to do \ns: C(**vars(ns))
+           AnnotatedParser(parser=registration_parser, namespace='registration', cast=lambda ns: RegistrationConf(**vars(ns))),
            lsq6_parser,
            AnnotatedParser(parser=lsq12_parser, namespace='lsq12'), # should be MBM or build_model ...
            #AnnotatedParser(parser=BaseParser(addLSQ12ArgumentGroup), namespace='lsq12-inter-subj'),
            #addNLINArgumentGroup,
            AnnotatedParser(parser=stats_parser, namespace='stats'),
-           AnnotatedParser(parser=chain_parser, namespace='chain') ])# cast=ChainConf)])
+           AnnotatedParser(parser=chain_parser, namespace='chain', cast=lambda ns: ChainConf(**vars(ns))) ])# cast=ChainConf)])
     
     # TODO could abstract and then parametrize by prefix/ns ??
     options = parse(p, sys.argv[1:])
 
     # TODO: the registration resolution should be set somewhat outside
     # of any actual function? Maybe the right time to set this, is here
-    # when options are gathered? 
+    # when options are gathered?
     if not options.registration.resolution:
-        
-        # TODO: enforce existence of resolution as early as possible, e.g.,
-        # by creating a mutually exclusive options group
-        resolution = None
-        if options.lsq6.init_model:
-            # Ha! an initial model always points to the file in standard space, so we 
-            # can directly use this file to get the resolution from
-            resolution = get_resolution_from_file(options.lsq6.init_model)
-        if options.lsq6.bootstrap:
-            resolution = get_resolution_from_file(options.application.files[0])
-        if options.lsq6.lsq6_target:
-            resolution = get_resolution_from_file(options.lsq6.lsq6_target)
-        options.registration = options.registration.replace(resolution = resolution)
+        options.registration = options.registration.replace(
+                                   resolution=get_resolution_from_file(
+                                       registration_targets(lsq6_conf=options.lsq6,
+                                                            app_conf=options.application).registration_standard.path))
 
-    if not options.registration.resolution:
-        raise ValueError("Crap... couldn't get the registration resolution...")
+    #if not options.registration.resolution:
+    #    raise ValueError("Crap... couldn't get the registration resolution...")
     
     print("Ha! The registration resolution is: %s\n" % options.registration.resolution)
     # *** *** *** *** *** *** *** *** ***

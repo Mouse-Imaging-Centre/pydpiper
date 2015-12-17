@@ -1047,13 +1047,12 @@ def multilevel_pairwise_minctracc(imgs: List[MincAtom],
                           target=None, resampled=res)  ##FIXME the None here borks things interface-wise ...
         # does putting `target = res` make sense? could a sum be used?
 
-    if max_pairs is not None:
-        return Result(stages=p, output=[avg_xfm_from(img, target_imgs=imgs) for img in imgs])
-    else:
-        random.seed(tuple([img.path for img in imgs]))  # TODO this should be even higher in the program text ...
-        target_imgs = random.sample(imgs, max_pairs + 1)
-        return Result(stages=p, output=[avg_xfm_from(img, target_imgs=random.sample(imgs, max_pairs))
-                                        for img in imgs])  # FIXME might use one fewer image than `max_pairs`...
+    target_imgs = imgs if max_pairs is None else random.sample(imgs, max_pairs)
+    # FIXME might use one fewer image than `max_pairs`...
+
+    # FIXME this will be the same across all runs of the program, but unfortunately also across all calls ...
+    random.seed(tuple((img.path for img in imgs)))
+    return Result(stages=p, output=[avg_xfm_from(img, target_imgs=target_imgs) for img in imgs])
 
 
 # MultilevelMinctraccConf = NamedTuple('MultilevelMinctraccConf',
@@ -1125,14 +1124,12 @@ def lsq12_nlin_build_model(imgs       : List[MincAtom],
     return nlin_result
 
 
-
-
-
 def can_read_MINC_file(filename: str) -> bool:
     """Can the MINC file `filename` with be read with `mincinfo`?"""
-    devnull = open(os.devnull, 'w')
-    returncode = subprocess.call(["mincinfo", filename], stdout=devnull, stderr=devnull) == 0
-    devnull.close()
+    # FIXME: opening and closing this file many times can be quite slow on some platforms ...
+    # better to change to can_read_MINC_files.
+    with open(os.devnull, 'w') as dev_null:
+        returncode = subprocess.call(["mincinfo", filename], stdout=dev_null, stderr=dev_null) == 0
     return returncode
 
 
@@ -1152,7 +1149,7 @@ def check_MINC_input_files(args: List[str]) -> None:
         # here we should also check that the input files can be read
         issuesWithInputs = 0
         for inputF in args:
-            if not can_read_MINC_file(inputF):
+            if not can_read_MINC_file(inputF):  # FIXME this will be quite slow on SciNet, etc.
                 print("\nError: can not read input file: " + str(inputF) + "\n", file=sys.stderr)
                 issuesWithInputs = 1
         if issuesWithInputs:
@@ -1254,9 +1251,9 @@ RegistrationConf = NamedTuple("RegistrationConf", [("input_space", InputSpace),
                                                    #("target_file", Optional[str])
                                                    ])
 
-
-def to_registration_conf(ns : Namespace) -> RegistrationConf:
-    raise NotImplementedException
+# don't really need this, apparently ...
+#def to_registration_conf(ns : Namespace) -> RegistrationConf:
+#    raise NotImplementedException
 
 
 LSQ6Conf = NamedTuple("LSQ6Conf", [("lsq6_method", str),
@@ -1301,8 +1298,8 @@ def to_lsq6_conf(lsq6_args : Namespace) -> LSQ6Conf:
 def lsq6(imgs: List[MincAtom],
          target: MincAtom,
          resolution: float,
-         output_dir,
-         pipeline_name,
+         #output_dir,
+         #pipeline_name,
          conf: LSQ6Conf) -> Result[List[XfmHandler]]:
     s = Stages()
     xfms_to_target = []  # type: List[XfmHandler]
@@ -1319,10 +1316,10 @@ def lsq6(imgs: List[MincAtom],
     if conf.lsq6_method == "lsq6_large_rotations":
         rotational_configuration, resolution_for_rot = \
             get_parameters_for_rotational_minctracc(resolution=resolution,
-                                                    rotation_tmp_dir=conf.large_rotation_tmp_dir,
-                                                    rotation_range=conf.large_rotation_range,
-                                                    rotation_interval=conf.large_rotation_interval,
-                                                    rotation_params=conf.large_rotation_parameters)
+                                                    rotation_tmp_dir=conf.rotation_tmp_dir,
+                                                    rotation_range=conf.rotation_range,
+                                                    rotation_interval=conf.rotation_interval,
+                                                    rotation_params=conf.rotation_params)
         # now call rotational_minctracc on all input images 
         xfms_to_target = [s.defer(rotational_minctracc(source=img, target=target,
                                                        conf=rotational_configuration,
@@ -1355,7 +1352,7 @@ class RegistrationTargets(object):
     --lsq6-target
     --bootstrap
     """
-    # what does this mean?
+    # TODO rename registration_standard to standard_space_target or similar?
     def __init__(self,
                  registration_standard: MincAtom,
                  xfm_to_standard: Optional[XfmAtom] = None,
@@ -1376,11 +1373,6 @@ def lsq6_nuc_inorm(imgs: List[MincAtom],
     init_target = registration_targets.registration_native or registration_targets.registration_standard
     source_imgs_to_lsq6_target_xfms = s.defer(lsq6(imgs=imgs, target=init_target,
                                                    resolution=resolution, conf=lsq6_options))
-    # lsq6_options.lsq6_method, resolution,
-    # lsq6_options.large_rotation_tmp_dir,
-    # lsq6_options.large_rotation_range,
-    # lsq6_options.large_rotation_interval,
-    # lsq6_options.large_rotation_parameters))
 
     # concatenate the native_to_standard transform if we have this transform
     xfms_to_final_target_space = ([s.defer(xfmconcat([first_xfm.xfm,
@@ -1561,6 +1553,7 @@ def get_registration_targets_from_init_model(init_model_standard_file: str,
                                registration_native=registration_native)
 
 # TODO should this just accept an object with the three relevant fields?
+# TODO rename this function since it now returns interesting stuff ...
 def verify_correct_lsq6_target_options(init_model: str,
                                        lsq6_target: str,
                                        bootstrap: bool) -> Tuple[TargetType, Optional[str]]:
@@ -1596,7 +1589,7 @@ def verify_correct_lsq6_target_options(init_model: str,
 # TODO: why is this separate?
 def registration_targets(lsq6_conf: LSQ6Conf,
                          app_conf,
-                         first_input_file: Optional[str] = None):
+                         first_input_file: Optional[str] = None) -> RegistrationTargets:
 
     target_type   = lsq6_conf.target_type
     target_file   = lsq6_conf.target_file
@@ -1635,7 +1628,7 @@ def registration_targets(lsq6_conf: LSQ6Conf,
     elif target_type == TargetType.initial_model:
         return get_registration_targets_from_init_model(target_file, output_dir, pipeline_name)
     else:
-        raise ValueError("Invalid target type: %s" % reg_conf.target_type)
+        raise ValueError("Invalid target type: %s" % lsq6_conf.target_type)
 
 
 def get_resolution_from_file(input_file: str) -> float:

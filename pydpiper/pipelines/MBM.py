@@ -46,7 +46,7 @@ def mbm(options):
 
     output_dir = pipeline_name = options.application.pipeline_name
 
-    # FIXME: why do we have to call get_registration_targets *outside* of lsq6_nuc_inorm?
+    # FIXME: why do we have to call registration_targets *outside* of lsq6_nuc_inorm?
     targets = registration_targets(lsq6_conf=options.mbm.lsq6,
                                    app_conf=options.application,
                                    first_input_file=options.application.files[0])
