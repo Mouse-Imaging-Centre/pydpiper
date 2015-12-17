@@ -6,7 +6,7 @@ import subprocess
 import sys
 
 from configargparse import Namespace
-from typing import Any, cast, Dict, Generic, Iterable, List, Optional, Set, Tuple, TypeVar
+from typing import Any, cast, Dict, Generic, Iterable, List, Optional, Set, Tuple, TypeVar, Union
 
 from pydpiper.core.files import FileAtom
 from pydpiper.core.stages import CmdStage, Result, Stages
@@ -568,7 +568,7 @@ def minctracc(source: MincAtom,
               transform: Optional[XfmAtom] = None,
               transform_name_wo_ext: Optional[str] = None,
               generation: Optional[int] = None,
-              resample_source: bool = False):
+              resample_source: bool = False) -> Result[XfmHandler]:
     """
     source
     target
@@ -981,6 +981,45 @@ def intrasubject_registrations(subj: Subject, conf: MincANTSConf) \
 
 MultilevelMinctraccConf = List[MinctraccConf]  # ??
 
+# TODO: this is very static right now, but I just want to get things running
+default_lsq12_multi_level_minctracc_level1 = MinctraccConf(step_sizes=(0.9,0.9,0.9),
+                                                           blur_resolution=0.28,
+                                                           use_masks=False,
+                                                           linear_conf=LinearMinctraccConf(simplex=2.8,
+                                                                                           transform_type="lsq12",
+                                                                                           tolerance=0.0001,
+                                                                                           w_translations=(0.4,0.4,0.4),
+                                                                                           w_rotations=(0.0174533,0.0174533,0.0174533),
+                                                                                           w_scales=(0.02,0.02,0.02),
+                                                                                           w_shear=(0.02,0.02,0.02)),
+                                                           nonlinear_conf=None)
+
+default_lsq12_multi_level_minctracc_level2 = MinctraccConf(step_sizes=(0.46,0.46,0.46),
+                                                           blur_resolution=0.19,
+                                                           use_masks=False,
+                                                           linear_conf=LinearMinctraccConf(simplex=1.4,
+                                                                                           transform_type="lsq12",
+                                                                                           tolerance=0.0001,
+                                                                                           w_translations=(0.4,0.4,0.4),
+                                                                                           w_rotations=(0.0174533,0.0174533,0.0174533),
+                                                                                           w_scales=(0.02,0.02,0.02),
+                                                                                           w_shear=(0.02,0.02,0.02)),
+                                                           nonlinear_conf=None)
+
+default_lsq12_multi_level_minctracc_level3 = MinctraccConf(step_sizes=(0.3,0.3,0.3),
+                                                           blur_resolution=0.14,
+                                                           use_masks=False,
+                                                           linear_conf=LinearMinctraccConf(simplex=0.9,
+                                                                                           transform_type="lsq12",
+                                                                                           tolerance=0.0001,
+                                                                                           w_translations=(0.4,0.4,0.4),
+                                                                                           w_rotations=(0.0174533,0.0174533,0.0174533),
+                                                                                           w_scales=(0.02,0.02,0.02),
+                                                                                           w_shear=(0.02,0.02,0.02)),
+                                                           nonlinear_conf=None)
+default_lsq12_multi_level_minctracc = [default_lsq12_multi_level_minctracc_level1,
+                                       default_lsq12_multi_level_minctracc_level2,
+                                       default_lsq12_multi_level_minctracc_level3]
 
 def multilevel_minctracc(source: MincAtom,
                          target: MincAtom,
@@ -990,14 +1029,17 @@ def multilevel_minctracc(source: MincAtom,
     # TODO fold curr_dir into conf?
     if len(confs) == 0:  # not a "registration" at all; also, src_blur/target_blur will be undefined ...
         raise ValueError("No configurations supplied")
-    p = Stages()
+    s = Stages()
     for conf in confs:
         # having the basic cmdstage fns act on single items rather than arrays is a bit inefficient,
         # e.g., we create many blur stages (which will later be eliminated, but still ...)
-        src_blur    = p.defer(mincblur(source, fwhm=conf.blur_resolution))  # FIXME! need to set gradient=...
-        target_blur = p.defer(mincblur(target, fwhm=conf.blur_resolution))  # but not included in MinctraccConf
-        transform   = p.defer(minctracc(src_blur, target_blur, conf=conf, transform=transform))
-    return Result(stages=p,
+        src_blur = s.defer(mincblur(source, fwhm=conf.blur_resolution))  # FIXME! need to set gradient=...
+        target_blur = s.defer(mincblur(target, fwhm=conf.blur_resolution))  # but not included in MinctraccConf
+        transform_handler = s.defer(minctracc(src_blur, target_blur, conf=conf, transform=transform))
+        # minctracc returns an XfmHandler. When we call minctracc again, or return an XfmHandler at the
+        # end of this function, we need to make sure that the XfmAtom is actually that part
+        transform = transform_handler.xfm
+    return Result(stages=s,
                   output=XfmHandler(xfm=transform,
                                     source=src_blur,
                                     target=target_blur))
@@ -1025,21 +1067,28 @@ def multilevel_pairwise_minctracc(imgs: List[MincAtom],
                                   curr_dir: str = ".") -> Result[List[XfmHandler]]:
     """Pairwise registration of all images.
     max_pairs - number of images to register each image against. (Currently we might register against one fewer.)"""
-    p = Stages()
+    s = Stages()
     output_dir = os.path.join(curr_dir, 'pairs')
 
     if max_pairs < 2:
         raise ValueError("must register at least two pairs")
+
+    if len(imgs) < 2:
+        raise ValueError("currently need at least two images")
+        # otherwise 0 imgs passed to mincavg (could special-case)
 
     def avg_xfm_from(src_img     : MincAtom,
                      target_imgs : List[MincAtom]):
         """Compute xfm from src_img to each target img, average them, and resample along the result"""
         # TODO to save creation of lots of duplicate blurs, could use multilevel_minctracc_all,
         # being careful not to register the img against itself
-        xfms = [p.defer(multilevel_minctracc(src_img, target_img, confs=conf, curr_dir=output_dir))
+        # TODO: do something about the configuration, currently it all seems a bit broken...
+        xfms = [s.defer(multilevel_minctracc(src_img, target_img,
+                                             confs=default_lsq12_multi_level_minctracc,
+                                             curr_dir=output_dir))
                 for target_img in target_imgs if src_img != target_img]  # TODO src_img.name != ....name ??
-        avg_xfm = p.defer(xfmaverage([xfm.xfm for xfm in xfms], output_dir=curr_dir))
-        res = p.defer(mincresample(img=src_img,
+        avg_xfm = s.defer(xfmaverage([xfm.xfm for xfm in xfms], output_dir=curr_dir))
+        res = s.defer(mincresample(img=src_img,
                                    xfm=avg_xfm,
                                    like=like or src_img,
                                    interpolation=Interpolation.sinc))
@@ -1047,13 +1096,15 @@ def multilevel_pairwise_minctracc(imgs: List[MincAtom],
                           target=None, resampled=res)  ##FIXME the None here borks things interface-wise ...
         # does putting `target = res` make sense? could a sum be used?
 
-    target_imgs = imgs if max_pairs is None else random.sample(imgs, max_pairs)
-    # FIXME might use one fewer image than `max_pairs`...
 
-    # FIXME this will be the same across all runs of the program, but unfortunately also across all calls ...
-    random.seed(tuple((img.path for img in imgs)))
-    return Result(stages=p, output=[avg_xfm_from(img, target_imgs=target_imgs) for img in imgs])
-
+    if max_pairs is None or max_pairs >= len(imgs):
+        return Result(stages=s, output=[avg_xfm_from(img, target_imgs=imgs) for img in imgs])
+    else:
+        # FIXME this will be the same across all runs of the program, but also across calls with the same inputs ...
+        random.seed(tuple((img.path for img in imgs)))
+        return Result(stages=s,
+                      output=[avg_xfm_from(img, target_imgs=random.sample(imgs, max_pairs)) for img in imgs])
+                      # FIXME might use one fewer image than `max_pairs`...
 
 # MultilevelMinctraccConf = NamedTuple('MultilevelMinctraccConf',
 #  [#('resolution', float),   # TODO: used to choose step size...shouldn't be here
@@ -1080,15 +1131,18 @@ LSQ12Conf = MultilevelMinctraccConf
 # TODO eliminate/provide default val for resolutions, move resolutions into conf, finish conf ...
 def lsq12_pairwise(imgs: List[MincAtom],
                    conf: MultilevelMinctraccConf,  # TODO: override transform_type field?
+                   lsq12_conf: LSQ12Conf,
                    lsq12_dir: str,
                    like: MincAtom = None,
                    mincaverage = mincaverage) -> Result[WithAvgImgs[List[XfmHandler]]]:
     output_dir = os.path.join(lsq12_dir, 'lsq12')
     # conf.transform_type='-lsq12' # hack ... copy? or set external to lsq12 call ? might be better
-    p = Stages()
-    xfms = p.defer(multilevel_pairwise_minctracc(imgs=imgs, conf=conf, like=like, curr_dir=output_dir))
-    avg_img = p.defer(mincaverage([x.resampled for x in xfms], output_dir=output_dir))
-    return Result(stages=p, output=WithAvgImgs(avg_imgs=[avg_img], avg_img=avg_img, output=xfms))
+    s = Stages()
+    xfms = s.defer(multilevel_pairwise_minctracc(imgs=imgs, conf=conf, like=like,
+                                                 curr_dir=output_dir,
+                                                 max_pairs=lsq12_conf.max_pairs))
+    avg_img = s.defer(mincaverage([x.resampled for x in xfms], output_dir=output_dir))
+    return Result(stages=s, output=WithAvgImgs(avg_imgs=[avg_img], avg_img=avg_img, output=xfms))
 
 
 K = TypeVar('K')
@@ -1115,13 +1169,17 @@ def lsq12_pairwise_on_dictionaries(imgs: Dict[K, MincAtom],
 
 def lsq12_nlin_build_model(imgs       : List[MincAtom],
                            lsq12_conf : LSQ12Conf,
-                           nlin_conf,
+                           lsq12_dir  : str,
+                           nlin_conf  : Union[MinctraccConf,MincANTSConf],
                            resolution : float) -> Result[List[XfmHandler]]:
-    lsq12_result = lsq12_pairwise(imgs=imgs, like=NotImplemented,
-                                  conf=lsq12_conf, lsq12_dir=NotImplemented)
-    nlin_result  = build_model_using([xfm.target for xfm in lsq12_result],
-                                     conf=nlin_conf)
-    return nlin_result
+    s = Stages()
+
+    lsq12_result = s.defer(lsq12_pairwise(imgs=imgs, like=None,
+                                          lsq12_conf=lsq12_conf,
+                                          conf=lsq12_conf, lsq12_dir=lsq12_dir))
+
+    # TODO: this is unlikely to be the correct return output...
+    return Result(stages=s, output=lsq12_result)
 
 
 def can_read_MINC_file(filename: str) -> bool:
@@ -1251,10 +1309,6 @@ RegistrationConf = NamedTuple("RegistrationConf", [("input_space", InputSpace),
                                                    #("target_file", Optional[str])
                                                    ])
 
-# don't really need this, apparently ...
-#def to_registration_conf(ns : Namespace) -> RegistrationConf:
-#    raise NotImplementedException
-
 
 LSQ6Conf = NamedTuple("LSQ6Conf", [("lsq6_method", str),
                                    ("rotation_tmp_dir", Optional[str]),
@@ -1275,9 +1329,9 @@ LSQ6Conf = NamedTuple("LSQ6Conf", [("lsq6_method", str),
 
 
 def to_lsq6_conf(lsq6_args : Namespace) -> LSQ6Conf:
-    # the reason we have this cast function, is that
-    # it allows us specify types for the actual configuration,
-    # but not have defaults for them.
+    """Convert a Namespace produced by an LSQ6 option parser to an LSQ6Conf.
+    This lets us inherit defaults from the parser without duplicating them here,
+    and we also change the three flags into a single enum + value to reduce the risk of later errors."""
     target_type, target_file = verify_correct_lsq6_target_options(init_model=lsq6_args.init_model,
                                                                   bootstrap=lsq6_args.bootstrap,
                                                                   lsq6_target=lsq6_args.lsq6_target)
@@ -1287,12 +1341,12 @@ def to_lsq6_conf(lsq6_args : Namespace) -> LSQ6Conf:
     new_args["target_type"] = target_type
     new_args["target_file"] = target_file
     return  LSQ6Conf(**new_args)
-    # we're being nice programmers, and we'll already check whether
-    # the correct
-    #if conf_to_return.run_lsq6:
-    #    verify_correct_lsq6_target_options(conf_to_return.init_model,
-    #                                       conf_to_return.lsq6_target,
-    #                                       conf_to_return.bootstrap)
+
+
+LSQ12Conf = NamedTuple("LSQ12Conf", [("run_lsq12", bool),
+                                     ("max_pairs", int),
+                                     ("like_file", Optional[str]),
+                                     ("protocol", Optional[str])])
 
 
 def lsq6(imgs: List[MincAtom],

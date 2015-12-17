@@ -58,10 +58,12 @@ def mbm(options):
 
     lsq12_nlin_result = s.defer(lsq12_nlin_build_model(imgs=[xfm.resampled for xfm in lsq6_result],
                                                        resolution=resolution,
-                                                       lsq12_conf=options.mbm.lsq12, nlin_conf=options.mbm.nlin))
+                                                       lsq12_dir=os.path.join(pipeline_dir, "lsq12"),
+                                                       lsq12_conf=options.mbm.lsq12,
+                                                       nlin_conf=options.mbm.nlin))
 
-    determinants = [s.defer(determinants_at_fwhms(xfm, blur_fwhms=options.stats.stats_kernels))
-                    for xfm in lsq12_nlin_result.xfms]
+    determinants = [s.defer(determinants_at_fwhms(xfm, blur_fwhms=options.mbm.stats.stats_kernels))
+                    for xfm in lsq12_nlin_result.output]
 
     return Result(stages=s, output=determinants)  # TODO: add more outputs
 
