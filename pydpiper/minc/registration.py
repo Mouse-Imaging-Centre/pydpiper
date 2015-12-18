@@ -48,18 +48,19 @@ def mincblur(img: MincAtom,
 def mincaverage(imgs: List[MincAtom],
                 name_wo_ext: str = "average",
                 output_dir: str = '.',
+                avg_file: Optional[MincAtom] = None,
                 copy_header_from_first_input: bool = False):
     """
     By default mincaverage only copies header information over to the output
     file that is shared by all input files (xspace, yspace, zspace information etc.)
     In some cases however, you might want to have some of the non-standard header
     information. Use the copy_header_from_first_input argument for this, and it
-    will add the -copy_header flag to mincaverage
+    will add the -copy_header flag to mincaverage.
     """
     if len(imgs) == 0:
         raise ValueError("`mincaverage` arg `imgs` is empty (can't average zero files)")
     # TODO: propagate masks/labels??
-    avg = MincAtom(name=os.path.join(output_dir, '%s.mnc' % name_wo_ext), orig_name=None)
+    avg = avg_file or MincAtom(name=os.path.join(output_dir, '%s.mnc' % name_wo_ext), orig_name=None)
     sdfile = MincAtom(name=os.path.join(output_dir, '%s_sd.mnc' % name_wo_ext), orig_name=None)
     additional_flags = ["-copy_header"] if copy_header_from_first_input else []  # type: List[str]
     s = CmdStage(inputs=tuple(imgs), outputs=(avg, sdfile),
@@ -1029,6 +1030,8 @@ def multilevel_pairwise_minctracc(imgs: List[MincAtom],
         raise ValueError("currently need at least two images")
         # otherwise 0 imgs passed to mincavg (could special-case)
 
+    target = MincAtom(name="target", output_sub_dir=curr_dir)  # TODO what's this 'curr_dir' thing?
+
     def avg_xfm_from(src_img     : MincAtom,
                      target_imgs : List[MincAtom]):
         """Compute xfm from src_img to each target img, average them, and resample along the result"""
@@ -1045,18 +1048,21 @@ def multilevel_pairwise_minctracc(imgs: List[MincAtom],
                                    like=like or src_img,
                                    interpolation=Interpolation.sinc))
         return XfmHandler(xfm=avg_xfm, source=src_img,
-                          target=None, resampled=res)  ##FIXME the None here borks things interface-wise ...
+                          target=target, resampled=res)  ##FIXME the None here borks things interface-wise ...
         # does putting `target = res` make sense? could a sum be used?
 
-
     if max_pairs is None or max_pairs >= len(imgs):
-        return Result(stages=s, output=[avg_xfm_from(img, target_imgs=imgs) for img in imgs])
+        avg_xfms = [avg_xfm_from(img, target_imgs=imgs) for img in imgs]
     else:
         # FIXME this will be the same across all runs of the program, but also across calls with the same inputs ...
         random.seed(tuple((img.path for img in imgs)))
-        return Result(stages=s,
-                      output=[avg_xfm_from(img, target_imgs=random.sample(imgs, max_pairs)) for img in imgs])
+        avg_xfms = [avg_xfm_from(img, target_imgs=random.sample(imgs, max_pairs)) for img in imgs]
                       # FIXME might use one fewer image than `max_pairs`...
+
+    # FIXME the average computed in lsq12_pairwise is now rather redundant -- resolve by returning this one?
+    _avg_img = s.defer(mincaverage([xfm.resampled for xfm in avg_xfms], avg_file=target))
+
+    return Result(stages=s, output=avg_xfms)  # TODO what about the average image?
 
 # MultilevelMinctraccConf = NamedTuple('MultilevelMinctraccConf',
 #  [#('resolution', float),   # TODO: used to choose step size...shouldn't be here
@@ -1122,7 +1128,7 @@ def lsq12_pairwise_on_dictionaries(imgs: Dict[K, MincAtom],
 def lsq12_nlin_build_model(imgs       : List[MincAtom],
                            lsq12_conf : LSQ12Conf,
                            lsq12_dir  : str,
-                           nlin_conf  : Union[MinctraccConf,MincANTSConf],
+                           nlin_conf  : Union[MinctraccConf, MincANTSConf],
                            resolution : float) -> Result[List[XfmHandler]]:
     s = Stages()
 
