@@ -11,9 +11,9 @@ from pydpiper.minc.analysis import determinants_at_fwhms, invert
 from pydpiper.core.stages import Result
 from pydpiper.minc.registration import (Subject, Stages, mincANTS_NLIN_build_model, mincANTS_default_conf,
                                         intrasubject_registrations, mincaverage,
-                                        concat, check_MINC_input_files, registration_targets,
+                                        concat_xfmhandlers, check_MINC_input_files, registration_targets,
                                         lsq6_nuc_inorm, get_resolution_from_file, XfmHandler, LSQ6Conf,
-                                        RegistrationConf, InputSpace, LSQ12Conf, lsq12_nlin_build_model)
+                                        RegistrationConf, InputSpace, LSQ12Conf, lsq12_nlin_build_model, TargetType)
 from pydpiper.minc.files import MincAtom
 from pydpiper.execution.application import execute  # type: ignore
 from pydpiper.core.arguments import (application_parser,
@@ -103,7 +103,7 @@ def chain(options):
                          (options.registration.input_space, ','.join(InputSpace.__members__)))
     
     if options.registration.input_space == InputSpace.native:
-        if options.lsq6.bootstrap:
+        if options.lsq6.target_type == TargetType.bootstrap:
             raise ValueError("\nA bootstrap model is ill-defined for the registration chain. "
                              "(Which file is the 'first' input file?). Please use the --lsq6-target "
                              "flag to specify a target for the lsq6 stage, or use an initial model.")
@@ -119,7 +119,7 @@ def chain(options):
             # we want to store the xfm handlers in the same shape as pipeline_subject_info,
             # as such we will call lsq6_nuc_inorm for each file individually and simply extract
             # the first (and only) element from the resulting list via s.defer(...)[0].
-            xfm_handlers_dict_lsq6 = map_over_time_pt_dict_in_Subject(
+            subj_id_to_subj_with_lsq6_xfm_dict = map_over_time_pt_dict_in_Subject(
                                          lambda subj_atom:
                                            s.defer(lsq6_nuc_inorm([subj_atom],
                                                                   registration_targets=targets,
@@ -128,9 +128,7 @@ def chain(options):
                                                                   subject_matter=options.registration.subject_matter)
                                                    )[0],
                                          pipeline_subject_info)  # type: Dict[str, Subject[XfmHandler]]
-        
-        
-    some_temp_target = None # type: MincAtom  # FIXME just set this right away
+
 
     # NB currently LSQ6 expects an array of files, but we have a map.
     # possibilities:
@@ -154,51 +152,65 @@ def chain(options):
     #                                 |
     #                            group_wise registration on time point 2
     #
-    dict_intersubj_atom_to_xfm = {}  # type: Dict[MincAtom, XfmHandler]
+
+    # dictionary that holds the transformations from the intersubject images
+    # to the final common space average
+    intersubj_img_to_xfm_to_common_avg_dict = {}  # type: Dict[MincAtom, XfmHandler]
     if options.registration.input_space in (InputSpace.lsq6, InputSpace.lsq12):
-        intersubj_imgs = { s_id : subj.intersubject_registration_image
+        # no registrations have been performed yet, so we can point to the input files
+        s_id_to_intersubj_img_dict = { s_id : subj.intersubject_registration_image
                           for s_id, subj in pipeline_subject_info.items() }
     else:
         # lsq6 aligned images
-        # okay, a bit confusing... but earlier on when we ran the lsq6 alignment,
-        # we stored the xfmhandlers within the Subject dictionary. So when we call
-        # xfmhandler.intersubject_registration_image, this time that returns an
-        # actual xfmhandler. From which we want to extract the resampled file (in
-        # order to continue the registration with)
-        intersubj_imgs = { s_id : xfmhandler_subject.intersubject_registration_image.resampled
-                          for s_id, xfmhandler_subject in xfm_handlers_dict_lsq6.items() }
+        # When we ran the lsq6 alignment, we stored the XfmHandlers in the Subject dictionary. So when we call
+        # xfmhandler.intersubject_registration_image, this returns an XfmHandler. From which
+        # we want to extract the resampled file (in order to continue the registration with)
+        s_id_to_intersubj_img_dict = { s_id : subj_with_xfmhandler.intersubject_registration_image.resampled
+                          for s_id, subj_with_xfmhandler in subj_id_to_subj_with_lsq6_xfm_dict.items() }
     
     if options.application.verbose:
         print("\nImages that are used for the inter-subject registration:")
         print("ID\timage")
-        for subject in intersubj_imgs:
-            print(subject + '\t' + intersubj_imgs[subject].path)
+        for subject in s_id_to_intersubj_img_dict:
+            print(subject + '\t' + s_id_to_intersubj_img_dict[subject].path)
 
+    # TODO: this is only here in order to have some default. As stated below, we still need
+    # to work on default protocols
     conf1 = mincANTS_default_conf.replace(default_resolution=options.registration.resolution,
                                           iterations="100x100x100x0")
     conf2 = mincANTS_default_conf.replace(default_resolution=options.registration.resolution)
     full_hierarchy = [conf1, conf2]
 
-    # input files that started off in native space have been aligned rigidly 
-    # by this point in the code (i.e., lsq6)
     if options.registration.input_space in [InputSpace.lsq6, InputSpace.native]:
-        intersubj_xfms = lsq12_nlin_build_model(imgs=list(intersubj_imgs.values()),
+        intersubj_xfms = lsq12_nlin_build_model(imgs=list(s_id_to_intersubj_img_dict.values()),
                                                 lsq12_conf=options.lsq12,
                                                 nlin_conf=full_hierarchy,
                                                 resolution=options.registration.resolution,
-                                                lsq12_dir=pipeline_lsq12_common_dir)
+                                                lsq12_dir=pipeline_lsq12_common_dir,
+                                                nlin_dir=pipeline_nlin_common_dir)
                                                 #, like={atlas_from_init_model_at_this_tp}
     elif options.registration.input_space == InputSpace.lsq12:
-        #TODO: write reader that creates a mincANTS configuration out of an input protocol 
-        if not some_temp_target:
-            some_temp_target = s.defer(mincaverage(imgs=list(intersubj_imgs.values()),
-                                           name_wo_ext="avg_of_input_files",
-                                           output_dir=pipeline_nlin_common_dir))
-        intersubj_xfms = s.defer(mincANTS_NLIN_build_model(imgs=list(intersubj_imgs.values()),
-                                                   initial_target=some_temp_target, # this doesn't make sense yet
+        #TODO: write reader that creates a mincANTS configuration out of an input protocol
+        # if we're starting with files that are already aligned with an affine transformation
+        # (overall scaling is also dealt with), then the target for the non linear registration
+        # should be the averge of the current input files.
+        first_nlin_target = s.defer(mincaverage(imgs=list(s_id_to_intersubj_img_dict.values()),
+                                                name_wo_ext="avg_of_input_files",
+                                                output_dir=pipeline_nlin_common_dir))
+        intersubj_xfms = s.defer(mincANTS_NLIN_build_model(imgs=list(s_id_to_intersubj_img_dict.values()),
+                                                   initial_target=first_nlin_target,
                                                    nlin_dir=pipeline_nlin_common_dir,
                                                    confs=full_hierarchy))
-        dict_intersubj_atom_to_xfm = { xfm.source : xfm for xfm in intersubj_xfms.output }
+
+
+    intersubj_img_to_xfm_to_common_avg_dict = { xfm.source : xfm for xfm in intersubj_xfms.output.output }
+
+    if options.application.verbose:
+        print("\nTransformations for intersubject images to final nlin common space:")
+        print("MincAtom\ttransformation")
+        for subj_atom, xfm_handler in intersubj_img_to_xfm_to_common_avg_dict.items():
+            print(subj_atom.path + '\t' + xfm_handler.xfm.path)
+
 
     #return Result(stages=s, output=())
     ## within-subject registration
@@ -224,7 +236,7 @@ def chain(options):
 
     # create transformation from each subject to the final common time point average
     final_non_rigid_xfms = s.defer(final_transforms(pipeline_subject_info,
-                                                          dict_intersubj_atom_to_xfm,
+                                                          intersubj_img_to_xfm_to_common_avg_dict,
                                                           chain_xfms))
 
     subject_determinants = map_over_time_pt_dict_in_Subject(
@@ -390,15 +402,15 @@ def final_transforms(pipeline_subject_info, intersubj_xfms_dict, chain_xfms_dict
         # so we will assign the concatenated transform to the target of each 
         # transform we are adding 
         for time_pt, transform in chain_transforms[index_of_common_time_pt:]:
-            current_xfm_to_common = s.defer(concat([s.defer(invert(transform)), current_xfm_to_common],
-                                                   name="%s%s_to_common" % (s_id, time_pt)))  # TODO: naming
+            current_xfm_to_common = s.defer(concat_xfmhandlers([s.defer(invert(transform)), current_xfm_to_common],
+                                                               name="%s%s_to_common" % (s_id, time_pt)))  # TODO: naming
             new_time_pt_dict[time_pt] = current_xfm_to_common
         # we need to do something similar moving backwards: make sure to reset
         # the current_xfm_to_common here!
         current_xfm_to_common = intersubj_xfms_dict[subj.intersubject_registration_image]
         for time_pt, transform in chain_transforms[index_of_common_time_pt-1::-1]:
-            current_xfm_to_common = s.defer(concat([transform, current_xfm_to_common],
-                                                   name="%s%s_to_common" % (s_id, time_pt)))
+            current_xfm_to_common = s.defer(concat_xfmhandlers([transform, current_xfm_to_common],
+                                                               name="%s%s_to_common" % (s_id, time_pt)))
             new_time_pt_dict[time_pt] = current_xfm_to_common
         
         new_subj = Subject(intersubject_registration_time_pt = subj.intersubject_registration_time_pt,

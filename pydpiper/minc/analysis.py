@@ -1,7 +1,7 @@
 from pydpiper.core.stages import Stages, CmdStage, Result
 from pydpiper.minc.files import MincAtom, xfmToMinc
 from pydpiper.minc.containers import XfmHandler
-from pydpiper.minc.registration import concat, invert
+from pydpiper.minc.registration import concat_xfmhandlers, invert
 
 from typing import List, Optional, Tuple
 
@@ -64,7 +64,7 @@ def nlin_part(xfm : XfmHandler, inv_xfm : Optional[XfmHandler] = None) -> Result
     s = Stages()
     inv_xfm = inv_xfm or s.defer(invert(xfm))
     inv_lin_part = s.defer(lin_from_nlin(inv_xfm)) 
-    xfm = s.defer(concat([xfm, inv_lin_part]))
+    xfm = s.defer(concat_xfmhandlers([xfm, inv_lin_part]))
     return Result(stages=s, output=xfm)
 
 def nlin_displacement(xfm : XfmHandler, inv_xfm : Optional[XfmHandler] = None) -> Result[MincAtom]:
