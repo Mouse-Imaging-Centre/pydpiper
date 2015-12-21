@@ -21,14 +21,10 @@ class AutoEnum(Enum):
 
 def NamedTuple(name : str, fields : List[Tuple[str, Callable[[Any], Any]]]):
     """Like typing.NamedTuple, but with some extra functions for (non-destructively) updating fields."""
-    class N(typing.NamedTuple(name, fields)):
-        def replace(self, **kwargs) -> 'N':
-            return self._replace(**kwargs)
-        def maybe_replace(self, **kwargs) -> 'N':
-            """Use keyword args whose values are non-null to replace fields of the tuple."""
-            return self._replace(**{ k : v for (k, v) in kwargs.items() if v is not None })
-    N.__name__ = name
-    return N
+    F = typing.NamedTuple(name, fields)
+    F.replace = F._replace
+    F.maybe_replace = lambda self, **kwargs: F._replace(self, **{k:v for (k,v) in kwargs.items() if v is not None})
+    return F
 
 
 def raise_(err: BaseException):

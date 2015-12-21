@@ -203,7 +203,7 @@ def chain(options):
                                                    confs=full_hierarchy))
 
 
-    intersubj_img_to_xfm_to_common_avg_dict = { xfm.source : xfm for xfm in intersubj_xfms.output.output }
+    intersubj_img_to_xfm_to_common_avg_dict = { xfm.source : xfm for xfm in intersubj_xfms.output }
 
     if options.application.verbose:
         print("\nTransformations for intersubject images to final nlin common space:")
@@ -212,7 +212,6 @@ def chain(options):
             print(subj_atom.path + '\t' + xfm_handler.xfm.path)
 
 
-    #return Result(stages=s, output=())
     ## within-subject registration
     # In the toy scenario below: 
     # subject A    A_time_1   ->   A_time_2   ->   A_time_3

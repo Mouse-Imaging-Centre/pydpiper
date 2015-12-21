@@ -1252,15 +1252,12 @@ def lsq12_nlin_build_model(imgs       : List[MincAtom],
     for atom in lsq12_resampled_imgs:
         print(atom.path)
 
-    # TODO: fix at some point in time with a isinstance()...
-    #if isinstance(nlin_conf, MultilevelMinctraccConf):
-    if "simplex" in nlin_conf[0]._fields:
+    if isinstance(nlin_conf, MultilevelMinctraccConf):
         nlin_result = s.defer(minctracc_NLIN_build_model(imgs=lsq12_resampled_imgs,
                                                          initial_target=lsq12_result.avg_img,
                                                          confs=nlin_conf,
                                                          nlin_dir=nlin_dir))
-    #elif isinstance(nlin_conf, MultilevelMincANTSConf):
-    elif "regularization" in nlin_conf[0]._fields:
+    elif isinstance(nlin_conf, MultilevelMincANTSConf):
         nlin_result = s.defer(mincANTS_NLIN_build_model(imgs=lsq12_resampled_imgs,
                                                         initial_target=lsq12_result.avg_img,
                                                         confs=nlin_conf,

@@ -59,6 +59,7 @@ def mbm(options):
     lsq12_nlin_result = s.defer(lsq12_nlin_build_model(imgs=[xfm.resampled for xfm in lsq6_result],
                                                        resolution=resolution,
                                                        lsq12_dir=os.path.join(pipeline_dir, "lsq12"),
+                                                       nlin_dir=os.path.join(pipeline_dir, "nlin"),
                                                        lsq12_conf=options.mbm.lsq12,
                                                        nlin_conf=options.mbm.nlin))
 
