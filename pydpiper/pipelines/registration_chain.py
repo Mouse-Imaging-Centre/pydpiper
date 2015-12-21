@@ -13,7 +13,8 @@ from pydpiper.minc.registration import (Subject, Stages, mincANTS_NLIN_build_mod
                                         intrasubject_registrations, mincaverage,
                                         concat_xfmhandlers, check_MINC_input_files, registration_targets,
                                         lsq6_nuc_inorm, get_resolution_from_file, XfmHandler, LSQ6Conf,
-                                        RegistrationConf, InputSpace, LSQ12Conf, lsq12_nlin_build_model, TargetType)
+                                        RegistrationConf, InputSpace, LSQ12Conf, lsq12_nlin_build_model, TargetType,
+                                        MultilevelMincANTSConf)
 from pydpiper.minc.files import MincAtom
 from pydpiper.execution.application import execute  # type: ignore
 from pydpiper.core.arguments import (application_parser,
@@ -179,15 +180,15 @@ def chain(options):
     conf1 = mincANTS_default_conf.replace(default_resolution=options.registration.resolution,
                                           iterations="100x100x100x0")
     conf2 = mincANTS_default_conf.replace(default_resolution=options.registration.resolution)
-    full_hierarchy = [conf1, conf2]
+    full_hierarchy = MultilevelMincANTSConf([conf1, conf2])
 
     if options.registration.input_space in [InputSpace.lsq6, InputSpace.native]:
-        intersubj_xfms = lsq12_nlin_build_model(imgs=list(s_id_to_intersubj_img_dict.values()),
+        intersubj_xfms = s.defer(lsq12_nlin_build_model(imgs=list(s_id_to_intersubj_img_dict.values()),
                                                 lsq12_conf=options.lsq12,
                                                 nlin_conf=full_hierarchy,
                                                 resolution=options.registration.resolution,
                                                 lsq12_dir=pipeline_lsq12_common_dir,
-                                                nlin_dir=pipeline_nlin_common_dir)
+                                                nlin_dir=pipeline_nlin_common_dir))
                                                 #, like={atlas_from_init_model_at_this_tp}
     elif options.registration.input_space == InputSpace.lsq12:
         #TODO: write reader that creates a mincANTS configuration out of an input protocol
@@ -227,16 +228,43 @@ def chain(options):
     #
     # 5) C_time_1   ->   C_time_2
     # 6) C_time_2   ->   C_time_3    
-    
+
+    subj_id_to_Subjec_for_within_dict = pipeline_subject_info
+    if options.registration.input_space == InputSpace.native:
+        # we started with input images that were not aligned whatsoever
+        # in this case we should use the images that were rigidly
+        # aligned files to continue the within-subject registration with
+        # # type: Dict[str, Subject[XfmHandler]]
+        subj_id_to_Subjec_for_within_dict = map_over_time_pt_dict_in_Subject(lambda x: x.resampled,
+                                                                             subj_id_to_subj_with_lsq6_xfm_dict)
+
+    if options.application.verbose:
+        print("\n\nWithin subject registrations:")
+        for s_id, subj in subj_id_to_Subjec_for_within_dict.items():
+            print("ID: ", s_id)
+            for time_pt, subj_img in subj.time_pt_dict.items():
+                print(time_pt, " ", subj_img.path)
+            print("\n")
+
     chain_xfms = { s_id : s.defer(intrasubject_registrations(
                                     subj,
                                     mincANTS_default_conf._replace(default_resolution=options.registration.resolution)))
-                   for s_id, subj in pipeline_subject_info.items() }
+                   for s_id, subj in subj_id_to_Subjec_for_within_dict.items() }
+
+    if options.application.verbose:
+        print("\n\nTransformations gotten from the intrasubject registrations:")
+        for s_id, output_from_intra in chain_xfms.items():
+            print("ID: ", s_id)
+            for time_pt, transform in output_from_intra[0]:
+                print("Time point: ", time_pt, " trans: ", transform.xfm.path)
+            print("\n")
+
 
     # create transformation from each subject to the final common time point average
-    final_non_rigid_xfms = s.defer(final_transforms(pipeline_subject_info,
-                                                          intersubj_img_to_xfm_to_common_avg_dict,
-                                                          chain_xfms))
+    final_non_rigid_xfms = s.defer(final_transforms(subj_id_to_Subjec_for_within_dict,
+                                                    intersubj_img_to_xfm_to_common_avg_dict,
+                                                    chain_xfms))
+
 
     subject_determinants = map_over_time_pt_dict_in_Subject(
         lambda xfm: s.defer(determinants_at_fwhms(xfm=s.defer(invert(xfm)),

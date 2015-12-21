@@ -119,11 +119,17 @@ def mincmath(op       : str,
     """
     Low-level/stupid interface to mincmath
     """
-    _const = str(const) if const is not None else None  # type: Optional[str]
-    name = (new_name if new_name else
-            ('_' + op + '_' + ((_const + '_') if _const else '') + 
-             '_'.join([vol.filename_wo_ext for vol in vols])))
-    outf = vols[0].newname_with_suffix(name)
+    _const = str(const) if const is not None else ""  # type: Optional[str]
+
+    if new_name:
+        name = new_name
+    elif len(vols) == 1:
+        name = vols[0].filename_wo_ext + "_" + op + "_" + _const
+    else:
+        name = (op + '_' + ((_const + '_') if _const else '') +
+             '_'.join([vol.filename_wo_ext for vol in vols]))
+
+    outf = vols[0].newname_with_fn(lambda x: name)
     s = CmdStage(inputs=tuple(vols), outputs=(outf,),
                  cmd=(['mincmath', '-clobber', '-2']
                    + (['-const', _const] if _const else [])
