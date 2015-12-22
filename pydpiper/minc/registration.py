@@ -109,6 +109,21 @@ class MultilevelMinctraccConf(object):
         self.confs = confs
 
 
+def atoms_from_same_subject(atoms: List[FileAtom]):
+    """
+    Determines whether the list of atoms provided come
+    from the same subject. This is based on the
+    output_sub_dir field.
+    """
+    # if all atoms belong to the same subject, they will share the same
+    # output_sub_dir
+    first_output_sub_dir = atoms[0].output_sub_dir
+    all_from_same_sub = True
+    for atom in atoms:
+        if atom.output_sub_dir != first_output_sub_dir:
+            all_from_same_sub = False
+    return all_from_same_sub
+
 # TODO canonicalize all names of form 'source', 'src', 'src_img', 'dest', 'target', ... in program
 
 # TODO should these atoms/modules be remade as distinct classes with public outf and stage fields (only)?
@@ -279,11 +294,24 @@ def xfmconcat(xfms: List[XfmAtom],
         return Result(stages=Stages(), output=xfms[0])
     else:
         if name:
-            outf = xfms[0].newname_with_fn(lambda _: name)
+            outf = xfms[0].newname_with_fn(lambda _: name,
+                                           subdir="transforms")
+        elif atoms_from_same_subject(xfms):
+            # we can reduce the length of the concatenated filename, because we do not
+            # need repeats of the base part of the filename
+            commonprefix = os.path.commonprefix([xfm.filename_wo_ext for xfm in xfms])
+            outf_name = commonprefix + "_concat"
+            for xfm in xfms:
+                # only add the part of each of the files that is not
+                # captured by the common prefix
+                outf_name += "_" + xfm.filename_wo_ext[len(commonprefix):]
+            outf = xfms[0].newname_with_fn(lambda _orig: outf_name,
+                                           subdir="transforms")
         else:
             outf = xfms[0].newname_with_fn(
                 lambda _orig: "concat_of_%s" % "_and_".join(
-                    [x.filename_wo_ext for x in xfms]))  # could do names[1:] if dirname contains names[0]?
+                    [x.filename_wo_ext for x in xfms]),
+                subdir="transforms")  # could do names[1:] if dirname contains names[0]?
         stage = CmdStage(
             inputs=tuple(xfms), outputs=(outf,),
             cmd=shlex.split('xfmconcat %s %s' % (' '.join([x.path for x in xfms]), outf.path)))
@@ -351,11 +379,13 @@ def nu_estimate(src: MincAtom,
 
     mask_for_nu_est = src.mask if src.mask else mask
 
-    cmd = CmdStage(inputs=(src,), outputs=(out,),
+    cmd = CmdStage(inputs=(src,) + ((mask_for_nu_est,) if mask_for_nu_est else ()),
+                   outputs=(out,),
                    cmd=shlex.split(
                        "nu_estimate -clobber -iterations 100 -stop 0.001 -fwhm 0.15 -shrink 4 -lambda 5.0e-02")
                        + ["-distance", str(distance_value)] + (
                        ['-mask', mask_for_nu_est.path] if mask_for_nu_est else []) + [src.path, out.path])
+
     return Result(stages=Stages([cmd]), output=out)
 
 
@@ -431,10 +461,7 @@ def xfmaverage(xfms: List[XfmAtom],
     # if all transformations belong to the same subject, we should place the average
     # transformation in the directories belonging to that file
     first_output_sub_dir = xfms[0].output_sub_dir
-    all_from_same_sub = True
-    for xfm in xfms:
-        if xfm.output_sub_dir != first_output_sub_dir:
-            all_from_same_sub = False
+    all_from_same_sub = atoms_from_same_subject(xfms)
 
     # TODO: the path here is probably not right...
     if not output_filename_wo_ext:

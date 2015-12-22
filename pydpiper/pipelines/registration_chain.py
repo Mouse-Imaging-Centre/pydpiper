@@ -430,14 +430,14 @@ def final_transforms(pipeline_subject_info, intersubj_xfms_dict, chain_xfms_dict
         # transform we are adding 
         for time_pt, transform in chain_transforms[index_of_common_time_pt:]:
             current_xfm_to_common = s.defer(concat_xfmhandlers([s.defer(invert(transform)), current_xfm_to_common],
-                                                               name="%s%s_to_common" % (s_id, time_pt)))  # TODO: naming
+                                                               name="id_%s_time_pt_%s_to_common" % (s_id, time_pt)))
             new_time_pt_dict[time_pt] = current_xfm_to_common
         # we need to do something similar moving backwards: make sure to reset
         # the current_xfm_to_common here!
         current_xfm_to_common = intersubj_xfms_dict[subj.intersubject_registration_image]
         for time_pt, transform in chain_transforms[index_of_common_time_pt-1::-1]:
             current_xfm_to_common = s.defer(concat_xfmhandlers([transform, current_xfm_to_common],
-                                                               name="%s%s_to_common" % (s_id, time_pt)))
+                                                               name="id_%s_time_pt_%s_to_common" % (s_id, time_pt)))
             new_time_pt_dict[time_pt] = current_xfm_to_common
         
         new_subj = Subject(intersubject_registration_time_pt = subj.intersubject_registration_time_pt,
