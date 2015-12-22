@@ -19,7 +19,8 @@ setup(name='pydpiper',
         'pyminc',
         'Pyro4',
         'pytest',
-        'typing'
+        'typing',
+        'pydot2'
       ],
       platforms="any",
       packages=['pydpiper', 'pydpiper.core', 'pydpiper.minc', 'pydpiper.execution', 'pydpiper.pipelines'],
