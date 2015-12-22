@@ -26,7 +26,7 @@ ExecutionOptions = NamedTuple('ExecutionOptions', [('use_backup_files', bool),
 
 
 def output_dir(options):
-    return options.output_directory if options.output_directory else os.getcwd()
+    return options.application.output_directory if options.application.output_directory else os.getcwd()
 
 def file_graph(stages, pipeline_dir):
     # TODO remove pipeline_dir from node pathnames
@@ -67,27 +67,27 @@ def execute(stages, options):
                         options=options)
 
     ensure_short_output_paths(stages)
-    ensure_output_paths_in_dir(stages, options.output_directory)
+    ensure_output_paths_in_dir(stages, options.application.output_directory)
 
     # TODO: print/log version
 
     reconstruct_command(options)
     
-    if options.create_graph:
+    if options.application.create_graph:
         # TODO: these could have more descriptive names ...
         logger.debug("Writing dot file...")
-        nx.write_dot(pipeline.G, str(options.pipeline_name) + "_labeled-tree.dot")
-        nx.write_dot(file_graph(stages, options.output_directory), str(options.pipeline_name) + "_labeled-tree-alternate.dot")
+        nx.write_dot(pipeline.G, str(options.application.pipeline_name) + "_labeled-tree.dot")
+        nx.write_dot(file_graph(stages, options.application.output_directory), str(options.application.pipeline_name) + "_labeled-tree-alternate.dot")
         logger.debug("Done.")
 
-    if not options.execute:
+    if not options.application.execute:
         print("Not executing the command (--no-execute is specified).\nDone.")
         return
 
     # TODO: why is this needed now that --version is also handled automatically?
     # --num-executors=0 (<=> --no-execute) could be the default, and you could
     # also refuse to submit scripts for 0 executors ...
-    ensure_exec_specified(options.num_exec)
+    ensure_exec_specified(options.execution.num_exec)
 
     # TODO: move calls to create_directories into execution functions
     #create_directories(stages)
@@ -110,7 +110,7 @@ def mk_application(parsers: List[AnnotatedParser], pipeline: Callable[[Any], Res
 
 
 def backend(options):
-    return normal_execute if options.local else execution_backends[options.queue_type]
+    return normal_execute if options.execution.local else execution_backends[options.execution.queue_type]
 
 # TODO: should create_directories be added as a method to Pipeline?
 def create_directories(stages):
@@ -148,7 +148,7 @@ def reconstruct_command(options):
     reconstruct = ' '.join(sys.argv)
     logger.info("Command is: " + reconstruct)
     logger.info("Command version : " + PYDPIPER_VERSION)
-    fileForCommandAndVersion = options.pipeline_name + "-command-and-version-" + time.strftime("%d-%m-%Y-at-%H-%m-%S") + ".sh"
+    fileForCommandAndVersion = options.application.pipeline_name + "-command-and-version-" + time.strftime("%d-%m-%Y-at-%H-%m-%S") + ".sh"
     pf = open(fileForCommandAndVersion, "w")
     pf.write("#!/usr/bin/env bash\n")
     pf.write("# Command version is: " + PYDPIPER_VERSION + "\n")
