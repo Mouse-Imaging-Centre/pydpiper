@@ -700,7 +700,8 @@ class Pipeline(object):
             # RAM needed to run a single job:
             memNeeded = self.executor_memory_required(self.runnable)
             # RAM needed to run `proc` most expensive jobs (not the ideal choice):
-            memWanted = sum(sorted([self.stages[i].mem for i in self.runnable],                                   key = lambda x: -x)[0:self.exec_options.proc])
+            memWanted = sum(sorted([self.stages[i].mem for i in self.runnable],
+                                   key = lambda x: -x)[0:self.exec_options.proc])
             logger.debug("wanted: %s" % memWanted)
             logger.debug("needed: %s" % memNeeded)
                 
@@ -931,7 +932,7 @@ def launchServer(pipeline, options):
         ns.register("pipeline", pipelineURI)
     else:
         # If not using Pyro NameServer, must write uri to file for reading by client.
-        uf = open(options.urifile, 'w')
+        uf = open(options.execution.urifile, 'w')
         uf.write(pipelineURI.asString())
         uf.close()
     
@@ -1048,8 +1049,8 @@ def flatten_pipeline(p):
 def pipelineDaemon(pipeline, options, programName=None):
     """Launches Pyro server and (if specified by options) pipeline executors"""
 
-    if options.urifile is None:
-        options.urifile = os.path.abspath(os.path.join(os.curdir, options.application.pipeline_name + "_uri"))
+    if options.execution.urifile is None:
+        options.execution.urifile = os.path.abspath(os.path.join(os.curdir, options.application.pipeline_name + "_uri"))
 
     if options.restart:
         logger.debug("Examining filesystem to determine skippable stages...")

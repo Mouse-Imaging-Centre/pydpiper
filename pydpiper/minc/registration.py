@@ -929,14 +929,14 @@ class WithAvgImgs(Generic[T]):
 
 def minctracc_NLIN_build_model(imgs: List[MincAtom],
                                initial_target: MincAtom,
-                               confs: MultilevelMinctraccConf,
+                               conf: MultilevelMinctraccConf,
                                nlin_dir: str) -> Result[WithAvgImgs[List[XfmHandler]]]:  # TODO: add resolution parameter:
-    if len(confs) == 0:
+    if len(conf.confs) == 0:
         raise ValueError("No configurations supplied ...")
     s = Stages()
     avg = initial_target
     avg_imgs = []
-    for i, conf in enumerate(confs, start=1):
+    for i, conf in enumerate(conf.confs, start=1):
         xfms = [s.defer(minctracc(source=img, target=avg, conf=conf, generation=i, resample_source=True))
                 for img in imgs]
         avg = s.defer(mincaverage([xfm.resampled for xfm in xfms], name_wo_ext='nlin-%d' % i, output_dir=nlin_dir))
@@ -946,7 +946,7 @@ def minctracc_NLIN_build_model(imgs: List[MincAtom],
 
 def mincANTS_NLIN_build_model(imgs: List[MincAtom],
                               initial_target: MincAtom,
-                              confs: MultilevelMincANTSConf,
+                              conf: MultilevelMincANTSConf,
                               nlin_dir: str,
                               mincaverage = mincaverage) -> Result[WithAvgImgs[List[XfmHandler]]]:
     """
@@ -958,12 +958,12 @@ def mincANTS_NLIN_build_model(imgs: List[MincAtom],
     resampled input files, which is then used as the target for the next
     round of registrations. 
     """
-    if len(confs) == 0:
+    if len(conf.confs) == 0:
         raise ValueError("No configurations supplied ...")
     s = Stages()
     avg = initial_target
     avg_imgs = []  # type: List[MincAtom]
-    for i, conf in enumerate(confs, start=1):
+    for i, conf in enumerate(conf.confs, start=1):
         xfms = [s.defer(mincANTS(source=img, target=avg, conf=conf, generation=i, resample_source=True))
                 for img in imgs]
         avg = s.defer(mincaverage([xfm.resampled for xfm in xfms], name_wo_ext='nlin-%d' % i, output_dir=nlin_dir))
@@ -1286,12 +1286,12 @@ def lsq12_nlin_build_model(imgs       : List[MincAtom],
     if isinstance(nlin_conf, MultilevelMinctraccConf):
         nlin_result = s.defer(minctracc_NLIN_build_model(imgs=lsq12_resampled_imgs,
                                                          initial_target=lsq12_result.avg_img,
-                                                         confs=nlin_conf.confs,
+                                                         conf=nlin_conf,
                                                          nlin_dir=nlin_dir))
     elif isinstance(nlin_conf, MultilevelMincANTSConf):
         nlin_result = s.defer(mincANTS_NLIN_build_model(imgs=lsq12_resampled_imgs,
                                                         initial_target=lsq12_result.avg_img,
-                                                        confs=nlin_conf.confs,
+                                                        conf=nlin_conf,
                                                         nlin_dir=nlin_dir))
     else:
         # this should never happen

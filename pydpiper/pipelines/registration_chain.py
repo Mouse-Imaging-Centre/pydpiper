@@ -201,7 +201,7 @@ def chain(options):
         intersubj_xfms = s.defer(mincANTS_NLIN_build_model(imgs=list(s_id_to_intersubj_img_dict.values()),
                                                    initial_target=first_nlin_target,
                                                    nlin_dir=pipeline_nlin_common_dir,
-                                                   confs=full_hierarchy))
+                                                   conf=full_hierarchy))
 
 
     intersubj_img_to_xfm_to_common_avg_dict = { xfm.source : xfm for xfm in intersubj_xfms.output }
