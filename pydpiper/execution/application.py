@@ -28,6 +28,16 @@ ExecutionOptions = NamedTuple('ExecutionOptions', [('use_backup_files', bool),
 def output_dir(options):
     return options.application.output_directory if options.application.output_directory else os.getcwd()
 
+def write_stages(stages, name):
+    """
+    writes all pipeline stages to a file
+    """
+    fileForPrinting = os.path.abspath(os.curdir + "/" + str(name) + "_pipeline_stages.txt")
+    pf = open(fileForPrinting, "w")
+    for i, stage in enumerate(stages):
+        pf.write(str(i) + "  " + str(stage.render()) + "\n")
+    pf.close()
+
 def file_graph(stages, pipeline_dir):
     # TODO remove pipeline_dir from node pathnames
     G = nx.DiGraph()
@@ -70,8 +80,9 @@ def execute(stages, options):
     ensure_output_paths_in_dir(stages, options.application.output_directory)
 
     # TODO: print/log version
-
     reconstruct_command(options)
+
+    write_stages(stages, options.application.pipeline_name)
     
     if options.application.create_graph:
         # TODO: these could have more descriptive names ...

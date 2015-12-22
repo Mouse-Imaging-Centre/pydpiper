@@ -593,7 +593,7 @@ def rotational_minctracc(source: MincAtom,
     # that is explicitly provided:
     # TODO: shouldn't this use the mask if it's provided rather than the target mask?
     mask_for_command = target.mask if target.mask else mask
-    cmd = CmdStage(inputs=(source, target) + cast(tuple, ((mask_for_command,) if mask_for_command else ())),
+    cmd = CmdStage(inputs=(blurred_src, blurred_dest) + cast(tuple, ((mask_for_command,) if mask_for_command else ())),
                    # if-expression not recognized as a tuple; see mypy/issues/622
                    outputs=(out_xfm,),
                    cmd=["rotational_minctracc.py",
@@ -768,8 +768,8 @@ def minctracc(source: MincAtom,
                             if target.mask and conf.use_masks else [])
                          + ([source_for_minctracc.path, target_for_minctracc.path, out_xfm.path]),
                      inputs=(source_for_minctracc, target_for_minctracc) +
-                            (source.mask,) if source.mask else () +
-                            (target.mask,) if target.mask else (),
+                            ((source.mask,) if source.mask and conf.use_masks else ()) +
+                            ((target.mask,) if target.mask and conf.use_masks else ()),
                      outputs=(out_xfm,))
 
     s.add(stage)
