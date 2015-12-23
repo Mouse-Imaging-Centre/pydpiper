@@ -372,7 +372,7 @@ class pipelineExecutor(object):
             now = datetime.now().strftime("%Y-%m-%d-at-%H-%M-%S-%f")
             ident = "pipeline-executor-" + now
             jobname += ident
-            queue_opts = ['-V', '-j', 'yes',
+            queue_opts = ['-V', '-cwd', '-j', 'yes',
                           '-N', jobname,
                           '-l', strmem,
                           '-o', os.path.join(os.getcwd(),
@@ -403,7 +403,7 @@ class pipelineExecutor(object):
             env = os.environ.copy()
             env['PYRO_LOGFILE'] = os.path.join(os.getcwd(), ident + ".log")
             p = subprocess.Popen(qsub_cmd, stdin=subprocess.PIPE, shell=False, env=env)
-            p.communicate(script)
+            p.communicate(script.encode('ascii'))
         else:
             logger.info("Specified queueing system is: %s" % (self.queue_type))
             logger.info("Only queue_type=sge or queue_type=None currently supports pipeline launching own executors.")
