@@ -385,23 +385,6 @@ def parse_csv(rows, common_time_pt): # row iterator, int -> { subject_id(str) : 
     return subject_info
 
 
-# NOTE I've moved the optional lsq6 stuff outside this function to promote re-use;
-# actual call could look something like this:
-#def chain_with_optional_lsq6(inputs, options):
-#    def native():
-#        pass
-#    def lsq6():
-#        pass
-#
-#    fns = { 'native' : native, 'lsq6' : lsq6 }
-#
-#    try:
-#        f = fns[options.input_space]
-#    except KeyError:
-#        raise ValueError("illegal input space: %s; allowed options: %s" % \
-#                         (options.input_space, ','.join(map(str,fns.keys()))))
-#    # call f...
-
 def final_transforms(pipeline_subject_info, intersubj_xfms_dict, chain_xfms_dict):
     """
     This function takes a subject mapping (with timepoints to MincAtoms) and returns a
