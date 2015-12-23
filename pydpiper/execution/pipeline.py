@@ -882,39 +882,34 @@ class Pipeline(object):
         logger.debug("Clients still registered at shutdown: " + str(self.clients))
         sys.stdout.flush()
 
-def launchPipelineExecutor(options, memNeeded, programName=None):
+def launchPipelineExecutor(exec_options, memNeeded, programName=None):
     """Launch pipeline executor directly from pipeline"""
-    pipelineExecutor = pe.pipelineExecutor(options, memNeeded)
-    if options.queue_type == "sge":
+    pipelineExecutor = pe.pipelineExecutor(exec_options, memNeeded)
+    if exec_options.queue_type == "sge":
         pipelineExecutor.submitToQueue(programName)
     else:
         pe.launchExecutor(pipelineExecutor)
         
-def launchServer(pipeline, options):
+def launchServer(pipeline):
+    options = pipeline.options
     pipeline.printStages(options.application.pipeline_name)
     pipeline.printNumberProcessedStages()
 
     # for ideological reasons this should live in a method, but pipeline init is
     # rather baroque anyway, and arguably launchServer/pipelineDaemon ought to be
     # a single method with cleaned-up initialization
-    #executors_local = pipeline.options.local or (pipeline.options.queue_type is None)
-    executors_local = pipeline.options.queue_type in [None, 'pbs']
+    #executors_local = options.local or (options.queue_type is None)
+    executors_local = pipeline.exec_options.queue_type in [None, 'pbs']
     if executors_local:
         # measured once -- we assume that server memory usage will be
         # roughly constant at this point
-        pipeline.memAvail = pipeline.options.mem - (float(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss) / 10**6)  # 2^20?
+        pipeline.memAvail = pipeline.exec_options.mem - (float(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss) / 10**6)  # 2^20?
     else:
-        pipeline.memAvail = pipeline.options.mem
+        pipeline.memAvail = pipeline.exec_options.mem
     
     # is the server going to be verbose or not?
-    if options.verbose:
-        #def verboseprint(*args):
-        #    # Print each argument separately so caller doesn't need to
-        #    # stuff everything to be printed into a single string
-        #    for arg in args:
-        #        print(arg,)
-        #    print()
-        verboseprint = lambda *args: (map(print, args), print())
+    if options.application.verbose:
+        verboseprint = print
     else:
         verboseprint = lambda *args: None
     
@@ -925,7 +920,7 @@ def launchServer(pipeline, options):
     daemon = Pyro4.core.Daemon(host=network_address)
     pipelineURI = daemon.register(pipeline)
     
-    if options.use_ns:
+    if options.execution.use_ns:
         # in the future we might want to launch a nameserver here
         # instead of relying on a separate executable running
         ns = Pyro4.locateNS()
@@ -936,9 +931,9 @@ def launchServer(pipeline, options):
         uf.write(pipelineURI.asString())
         uf.close()
     
-    pipeline.setVerbosity(options.verbose)
+    pipeline.setVerbosity(options.application.verbose)
 
-    shutdown_time = pe.WAIT_TIMEOUT + pipeline.options.latency_tolerance
+    shutdown_time = pe.WAIT_TIMEOUT + options.execution.latency_tolerance
     
     try:
         # start Pyro server
@@ -975,7 +970,7 @@ def launchServer(pipeline, options):
         def loop():
             try:
                 logger.debug("Auxiliary loop started")
-                logger.debug("memory limit: %dG; available after server overhead: %.4fG" % (pipeline.options.mem, pipeline.memAvail))
+                logger.debug("memory limit: %dG; available after server overhead: %.4fG" % (options.execution.mem, pipeline.memAvail))
                 while p.continueLoop():
                     p.manageExecutors()
                     pipeline.shutdown_ev.wait(LOOP_INTERVAL)
@@ -1052,7 +1047,7 @@ def pipelineDaemon(pipeline, options, programName=None):
     if options.execution.urifile is None:
         options.execution.urifile = os.path.abspath(os.path.join(os.curdir, options.application.pipeline_name + "_uri"))
 
-    if options.restart:
+    if options.application.restart:
         logger.debug("Examining filesystem to determine skippable stages...")
         pipeline.skip_completed_stages()
 
@@ -1072,7 +1067,7 @@ def pipelineDaemon(pipeline, options, programName=None):
         with open(pipeline.backupFileLocation, 'a') as fh:
             pipeline.finished_stages_fh = fh
             logger.debug("Starting server...")
-            launchServer(pipeline, options)
+            launchServer(pipeline)
     except:
         logger.exception("Exception (=> quitting): ")
         raise
