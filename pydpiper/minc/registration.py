@@ -790,7 +790,6 @@ def minctracc(source: MincAtom,
 SimilarityMetricConf = NamedTuple('SimilarityMetricConf',
                                   [("metric", str),
                                    ("weight", float),
-                                   ("blur_resolution", float),
                                    ("radius_or_bins", float),
                                    ("use_gradient_image", bool)])
 #    def replace(self, **kwargs) -> 'SimilarityMetricConf':
@@ -803,7 +802,6 @@ SimilarityMetricConf = NamedTuple('SimilarityMetricConf',
 default_similarity_metric_conf = SimilarityMetricConf(
     metric="CC",
     weight=1.0,
-    blur_resolution=None,
     radius_or_bins=3,
     use_gradient_image=False)
 
@@ -812,7 +810,7 @@ MincANTSConf = NamedTuple("MincANTSConf",
                            ("transformation_model", str),
                            ("regularization", str),
                            ("use_mask", bool),
-                           ("default_resolution", float),
+                           ("file_resolution", float),
                            ("sim_metric_confs", List[SimilarityMetricConf])])
 
 class MultilevelMincANTSConf(object):
@@ -826,9 +824,9 @@ mincANTS_default_conf = MincANTSConf(
     transformation_model="'Syn[0.1]'",
     regularization="'Gauss[2,1]'",
     use_mask=True,
-    default_resolution=None,
+    file_resolution=None,
     sim_metric_confs=[default_similarity_metric_conf,
-                      default_similarity_metric_conf.replace(use_gradient_image=False)])
+                      default_similarity_metric_conf.replace(use_gradient_image=True)])
 
 
 def mincANTS(source: MincAtom,
@@ -870,11 +868,17 @@ def mincANTS(source: MincAtom,
     similarity_inputs = set()  # type: Set[MincAtom]
     # TODO: similarity_inputs should be a set, but `MincAtom`s aren't hashable
     for sim_metric_conf in conf.sim_metric_confs:
-        if sim_metric_conf.blur_resolution is not None:
-            src = s.defer(mincblur(source, fwhm=sim_metric_conf.blur_resolution,
+        if conf.file_resolution is not None and sim_metric_conf.use_gradient_image:
+            src = s.defer(mincblur(source, fwhm=conf.file_resolution,
                                    gradient=sim_metric_conf.use_gradient_image))
-            dest = s.defer(mincblur(target, fwhm=sim_metric_conf.blur_resolution,
+            dest = s.defer(mincblur(target, fwhm=conf.file_resolution,
                                     gradient=sim_metric_conf.use_gradient_image))
+        elif conf.file_resolution is None and sim_metric_conf.use_gradient_image:
+            # the file resolution is not set, however we want to use the gradients
+            # for this similarity metric...
+            raise ValueError("A similarity metric in the mincANTS configuration "
+                            "wants to use the gradients, but the file resolution for the "
+                            "configuration has not been set.")
         else:
             src = source
             dest = target

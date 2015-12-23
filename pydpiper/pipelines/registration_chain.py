@@ -177,9 +177,9 @@ def chain(options):
 
     # TODO: this is only here in order to have some default. As stated below, we still need
     # to work on default protocols
-    conf1 = mincANTS_default_conf.replace(default_resolution=options.registration.resolution,
+    conf1 = mincANTS_default_conf.replace(file_resolution=options.registration.resolution,
                                           iterations="100x100x100x0")
-    conf2 = mincANTS_default_conf.replace(default_resolution=options.registration.resolution)
+    conf2 = mincANTS_default_conf.replace(file_resolution=options.registration.resolution)
     full_hierarchy = MultilevelMincANTSConf([conf1, conf2])
 
     if options.registration.input_space in [InputSpace.lsq6, InputSpace.native]:
@@ -248,7 +248,7 @@ def chain(options):
 
     chain_xfms = { s_id : s.defer(intrasubject_registrations(
                                     subj,
-                                    mincANTS_default_conf._replace(default_resolution=options.registration.resolution)))
+                                    mincANTS_default_conf._replace(file_resolution=options.registration.resolution)))
                    for s_id, subj in subj_id_to_Subjec_for_within_dict.items() }
 
     if options.application.verbose:
