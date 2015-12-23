@@ -14,7 +14,7 @@ from pydpiper.core.util import raise_, AutoEnum, NamedTuple
 # TODO: should the pipeline-specific argument handling be located here
 # or in that pipeline's module?  Makes more sense (general stuff
 # can still go here)
-from pydpiper.minc.registration import InputSpace, to_lsq6_conf
+from pydpiper.minc.registration import InputSpace, to_lsq6_conf, RegistrationConf
 
 
 class LSQ6Method(AutoEnum):
@@ -246,8 +246,9 @@ def _mk_application_parser(p: ArgParser) -> ArgParser:
     return p
 
 
-application_parser = BaseParser(_mk_application_parser(ArgParser(add_help=False)), "application")
-
+application_parser = AnnotatedParser(parser=BaseParser(_mk_application_parser(ArgParser(add_help=False)),
+                                                       "application"),
+                                     namespace="application")
 
 def _mk_execution_parser(p: ArgParser) -> ArgParser:
     # parser = ArgParser(add_help=False)
@@ -321,7 +322,9 @@ def _mk_execution_parser(p: ArgParser) -> ArgParser:
     return p
 
 
-execution_parser = BaseParser(_mk_execution_parser(ArgParser(add_help=False)), 'execution')
+execution_parser = AnnotatedParser(parser=BaseParser(_mk_execution_parser(ArgParser(add_help=False)),
+                                                      'execution'),
+                                    namespace="execution")
 
 
 def _mk_registration_parser(p: ArgParser) -> ArgParser:
@@ -352,7 +355,10 @@ def _mk_registration_parser(p: ArgParser) -> ArgParser:
     return p  # g?
 
 
-registration_parser = BaseParser(_mk_registration_parser(ArgParser(add_help=False)), "registration")
+registration_parser = AnnotatedParser(parser=BaseParser(_mk_registration_parser(ArgParser(add_help=False)),
+                                                        "registration"),
+                                      namespace="registration",
+                                      cast=lambda ns: RegistrationConf(**vars(ns)))
 
 
 def _mk_lsq6_parser():

@@ -449,12 +449,12 @@ def final_transforms(pipeline_subject_info, intersubj_xfms_dict, chain_xfms_dict
 if __name__ == "__main__":
 
     p = CompoundParser(
-          [AnnotatedParser(parser=execution_parser, namespace='execution'),
-           AnnotatedParser(parser=application_parser, namespace='application'),
+          [execution_parser,
+           application_parser,
+           registration_parser,
+           lsq6_parser,
            # TODO: either switch back to automatically unpacking as part of `parse`
            # or write a helper to do \ns: C(**vars(ns))
-           AnnotatedParser(parser=registration_parser, namespace='registration', cast=lambda ns: RegistrationConf(**vars(ns))),
-           lsq6_parser,
            AnnotatedParser(parser=lsq12_parser, namespace='lsq12', cast=lambda ns: LSQ12Conf(**vars(ns))), # should be MBM or build_model ...
            #AnnotatedParser(parser=BaseParser(addLSQ12ArgumentGroup), namespace='lsq12-inter-subj'),
            #addNLINArgumentGroup,
@@ -472,9 +472,6 @@ if __name__ == "__main__":
                                    resolution=get_resolution_from_file(
                                        registration_targets(lsq6_conf=options.lsq6,
                                                             app_conf=options.application).registration_standard.path))
-
-    #if not options.registration.resolution:
-    #    raise ValueError("Crap... couldn't get the registration resolution...")
     
     print("Ha! The registration resolution is: %s\n" % options.registration.resolution)
     # *** *** *** *** *** *** *** *** ***
