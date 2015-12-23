@@ -725,10 +725,10 @@ class Pipeline(object):
             for uri,client in self.clients.copy().items():
                 dt = t - client.timestamp
                 if dt > pe.HEARTBEAT_INTERVAL + self.exec_options.latency_tolerance:
-                    logger.warn("Executor at %s has died (no contact for %.1f sec)!", client.clientURI, dt)
+                    logger.warning("Executor at %s has died (no contact for %.1f sec)!", client.clientURI, dt)
                     print("\nWarning: there has been no contact with %s, for %.1f seconds. Considering the executor as dead!\n" % (client.clientURI, dt))
                     if self.failed_executors > self.exec_options.max_failed_executors:
-                        logger.warn("Currently %d executors have died. This is more than the number of allowed failed executors as set by the flag: --max-failed-executors. Too many executors lost to spawn new ones" % self.failed_executors)
+                        logger.warning("Currently %d executors have died. This is more than the number of allowed failed executors as set by the flag: --max-failed-executors. Too many executors lost to spawn new ones" % self.failed_executors)
 
                     self.failed_executors += 1
 
@@ -750,8 +750,7 @@ class Pipeline(object):
         if self.failed_executors > self.exec_options.max_failed_executors:
             return 0
 
-        if (len(self.runnable) > 0 and
-            self.executor_memory_required(self.runnable) > self.memAvail):
+        if len(self.runnable) > 0 and self.executor_memory_required(self.runnable) > self.memAvail:
             # we might still want to launch executors for the stages with smaller
             # requirements
             return 0
@@ -760,7 +759,7 @@ class Pipeline(object):
             # Server should launch executors itself
             # This should happen regardless of whether or not executors
             # can kill themselves, because the server is now responsible 
-            # for the inital launches as well.
+            # for the initial launches as well.
             active_executors = self.number_launched_and_waiting_clients + len(self.clients)
             max_num_executors = self.exec_options.num_exec
             executor_launch_room = max_num_executors - active_executors
