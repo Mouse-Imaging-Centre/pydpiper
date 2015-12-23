@@ -385,23 +385,6 @@ def parse_csv(rows, common_time_pt): # row iterator, int -> { subject_id(str) : 
     return subject_info
 
 
-# NOTE I've moved the optional lsq6 stuff outside this function to promote re-use;
-# actual call could look something like this:
-#def chain_with_optional_lsq6(inputs, options):
-#    def native():
-#        pass
-#    def lsq6():
-#        pass
-#
-#    fns = { 'native' : native, 'lsq6' : lsq6 }
-#
-#    try:
-#        f = fns[options.input_space]
-#    except KeyError:
-#        raise ValueError("illegal input space: %s; allowed options: %s" % \
-#                         (options.input_space, ','.join(map(str,fns.keys()))))
-#    # call f...
-
 def final_transforms(pipeline_subject_info, intersubj_xfms_dict, chain_xfms_dict):
     """
     This function takes a subject mapping (with timepoints to MincAtoms) and returns a
@@ -430,14 +413,14 @@ def final_transforms(pipeline_subject_info, intersubj_xfms_dict, chain_xfms_dict
         # transform we are adding 
         for time_pt, transform in chain_transforms[index_of_common_time_pt:]:
             current_xfm_to_common = s.defer(concat_xfmhandlers([s.defer(invert(transform)), current_xfm_to_common],
-                                                               name="id_%s_time_pt_%s_to_common" % (s_id, time_pt)))
+                                                               name="id_%s_pt_%s_to_common" % (s_id, time_pt)))
             new_time_pt_dict[time_pt] = current_xfm_to_common
         # we need to do something similar moving backwards: make sure to reset
         # the current_xfm_to_common here!
         current_xfm_to_common = intersubj_xfms_dict[subj.intersubject_registration_image]
         for time_pt, transform in chain_transforms[index_of_common_time_pt-1::-1]:
             current_xfm_to_common = s.defer(concat_xfmhandlers([transform, current_xfm_to_common],
-                                                               name="id_%s_time_pt_%s_to_common" % (s_id, time_pt)))
+                                                               name="id_%s_pt_%s_to_common" % (s_id, time_pt)))
             new_time_pt_dict[time_pt] = current_xfm_to_common
         
         new_subj = Subject(intersubject_registration_time_pt = subj.intersubject_registration_time_pt,
