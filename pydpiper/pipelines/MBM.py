@@ -15,25 +15,6 @@ from pydpiper.execution.application    import mk_application
 
 # TODO abstract out some common configuration functionality and think about argparsing ...
 
-
-#class MBMConf(object):
-#  pass
-  # ['pipeline_name',
-  #  'execution_conf',
-  #  'lsq6_conf',
-  #  'lsq12_conf',
-  #  'nlin_conf',
-  #  'stats_conf'
-  #  ])
-
-# MBM_default_conf = MBMConf(
-#   pipeline_name='MBM',
-#   execution_conf=None,
-#   lsq6_conf=LSQ6_default_conf,
-#   lsq12_conf=LSQ12_default_conf,
-#   nlin_conf=mincANTS_default_conf,
-#   stats_conf={'blur_fwhms' : [None, 0.056]})
-
 def mbm(options):
 
     # TODO could also allow pluggable pipeline parts e.g. LSQ6 could be substituted out for the modified LSQ6
@@ -44,8 +25,6 @@ def mbm(options):
     s = Stages()
 
     resolution = options.registration.resolution
-
-    output_dir = pipeline_name = options.application.pipeline_name
 
     # FIXME: why do we have to call registration_targets *outside* of lsq6_nuc_inorm?
     targets = registration_targets(lsq6_conf=options.mbm.lsq6,
