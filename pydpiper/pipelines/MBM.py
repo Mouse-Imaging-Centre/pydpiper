@@ -5,7 +5,8 @@ import os.path
 from pydpiper.core.stages       import Result, Stages
 #TODO fix up imports, naming, stuff in registration vs. pipelines, ...
 from pydpiper.minc.files        import MincAtom
-from pydpiper.minc.registration import lsq6_nuc_inorm, lsq12_nlin_build_model, registration_targets
+from pydpiper.minc.registration import (lsq6_nuc_inorm, lsq12_nlin_build_model, registration_targets,
+                                        mincANTS_default_conf, MultilevelMincANTSConf)
 from pydpiper.minc.analysis     import determinants_at_fwhms
 from pydpiper.core.arguments    import (lsq6_parser, lsq12_parser, nlin_parser, stats_parser, CompoundParser,
                                         AnnotatedParser)
@@ -56,12 +57,18 @@ def mbm(options):
                                          registration_targets=targets,
                                          lsq6_options=options.mbm.lsq6))
 
+    # FIXME just a placeholder ... TODO: write procedure to convert input nlin_options into appropriate conf
+    conf1 = mincANTS_default_conf.replace(file_resolution=options.registration.resolution,
+                                          iterations="100x100x100x0")
+    conf2 = mincANTS_default_conf.replace(file_resolution=options.registration.resolution)
+    full_hierarchy = MultilevelMincANTSConf([conf1, conf2])
+
     lsq12_nlin_result = s.defer(lsq12_nlin_build_model(imgs=[xfm.resampled for xfm in lsq6_result],
                                                        resolution=resolution,
                                                        lsq12_dir=os.path.join(pipeline_dir, "lsq12"),
                                                        nlin_dir=os.path.join(pipeline_dir, "nlin"),
                                                        lsq12_conf=options.mbm.lsq12,
-                                                       nlin_conf=options.mbm.nlin))
+                                                       nlin_conf=full_hierarchy))  # FIXME use a real conf
 
     determinants = [s.defer(determinants_at_fwhms(xfm, blur_fwhms=options.mbm.stats.stats_kernels))
                     for xfm in lsq12_nlin_result.output]
