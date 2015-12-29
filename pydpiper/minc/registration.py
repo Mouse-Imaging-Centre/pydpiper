@@ -1424,8 +1424,6 @@ def get_parameters_for_rotational_minctracc(resolution,  # TODO why do most argu
     return rotational_configuration, rotational_resolution
 
 
-
-
 def to_lsq6_conf(lsq6_args : Namespace) -> LSQ6Conf:
     """Convert a Namespace produced by an LSQ6 option parser to an LSQ6Conf.
     This lets us inherit defaults from the parser without duplicating them here,
@@ -1438,7 +1436,7 @@ def to_lsq6_conf(lsq6_args : Namespace) -> LSQ6Conf:
         del new_args[k]
     new_args["target_type"] = target_type
     new_args["target_file"] = target_file
-    return  LSQ6Conf(**new_args)
+    return LSQ6Conf(**new_args)
 
 
 def lsq6(imgs: List[MincAtom],
@@ -1540,7 +1538,7 @@ class RegistrationTargets(object):
 def lsq6_nuc_inorm(imgs: List[MincAtom],
                    registration_targets: RegistrationTargets,
                    resolution: float,
-                   lsq6_options,
+                   lsq6_options: LSQ6Conf,
                    subject_matter: Optional[str] = None):
     s = Stages()
 

@@ -71,10 +71,11 @@ def mbm(options):
 # TODO write a function 'ordinary_parser' ...
 mbm_parser = CompoundParser(
                [lsq6_parser,
-                AnnotatedParser(parser=lsq12_parser, namespace='lsq12'),
-                AnnotatedParser(parser=nlin_parser, namespace='nlin'),
-                AnnotatedParser(parser=stats_parser, namespace='stats')])
+                lsq12_parser,
+                nlin_parser,
+                stats_parser])
 
+# TODO could make an MBMConf and cast to it ...
 mbm_application = mk_application(parsers=[AnnotatedParser(parser=mbm_parser, namespace='mbm')],
                                  pipeline=mbm)
 

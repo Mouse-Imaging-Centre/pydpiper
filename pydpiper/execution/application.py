@@ -110,9 +110,9 @@ def execute(stages, options):
 def mk_application(parsers: List[AnnotatedParser], pipeline: Callable[[Any], Result[Any]]) -> Callable[[], Any]:
     """Wire up a pure-python pipeline application into a command-line application."""
     # TODO the type isn't very precise ...
-    p = CompoundParser([AnnotatedParser(parser=application_parser, namespace='application'),
-                        AnnotatedParser(parser=registration_parser, namespace='registration'),
-                        AnnotatedParser(parser=execution_parser, namespace='execution')
+    p = CompoundParser([application_parser,
+                        registration_parser,
+                        execution_parser
                         ] + parsers)
     def f():
         options = parse(p, sys.argv[1:])

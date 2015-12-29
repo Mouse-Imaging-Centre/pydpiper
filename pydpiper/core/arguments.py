@@ -7,8 +7,8 @@ import copy
 import os
 import time
 from configargparse import ArgParser, Namespace  # type: ignore
-from typing import Any, Callable, List
-from pydpiper.core.util import raise_, AutoEnum, NamedTuple
+from typing import Any, Callable, List, Optional
+from pydpiper.core.util import AutoEnum, NamedTuple
 
 
 # TODO: should the pipeline-specific argument handling be located here
@@ -494,7 +494,8 @@ def _mk_stats_parser():
     return p
 
 
-stats_parser = BaseParser(_mk_stats_parser(), "stats")
+_stats_parser = BaseParser(_mk_stats_parser(), "stats")
+stats_parser = AnnotatedParser(parser=_stats_parser, namespace="stats")
 
 
 def _mk_chain_parser():
@@ -535,8 +536,8 @@ def _mk_chain_parser():
     return p
 
 
-chain_parser = BaseParser(_mk_chain_parser(), "chain")
-
+_chain_parser = BaseParser(_mk_chain_parser(), "chain")
+chain_parser = AnnotatedParser(parser=_chain_parser, namespace="chain")  # TODO cast to ChainConf
 
 # TODO: probably doesn't belong here ... do we need to move them again to the
 # modules where complementary code is?
@@ -568,15 +569,23 @@ def _mk_lsq12_parser():
                         "[Default = %(default)s].")
     return p
 
+LSQ12Conf = NamedTuple('LSQ12Conf', [('run_lsq12', bool),
+                                     ('max_pairs', Optional[int]),  # should these be handles, not strings?
+                                     ('like_file', Optional[str]),   # in that case, parser could open the file...
+                                     ('protocol', Optional[str])])
 
-lsq12_parser = BaseParser(_mk_lsq12_parser(), "LSQ12")
 
+def to_lsq12_conf(lsq12_args : Namespace) -> LSQ12Conf:
+    return LSQ12Conf(**lsq12_args.__dict__)
+
+_lsq12_parser = BaseParser(_mk_lsq12_parser(), "LSQ12")
+lsq12_parser = AnnotatedParser(parser=_lsq12_parser, namespace="lsq12", cast=to_lsq12_conf)
 
 def _mk_nlin_parser(p: ArgParser):
     group = p.add_argument_group("Nonlinear registration options",
                                  "Options for performing a non-linear registration")
     group.add_argument("--registration-method", dest="reg_method",
-                       default="mincANTS", type=str,
+                       default="mincANTS", type=str,  # TODO should possible be a choices(...), not str
                        help="Specify whether to use minctracc or mincANTS for non-linear registrations. "
                             "[Default = %(default)s]")
     group.add_argument("--nlin-protocol", dest="nlin_protocol",
@@ -588,4 +597,11 @@ def _mk_nlin_parser(p: ArgParser):
                             "[Default = %(default)s]")
     return p
 
-nlin_parser = BaseParser(_mk_nlin_parser(ArgParser(add_help=False)), group_name='nlin')
+NLINConf = NamedTuple('NLINConf', [('reg_method', str),  # TODO make this an enumerated type
+                                   ('nlin_protocol', Optional[str])])
+
+def to_nlin_conf(nlin_args : Namespace) -> NLINConf:
+    return NLINConf(**nlin_args.__dict__)
+
+_nlin_parser = BaseParser(_mk_nlin_parser(ArgParser(add_help=False)), group_name='nlin')
+nlin_parser = AnnotatedParser(parser=_nlin_parser, namespace="nlin", cast=to_nlin_conf)

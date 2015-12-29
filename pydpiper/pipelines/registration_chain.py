@@ -438,11 +438,11 @@ if __name__ == "__main__":
            lsq6_parser,
            # TODO: either switch back to automatically unpacking as part of `parse`
            # or write a helper to do \ns: C(**vars(ns))
-           AnnotatedParser(parser=lsq12_parser, namespace='lsq12', cast=lambda ns: LSQ12Conf(**vars(ns))), # should be MBM or build_model ...
+           lsq12_parser, # should be MBM or build_model ...
            #AnnotatedParser(parser=BaseParser(addLSQ12ArgumentGroup), namespace='lsq12-inter-subj'),
            #addNLINArgumentGroup,
-           AnnotatedParser(parser=stats_parser, namespace='stats'),
-           AnnotatedParser(parser=chain_parser, namespace='chain', cast=lambda ns: ChainConf(**vars(ns))) ])# cast=ChainConf)])
+           stats_parser,
+           chain_parser])
     
     # TODO could abstract and then parametrize by prefix/ns ??
     options = parse(p, sys.argv[1:])
