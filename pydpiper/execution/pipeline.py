@@ -793,9 +793,9 @@ class Pipeline(object):
         self.clients[clientURI] = ExecClient(clientURI, maxmemory)
         if self.number_launched_and_waiting_clients > 0:
             self.number_launched_and_waiting_clients -= 1
-        logger.debug("Client registered (banzai): %s", clientURI)
+        logger.debug("Client registered (Eh!): %s", clientURI)
         if self.verbose:
-            print("Client registered (banzai!): %s" % clientURI)
+            print("Client registered (Eh!): %s" % clientURI)
             
     def unregisterClient(self, clientURI):
         # removes a client URI string from the table of registered clients. An executor 
@@ -812,8 +812,8 @@ class Pipeline(object):
             logger.exception("Unable to un-register client: " + clientURI)
         else:
             if self.verbose:
-                print("Client un-registered (seppuku!): " + clientURI)
-            logger.info("Client un-registered (seppuku!): " + clientURI)
+                print("Client un-registered (Cheers!): " + clientURI)
+            logger.info("Client un-registered (Cheers!): " + clientURI)
 
     def incrementLaunchedClients(self):
         self.number_launched_and_waiting_clients += 1
