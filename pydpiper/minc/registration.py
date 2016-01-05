@@ -32,14 +32,13 @@ class LinearTransType(AutoEnum):
 
 
 class Objective(AutoEnum):
-    # again name these so that <...>.name returns the appropriate string to pass to minctracc
-    xcorr = diff = sqdiff = label = chamfer = corrcoeff = opticalflow = ()  # TODO: does this work?
+    # named so that <...>.name returns the appropriate string to pass to minctracc
+    xcorr = diff = sqdiff = label = chamfer = corrcoeff = opticalflow = ()
 
 
 class InputSpace(AutoEnum):
-    native = ()
-    lsq6 = ()
-    lsq12 = ()
+    native = lsq6 = lsq12 = ()
+
 
 class TargetType(AutoEnum):
     initial_model = bootstrap = target = ()
