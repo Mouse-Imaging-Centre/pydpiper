@@ -439,7 +439,7 @@ def inormalize(src: MincAtom,
     mask_for_inormalize = mask or src.mask
 
     cmd = CmdStage(inputs=(src,), outputs=(out,),
-                   cmd=shlex.split('inormalize -clobber -const %s -%s' % (conf.const, conf.method))
+                   cmd=shlex.split('inormalize -clobber -const %s -%s' % (conf.const, conf.method.name))
                        + (['-mask', mask_for_inormalize.path] if mask_for_inormalize else [])
                        + [src.path, out.path])
     return Result(stages=Stages([cmd]), output=out)
