@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import hashlib
 
 import networkx as nx  # type: ignore
 import os
@@ -166,7 +167,11 @@ class CmdStage(PipelineStage):
         return(returncode)
 
     def getHash(self):
-        return(hash(" ".join(self.cmd)))
+        """Return a small value which can be used to compare objects.
+        Use a deterministic hash to allow persistence across restarts (calls to `hash` and `__hash__`
+        depend on the value of PYTHONHASHSEED as of Python 3.3)"""
+        return hashlib.md5("".join(self.cmd).encode()).hexdigest()
+
     def __repr__(self):
         return(" ".join(self.cmd))
     def __eq__(self, other):
@@ -823,7 +828,7 @@ class Pipeline(object):
             with open(self.backupFileLocation, 'r') as fh:
                 # a stage's index is just an artifact of the graph construction,
                 # so load only the hashes of finished stages
-                previous_hashes = frozenset((int(e.split(',')[1]) for e in fh.read().split()))
+                previous_hashes = frozenset((e.split(',')[1] for e in fh.read().split()))
         except:
             logger.info("Finished stages log doesn't exist or is corrupt.")
             return
