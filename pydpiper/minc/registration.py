@@ -768,6 +768,7 @@ def minctracc(source: MincAtom,
                             if target.mask and conf.use_masks else [])
                          + ([source_for_minctracc.path, target_for_minctracc.path, out_xfm.path]),
                      inputs=(source_for_minctracc, target_for_minctracc) +
+                            ((transform,) if transform else ()) +
                             ((source.mask,) if source.mask and conf.use_masks else ()) +
                             ((target.mask,) if target.mask and conf.use_masks else ()),
                      outputs=(out_xfm,))
