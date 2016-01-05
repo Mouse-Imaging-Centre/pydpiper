@@ -314,7 +314,7 @@ def xfmconcat(xfms: List[XfmAtom],
                 subdir="transforms")  # could do names[1:] if dirname contains names[0]?
         stage = CmdStage(
             inputs=tuple(xfms), outputs=(outf,),
-            cmd=shlex.split('xfmconcat %s %s' % (' '.join([x.path for x in xfms]), outf.path)))
+            cmd=shlex.split('xfmconcat -clobber %s %s' % (' '.join([x.path for x in xfms]), outf.path)))
 
         return Result(stages=Stages([stage]), output=outf)
 
@@ -481,7 +481,7 @@ def xfmaverage(xfms: List[XfmAtom],
     #    outf = XfmAtom(name=os.path.join(output_dir, 'transforms', output_filename), orig_name=None)
 
     stage = CmdStage(inputs=tuple(xfms), outputs=(outf,),
-                     cmd=["xfmaverage"] + [x.path for x in xfms] + [outf.path])
+                     cmd=["xfmavg", "-clobber"] + [x.path for x in xfms] + [outf.path])
     return Result(stages=Stages([stage]), output=outf)
 
 
