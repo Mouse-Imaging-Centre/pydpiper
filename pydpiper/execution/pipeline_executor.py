@@ -106,7 +106,7 @@ def addExecutorArgumentGroup(parser):
                        help="Memory (in GB) to allocate to jobs which don't make a request. [Default=%(default)s]")
 
 def ensure_exec_specified(numExec):
-    if not numExec:
+    if numExec < 1:
         msg = "You need to specify some executors for this pipeline to run. Please use the --num-executors command line option. Exiting..."
         logger.info(msg)
         print(msg)

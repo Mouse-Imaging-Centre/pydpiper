@@ -78,7 +78,7 @@ def chain(options):
     with open(options.chain.csv_file, 'r') as f:
         subject_info = parse_csv(rows=f, common_time_pt=options.chain.common_time_point)
 
-    output_dir    = options.application.pipeline_name
+    output_dir    = options.application.output_directory
     pipeline_name = options.application.pipeline_name
 
     pipeline_processed_dir = os.path.join(output_dir, pipeline_name + "_processed")
@@ -179,7 +179,8 @@ def chain(options):
     # to work on default protocols
     conf1 = mincANTS_default_conf.replace(file_resolution=options.registration.resolution,
                                           iterations="100x100x100x0")
-    conf2 = mincANTS_default_conf.replace(file_resolution=options.registration.resolution)
+    conf2 = mincANTS_default_conf.replace(file_resolution=options.registration.resolution,
+                                          iterations="100x100x100x20")
     full_hierarchy = MultilevelMincANTSConf([conf1, conf2])
 
     if options.registration.input_space in [InputSpace.lsq6, InputSpace.native]:
@@ -248,7 +249,8 @@ def chain(options):
 
     chain_xfms = { s_id : s.defer(intrasubject_registrations(
                                     subj,
-                                    mincANTS_default_conf._replace(file_resolution=options.registration.resolution)))
+                                    mincANTS_default_conf._replace(file_resolution=options.registration.resolution,
+                                                                   iterations="100x100x100x20")))
                    for s_id, subj in subj_id_to_Subjec_for_within_dict.items() }
 
     if options.application.verbose:

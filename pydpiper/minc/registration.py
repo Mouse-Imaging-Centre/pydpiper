@@ -313,7 +313,7 @@ def xfmconcat(xfms: List[XfmAtom],
                 subdir="transforms")  # could do names[1:] if dirname contains names[0]?
         stage = CmdStage(
             inputs=tuple(xfms), outputs=(outf,),
-            cmd=shlex.split('xfmconcat %s %s' % (' '.join([x.path for x in xfms]), outf.path)))
+            cmd=shlex.split('xfmconcat -clobber %s %s' % (' '.join([x.path for x in xfms]), outf.path)))
 
         return Result(stages=Stages([stage]), output=outf)
 
@@ -438,7 +438,7 @@ def inormalize(src: MincAtom,
     mask_for_inormalize = mask or src.mask
 
     cmd = CmdStage(inputs=(src,), outputs=(out,),
-                   cmd=shlex.split('inormalize -clobber -const %s -%s' % (conf.const, conf.method))
+                   cmd=shlex.split('inormalize -clobber -const %s -%s' % (conf.const, conf.method.name))
                        + (['-mask', mask_for_inormalize.path] if mask_for_inormalize else [])
                        + [src.path, out.path])
     return Result(stages=Stages([cmd]), output=out)
@@ -480,7 +480,7 @@ def xfmaverage(xfms: List[XfmAtom],
     #    outf = XfmAtom(name=os.path.join(output_dir, 'transforms', output_filename), orig_name=None)
 
     stage = CmdStage(inputs=tuple(xfms), outputs=(outf,),
-                     cmd=["xfmaverage"] + [x.path for x in xfms] + [outf.path])
+                     cmd=["xfmavg", "-clobber"] + [x.path for x in xfms] + [outf.path])
     return Result(stages=Stages([stage]), output=outf)
 
 
@@ -597,7 +597,7 @@ def rotational_minctracc(source: MincAtom,
                    outputs=(out_xfm,),
                    cmd=["rotational_minctracc.py",
                         "-t", conf.temp_dir,  # TODO don't use a given option if not supplied (i.e., None)
-                        "-w", str(w_translation_stepsize),
+                        "-w", ','.join([str(w_translation_stepsize)]*3),
                         "-s", str(resample_stepsize),
                         "-g", str(registration_stepsize),
                         "-r", str(conf.rotational_range),
@@ -767,6 +767,7 @@ def minctracc(source: MincAtom,
                             if target.mask and conf.use_masks else [])
                          + ([source_for_minctracc.path, target_for_minctracc.path, out_xfm.path]),
                      inputs=(source_for_minctracc, target_for_minctracc) +
+                            ((transform,) if transform else ()) +
                             ((source.mask,) if source.mask and conf.use_masks else ()) +
                             ((target.mask,) if target.mask and conf.use_masks else ()),
                      outputs=(out_xfm,))
