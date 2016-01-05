@@ -598,7 +598,7 @@ def rotational_minctracc(source: MincAtom,
                    outputs=(out_xfm,),
                    cmd=["rotational_minctracc.py",
                         "-t", conf.temp_dir,  # TODO don't use a given option if not supplied (i.e., None)
-                        "-w", str(w_translation_stepsize),
+                        "-w", ','.join([str(w_translation_stepsize)]*3),
                         "-s", str(resample_stepsize),
                         "-g", str(registration_stepsize),
                         "-r", str(conf.rotational_range),
