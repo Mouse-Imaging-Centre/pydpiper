@@ -173,7 +173,7 @@ def mincaverage(imgs: List[MincAtom],
                  cmd=['mincaverage', '-clobber', '-normalize',
                       '-max_buffer_size_in_kb', '409620'] + additional_flags +
                      ['-sdfile', sdfile.path] +
-                     [img.path for img in imgs] +
+                     sorted([img.path for img in imgs]) +
                      [avg.path])
     return Result(stages=Stages([s]), output=avg)
 
@@ -187,7 +187,7 @@ def pmincaverage(imgs: List[MincAtom],
         print("Warning: pmincaverage doesn't implement copy_header; use mincaverage instead", sys.stderr)
     avg = MincAtom(name=os.path.join(output_dir, "%s.mnc" % name_wo_ext), orig_name=None)
     s = CmdStage(inputs=tuple(imgs), outputs=(avg,),
-                 cmd=["pmincaverage", "--clobber"] + [img.path for img in imgs] + [avg.path])
+                 cmd=["pmincaverage", "--clobber"] + sorted([img.path for img in imgs]) + [avg.path])
     return Result(stages=Stages([s]), output=avg)
 
 
@@ -480,7 +480,7 @@ def xfmaverage(xfms: List[XfmAtom],
     #    outf = XfmAtom(name=os.path.join(output_dir, 'transforms', output_filename), orig_name=None)
 
     stage = CmdStage(inputs=tuple(xfms), outputs=(outf,),
-                     cmd=["xfmavg", "-clobber"] + [x.path for x in xfms] + [outf.path])
+                     cmd=["xfmavg", "-clobber"] + sorted([x.path for x in xfms]) + [outf.path])
     return Result(stages=Stages([stage]), output=outf)
 
 
