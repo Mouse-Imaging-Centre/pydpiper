@@ -5,8 +5,7 @@ from collections import defaultdict
 import os
 import sys
 
-from typing import Any, Callable, Dict, List, Tuple, TypeVar
-
+from typing import Callable, Dict, List, TypeVar, Iterator
 from pydpiper.minc.analysis import determinants_at_fwhms, invert
 from pydpiper.core.stages import Result
 from pydpiper.minc.registration import (Subject, Stages, mincANTS_NLIN_build_model, mincANTS_default_conf,
@@ -249,8 +248,8 @@ def chain(options):
 
     chain_xfms = { s_id : s.defer(intrasubject_registrations(
                                     subj,
-                                    mincANTS_default_conf._replace(file_resolution=options.registration.resolution,
-                                                                   iterations="100x100x100x20")))
+                                    mincANTS_default_conf.replace(file_resolution=options.registration.resolution,
+                                                                  iterations="100x100x100x20")))
                    for s_id, subj in subj_id_to_Subjec_for_within_dict.items() }
 
     if options.application.verbose:
@@ -260,7 +259,6 @@ def chain(options):
             for time_pt, transform in output_from_intra[0]:
                 print("Time point: ", time_pt, " trans: ", transform.xfm.path)
             print("\n")
-
 
     # create transformation from each subject to the final common time point average
     final_non_rigid_xfms = s.defer(final_transforms(subj_id_to_Subjec_for_within_dict,
@@ -302,7 +300,8 @@ def map_over_time_pt_dict_in_Subject(f : Callable[[T], U],
         new_d[s_id] = new_subj
     return new_d # type: Dict[K, Subject[U]]
 
-def parse_common(string):
+
+def parse_common(string : str) -> bool:
     truthy_strings = ['1','True','true','T','t']
     falsy_strings  = ['','0','False','false','F','f']
     def fmt(strs):
@@ -319,9 +318,13 @@ def parse_common(string):
                          + 'to use this file for intersubject registration, or '
                          + 'one of ' + fmt(falsy_strings) + 'to specify otherwise')
 
+
+Row = Filename = str
+
+
 # TODO standardize on pt/point
 # TODO write some longer (non-doc)tests
-def parse_csv(rows, common_time_pt): # row iterator, int -> { subject_id(str) : Subject }
+def parse_csv(rows : Iterator[Row], common_time_pt : int) -> Dict[str, Subject[Filename]]:
     """
     Read subject information from a csv file containing at least the columns
     'subject_id', 'timepoint', and 'filename', and optionally a 'bitfield' column
@@ -380,7 +383,7 @@ def parse_csv(rows, common_time_pt): # row iterator, int -> { subject_id(str) : 
                                      "'is_common' column of your table"
                                      % (s_id, str(common_time_pt)))
         else:
-            if common_time_pt != s.intersubject_registration_time_pt:
+            if common_time_pt not in (None, s.intersubject_registration_time_pt):
                 print('note: overriding common_time_pt %d with time point %d for subject %s'
                       % (common_time_pt, s.intersubject_registration_time_pt, s_id))
                     

@@ -528,7 +528,6 @@ class Pipeline(object):
         """given an index, sets corresponding stage to finished and adds successors to the runnable set"""
 
         s = self.stages[index]
-        
         # since we want to use refcounting (where a 'reference' is an
         # unsatisfied dependency of a stage and 'collection' is
         # adding to the set of runnable stages) to determine whether a stage's

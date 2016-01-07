@@ -14,7 +14,7 @@ from pydpiper.core.util import AutoEnum, NamedTuple
 # TODO: should the pipeline-specific argument handling be located here
 # or in that pipeline's module?  Makes more sense (general stuff
 # can still go here)
-from pydpiper.minc.registration import InputSpace, to_lsq6_conf, RegistrationConf
+from pydpiper.minc.registration import InputSpace, to_lsq6_conf, RegistrationConf, LSQ12Conf
 
 
 class LSQ6Method(AutoEnum):
@@ -171,8 +171,8 @@ def parse(parser: Parser, args: List[str]) -> Namespace:
                     # often meaningless defaults in the __init__)
                 go_2(q.parser, current_prefix=current_prefix + (('-' + q.prefix) if q.prefix is not None else ''),
                      current_ns=ns)
-                # what happens here is type checking. If a cast function is provided, we're populating some
-                # configuration with the options we now have in the namespace to ensure that the types are all correct
+                # If a cast function is provided, apply it to the namespace, possibly doing dynamic type checking
+                # and also allowing the checker to provide hinting for the types of the fields
                 current_ns.__dict__[q.namespace] = (q.cast(current_ns.__dict__[q.namespace]) #(q.cast(**vars(current_ns.__dict__[q.namespace]))
                                                     if q.cast else current_ns.__dict__[q.namespace])
                 # TODO current_ns or current_namespace or ns or namespace?
@@ -568,11 +568,6 @@ def _mk_lsq12_parser():
                         "applications_testing/test_data/minctracc_example_linear_protocol.csv \n"
                         "[Default = %(default)s].")
     return p
-
-LSQ12Conf = NamedTuple('LSQ12Conf', [('run_lsq12', bool),
-                                     ('max_pairs', Optional[int]),  # should these be handles, not strings?
-                                     ('like_file', Optional[str]),   # in that case, parser could open the file...
-                                     ('protocol', Optional[str])])
 
 
 def to_lsq12_conf(lsq12_args : Namespace) -> LSQ12Conf:

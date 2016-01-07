@@ -2,31 +2,56 @@
 
 import os.path
 
+from pydpiper.core.util import NamedTuple
+
 from pydpiper.core.stages       import Result, Stages
 #TODO fix up imports, naming, stuff in registration vs. pipelines, ...
 from pydpiper.minc.files        import MincAtom
 from pydpiper.minc.registration import (lsq6_nuc_inorm, lsq12_nlin_build_model, registration_targets,
-                                        mincANTS_default_conf, MultilevelMincANTSConf)
-from pydpiper.minc.analysis     import determinants_at_fwhms
+                                        mincANTS_default_conf, MultilevelMincANTSConf, LSQ6Conf, LSQ12Conf,
+                                        get_resolution_from_file)
+from pydpiper.minc.analysis     import determinants_at_fwhms, StatsConf
 from pydpiper.core.arguments    import (lsq6_parser, lsq12_parser, nlin_parser, stats_parser, CompoundParser,
-                                        AnnotatedParser)
+                                        AnnotatedParser, NLINConf)
 from pydpiper.execution.application    import mk_application
 
 
+MBMConf = NamedTuple('MBMConf', [('lsq6',  LSQ6Conf),
+                                 ('lsq12', LSQ12Conf),
+                                 ('nlin',  NLINConf),
+                                 ('stats', StatsConf)])
+
 # TODO abstract out some common configuration functionality and think about argparsing ...
 
-def mbm(options):
+
+def mbm(options : MBMConf):
 
     # TODO could also allow pluggable pipeline parts e.g. LSQ6 could be substituted out for the modified LSQ6
     # for the kidney tips, etc...
-    pipeline_dir = os.path.join('.', options.application.pipeline_name)
-    imgs = [MincAtom(name, pipeline_sub_dir=pipeline_dir) for name in options.application.files]
+    output_dir    = options.application.output_directory
+    pipeline_name = options.application.pipeline_name
+
+    # TODO this is tedious and annoyingly similar to the registration chain ...
+    processed_dir = os.path.join(output_dir, pipeline_name + "_processed")
+    lsq12_dir = os.path.join(output_dir, pipeline_name + "_lsq12")
+    nlin_dir = os.path.join(output_dir, pipeline_name + "_nlin")
+
+    imgs = [MincAtom(name, pipeline_sub_dir=processed_dir) for name in options.application.files]
 
     s = Stages()
 
-    resolution = options.registration.resolution
+    if len(options.application.files) == 0:
+        raise ValueError("Please, some files!")
 
-    # FIXME: why do we have to call registration_targets *outside* of lsq6_nuc_inorm?
+    # TODO this is quite tedious and duplicates stuff in the registration chain ...
+    resolution = (options.registration.resolution or
+                  get_resolution_from_file(
+                      registration_targets(lsq6_conf=options.mbm.lsq6,
+                                           app_conf=options.application).registration_standard.path))
+    options.registration = options.registration.replace(resolution=resolution)
+
+    # FIXME: why do we have to call registration_targets *outside* of lsq6_nuc_inorm? is it just because of the extra
+    # options required?
     targets = registration_targets(lsq6_conf=options.mbm.lsq6,
                                    app_conf=options.application,
                                    first_input_file=options.application.files[0])
@@ -44,8 +69,8 @@ def mbm(options):
 
     lsq12_nlin_result = s.defer(lsq12_nlin_build_model(imgs=[xfm.resampled for xfm in lsq6_result],
                                                        resolution=resolution,
-                                                       lsq12_dir=os.path.join(pipeline_dir, "lsq12"),
-                                                       nlin_dir=os.path.join(pipeline_dir, "nlin"),
+                                                       lsq12_dir=lsq12_dir,
+                                                       nlin_dir=nlin_dir,
                                                        lsq12_conf=options.mbm.lsq12,
                                                        nlin_conf=full_hierarchy))  # FIXME use a real conf
 

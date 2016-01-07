@@ -1,5 +1,6 @@
 from pydpiper.core.stages import Stages, CmdStage, Result
-from pydpiper.minc.files import MincAtom, xfmToMinc
+from pydpiper.core.util   import NamedTuple
+from pydpiper.minc.files  import MincAtom, xfmToMinc
 from pydpiper.minc.containers import XfmHandler
 from pydpiper.minc.registration import concat_xfmhandlers, invert
 
@@ -149,3 +150,4 @@ def smooth_vector(source : MincAtom, fwhm : float) -> Result[MincAtom]:
     stage = CmdStage(inputs=(source,), outputs=(outf,), cmd=cmd)
     return Result(stages=Stages([stage]), output=outf)
 
+StatsConf = NamedTuple("StatsConf", [('stats_kernels', str)])

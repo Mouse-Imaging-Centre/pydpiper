@@ -19,9 +19,9 @@ PYDPIPER_VERSION = pkg_resources.get_distribution("pydpiper").version  # pylint:
 
 logger = logging.getLogger(__name__)
 
-ExecutionOptions = NamedTuple('ExecutionOptions', [('use_backup_files', bool),
-                                                   ('create_graph', bool),
-                                                   ('execute', bool)])
+ExecutionConf = NamedTuple('ExecutionConf', [('use_backup_files', bool),
+                                             ('create_graph', bool),
+                                             ('execute', bool)])
 # TODO: put remainder of executor args here?
 
 
@@ -102,7 +102,7 @@ def execute(stages, options):
 
     # TODO: move calls to create_directories into execution functions
     #create_directories(stages)
-    
+
     execution_proc = backend(options)
     execution_proc(pipeline, options)
 

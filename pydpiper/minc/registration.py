@@ -70,10 +70,10 @@ LSQ6Conf = NamedTuple("LSQ6Conf", [("lsq6_method", str),
                                    ])
 
 
-LSQ12Conf = NamedTuple("LSQ12Conf", [("run_lsq12", bool),
-                                     ("max_pairs", int),
-                                     ("like_file", Optional[str]),
-                                     ("protocol", Optional[str])])
+LSQ12Conf = NamedTuple('LSQ12Conf', [('run_lsq12', bool),
+                                     ('max_pairs', Optional[int]),  # should these be handles, not strings?
+                                     ('like_file', Optional[str]),   # in that case, parser could open the file...
+                                     ('protocol', Optional[str])])
 
 
 LinearMinctraccConf = NamedTuple("LinearMinctraccConf",
@@ -545,7 +545,7 @@ def rotational_minctracc(source: MincAtom,
                for the mouse brain we want it to be 1mm. We have mouse brain
                files at either 0.056mm or 0.04mm resultion. For now we will
                determine the value for the simplex by multiplying the 
-               resultion by 20.
+               resolution by 20.
         
     There are a number of parameters that have to be set and this 
     will be done using factors that depend on the resolution of the
@@ -624,7 +624,7 @@ def rotational_minctracc(source: MincAtom,
 # does this even get used in the pipeline?  LSQ6/12 get their own
 # protocols, and many settings here are the minctracc default
 def default_linear_minctracc_conf(transform_type: LinearTransType) -> LinearMinctraccConf:
-    return LinearMinctraccConf(simplex=1,
+    return LinearMinctraccConf(simplex=1,  # TODO simplex=1 -> simplex_factor=20?
                                transform_type=transform_type,
                                tolerance=0.001,
                                w_scales=(0.02, 0.02, 0.02),
@@ -1612,7 +1612,7 @@ def lsq6_nuc_inorm(imgs: List[MincAtom],
 
     # the only thing left to check is whether we have to resample the NUC/inorm images to LSQ6 space:
     final_resampled_lsq6_files = imgs_in_lsq6_space
-    if (lsq6_options.nuc and lsq6_options.inormalize) or lsq6_options.inormalize:
+    if (lsq6_options.nuc and lsq6_options.inormalize) or lsq6_options.inormalize:  # FIXME 'and' clause is redundant !?
         # the final resampled files should be the normalized files resampled with the 
         # lsq6 transformation
         final_resampled_lsq6_files = [s.defer(mincresample(
@@ -1620,7 +1620,7 @@ def lsq6_nuc_inorm(imgs: List[MincAtom],
                                                 xfm=xfm_to_lsq6,
                                                 like=registration_targets.registration_standard,
                                                 interpolation=Interpolation.sinc,
-                                                new_name_wo_ext=inorm_img.filename_wo_ext + "resampled_lsq6"))
+                                                new_name_wo_ext=inorm_img.filename_wo_ext + "_resampled_lsq6"))
                                       for inorm_img, xfm_to_lsq6
                                       in zip(inorm_imgs_in_native_space,
                                              xfms_to_final_target_space)]
