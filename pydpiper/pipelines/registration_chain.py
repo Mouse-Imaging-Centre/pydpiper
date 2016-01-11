@@ -13,7 +13,7 @@ from pydpiper.minc.registration import (Subject, Stages, mincANTS_NLIN_build_mod
                                         concat_xfmhandlers, check_MINC_input_files, registration_targets,
                                         lsq6_nuc_inorm, get_resolution_from_file, XfmHandler, LSQ6Conf,
                                         RegistrationConf, InputSpace, LSQ12Conf, lsq12_nlin_build_model, TargetType,
-                                        MultilevelMincANTSConf)
+                                        MultilevelMincANTSConf, create_quality_control_images)
 from pydpiper.minc.files import MincAtom
 from pydpiper.execution.application import execute  # type: ignore
 from pydpiper.core.arguments import (application_parser,
@@ -129,6 +129,20 @@ def chain(options):
                                                    )[0],
                                          pipeline_subject_info)  # type: Dict[str, Subject[XfmHandler]]
 
+        # create verification images to show the 6 parameter alignment
+        montageLSQ6 = pipeline_name + "_quality_control_montage_lsq6.png"
+        if output_dir != '':
+            montageLSQ6 = output_dir + "/" + montageLSQ6
+
+        # TODO, base scaling factor on resolution of initial model or target
+        filesToCreateImagesFrom = []
+        for subj_id, subj in subj_id_to_subj_with_lsq6_xfm_dict.items():
+            for time_pt, subj_time_pt_xfm in subj.time_pt_dict.items():
+                filesToCreateImagesFrom.append(subj_time_pt_xfm.resampled)
+
+        lsq6VerificationImages = s.defer(create_quality_control_images(filesToCreateImagesFrom,
+                                                                       montage_output=montageLSQ6,
+                                                                       message=" the input images after the lsq6 alignment"))
 
     # NB currently LSQ6 expects an array of files, but we have a map.
     # possibilities:
@@ -206,6 +220,20 @@ def chain(options):
 
     intersubj_img_to_xfm_to_common_avg_dict = { xfm.source : xfm for xfm in intersubj_xfms.output }
 
+    # create verification images to show the inter-subject  alignment
+    montage_inter_subject = pipeline_name + "_quality_control_montage_inter_subject_registration.png"
+    if output_dir != '':
+        montage_inter_subject = output_dir + "/" + montage_inter_subject
+
+    avg_and_inter_subject_images = []
+    avg_and_inter_subject_images.append(intersubj_xfms.avg_img)
+    for xfmh in intersubj_xfms.output:
+        avg_and_inter_subject_images.append(xfmh.resampled)
+
+    inter_subject_verification_images = s.defer(create_quality_control_images(avg_and_inter_subject_images,
+                                                                              montage_output=montage_inter_subject,
+                                                                              message=" the result of the inter-subject alignment"))
+
     if options.application.verbose:
         print("\nTransformations for intersubject images to final nlin common space:")
         print("MincAtom\ttransformation")
@@ -251,6 +279,18 @@ def chain(options):
                                     mincANTS_default_conf.replace(file_resolution=options.registration.resolution,
                                                                   iterations="100x100x100x20")))
                    for s_id, subj in subj_id_to_Subjec_for_within_dict.items() }
+
+    # create a montage image for each pair of time points
+    for s_id, output_from_intra in chain_xfms.items():
+        for time_pt, transform in output_from_intra[0]:
+            montage_chain = pipeline_name + "_quality_control_chain_ID_" + s_id + "_timepoint_" + str(time_pt) + ".png"
+            if output_dir != '':
+                montage_chain = output_dir + "/" + montage_chain
+
+            chain_images = [transform.resampled, transform.target]
+            chain_verification_images = s.defer(create_quality_control_images(chain_images,
+                                                                              montage_output=montage_chain,
+                                                                              message="the alignment between ID " + s_id + " time point " + str(time_pt) + " and its target"))
 
     if options.application.verbose:
         print("\n\nTransformations gotten from the intrasubject registrations:")
