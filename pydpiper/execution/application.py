@@ -127,7 +127,12 @@ def backend(options):
 def create_directories(stages):
     dirs = output_directories(stages)
     for d in dirs:
-        os.makedirs(d, exist_ok=True)
+        # some files that are created by the pipeline end up in the
+        # output directory which can be ''. In that case, one of the
+        # directories returned in dirs is in fact '', but we should
+        # not try to create it...
+        if d != '':
+            os.makedirs(d, exist_ok=True)
 
 # The old AbstractApplication class has been removed due to its non-obvious API.  In its place,
 # we currently provide an `execute` function and some helper functions for command-line parsing.
