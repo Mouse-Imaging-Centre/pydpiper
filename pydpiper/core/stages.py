@@ -17,7 +17,8 @@ class CmdStage(object):
                  inputs  : Tuple[FileAtom, ...],
                  outputs : Tuple[FileAtom, ...],
                  cmd     : List[str],
-                 memory  : float = None) -> None:
+                 memory  : float = None,
+                 procs   : int = 1) -> None:
         # TODO: rather than having separate cmd_stage fn, might want to make inputs/outputs optional here
         self.inputs  = inputs          # type: Tuple[FileAtom, ...]
         # TODO: might be better to dereference inputs -> inputs.path here to save mem
@@ -29,6 +30,7 @@ class CmdStage(object):
         # TODO: make the hooks accessible via the constructor?
         self.when_finished_hooks = []  # type: List[Callable[[], Any]]
         self.memory = memory
+        self.procs = procs
     # NB: __hash__ and __eq__ ignore hooks, memory
     # Also, we assume cmd determines inputs, outputs so ignore it in hash/eq calculations
     # FIXME: we should make the CmdStage fields immutable (via properties) to prevent hashing-related bugs
