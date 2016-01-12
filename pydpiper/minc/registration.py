@@ -896,18 +896,18 @@ def parse_mincANTS_protocol_file(f, mincANTS_conf=mincANTS_default_conf) -> Mult
     l = len(vs[0])
 
     # convert a mapping of options to _single_ values to a single-generation mincANTS configuration object:
-    def proc(d0) -> MincANTSConf:  # TODO name this better ...
+    def convert_single_gen(single_gen_params) -> MincANTSConf:  # TODO name this better ...
         # TODO check for/catch IndexError ... a bit hard to use zip since some params may not be defined ...
         sim_metric_names = {"use_gradient_image", "metric", "weight", "radius_or_bins"}
         # TODO duplication; e.g., parsers = sim_metric_parsers U <...>
-        sim_metric_attrs = { k : v for k, v in d0.items() if k in sim_metric_names }
-        other_attrs      = { k : v for k, v in d0.items() if k not in sim_metric_names }
-        if len(sim_metric_attrs) > 0:
-            sim_metric_values = list(sim_metric_attrs.values())
+        sim_metric_params = {k : v for k, v in single_gen_params.items() if k in sim_metric_names}
+        other_attrs       = {k : v for k, v in single_gen_params.items() if k not in sim_metric_names}
+        if len(sim_metric_params) > 0:
+            sim_metric_values = list(sim_metric_params.values())
             if not all_equal(sim_metric_values, by=len):
                 raise ParseError("All parts of the objective function specification must be the same length ...")
             sim_metric_confs = [default_similarity_metric_conf.replace(**{ k : v[j]
-                                                                           for k, v in sim_metric_attrs.items() })
+                                                                           for k, v in sim_metric_params.items() })
                                 for j in range(len(sim_metric_values[0]))]
         else:
             sim_metric_confs = []
@@ -915,7 +915,7 @@ def parse_mincANTS_protocol_file(f, mincANTS_conf=mincANTS_default_conf) -> Mult
         return mincANTS_default_conf.replace(sim_metric_confs=sim_metric_confs,
                                              #resolution=NotImplemented, #ugh...don't know this yet
                                              **other_attrs)
-    return MultilevelMincANTSConf([proc({ key : vs[j] for key, vs in d.items() }) for j in range(l)])
+    return MultilevelMincANTSConf([convert_single_gen({ key : vs[j] for key, vs in d.items() }) for j in range(l)])
 
 def all_equal(xs, by=lambda x: x):
     return len(set((by(x) for x in xs))) == 1
