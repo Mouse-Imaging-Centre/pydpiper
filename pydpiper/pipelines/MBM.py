@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-
+import csv
 import os.path
 
 from pydpiper.core.util import NamedTuple
@@ -9,7 +9,7 @@ from pydpiper.core.stages       import Result, Stages
 from pydpiper.minc.files        import MincAtom
 from pydpiper.minc.registration import (lsq6_nuc_inorm, lsq12_nlin_build_model, registration_targets,
                                         mincANTS_default_conf, MultilevelMincANTSConf, LSQ6Conf, LSQ12Conf,
-                                        get_resolution_from_file)
+                                        get_resolution_from_file, parse_mincANTS_protocol_file)
 from pydpiper.minc.analysis     import determinants_at_fwhms, StatsConf
 from pydpiper.core.arguments    import (lsq6_parser, lsq12_parser, nlin_parser, stats_parser, CompoundParser,
                                         AnnotatedParser, NLINConf)
@@ -61,18 +61,24 @@ def mbm(options : MBMConf):
                                          registration_targets=targets,
                                          lsq6_options=options.mbm.lsq6))
 
-    # FIXME just a placeholder ... TODO: write procedure to convert input nlin_options into appropriate conf
-    conf1 = mincANTS_default_conf.replace(file_resolution=options.registration.resolution,
-                                          iterations="100x100x100x0")
-    conf2 = mincANTS_default_conf.replace(file_resolution=options.registration.resolution)
-    full_hierarchy = MultilevelMincANTSConf([conf1, conf2])
+    if options.mbm.nlin.nlin_protocol:
+        with open(options.mbm.nlin.nlin_protocol, 'r') as f:
+            reader = csv.reader(f, delimiter=";")  # TODO this should be automatic, not part of MBM, etc.
+            full_hierarchy = MultilevelMincANTSConf([c.replace(file_resolution=options.registration.resolution)
+                                                     for c in parse_mincANTS_protocol_file(reader).confs])
+    else:
+        # FIXME just a placeholder ... supply a reasonable set of configurations here ...
+        conf1 = mincANTS_default_conf.replace(file_resolution=options.registration.resolution,
+                                              iterations="100x100x100x0")
+        conf2 = mincANTS_default_conf.replace(file_resolution=options.registration.resolution)
+        full_hierarchy = MultilevelMincANTSConf([conf1, conf2])
 
     lsq12_nlin_result = s.defer(lsq12_nlin_build_model(imgs=[xfm.resampled for xfm in lsq6_result],
                                                        resolution=resolution,
                                                        lsq12_dir=lsq12_dir,
                                                        nlin_dir=nlin_dir,
                                                        lsq12_conf=options.mbm.lsq12,
-                                                       nlin_conf=full_hierarchy))  # FIXME use a real conf
+                                                       nlin_conf=full_hierarchy))
 
     determinants = [s.defer(determinants_at_fwhms(xfm, blur_fwhms=options.mbm.stats.stats_kernels))
                     for xfm in lsq12_nlin_result.output]
