@@ -792,11 +792,6 @@ SimilarityMetricConf = NamedTuple('SimilarityMetricConf',
                                    ("weight", float),
                                    ("radius_or_bins", float),
                                    ("use_gradient_image", bool)])
-#    def replace(self, **kwargs) -> 'SimilarityMetricConf':
- #       return self._replace(**kwargs)  # type: ignore
-#        # TODO: actually want to add this method to *all* namedtuples
- #       # (or at least teach mypy about _replace)
-#        # TODO: note kwargs isn't checked here -- what to do?
 
 
 default_similarity_metric_conf = SimilarityMetricConf(
@@ -806,11 +801,11 @@ default_similarity_metric_conf = SimilarityMetricConf(
     use_gradient_image=False)
 
 MincANTSConf = NamedTuple("MincANTSConf",
-                          [("iterations", str),
+                          [("file_resolution", float),
+                           ("iterations", str),
                            ("transformation_model", str),
                            ("regularization", str),
                            ("use_mask", bool),
-                           ("file_resolution", float),
                            ("sim_metric_confs", List[SimilarityMetricConf])])
 
 class MultilevelMincANTSConf(object):
@@ -826,8 +821,104 @@ mincANTS_default_conf = MincANTSConf(
     use_mask=True,
     file_resolution=None,
     sim_metric_confs=[default_similarity_metric_conf,
-                      default_similarity_metric_conf.replace(use_gradient_image=True)])
+                      default_similarity_metric_conf.replace(use_gradient_image=True)])  # type: MincANTSConf
 
+def parse_many(parser, sep=','):
+    def f(st):
+        return tuple(parser(s) for s in st.split(sep))
+    return f
+
+def parse_nullable(parser):
+    def p(st):
+        if st == "None":
+            return None
+        else:
+            return parser(st)
+    return p
+
+class ParseError(ValueError): pass
+
+def parse_mincANTS_protocol_file(f, mincANTS_conf=mincANTS_default_conf) -> MultilevelMincANTSConf:
+    """Use the resulting list to `.replace` the default values."""
+
+    # parsers to use for each row of the protocol file
+    parsers = {"blur"               : parse_many(parse_nullable(float)),
+               "gradient"           : parse_many(bool),
+               "similarity_metric"  : parse_many(str),
+               "weight"             : parse_many(float),
+               "radius_or_histo"    : parse_many(float),
+               "transformation"     : str,
+               "regularization"     : str,
+               "iterations"         : str,
+               "useMask"            : bool,
+               "memoryRequired"     : float}
+
+    # mapping from protocol file names to Python field names of the mincANTS and similarity metric configurations
+    names = {"blur" : "blur", # not needed since blur is deleted...
+             "gradient" : "use_gradient_image",
+             "similarity_metric" : "metric",
+             "weight" : "weight",
+             "radius_or_histo" : "radius_or_bins",
+             "transformation" : "transformation_model",
+             "regularization" : "regularization",
+             "iterations" : "iterations",
+             "useMask" : "use_mask",
+             "memoryRequired" : "memory_required"}
+    params = list(parsers.keys())
+
+    # build a mapping from (Python, not file) field names to a list of values (one for each generation)
+    d = {}
+    for l in f:
+        k, *vs = l
+        if k not in params:
+            raise ParseError("Unrecognized parameter: %s" % k)
+        else:
+            new_k = names[k]
+            if new_k in d:
+                raise ParseError("Duplicate key: %s" % k)
+            else:
+                d[new_k] = [parsers[k](v) for v in vs]
+
+    # some error checking ...
+    if not all_equal(d.values(), by=len):
+        raise ParseError("Invalid mincANTS configuration: all params must have the same number of generations.")
+    if len(d) == 0:
+        raise ParseError("Empty file ...")   # TODO should this really be an error?
+    if "blur" in d:
+        print("Warning: no longer using `blur` even though it's specified in the protocol ...")
+        # TODO should be a logger.warning, not a print
+        del d["blur"]
+    if "memory_required" in d:
+        print("Warning: don't currently use the memory ...")  # doesn't have to be same length -> can crash code below
+        del d["memory_required"]
+
+    vs = list(d.values())
+    l = len(vs[0])
+
+    # convert a mapping of options to _single_ values to a single-generation mincANTS configuration object:
+    def proc(d0) -> MincANTSConf:  # TODO name this better ...
+        # TODO check for/catch IndexError ... a bit hard to use zip since some params may not be defined ...
+        sim_metric_names = {"use_gradient_image", "metric", "weight", "radius_or_bins"}
+        # TODO duplication; e.g., parsers = sim_metric_parsers U <...>
+        sim_metric_attrs = { k : v for k, v in d0.items() if k in sim_metric_names }
+        other_attrs      = { k : v for k, v in d0.items() if k not in sim_metric_names }
+        if len(sim_metric_attrs) > 0:
+            sim_metric_values = list(sim_metric_attrs.values())
+            if not all_equal(sim_metric_values, by=len):
+                raise ParseError("All parts of the objective function specification must be the same length ...")
+            sim_metric_confs = [default_similarity_metric_conf.replace(**{ k : v[j]
+                                                                           for k, v in sim_metric_attrs.items() })
+                                for j in range(len(sim_metric_values[0]))]
+        else:
+            sim_metric_confs = []
+
+        return mincANTS_default_conf.replace(sim_metric_confs=sim_metric_confs,
+                                             #resolution=NotImplemented, #ugh...don't know this yet
+                                             **other_attrs)
+    return MultilevelMincANTSConf([proc({ key : vs[j] for key, vs in d.items() }) for j in range(l)])
+
+def all_equal(xs, by=lambda x: x):
+    return len(set((by(x) for x in xs))) == 1
 
 def mincANTS(source: MincAtom,
              target: MincAtom,
@@ -849,20 +940,15 @@ def mincANTS(source: MincAtom,
     s = Stages()
 
     if transform_name_wo_ext:
-        out_xfm = XfmAtom(name=os.path.join(source.pipeline_sub_dir, source.output_sub_dir, 'transforms',
-                                            "%s.xfm" % (transform_name_wo_ext)),
-                          pipeline_sub_dir=source.pipeline_sub_dir,
-                          output_sub_dir=source.output_sub_dir)
+        name = os.path.join(source.pipeline_sub_dir, source.output_sub_dir, 'transforms',
+                            "%s.xfm" % (transform_name_wo_ext))
     elif generation:
-        out_xfm = XfmAtom(name=os.path.join(source.pipeline_sub_dir, source.output_sub_dir, 'transforms',
-                                            "%s_mincANTS_nlin-%s.xfm" % (source.filename_wo_ext, generation)),
-                          pipeline_sub_dir=source.pipeline_sub_dir,
-                          output_sub_dir=source.output_sub_dir)
+        name = os.path.join(source.pipeline_sub_dir, source.output_sub_dir, 'transforms',
+                            "%s_mincANTS_nlin-%s.xfm" % (source.filename_wo_ext, generation))
     else:
-        out_xfm = XfmAtom(name=os.path.join(source.pipeline_sub_dir, source.output_sub_dir, 'transforms',
-                                            "%s_mincANTS_to_%s.xfm" % (source.filename_wo_ext, target.filename_wo_ext)),
-                          pipeline_sub_dir=source.pipeline_sub_dir,
-                          output_sub_dir=source.output_sub_dir)
+        name = os.path.join(source.pipeline_sub_dir, source.output_sub_dir, 'transforms',
+                            "%s_mincANTS_to_%s.xfm" % (source.filename_wo_ext, target.filename_wo_ext))
+    out_xfm = XfmAtom(name=name, pipeline_sub_dir=source.pipeline_sub_dir, output_sub_dir=source.output_sub_dir)
 
     similarity_cmds = []       # type: List[str]
     similarity_inputs = set()  # type: Set[MincAtom]
