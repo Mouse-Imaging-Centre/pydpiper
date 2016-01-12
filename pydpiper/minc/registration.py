@@ -1901,3 +1901,105 @@ def get_resolution_from_file(input_file: str) -> float:
     image_resolution = volumeFromFile(input_file).separations
 
     return min([abs(x) for x in image_resolution])
+
+
+def create_quality_control_images(imgs: List[MincAtom],
+                                  create_montage:bool = True,
+                                  montage_output:str = None,
+                                  scaling_factor: int = 20,
+                                  message:str = "lsq6"):
+    """
+    This class takes a list of input files and creates
+    a set of quality control (verification) images. Optionally
+    these images can be combined in a single montage image for
+    easy viewing
+
+    The scaling factor corresponds to the the mincpik -scale
+    parameter
+    """
+    s = Stages()
+    individualImages = []
+    individualImagesLabeled = []
+
+    if create_montage and montage_output == None:
+        print("\nError: createMontage is specified in createQualityControlImages, but no output name for the montage is provided. Exiting...\n")
+        sys.exit()
+
+    # for each of the input files, run a mincpik call and create
+    # a triplane image.
+    for img in imgs:
+        img_verification = img.newname_with_suffix("_QC_image",
+                                                   subdir="tmp",
+                                                   ext=".png")
+        # TODO: the memory and procs are set to 0 to ensure that
+        # these stages finish soonish. No other stages depend on
+        # these, but we do want them to finish as soon as possible
+        mincpik_stage = CmdStage(
+            inputs=(img,),
+            outputs=(img_verification,),
+            cmd=["mincpik", "-clobber",
+                 "-scale", str(scaling_factor),
+                 "-triplanar",
+                 img.path, img_verification.path],
+            memory=0,
+            procs=0)
+        s.add(mincpik_stage)
+        individualImages.append(img_verification)
+
+
+        # we should add a label to each of the individual images
+        # so it will be easier for the user to identify what
+        # which images potentially fail
+        img_verification_convert = img.newname_with_suffix("_QC_image_labeled",
+                                                           subdir="tmp",
+                                                           ext=".png")
+        # TODO: the memory and procs are set to 0 to ensure that
+        # these stages finish soonish. No other stages depend on
+        # these, but we do want them to finish as soon as possible
+        convert_stage = CmdStage(
+            inputs=(img_verification,),
+            outputs=(img_verification_convert,),
+            cmd=["convert",
+                 "-label", img.output_sub_dir,
+                 img_verification.path,
+                 img_verification_convert.path],
+            memory=0,
+            procs=0)
+        s.add(convert_stage)
+        individualImagesLabeled.append(img_verification_convert)
+
+
+    # if montageOutput is specified, create the overview image
+    if create_montage:
+        # TODO: the memory and procs are set to 0 to ensure that
+        # these stages finish soonish. No other stages depend on
+        # these, but we do want them to finish as soon as possible
+        # TODO: maybe... currently inputs and outputs to a pipeline
+        # can only be FileAtoms/MincAtoms, so we can't just provide
+        # a string to a file for this
+        montage_output_fileatom = FileAtom(montage_output)
+        montage_stage = CmdStage(
+            inputs=tuple(individualImagesLabeled),
+            outputs=(montage_output_fileatom,),
+            cmd=["montage", "-geometry", "+2+2"] + \
+                [labeled_img.path for labeled_img in individualImagesLabeled] + \
+                [montage_output_fileatom.path],
+            memory=0,
+            procs=0)
+        message_to_print = "\n* * * * * * *\nPlease consider the following verification "
+        message_to_print += "image, showing "
+        message_to_print += "%s. " % message
+        message_to_print += "\n%s\n" % (montage_output)
+        message_to_print += "* * * * * * *\n"
+        # the hook needs a return. Given that "print" does not return
+        # anything, we need to encapsulate the print statement in a
+        # function (which in this case will return None, but that's fine)
+        def printMessageForMontage():
+            print(message_to_print)
+        montage_stage.when_finished_hooks.append(
+            lambda : printMessageForMontage())
+
+        s.add(montage_stage)
+
+    return Result(stages=s, output=None)
+
