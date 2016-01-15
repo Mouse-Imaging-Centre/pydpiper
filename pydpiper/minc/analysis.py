@@ -77,7 +77,7 @@ def nlin_part(xfm : XfmHandler, inv_xfm : Optional[XfmHandler] = None) -> Result
     we don't go looking for an inverse by filename munging and don't programmatically
     keep a log of operations applied, so any preexisting inverse must be supplied explicitly."""
     s = Stages()
-    inv_xfm = inv_xfm or s.defer(invert(xfm))
+    inv_xfm = inv_xfm or s.defer(invert_xfmhandler(xfm))
     inv_lin_part = s.defer(lin_from_nlin(inv_xfm)) 
     xfm = s.defer(concat_xfmhandlers([xfm, inv_lin_part]))
     return Result(stages=s, output=xfm)
@@ -110,7 +110,7 @@ def determinants_at_fwhms(xfm        : XfmHandler,
     # "(nlin_displacement, minc_displacement) <=< invert"
     s = Stages()
 
-    inv_xfm = inv_xfm or s.defer(invert(xfm))
+    inv_xfm = inv_xfm or s.defer(invert_xfmhandler(xfm))
 
     nlin_disp = s.defer(nlin_displacement(xfm=xfm, inv_xfm=inv_xfm))
     full_disp = s.defer(minc_displacement(xfm))

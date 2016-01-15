@@ -523,12 +523,32 @@ def xfminvert(xfm: XfmAtom) -> Result[XfmAtom]:
     inv_xfm = xfm.newname_with_suffix('_inverted')  # type: XfmAtom
     s = CmdStage(inputs=(xfm,), outputs=(inv_xfm,),
                  cmd=['xfminvert', '-clobber', xfm.path, inv_xfm.path])
+    s.set_log_file(os.path.join(inv_xfm.pipeline_sub_dir,
+                                inv_xfm.output_sub_dir,
+                                "log",
+                                "xfminvert_" + inv_xfm.filename_wo_ext + ".log"))
     return Result(stages=Stages([s]), output=inv_xfm)
 
 
-# TODO: find better names for xfminvert/invert
-def invert(xfm: XfmHandler) -> Result[XfmHandler]:
-    """xfminvert lifted to work on XfmHandlers instead of MincAtoms"""
+def invert_xfmhandler(xfm: XfmHandler) -> Result[XfmHandler]:
+    """
+    xfminvert lifted to work on XfmHandlers instead of MincAtoms
+    """
+    # TODO: are we potentially creating some issues here... consider the following case:
+    # TODO: minctracc src.mnc final_nlin.mnc some_trans.xfm
+    # TODO: the xfmhandler will have:
+    # TODO: source = src.mnc
+    # TODO: target = final_nlin.mnc
+    # TODO: xfm    = some_trans.xfm
+    #
+    # TODO: however, when we generate the inverse of this transform, we might want the
+    # TODO: result to be:
+    # TODO: source = src_resampled_to_final_nlin.mnc
+    # TODO: target = src.mnc
+    # TODO: xfm    = some_trans_inverted.xfm
+    #
+    # TODO: instead of have "final_nlin.mnc" as the source for this XfmHandler... we might
+    # TODO: run into issues here...
     s = Stages()
     inv_xfm = s.defer(xfminvert(xfm.xfm))  # type: XfmAtom
     return Result(stages=s,

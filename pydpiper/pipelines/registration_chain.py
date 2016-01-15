@@ -307,7 +307,7 @@ def chain(options):
 
 
     subject_determinants = map_over_time_pt_dict_in_Subject(
-        lambda xfm: s.defer(determinants_at_fwhms(xfm=s.defer(invert(xfm)),
+        lambda xfm: s.defer(determinants_at_fwhms(xfm=s.defer(invert_xfmhandler(xfm)),
                                                   inv_xfm=xfm,
                                                   blur_fwhms=options.stats.stats_kernels)),
         final_non_rigid_xfms)
@@ -457,7 +457,7 @@ def final_transforms(pipeline_subject_info, intersubj_xfms_dict, chain_xfms_dict
         # so we will assign the concatenated transform to the target of each 
         # transform we are adding 
         for time_pt, transform in chain_transforms[index_of_common_time_pt:]:
-            current_xfm_to_common = s.defer(concat_xfmhandlers([s.defer(invert(transform)), current_xfm_to_common],
+            current_xfm_to_common = s.defer(concat_xfmhandlers([s.defer(invert_xfmhandler(transform)), current_xfm_to_common],
                                                                name="id_%s_pt_%s_to_common" % (s_id, time_pt)))
             new_time_pt_dict[time_pt] = current_xfm_to_common
         # we need to do something similar moving backwards: make sure to reset
