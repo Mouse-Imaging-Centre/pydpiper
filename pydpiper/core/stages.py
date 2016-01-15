@@ -31,6 +31,7 @@ class CmdStage(object):
         self.when_finished_hooks = []  # type: List[Callable[[], Any]]
         self.memory = memory
         self.procs = procs
+        self.log_file = None
     # NB: __hash__ and __eq__ ignore hooks, memory
     # Also, we assume cmd determines inputs, outputs so ignore it in hash/eq calculations
     # FIXME: we should make the CmdStage fields immutable (via properties) to prevent hashing-related bugs
@@ -53,6 +54,9 @@ class CmdStage(object):
     def to_array(self) -> List[str]:
         """Form usable for Python subprocess call."""
         return self._cmd
+    def set_log_file(self, log_file_name: str) -> None:
+        self.log_file = log_file_name
+
     #def execute(self, backend):    # could also be elsewhere...
     #    raise NotImplemented
 

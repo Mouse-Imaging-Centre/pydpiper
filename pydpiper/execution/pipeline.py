@@ -155,8 +155,8 @@ class CmdStage(PipelineStage):
             CmdStage.logfile_id += 1
     def setLogFile(self, logFileName): 
         self.logFile = str(logFileName)
-    def execStage(self, log_dir):
-        of = open(os.path.join(log_dir, self.logFile), 'a')
+    def execStage(self):
+        of = open(self.logFile, 'a')
         of.write("Running on: " + socket.gethostname() + " at " + datetime.isoformat(datetime.now(), " ") + "\n")
         of.write(repr(self) + "\n")
         of.flush()
@@ -270,9 +270,6 @@ class Pipeline(object):
         self.finished_stages_fh = None
         
         self.outputDir = self.options.application.output_directory or os.getcwd()
-
-        self.log_dir = os.path.join(self.outputDir, 'logs')
-        os.makedirs(self.log_dir, exist_ok=True)
 
         if self.exec_options.queue_type == "pbs" and self.exec_options.local:
             # redirect the standard output to a text file
@@ -420,9 +417,6 @@ class Pipeline(object):
         return(repr(self.stages[i]))
     def getStageLogfile(self,i):
         return(self.stages[i].logFile)
-
-    def get_log_dir(self):
-        return self.log_dir
 
     def is_time_to_drain(self):
         return self.shutdown_ev.is_set()
