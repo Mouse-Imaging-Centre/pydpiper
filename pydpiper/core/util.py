@@ -82,10 +82,19 @@ def output_directories(stages: Set[CmdStage]) -> Set[str]:
     """Directories to be created (currently rather redundant in the presence of subdirectories).
     No need to consider stage inputs - any input already exists or is also the output
     of some previous stage."""
-    # TODO what about logfiles/logdirs?
     # What if an output file IS a directory - should there be a special
     # way of tagging this other than ending the path in a trailing "/"?
-    return {os.path.dirname(o) for c in stages for o in c.outputFiles}
+    all_files_to_consider = []
+    for stage in stages:
+        all_files_to_consider = all_files_to_consider + stage.outputFiles
+        if stage.logFile:
+            all_files_to_consider.append(stage.logFile)
+        else:
+            print("no log file for stage:")
+            # old style CmdStage (from execution/pipeline.py) uses __repr__ to print itself
+            print(stage)
+            raise ValueError("No logfile!!")
+    return {os.path.dirname(filename) for filename in all_files_to_consider}
 
 # this doesn't seem possible to do properly ... but we could turn a namespace into another type
 # and use that as a default object, say
