@@ -6,14 +6,15 @@ import os
 import sys
 
 from typing import Callable, Dict, List, TypeVar, Iterator
-from pydpiper.minc.analysis import determinants_at_fwhms, invert
+from pydpiper.minc.analysis import determinants_at_fwhms, invert_xfmhandler
 from pydpiper.core.stages import Result
 from pydpiper.minc.registration import (Subject, Stages, mincANTS_NLIN_build_model, mincANTS_default_conf,
                                         intrasubject_registrations, mincaverage,
                                         concat_xfmhandlers, check_MINC_input_files, registration_targets,
                                         lsq6_nuc_inorm, get_resolution_from_file, XfmHandler, LSQ6Conf,
                                         RegistrationConf, InputSpace, LSQ12Conf, lsq12_nlin_build_model, TargetType,
-                                        MultilevelMincANTSConf, create_quality_control_images)
+                                        MultilevelMincANTSConf, create_quality_control_images,
+                                        check_MINC_files_have_equal_dimensions_and_resolution)
 from pydpiper.minc.files import MincAtom
 from pydpiper.execution.application import execute  # type: ignore
 from pydpiper.core.arguments import (application_parser,
@@ -83,6 +84,7 @@ def chain(options):
     pipeline_processed_dir = os.path.join(output_dir, pipeline_name + "_processed")
     pipeline_lsq12_common_dir = os.path.join(output_dir, pipeline_name + "_lsq12_" + options.chain.common_time_point_name)
     pipeline_nlin_common_dir = os.path.join(output_dir, pipeline_name + "_nlin_" + options.chain.common_time_point_name)
+    pipeline_montage_dir = os.path.join(output_dir, pipeline_name + "_montage")
     
     
     pipeline_subject_info = map_over_time_pt_dict_in_Subject(
@@ -143,10 +145,7 @@ def chain(options):
                                          pipeline_subject_info)  # type: Dict[str, Subject[XfmHandler]]
 
         # create verification images to show the 6 parameter alignment
-        montageLSQ6 = pipeline_name + "_quality_control_montage_lsq6.png"
-        if output_dir != '':
-            montageLSQ6 = output_dir + "/" + montageLSQ6
-
+        montageLSQ6 = pipeline_montage_dir + "/quality_control_montage_lsq6.png"
         # TODO, base scaling factor on resolution of initial model or target
         filesToCreateImagesFrom = []
         for subj_id, subj in subj_id_to_subj_with_lsq6_xfm_dict.items():
@@ -155,6 +154,7 @@ def chain(options):
 
         lsq6VerificationImages = s.defer(create_quality_control_images(filesToCreateImagesFrom,
                                                                        montage_output=montageLSQ6,
+                                                                       montage_dir=pipeline_montage_dir,
                                                                        message=" the input images after the lsq6 alignment"))
 
     # NB currently LSQ6 expects an array of files, but we have a map.
@@ -234,10 +234,7 @@ def chain(options):
     intersubj_img_to_xfm_to_common_avg_dict = { xfm.source : xfm for xfm in intersubj_xfms.output }
 
     # create verification images to show the inter-subject  alignment
-    montage_inter_subject = pipeline_name + "_quality_control_montage_inter_subject_registration.png"
-    if output_dir != '':
-        montage_inter_subject = output_dir + "/" + montage_inter_subject
-
+    montage_inter_subject = pipeline_montage_dir + "/quality_control_montage_inter_subject_registration.png"
     avg_and_inter_subject_images = []
     avg_and_inter_subject_images.append(intersubj_xfms.avg_img)
     for xfmh in intersubj_xfms.output:
@@ -245,6 +242,7 @@ def chain(options):
 
     inter_subject_verification_images = s.defer(create_quality_control_images(avg_and_inter_subject_images,
                                                                               montage_output=montage_inter_subject,
+                                                                              montage_dir=pipeline_montage_dir,
                                                                               message=" the result of the inter-subject alignment"))
 
     if options.application.verbose:
@@ -296,13 +294,11 @@ def chain(options):
     # create a montage image for each pair of time points
     for s_id, output_from_intra in chain_xfms.items():
         for time_pt, transform in output_from_intra[0]:
-            montage_chain = pipeline_name + "_quality_control_chain_ID_" + s_id + "_timepoint_" + str(time_pt) + ".png"
-            if output_dir != '':
-                montage_chain = output_dir + "/" + montage_chain
-
+            montage_chain = pipeline_montage_dir + "/quality_control_chain_ID_" + s_id + "_timepoint_" + str(time_pt) + ".png"
             chain_images = [transform.resampled, transform.target]
             chain_verification_images = s.defer(create_quality_control_images(chain_images,
                                                                               montage_output=montage_chain,
+                                                                              montage_dir=pipeline_montage_dir,
                                                                               message="the alignment between ID " + s_id + " time point " + str(time_pt) + " and its target"))
 
     if options.application.verbose:

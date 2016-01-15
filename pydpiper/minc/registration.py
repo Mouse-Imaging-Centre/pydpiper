@@ -1912,6 +1912,7 @@ def get_resolution_from_file(input_file: str) -> float:
 def create_quality_control_images(imgs: List[MincAtom],
                                   create_montage:bool = True,
                                   montage_output:str = None,
+                                  montage_dir:str = None,
                                   scaling_factor: int = 20,
                                   message:str = "lsq6"):
     """
@@ -1919,6 +1920,10 @@ def create_quality_control_images(imgs: List[MincAtom],
     a set of quality control (verification) images. Optionally
     these images can be combined in a single montage image for
     easy viewing
+
+    montage_dir -- the main output directory for montage images
+                   if provided, all log files will go into a
+                   subdirectory called "log" for montage images
 
     The scaling factor corresponds to the the mincpik -scale
     parameter
