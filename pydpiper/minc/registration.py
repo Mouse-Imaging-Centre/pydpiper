@@ -719,17 +719,103 @@ default_nonlinear_minctracc_conf = NonlinearMinctraccConf(
     sub_lattice=6,
     max_def_magnitude=None)
 
-default_minctracc_conf = MinctraccConf(use_masks=True,
-                                       blur_resolution=_step_size,
-                                       step_sizes=_step_sizes,
-                                       linear_conf=None, nonlinear_conf=None)
-
 
 # TODO: move to utils?
 def space_sep(xs) -> List[str]:
     # return ' '.join(map(str,x))
     return [str(x) for x in xs]
 
+def parse_bool(s):
+    _s = s.lower()
+    if _s == "true":
+        return True
+    elif _s == "false":
+        return False
+    else:
+        raise ParseError("Bad boolean: %s" % s)
+
+def parse_n(p, n):
+    def f(s):
+        result = parse_many(p)(s)
+        if len(result) == n:
+            return result
+        else:
+            raise ParseError("Wrong number of values")
+    return f
+
+def parse_minctracc_lin_protocol_file(f, minctracc_conf=default_linear_minctracc_conf) -> MinctraccConf:
+    """Use the resulting list to `.replace` the default values.  Needs to return a full MinctraccConf
+    in order to encode blur and step information."""
+
+    # parsers to use for each row of the protocol file
+    parsers = {"blur"               : float,
+               "step"               : float,
+               "gradient"           : parse_bool,
+               "simplex"            : float,
+               "transform_type"     : LinearTransType,
+               "tolerance"          : float,
+               "w_rotations"        : float,
+               "w_translations"     : float,
+               "w_scales"           : float,
+               "w_shear"            : float}
+
+    # mapping from protocol file names to Python field names of the mincANTS and similarity metric configurations
+    #names = {"blur" : "blur",
+    #         "step" : "step",
+    #         "gradient" : "gradient",
+    #         "simplex"}
+    params = list(parsers.keys())
+
+    # build a mapping from (Python, not file) field names to a list of values (one for each generation)
+    d = {}
+    for l in f:
+        k, *vs = l
+        if k not in params:
+            raise ParseError("Unrecognized parameter: %s" % k)
+        else:
+            #new_k = names[k]
+            if k in d:
+                raise ParseError("Duplicate key: %s" % k)
+            else:
+                d[k] = [parsers[k](v) for v in vs]
+
+    # some error checking ...
+    if not all_equal(d.values(), by=len):
+        raise ParseError("Invalid minctracc configuration: all params must have the same number of generations.")
+    if len(d) == 0:
+        raise ParseError("Empty file ...")   # TODO should this really be an error?
+    if "blur" in d:
+        print("Warning: no longer using `blur` even though it's specified in the protocol ...")
+        # TODO should be a logger.warning, not a print
+        del d["blur"]
+    if "memory_required" in d:
+        print("Warning: don't currently use the memory ...")  # doesn't have to be same length -> can crash code below
+        del d["memory_required"]
+
+    vs = list(d.values())
+    l = len(vs[0])
+
+    # convert a mapping of options to _single_ values to a single-generation mincANTS configuration object:
+    def convert_single_gen(single_gen_params) -> MincANTSConf:  # TODO name this better ...
+        # TODO check for/catch IndexError ... a bit hard to use zip since some params may not be defined ...
+        sim_metric_names = {"use_gradient_image", "metric", "weight", "radius_or_bins"}
+        # TODO duplication; e.g., parsers = sim_metric_parsers U <...>
+        sim_metric_params = {k : v for k, v in single_gen_params.items() if k in sim_metric_names}
+        other_attrs       = {k : v for k, v in single_gen_params.items() if k not in sim_metric_names}
+        if len(sim_metric_params) > 0:
+            sim_metric_values = list(sim_metric_params.values())
+            if not all_equal(sim_metric_values, by=len):
+                raise ParseError("All parts of the objective function specification must be the same length ...")
+            sim_metric_params = [{ k : v[j] for k, v in sim_metric_params.items() } for j in range(len(sim_metric_values[0]))]
+            # TODO could warn here if a given param is missing from a given metric specification
+            sim_metric_confs = [default_similarity_metric_conf.replace(**s) for s in sim_metric_params]
+        else:
+            sim_metric_confs = []
+
+        return mincANTS_default_conf.replace(sim_metric_confs=sim_metric_confs,
+                                             #resolution=NotImplemented, #ugh...don't know this yet
+                                             **other_attrs)
+    return MultilevelMincANTSConf([convert_single_gen({ key : vs[j] for key, vs in d.items() }) for j in range(l)])
 
 # TODO: add memory estimation hook
 def minctracc(source: MincAtom,
@@ -746,7 +832,7 @@ def minctracc(source: MincAtom,
     transform
     transform_name_wo_ext -- to use for the output transformation (without the extension)
     generation            -- if provided, the transformation name will be:
-                             source.filename_wo_ext + "_mincANTS_nlin-" + generation
+                             source.filename_wo_ext + "_minctracc_nlin-" + generation
     resample_source       -- whether or not to resample the source file 
     
     
@@ -854,11 +940,6 @@ SimilarityMetricConf = NamedTuple('SimilarityMetricConf',
                                    ("weight", float),
                                    ("radius_or_bins", float),
                                    ("use_gradient_image", bool)])
-#    def replace(self, **kwargs) -> 'SimilarityMetricConf':
- #       return self._replace(**kwargs)  # type: ignore
-#        # TODO: actually want to add this method to *all* namedtuples
- #       # (or at least teach mypy about _replace)
-#        # TODO: note kwargs isn't checked here -- what to do?
 
 
 default_similarity_metric_conf = SimilarityMetricConf(
@@ -868,11 +949,11 @@ default_similarity_metric_conf = SimilarityMetricConf(
     use_gradient_image=False)
 
 MincANTSConf = NamedTuple("MincANTSConf",
-                          [("iterations", str),
+                          [("file_resolution", float),
+                           ("iterations", str),
                            ("transformation_model", str),
                            ("regularization", str),
                            ("use_mask", bool),
-                           ("file_resolution", float),
                            ("sim_metric_confs", List[SimilarityMetricConf])])
 
 class MultilevelMincANTSConf(object):
@@ -888,8 +969,107 @@ mincANTS_default_conf = MincANTSConf(
     use_mask=True,
     file_resolution=None,
     sim_metric_confs=[default_similarity_metric_conf,
-                      default_similarity_metric_conf.replace(use_gradient_image=True)])
+                      default_similarity_metric_conf.replace(use_gradient_image=True)])  # type: MincANTSConf
 
+def parse_many(parser, sep=','):
+    def f(st):
+        return tuple(parser(s) for s in st.split(sep))
+    return f
+
+def parse_nullable(parser):
+    def p(st):
+        if st == "None":
+            return None
+        else:
+            return parser(st)
+    return p
+
+class ParseError(ValueError): pass
+
+def parse_minctracc_lin_protocol_file(f, minctracc_conf=NotImplemented):
+    pass
+
+def parse_mincANTS_protocol_file(f, mincANTS_conf=mincANTS_default_conf) -> MultilevelMincANTSConf:
+    """Use the resulting list to `.replace` the default values."""
+
+    # parsers to use for each row of the protocol file
+    parsers = {"blur"               : parse_many(parse_nullable(float)),
+               "gradient"           : parse_many(parse_bool),
+               "similarity_metric"  : parse_many(str),
+               "weight"             : parse_many(float),
+               "radius_or_histo"    : parse_many(float),
+               "transformation"     : str,
+               "regularization"     : str,
+               "iterations"         : str,
+               "useMask"            : bool,
+               "memoryRequired"     : float}
+
+    # mapping from protocol file names to Python field names of the mincANTS and similarity metric configurations
+    names = {"blur" : "blur", # not needed since blur is deleted...
+             "gradient" : "use_gradient_image",
+             "similarity_metric" : "metric",
+             "weight" : "weight",
+             "radius_or_histo" : "radius_or_bins",
+             "transformation" : "transformation_model",
+             "regularization" : "regularization",
+             "iterations" : "iterations",
+             "useMask" : "use_mask",
+             "memoryRequired" : "memory_required"}
+    params = list(parsers.keys())
+
+    # build a mapping from (Python, not file) field names to a list of values (one for each generation)
+    d = {}
+    for l in f:
+        k, *vs = l
+        if k not in params:
+            raise ParseError("Unrecognized parameter: %s" % k)
+        else:
+            new_k = names[k]
+            if new_k in d:
+                raise ParseError("Duplicate key: %s" % k)
+            else:
+                d[new_k] = [parsers[k](v) for v in vs]
+
+    # some error checking ...
+    if not all_equal(d.values(), by=len):
+        raise ParseError("Invalid mincANTS configuration: all params must have the same number of generations.")
+    if len(d) == 0:
+        raise ParseError("Empty file ...")   # TODO should this really be an error?
+    if "blur" in d:
+        print("Warning: no longer using `blur` even though it's specified in the protocol ...")
+        # TODO should be a logger.warning, not a print
+        del d["blur"]
+    if "memory_required" in d:
+        print("Warning: don't currently use the memory ...")  # doesn't have to be same length -> can crash code below
+        del d["memory_required"]
+
+    vs = list(d.values())
+    l = len(vs[0])
+
+    # convert a mapping of options to _single_ values to a single-generation mincANTS configuration object:
+    def convert_single_gen(single_gen_params) -> MincANTSConf:  # TODO name this better ...
+        # TODO check for/catch IndexError ... a bit hard to use zip since some params may not be defined ...
+        sim_metric_names = {"use_gradient_image", "metric", "weight", "radius_or_bins"}
+        # TODO duplication; e.g., parsers = sim_metric_parsers U <...>
+        sim_metric_params = {k : v for k, v in single_gen_params.items() if k in sim_metric_names}
+        other_attrs       = {k : v for k, v in single_gen_params.items() if k not in sim_metric_names}
+        if len(sim_metric_params) > 0:
+            sim_metric_values = list(sim_metric_params.values())
+            if not all_equal(sim_metric_values, by=len):
+                raise ParseError("All parts of the objective function specification must be the same length ...")
+            sim_metric_params = [{ k : v[j] for k, v in sim_metric_params.items() } for j in range(len(sim_metric_values[0]))]
+            # TODO could warn here if a given param is missing from a given metric specification
+            sim_metric_confs = [default_similarity_metric_conf.replace(**s) for s in sim_metric_params]
+        else:
+            sim_metric_confs = []
+
+        return mincANTS_default_conf.replace(sim_metric_confs=sim_metric_confs,
+                                             #resolution=NotImplemented, #ugh...don't know this yet
+                                             **other_attrs)
+    return MultilevelMincANTSConf([convert_single_gen({ key : vs[j] for key, vs in d.items() }) for j in range(l)])
+
+def all_equal(xs, by=lambda x: x):
+    return len(set((by(x) for x in xs))) == 1
 
 def mincANTS(source: MincAtom,
              target: MincAtom,
@@ -911,20 +1091,15 @@ def mincANTS(source: MincAtom,
     s = Stages()
 
     if transform_name_wo_ext:
-        out_xfm = XfmAtom(name=os.path.join(source.pipeline_sub_dir, source.output_sub_dir, 'transforms',
-                                            "%s.xfm" % (transform_name_wo_ext)),
-                          pipeline_sub_dir=source.pipeline_sub_dir,
-                          output_sub_dir=source.output_sub_dir)
+        name = os.path.join(source.pipeline_sub_dir, source.output_sub_dir, 'transforms',
+                            "%s.xfm" % (transform_name_wo_ext))
     elif generation:
-        out_xfm = XfmAtom(name=os.path.join(source.pipeline_sub_dir, source.output_sub_dir, 'transforms',
-                                            "%s_mincANTS_nlin-%s.xfm" % (source.filename_wo_ext, generation)),
-                          pipeline_sub_dir=source.pipeline_sub_dir,
-                          output_sub_dir=source.output_sub_dir)
+        name = os.path.join(source.pipeline_sub_dir, source.output_sub_dir, 'transforms',
+                            "%s_mincANTS_nlin-%s.xfm" % (source.filename_wo_ext, generation))
     else:
-        out_xfm = XfmAtom(name=os.path.join(source.pipeline_sub_dir, source.output_sub_dir, 'transforms',
-                                            "%s_mincANTS_to_%s.xfm" % (source.filename_wo_ext, target.filename_wo_ext)),
-                          pipeline_sub_dir=source.pipeline_sub_dir,
-                          output_sub_dir=source.output_sub_dir)
+        name = os.path.join(source.pipeline_sub_dir, source.output_sub_dir, 'transforms',
+                            "%s_mincANTS_to_%s.xfm" % (source.filename_wo_ext, target.filename_wo_ext))
+    out_xfm = XfmAtom(name=name, pipeline_sub_dir=source.pipeline_sub_dir, output_sub_dir=source.output_sub_dir)
 
     similarity_cmds = []       # type: List[str]
     similarity_inputs = set()  # type: Set[MincAtom]
@@ -975,14 +1150,6 @@ def mincANTS(source: MincAtom,
                                     target=target,
                                     xfm=out_xfm,
                                     resampled=resampled))
-
-# def NLIN_build_model(imgs, initial_target, reg_method, nlin_dir, confs):
-#    functions = { 'mincANTS'  : mincANTS_NLIN,
-#                  'minctracc' : minctracc_NLIN }
-#
-#    function  = functions[reg_method]  #...[conf.nlin_reg_method] ???
-#
-#    return function(imgs=imgs, initial_target=initial_target, nlin_dir=nlin_dir, confs=confs)
 
 T = TypeVar('T')
 
@@ -1121,40 +1288,31 @@ def intrasubject_registrations(subj: Subject, conf: MincANTSConf) \
 
 
 # TODO: this is very static right now, but I just want to get things running
+
+_lin_conf_1 = LinearMinctraccConf(simplex=2.8,
+                                  transform_type="lsq12",
+                                  tolerance=0.0001,
+                                  w_translations=(0.4,0.4,0.4),
+                                  w_rotations=(0.0174533,0.0174533,0.0174533),
+                                  w_scales=(0.02,0.02,0.02),
+                                  w_shear=(0.02,0.02,0.02))
+
 default_lsq12_multi_level_minctracc_level1 = MinctraccConf(step_sizes=(0.9,0.9,0.9),
                                                            blur_resolution=0.28,
                                                            use_masks=False,
-                                                           linear_conf=LinearMinctraccConf(simplex=2.8,
-                                                                                           transform_type="lsq12",
-                                                                                           tolerance=0.0001,
-                                                                                           w_translations=(0.4,0.4,0.4),
-                                                                                           w_rotations=(0.0174533,0.0174533,0.0174533),
-                                                                                           w_scales=(0.02,0.02,0.02),
-                                                                                           w_shear=(0.02,0.02,0.02)),
+                                                           linear_conf=_lin_conf_1,
                                                            nonlinear_conf=None)
 
 default_lsq12_multi_level_minctracc_level2 = MinctraccConf(step_sizes=(0.46,0.46,0.46),
                                                            blur_resolution=0.19,
                                                            use_masks=False,
-                                                           linear_conf=LinearMinctraccConf(simplex=1.4,
-                                                                                           transform_type="lsq12",
-                                                                                           tolerance=0.0001,
-                                                                                           w_translations=(0.4,0.4,0.4),
-                                                                                           w_rotations=(0.0174533,0.0174533,0.0174533),
-                                                                                           w_scales=(0.02,0.02,0.02),
-                                                                                           w_shear=(0.02,0.02,0.02)),
+                                                           linear_conf=_lin_conf_1.replace(simplex=1.4),
                                                            nonlinear_conf=None)
 
 default_lsq12_multi_level_minctracc_level3 = MinctraccConf(step_sizes=(0.3,0.3,0.3),
                                                            blur_resolution=0.14,
                                                            use_masks=False,
-                                                           linear_conf=LinearMinctraccConf(simplex=0.9,
-                                                                                           transform_type="lsq12",
-                                                                                           tolerance=0.0001,
-                                                                                           w_translations=(0.4,0.4,0.4),
-                                                                                           w_rotations=(0.0174533,0.0174533,0.0174533),
-                                                                                           w_scales=(0.02,0.02,0.02),
-                                                                                           w_shear=(0.02,0.02,0.02)),
+                                                           linear_conf=_lin_conf_1.replace(simplex=0.9),
                                                            nonlinear_conf=None)
 default_lsq12_multi_level_minctracc = [default_lsq12_multi_level_minctracc_level1,
                                        default_lsq12_multi_level_minctracc_level2,
