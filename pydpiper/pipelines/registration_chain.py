@@ -97,7 +97,20 @@ def chain(options):
             all_Minc_atoms.append(subj_filename)
     # check_MINC_input_files takes strings, so pass along those instead of the actual MincAtoms
     check_MINC_input_files([minc_atom.path for minc_atom in all_Minc_atoms])
-    
+
+    if options.registration.input_space == InputSpace.lsq6 or \
+        options.registration.input_space == InputSpace.lsq12:
+        # the input files are not going through the lsq6 alignment. This is the place
+        # where they will all be resampled using a single like file, and get the same
+        # image dimensions/lengths/resolution. So in order for the subsequent stages to
+        # finish (mincaverage stages for instance), all files need to have the same
+        # image parameters:
+        check_MINC_files_have_equal_dimensions_and_resolution([minc_atom.path for minc_atom in all_Minc_atoms],
+                                                              additional_msg="Given that the input images are "
+                                                                             "already in " + str(options.registration.input_space) +
+                                                                             " space, all input files need to have "
+                                                                             "the same dimensions/starts/step sizes.")
+
     if options.registration.input_space not in InputSpace.__members__.values():
         raise ValueError('unrecognized input space: %s; choices: %s' %
                          (options.registration.input_space, ','.join(InputSpace.__members__)))

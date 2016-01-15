@@ -1420,6 +1420,32 @@ def check_MINC_input_files(args: List[str]) -> None:
                                                                     "unique names for all input files.\n")
         seen.add(fileBase)
 
+def check_MINC_files_have_equal_dimensions_and_resolution(args: List[str],
+                                                          additional_msg: str = "") -> bool:
+    """
+    Reads input files and compares the dimension length, start and stepsizes of the
+    first input file against all the others. Raises an error if they are not all
+    the same
+    """
+    if len(args) < 2:
+        return True
+
+    first_file = volumeFromFile(args[0])
+    img_dimensions_first = ([int(element) for element in first_file.getSizes()])
+    img_separations_first = first_file.separations
+    img_starts_first = first_file.starts
+    for other_img in args[1:]:
+        other_volume = volumeFromFile(other_img)
+        if not img_dimensions_first   == ([int(element) for element in other_volume.getSizes()]) or \
+            not img_separations_first == other_volume.separations or \
+            not img_starts_first      == other_volume.starts :
+            print("\nThe input files do not all have the same "
+                  "dimensions/starts/step sizes. The first input "
+                  "file:\n", str(args[0]), " differs from:\n",
+                  str(other_img), "\n")
+            raise ValueError("Not all input images have similar bounding boxes. "
+                             + additional_msg)
+
 
 # data structures to hold setting for the parameter settings we know about:
 mousebrain = {'res': 0.056}
