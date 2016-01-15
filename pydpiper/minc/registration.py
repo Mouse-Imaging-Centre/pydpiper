@@ -660,17 +660,103 @@ default_nonlinear_minctracc_conf = NonlinearMinctraccConf(
     sub_lattice=6,
     max_def_magnitude=None)
 
-default_minctracc_conf = MinctraccConf(use_masks=True,
-                                       blur_resolution=_step_size,
-                                       step_sizes=_step_sizes,
-                                       linear_conf=None, nonlinear_conf=None)
-
 
 # TODO: move to utils?
 def space_sep(xs) -> List[str]:
     # return ' '.join(map(str,x))
     return [str(x) for x in xs]
 
+def parse_bool(s):
+    _s = s.lower()
+    if _s == "true":
+        return True
+    elif _s == "false":
+        return False
+    else:
+        raise ParseError("Bad boolean: %s" % s)
+
+def parse_n(p, n):
+    def f(s):
+        result = parse_many(p)(s)
+        if len(result) == n:
+            return result
+        else:
+            raise ParseError("Wrong number of values")
+    return f
+
+def parse_minctracc_lin_protocol_file(f, minctracc_conf=default_linear_minctracc_conf) -> MinctraccConf:
+    """Use the resulting list to `.replace` the default values.  Needs to return a full MinctraccConf
+    in order to encode blur and step information."""
+
+    # parsers to use for each row of the protocol file
+    parsers = {"blur"               : float,
+               "step"               : float,
+               "gradient"           : parse_bool,
+               "simplex"            : float,
+               "transform_type"     : LinearTransType,
+               "tolerance"          : float,
+               "w_rotations"        : float,
+               "w_translations"     : float,
+               "w_scales"           : float,
+               "w_shear"            : float}
+
+    # mapping from protocol file names to Python field names of the mincANTS and similarity metric configurations
+    #names = {"blur" : "blur",
+    #         "step" : "step",
+    #         "gradient" : "gradient",
+    #         "simplex"}
+    params = list(parsers.keys())
+
+    # build a mapping from (Python, not file) field names to a list of values (one for each generation)
+    d = {}
+    for l in f:
+        k, *vs = l
+        if k not in params:
+            raise ParseError("Unrecognized parameter: %s" % k)
+        else:
+            #new_k = names[k]
+            if k in d:
+                raise ParseError("Duplicate key: %s" % k)
+            else:
+                d[k] = [parsers[k](v) for v in vs]
+
+    # some error checking ...
+    if not all_equal(d.values(), by=len):
+        raise ParseError("Invalid minctracc configuration: all params must have the same number of generations.")
+    if len(d) == 0:
+        raise ParseError("Empty file ...")   # TODO should this really be an error?
+    if "blur" in d:
+        print("Warning: no longer using `blur` even though it's specified in the protocol ...")
+        # TODO should be a logger.warning, not a print
+        del d["blur"]
+    if "memory_required" in d:
+        print("Warning: don't currently use the memory ...")  # doesn't have to be same length -> can crash code below
+        del d["memory_required"]
+
+    vs = list(d.values())
+    l = len(vs[0])
+
+    # convert a mapping of options to _single_ values to a single-generation mincANTS configuration object:
+    def convert_single_gen(single_gen_params) -> MincANTSConf:  # TODO name this better ...
+        # TODO check for/catch IndexError ... a bit hard to use zip since some params may not be defined ...
+        sim_metric_names = {"use_gradient_image", "metric", "weight", "radius_or_bins"}
+        # TODO duplication; e.g., parsers = sim_metric_parsers U <...>
+        sim_metric_params = {k : v for k, v in single_gen_params.items() if k in sim_metric_names}
+        other_attrs       = {k : v for k, v in single_gen_params.items() if k not in sim_metric_names}
+        if len(sim_metric_params) > 0:
+            sim_metric_values = list(sim_metric_params.values())
+            if not all_equal(sim_metric_values, by=len):
+                raise ParseError("All parts of the objective function specification must be the same length ...")
+            sim_metric_params = [{ k : v[j] for k, v in sim_metric_params.items() } for j in range(len(sim_metric_values[0]))]
+            # TODO could warn here if a given param is missing from a given metric specification
+            sim_metric_confs = [default_similarity_metric_conf.replace(**s) for s in sim_metric_params]
+        else:
+            sim_metric_confs = []
+
+        return mincANTS_default_conf.replace(sim_metric_confs=sim_metric_confs,
+                                             #resolution=NotImplemented, #ugh...don't know this yet
+                                             **other_attrs)
+    return MultilevelMincANTSConf([convert_single_gen({ key : vs[j] for key, vs in d.items() }) for j in range(l)])
 
 # TODO: add memory estimation hook
 def minctracc(source: MincAtom,
@@ -838,12 +924,15 @@ def parse_nullable(parser):
 
 class ParseError(ValueError): pass
 
+def parse_minctracc_lin_protocol_file(f, minctracc_conf=NotImplemented):
+    pass
+
 def parse_mincANTS_protocol_file(f, mincANTS_conf=mincANTS_default_conf) -> MultilevelMincANTSConf:
     """Use the resulting list to `.replace` the default values."""
 
     # parsers to use for each row of the protocol file
     parsers = {"blur"               : parse_many(parse_nullable(float)),
-               "gradient"           : parse_many(bool),
+               "gradient"           : parse_many(parse_bool),
                "similarity_metric"  : parse_many(str),
                "weight"             : parse_many(float),
                "radius_or_histo"    : parse_many(float),
@@ -906,9 +995,9 @@ def parse_mincANTS_protocol_file(f, mincANTS_conf=mincANTS_default_conf) -> Mult
             sim_metric_values = list(sim_metric_params.values())
             if not all_equal(sim_metric_values, by=len):
                 raise ParseError("All parts of the objective function specification must be the same length ...")
-            sim_metric_confs = [default_similarity_metric_conf.replace(**{ k : v[j]
-                                                                           for k, v in sim_metric_params.items() })
-                                for j in range(len(sim_metric_values[0]))]
+            sim_metric_params = [{ k : v[j] for k, v in sim_metric_params.items() } for j in range(len(sim_metric_values[0]))]
+            # TODO could warn here if a given param is missing from a given metric specification
+            sim_metric_confs = [default_similarity_metric_conf.replace(**s) for s in sim_metric_params]
         else:
             sim_metric_confs = []
 
