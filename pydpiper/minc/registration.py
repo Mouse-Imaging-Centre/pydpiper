@@ -773,7 +773,7 @@ def minctracc(source: MincAtom,
     transform
     transform_name_wo_ext -- to use for the output transformation (without the extension)
     generation            -- if provided, the transformation name will be:
-                             source.filename_wo_ext + "_mincANTS_nlin-" + generation
+                             source.filename_wo_ext + "_minctracc_nlin-" + generation
     resample_source       -- whether or not to resample the source file 
     
     
@@ -1085,14 +1085,6 @@ def mincANTS(source: MincAtom,
                                     xfm=out_xfm,
                                     resampled=resampled))
 
-# def NLIN_build_model(imgs, initial_target, reg_method, nlin_dir, confs):
-#    functions = { 'mincANTS'  : mincANTS_NLIN,
-#                  'minctracc' : minctracc_NLIN }
-#
-#    function  = functions[reg_method]  #...[conf.nlin_reg_method] ???
-#
-#    return function(imgs=imgs, initial_target=initial_target, nlin_dir=nlin_dir, confs=confs)
-
 T = TypeVar('T')
 
 
@@ -1230,40 +1222,31 @@ def intrasubject_registrations(subj: Subject, conf: MincANTSConf) \
 
 
 # TODO: this is very static right now, but I just want to get things running
+
+_lin_conf_1 = LinearMinctraccConf(simplex=2.8,
+                                  transform_type="lsq12",
+                                  tolerance=0.0001,
+                                  w_translations=(0.4,0.4,0.4),
+                                  w_rotations=(0.0174533,0.0174533,0.0174533),
+                                  w_scales=(0.02,0.02,0.02),
+                                  w_shear=(0.02,0.02,0.02))
+
 default_lsq12_multi_level_minctracc_level1 = MinctraccConf(step_sizes=(0.9,0.9,0.9),
                                                            blur_resolution=0.28,
                                                            use_masks=False,
-                                                           linear_conf=LinearMinctraccConf(simplex=2.8,
-                                                                                           transform_type="lsq12",
-                                                                                           tolerance=0.0001,
-                                                                                           w_translations=(0.4,0.4,0.4),
-                                                                                           w_rotations=(0.0174533,0.0174533,0.0174533),
-                                                                                           w_scales=(0.02,0.02,0.02),
-                                                                                           w_shear=(0.02,0.02,0.02)),
+                                                           linear_conf=_lin_conf_1,
                                                            nonlinear_conf=None)
 
 default_lsq12_multi_level_minctracc_level2 = MinctraccConf(step_sizes=(0.46,0.46,0.46),
                                                            blur_resolution=0.19,
                                                            use_masks=False,
-                                                           linear_conf=LinearMinctraccConf(simplex=1.4,
-                                                                                           transform_type="lsq12",
-                                                                                           tolerance=0.0001,
-                                                                                           w_translations=(0.4,0.4,0.4),
-                                                                                           w_rotations=(0.0174533,0.0174533,0.0174533),
-                                                                                           w_scales=(0.02,0.02,0.02),
-                                                                                           w_shear=(0.02,0.02,0.02)),
+                                                           linear_conf=_lin_conf_1.replace(simplex=1.4),
                                                            nonlinear_conf=None)
 
 default_lsq12_multi_level_minctracc_level3 = MinctraccConf(step_sizes=(0.3,0.3,0.3),
                                                            blur_resolution=0.14,
                                                            use_masks=False,
-                                                           linear_conf=LinearMinctraccConf(simplex=0.9,
-                                                                                           transform_type="lsq12",
-                                                                                           tolerance=0.0001,
-                                                                                           w_translations=(0.4,0.4,0.4),
-                                                                                           w_rotations=(0.0174533,0.0174533,0.0174533),
-                                                                                           w_scales=(0.02,0.02,0.02),
-                                                                                           w_shear=(0.02,0.02,0.02)),
+                                                           linear_conf=_lin_conf_1.replace(simplex=0.9),
                                                            nonlinear_conf=None)
 default_lsq12_multi_level_minctracc = [default_lsq12_multi_level_minctracc_level1,
                                        default_lsq12_multi_level_minctracc_level2,
