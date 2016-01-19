@@ -81,6 +81,11 @@ def addExecutorArgumentGroup(parser):
                        help="A string of extra arguments/flags to pass to qsub. [Default = %(default)s]")
     group.add_argument("--executor-start-delay", dest="executor_start_delay", type=int, default=180,
                        help="Seconds before starting remote executors when running the server on the grid")
+    group.add_argument("--submit-server", dest="submit_server", action="store_true",
+                       help="Submit the server to the grid")
+    group.add_argument("--no-submit-server", dest="submit_server", action="store_false",
+                       help="Opposite of --submit-server. [default]")
+    group.set_defaults(submit_server=False)
     group.add_argument("--time-to-seppuku", dest="time_to_seppuku", 
                        type=int, default=1,
                        help="The number of minutes an executor is allowed to continuously sleep, i.e. wait for an available job, while active on a compute node/farm before it kills itself due to resource hogging. [Default = %(default)s]")
@@ -358,58 +363,67 @@ class pipelineExecutor(object):
             logger.info("Now going to call unregisterClient on the server (executor: %s)", self.clientURI)
             self.pyro_proxy_for_server.unregisterClient(self.clientURI)
         
-    def submitToQueue(self, programName=None):
-        """Submits to sge queueing system using qsub""" 
-        if self.queue_type == "sge":
-            strprocs = str(self.procs)
-            strmem = "%s=%sG" % (self.mem_request_variable,float(self.mem))
-            jobname = ""
-            if programName is not None:
-                executablePath = os.path.abspath(programName)
-                jobname = os.path.basename(executablePath) + "-" 
+    def submitToQueue(self, program_name=None):
+        """Submits to queueing system using qsub"""
+        if self.queue_type not in ['sge', 'pbs']:
+            logger.info("Specified queueing system is: %s" % (self.queue_type))
+            logger.info("Only `queue_type`s 'sge', 'pbs', and None currently support launching executors.")
+            logger.info("Exiting...")
+            sys.exit(1)
+        else:
             now = datetime.now().strftime("%Y-%m-%d-at-%H-%M-%S-%f")
             ident = "pipeline-executor-" + now
-            jobname += ident
-            queue_opts = ['-V', '-j', 'yes',
-                          '-N', jobname,
-                          '-l', strmem,
-                          '-o', os.path.join(os.getcwd(),
-                                             ident + '-eo.log')] \
-                          + (['-q', self.queue_name]
-                             if self.queue_name else []) \
-                          + (['-pe', self.pe, strprocs]
-                             if self.pe else []) \
-                          + shlex.split(self.queue_opts)
-            qsub_cmd = ['qsub'] + queue_opts
-            cmd  = ["pipeline_executor.py", "--local"]
-            cmd += ['--uri-file', self.uri_file]
-            # Only one exec is launched at a time in this manner, so:
-            cmd += ["--num-executors", str(1)]
-            # pass most args to the executor
-            cmd += q.remove_flags(['--num-exec', '--mem'], sys.argv[1:])
-            cmd += ['--mem', str(self.mem)]
-            script = "#!/usr/bin/env bash\n%s\n" % ' '.join(cmd)
-            # FIXME huge hack -- shouldn't we just iterate over options,
-            # possibly checking for membership in the executor option group?
-            # The problem is that we can't easily check if an option is
-            # available from a parser (but what about calling get_defaults and
-            # looking at exceptions?).  However, one possibility is to
-            # create a list of tuples consisting of the data with which to 
-            # call parser.add_arguments and use this to check.
-            # NOTE there's a problem with argparse's prefix matching which
-            # also affects removal of --num-executors
+            jobname = ((os.path.basename(program_name) + '-') if program_name is not None else "") + ident
+            logfile = os.path.join(os.getcwd(), ident + '.log')  # aren't the join/getcwd here and below redundant?
             env = os.environ.copy()
-            env['PYRO_LOGFILE'] = os.path.join(os.getcwd(), ident + ".log")
+            env['PYRO_LOGFILE'] = logfile  # os.path.join(os.getcwd(), ident + ".log")
+            cmd = ["pipeline_executor.py", "--local",
+                   '--uri-file', self.uri_file,
+                   # Only one exec is launched at a time in this manner, so:
+                   "--num-executors", str(1), '--mem', str(self.mem)] + q.remove_flags(['--num-exec', '--mem'],
+                                                                                        sys.argv[1:])
+            if self.queue_type == "sge":
+                strprocs = str(self.procs)
+                strmem = "%s=%sG" % (self.mem_request_variable, float(self.mem))
+                queue_opts = (['-V', '-j', 'yes', '-cwd',
+                              '-N', jobname,
+                              '-l', strmem,
+                              '-o', os.path.join(os.getcwd(), ident + '-eo.log')]
+                              + (['-q', self.queue_name]
+                                if self.queue_name else [])
+                              + (['-pe', self.pe, strprocs]
+                                if self.pe else [])
+                              + shlex.split(self.queue_opts))
+                qsub_cmd = ['qsub'] + queue_opts
+
+                header = "#!/usr/bin/env bash"
+                # FIXME huge hack -- shouldn't we just iterate over options,
+                # possibly checking for membership in the executor option group?
+                # The problem is that we can't easily check if an option is
+                # available from a parser (but what about calling get_defaults and
+                # looking at exceptions?).  However, one possibility is to
+                # create a list of tuples consisting of the data with which to
+                # call parser.add_arguments and use this to check.
+                # NOTE there's a problem with argparse's prefix matching which
+                # also affects removal of --num-executors
+
+            elif self.queue_type == 'pbs':
+                header = '\n'.join(["#!/usr/bin/env bash",
+                                    "#PBS -N %s" % jobname,
+                                    "#PBS -l nodes=1:ppn=1",
+                                    "#PBS -l vmem=%dg\n" % round(self.mem),  # CCM doesn't like float values
+                                    # TODO potentially add a walltime here
+                                    "cd $PBS_O_WORKDIR"])
+                qsub_cmd = ['qsub', '-V', '-o', jobname + '-o.log', '-e', jobname + '-e.log']
+
+            script = header + '\n' + ' '.join(cmd) + '\n'
             p = subprocess.Popen(qsub_cmd, stdin=subprocess.PIPE, shell=False, env=env)
             p.communicate(script)
-        else:
-            logger.info("Specified queueing system is: %s" % (self.queue_type))
-            logger.info("Only queue_type=sge or queue_type=None currently supports pipeline launching own executors.")
-            logger.info("Exiting...")
-            sys.exit()
+            # FIXME check for failed qsub!!
+
 
     def canRun(self, stageMem, stageProcs, runningMem, runningProcs):
-        """Calculates if stage is runnable based on memory and processor availibility"""
+        """Calculates if stage is runnable based on memory and processor availability"""
         return stageMem <= self.mem - runningMem and stageProcs <= self.procs - runningProcs
     def is_seppuku_time(self):
         # Is it time to perform seppuku: has the
@@ -609,12 +623,12 @@ if __name__ == "__main__":
 
     if options.local:
         local_launch(options)
-    elif options.queue_type == "pbs":
+    elif options.submit_server:
         roq = q.runOnQueueingSystem(options, sysArgs=sys.argv)
         for i in range(options.num_exec):
             roq.createAndSubmitExecutorJobFile(i, after=None,
                             time=q.timestr_to_secs(options.time))
-    elif options.queue_type == "sge":
+    elif options.queue_type is not None:
         for i in range(options.num_exec):
             pe = pipelineExecutor(options)
             pe.submitToQueue()

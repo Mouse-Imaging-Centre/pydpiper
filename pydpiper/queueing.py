@@ -11,7 +11,6 @@ import subprocess
 # flags back out of a parsed representation
 # fix: form the parser from an iterable data structure of args
 # and consult this
-# FIXME ASSUMES EACH FLAG HAS A VALUE -- see commented hack
 # TODO has terrible performance/complexity
 def remove_flags(flags, args):
     new_args = args[:] # copy for politeness
@@ -23,11 +22,10 @@ def remove_flags(flags, args):
                 if '=' in arg:
                     # sys.argv has form [..., '--num-executors=3', ...]
                     new_args.pop(ix)
-                #elif (len(new_args) - 1 == ix
-                #    or new_args[ix+1][0] = '-'):
-                    # sys.argv has form [..., '--boolean-flag'] + (optional ['--other-flag', ...])
+                elif len(new_args) - 1 == ix or new_args[ix+1][0] == '-':  # FIXME TOTAL HACK
+                    # sys.argv has form [..., '--boolean-flag'] ( + [optionally] ['--other-flag', ...])
                 # ... hopefully another flag, not a negative number ...
-                    # new_args.pop(ix)
+                    new_args.pop(ix)
                 else:
                     # sys.argv has form [..., '--num-executors', '3', ...]
                     new_args.pop(ix)

@@ -137,7 +137,7 @@ class CmdStage(PipelineStage):
                 self.cmd.append(s)
             self.name = self.cmd[0]
     def checkLogFile(self): # TODO silly, this is always called since called by __init__
-        global logfile_id
+        global logfile_id, pipeline_start_time
         if not self.logFile:
             self.logFile = self.name + "." + pipeline_start_time + '-' + str(logfile_id) + ".log"
             logfile_id += 1
@@ -227,9 +227,9 @@ class Pipeline(object):
             if not self.outputDir:
                 self.outputDir = os.getcwd()
             # redirect the standard output to a text file
-            serverLogFile = os.path.join(self.outputDir,self.options.pipeline_name + '_server_stdout.log')
-            if self.options.queue_type == "pbs" and self.options.local:
-                sys.stdout = open(serverLogFile, 'a', 1) # 1 => line buffering
+            if self.options.submit_server and self.options.local:
+                serverLogFile = os.path.join(self.outputDir, self.options.pipeline_name + '_server_stdout.log')
+                sys.stdout = open(serverLogFile, 'a', 1)  # 1 => line buffering
         
     # expose methods to get/set shutdown_ev via Pyro (setter not needed):
     def set_shutdown_ev(self):
@@ -835,10 +835,10 @@ class Pipeline(object):
 def launchPipelineExecutor(options, memNeeded, programName=None):
     """Launch pipeline executor directly from pipeline"""
     pipelineExecutor = pe.pipelineExecutor(options, memNeeded)
-    if options.queue_type == "sge":
-        pipelineExecutor.submitToQueue(programName)
-    else:
+    if options.queue_type is None or options.local:
         pe.launchExecutor(pipelineExecutor)
+    else:
+        pipelineExecutor.submitToQueue(programName)
         
 def launchServer(pipeline, options):
     # first follow up on the previously reported total number of 
@@ -851,8 +851,7 @@ def launchServer(pipeline, options):
     # for ideological reasons this should live in a method, but pipeline init is
     # rather baroque anyway, and arguably launchServer/pipelineDaemon ought to be
     # a single method with cleaned-up initialization
-    #executors_local = pipeline.options.local or (pipeline.options.queue_type is None)
-    executors_local = pipeline.options.queue_type in [None, 'pbs']
+    executors_local = pipeline.options.local or (pipeline.options.queue_type is None)
     if executors_local:
         # measured once -- we assume that server memory usage will be
         # roughly constant at this point
