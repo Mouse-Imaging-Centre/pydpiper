@@ -63,15 +63,15 @@ def addExecutorArgumentGroup(parser):
     group.add_argument("--pe", dest="pe",
                        type=str, default=None,
                        help="Name of the SGE pe, if any. [Default = %(default)s]")
-    group.add_argument("--mem-request-variable", dest="mem_request_variable",
+    group.add_argument("--mem-request-attribute", dest="mem_request_attribute",
                        type=str, default="vf",
-                       help="Name of the SGE memory request variable to use. [Default = %(default)s]")
+                       help="Name of the resource attribute to request for managing memory limits. [Default = %(default)s]")
     group.add_argument("--greedy", dest="greedy",
                        action="store_true", default=False,
                        help="Request the full amount of RAM specified by --mem rather than the (lesser) amount needed by runnable jobs.  Always use this if your executor is assigned a full node.") #TODO mutually exclusive --non-greedy
     group.add_argument("--ppn", dest="ppn", 
                        type=int, default=8,
-                       help="Number of processes per node. Used when --queue-type=pbs. [Default = %(default)s].")
+                       help="Number of processes per node. NOTE: currently used only for 'headless' (--submit-server) configurations. [Default = %(default)s].")
     group.add_argument("--queue-name", dest="queue_name", type=str, default=None,
                        help="Name of the queue, e.g., all.q (MICe) or batch (SciNet)")
     group.add_argument("--queue-type", dest="queue_type", type=str, default=None,
@@ -82,7 +82,7 @@ def addExecutorArgumentGroup(parser):
     group.add_argument("--executor-start-delay", dest="executor_start_delay", type=int, default=180,
                        help="Seconds before starting remote executors when running the server on the grid")
     group.add_argument("--submit-server", dest="submit_server", action="store_true",
-                       help="Submit the server to the grid")
+                       help="Submit the server to the grid.  Currently works only with PBS/Torque systems.")
     group.add_argument("--no-submit-server", dest="submit_server", action="store_false",
                        help="Opposite of --submit-server. [default]")
     group.set_defaults(submit_server=False)
@@ -262,7 +262,7 @@ class pipelineExecutor(object):
         self.procs = options.proc
         self.ppn = options.ppn
         self.pe  = options.pe
-        self.mem_request_variable = options.mem_request_variable
+        self.mem_request_attribute = options.mem_request_attribute
         self.queue_type = options.queue_type
         self.queue_name = options.queue_name
         self.queue_opts = options.queue_opts
@@ -362,14 +362,15 @@ class pipelineExecutor(object):
             self.registered_with_server = False
             logger.info("Now going to call unregisterClient on the server (executor: %s)", self.clientURI)
             self.pyro_proxy_for_server.unregisterClient(self.clientURI)
-        
+
     def submitToQueue(self, program_name=None):
         """Submits to queueing system using qsub"""
         if self.queue_type not in ['sge', 'pbs']:
-            logger.info("Specified queueing system is: %s" % (self.queue_type))
-            logger.info("Only `queue_type`s 'sge', 'pbs', and None currently support launching executors.")
-            logger.info("Exiting...")
-            sys.exit(1)
+            msg = ("Specified queueing system is: %s" % (self.queue_type) + 
+                   "Only `queue_type`s 'sge', 'pbs', and None currently support launching executors." + 
+                   "Exiting...")
+            logger.warn(msg)
+            sys.exit(msg)
         else:
             now = datetime.now().strftime("%Y-%m-%d-at-%H-%M-%S-%f")
             ident = "pipeline-executor-" + now
@@ -384,7 +385,7 @@ class pipelineExecutor(object):
                                                                                         sys.argv[1:])
             if self.queue_type == "sge":
                 strprocs = str(self.procs)
-                strmem = "%s=%sG" % (self.mem_request_variable, float(self.mem))
+                strmem = "%s=%sG" % (self.mem_request_attribute, float(self.mem))
                 queue_opts = (['-V', '-j', 'yes', '-cwd',
                               '-N', jobname,
                               '-l', strmem,
@@ -408,10 +409,13 @@ class pipelineExecutor(object):
                 # also affects removal of --num-executors
 
             elif self.queue_type == 'pbs':
+                if self.ppn > 1:
+                    logger.warn("ppn of %d currently ignored in this configuration" % self.ppn)
                 header = '\n'.join(["#!/usr/bin/env bash",
                                     "#PBS -N %s" % jobname,
                                     "#PBS -l nodes=1:ppn=1",
-                                    "#PBS -l vmem=%dg\n" % round(self.mem),  # CCM doesn't like float values
+                                    # CCM doesn't like float values:
+                                    "#PBS -l %s=%dg\n" % (self.mem_request_attribute, round(self.mem)),
                                     # TODO potentially add a walltime here
                                     "cd $PBS_O_WORKDIR"])
                 qsub_cmd = ['qsub', '-V', '-o', jobname + '-o.log', '-e', jobname + '-e.log']

@@ -835,11 +835,11 @@ class Pipeline(object):
 def launchPipelineExecutor(options, memNeeded, programName=None):
     """Launch pipeline executor directly from pipeline"""
     pipelineExecutor = pe.pipelineExecutor(options, memNeeded)
-    if options.queue_type is None or options.local:
+    if options.local or not options.queue_type:
         pe.launchExecutor(pipelineExecutor)
     else:
         pipelineExecutor.submitToQueue(programName)
-        
+
 def launchServer(pipeline, options):
     # first follow up on the previously reported total number of 
     # stages in the pipeline with how many have already finished:
@@ -927,7 +927,7 @@ def launchServer(pipeline, options):
         def loop():
             try:
                 logger.debug("Auxiliary loop started")
-                logger.debug("memory limit: %dG; available after server overhead: %.4fG" % (pipeline.options.mem, pipeline.memAvail))
+                logger.debug("memory limit: %.4fG; available after server overhead: %.4fG" % (pipeline.options.mem, pipeline.memAvail))
                 while p.continueLoop():
                     p.manageExecutors()
                     pipeline.shutdown_ev.wait(LOOP_INTERVAL)
