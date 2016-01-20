@@ -1234,6 +1234,39 @@ def mincANTS_NLIN_build_model(imgs: List[MincAtom],
 # some stuff for the registration chain.
 # The Subject class moved here since `intrasubject_registrations` was also here.
 
+
+def LSQ12_mincANTS_nlin(source: MincAtom,
+                        target: MincAtom,
+                        linear_conf: MinctraccConf,
+                        nlin_conf: MincANTSConf):
+    """
+    Runs a 12 parameter registration followed by a non linear mincANTS registration
+    from the source to the target. This is a *non* model building function, which
+    can be used for intra-subject registrations in the registration_chain, or in
+    MAGeT for instance
+    """
+    # TODO: currently this only works for mincANTS for the non linear part
+
+    s = Stages()
+    # we need to resample the source file in this case, because that will
+    # be the input for the non linear stage
+    lsq12_transform_handler = s.defer(multilevel_minctracc(source,
+                                                   target,
+                                                   linear_conf,
+                                                   resample_input=True))
+
+    nlin_transform_handler = s.defer(mincANTS(source=lsq12_transform_handler.resampled,
+                                              target=target,
+                                              conf=nlin_conf,
+                                              resample_source=True))
+
+    full_transform = s.defer(concat_xfmhandlers([lsq12_transform_handler,
+                                                 nlin_transform_handler],
+                                                name=source.filename_wo_ext + "_to_" +
+                                                target.filename_wo_ext + "_lsq12_mincANTS_nlin"))
+    return Result(stages=s, output=full_transform)
+
+
 V = TypeVar('V')
 
 
@@ -1270,7 +1303,9 @@ class Subject(Generic[V]):
                 % (self.intersubject_registration_time_pt, self.time_pt_dict.keys()))
 
 
-def intrasubject_registrations(subj: Subject, conf: MincANTSConf) \
+def intrasubject_registrations(subj: Subject,
+                               linear_conf: MinctraccConf,
+                               nlin_conf: MincANTSConf) \
         -> Result[Tuple[List[Tuple[int, XfmHandler]], int]]:
     """
     
@@ -1284,8 +1319,6 @@ def intrasubject_registrations(subj: Subject, conf: MincANTSConf) \
     # TODO: somehow the output of this function should provide us with
     # easy access from a MincAtom to an XfmHandler from time_pt N to N+1 
     # either here or in the chain() function
-    # TODO: at present this just does nonlinear registration, not LSQ12 - is that what we want?
-    # if not, pass two config objects ... ?
 
     s = Stages()
     timepts = sorted(subj.time_pt_dict.items())  # type: List[Tuple[int, MincAtom]]
@@ -1294,15 +1327,11 @@ def intrasubject_registrations(subj: Subject, conf: MincANTSConf) \
     # should only look at the first element of the tuples stored in timepts
     index_of_common_time_pt = timepts_indices.index(subj.intersubject_registration_time_pt)  # type: int
 
-    # for source_index in range(len(timepts) - 1):
-    #     time_pt_to_xfms.append((timepts_indices[source_index],
-    #                             s.defer(mincANTS(source=timepts[source_index][1],
-    #                                              target=timepts[source_index + 1][1],
-    #                                              conf=conf,
-    #                                              resample_source=True))))
     time_pt_to_xfms = [(timepts_indices[source_index],
-                        s.defer(mincANTS(source=src[1], target=dest[1],
-                                         conf=conf, resample_source=True)))
+                        s.defer(LSQ12_mincANTS_nlin(source=src[1],
+                                                    target=dest[1],
+                                                    linear_conf=linear_conf,
+                                                    nlin_conf=nlin_conf)))
                        for source_index, (src, dest) in enumerate(pairs(timepts))]
     return Result(stages=s, output=(time_pt_to_xfms, index_of_common_time_pt))
 

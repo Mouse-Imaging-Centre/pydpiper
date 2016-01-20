@@ -14,7 +14,8 @@ from pydpiper.minc.registration import (Subject, Stages, mincANTS_NLIN_build_mod
                                         lsq6_nuc_inorm, get_resolution_from_file, XfmHandler, LSQ6Conf,
                                         RegistrationConf, InputSpace, LSQ12Conf, lsq12_nlin_build_model, TargetType,
                                         MultilevelMincANTSConf, create_quality_control_images,
-                                        check_MINC_files_have_equal_dimensions_and_resolution)
+                                        check_MINC_files_have_equal_dimensions_and_resolution,
+                                        default_lsq12_multi_level_minctracc)
 from pydpiper.minc.files import MincAtom
 from pydpiper.execution.application import execute  # type: ignore
 from pydpiper.core.arguments import (application_parser,
@@ -286,8 +287,9 @@ def chain(options):
             print("\n")
 
     chain_xfms = { s_id : s.defer(intrasubject_registrations(
-                                    subj,
-                                    mincANTS_default_conf.replace(file_resolution=options.registration.resolution,
+                                    subj=subj,
+                                    linear_conf=default_lsq12_multi_level_minctracc,
+                                    nlin_conf=mincANTS_default_conf.replace(file_resolution=options.registration.resolution,
                                                                   iterations="100x100x100x20")))
                    for s_id, subj in subj_id_to_Subjec_for_within_dict.items() }
 
