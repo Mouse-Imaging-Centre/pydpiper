@@ -100,6 +100,7 @@ MinctraccConf = NamedTuple('MinctraccConf',
                            [("step_sizes", R3),
                             ("blur_resolution", float),
                             ("use_masks", bool),
+                            ("use_gradient", bool),
                             ("linear_conf", Optional[LinearMinctraccConf]),
                             ("nonlinear_conf", Optional[NonlinearMinctraccConf])])
 
@@ -826,8 +827,8 @@ def minctracc(source: MincAtom,
               generation: Optional[int] = None,
               resample_source: bool = False) -> Result[XfmHandler]:
     """
-    source
-    target
+    source -- "raw", blurring will happen here
+    target -- "raw", blurring will happen here
     conf
     transform
     transform_name_wo_ext -- to use for the output transformation (without the extension)
@@ -863,8 +864,17 @@ def minctracc(source: MincAtom,
                           pipeline_sub_dir=source.pipeline_sub_dir,
                           output_sub_dir=source.output_sub_dir)
     elif generation:
+        if lin_conf:
+            trans_type = lin_conf.transform_type
+        else:
+            trans_type = "nlin"
+
         out_xfm = XfmAtom(name=os.path.join(source.pipeline_sub_dir, source.output_sub_dir, 'transforms',
-                                            "%s_minctracc_nlin-%s.xfm" % (source.filename_wo_ext, generation)),
+                                            "%s_minctracc_to_%s_%s_%s.xfm" %
+                                            (source.filename_wo_ext,
+                                             target.filename_wo_ext,
+                                             trans_type,
+                                             generation)),
                           pipeline_sub_dir=source.pipeline_sub_dir,
                           output_sub_dir=source.output_sub_dir)
     else:
@@ -878,9 +888,9 @@ def minctracc(source: MincAtom,
     target_for_minctracc = target
     if conf.blur_resolution is not None:
         source_for_minctracc = s.defer(mincblur(source, conf.blur_resolution,
-                                                gradient=True))
+                                                gradient=conf.use_gradient))
         target_for_minctracc = s.defer(mincblur(target, conf.blur_resolution,
-                                                gradient=True))
+                                                gradient=conf.use_gradient))
 
     # TODO: FIXME: currently broken in the presence of None fields; should fall back to our defaults
     # and/or minctracc's own defaults.
@@ -1300,18 +1310,21 @@ _lin_conf_1 = LinearMinctraccConf(simplex=2.8,
 default_lsq12_multi_level_minctracc_level1 = MinctraccConf(step_sizes=(0.9,0.9,0.9),
                                                            blur_resolution=0.28,
                                                            use_masks=False,
+                                                           use_gradient=False,
                                                            linear_conf=_lin_conf_1,
                                                            nonlinear_conf=None)
 
 default_lsq12_multi_level_minctracc_level2 = MinctraccConf(step_sizes=(0.46,0.46,0.46),
                                                            blur_resolution=0.19,
                                                            use_masks=False,
+                                                           use_gradient=True,
                                                            linear_conf=_lin_conf_1.replace(simplex=1.4),
                                                            nonlinear_conf=None)
 
 default_lsq12_multi_level_minctracc_level3 = MinctraccConf(step_sizes=(0.3,0.3,0.3),
                                                            blur_resolution=0.14,
                                                            use_masks=False,
+                                                           use_gradient=False,
                                                            linear_conf=_lin_conf_1.replace(simplex=0.9),
                                                            nonlinear_conf=None)
 default_lsq12_multi_level_minctracc = [default_lsq12_multi_level_minctracc_level1,
@@ -1326,19 +1339,17 @@ def multilevel_minctracc(source: MincAtom,
     if len(confs) == 0:  # not a "registration" at all; also, src_blur/target_blur will be undefined ...
         raise ValueError("No configurations supplied")
     s = Stages()
-    for conf in confs:
-        # having the basic cmdstage fns act on single items rather than arrays is a bit inefficient,
-        # e.g., we create many blur stages (which will later be eliminated, but still ...)
-        src_blur = s.defer(mincblur(source, fwhm=conf.blur_resolution))  # FIXME! need to set gradient=...
-        target_blur = s.defer(mincblur(target, fwhm=conf.blur_resolution))  # but not included in MinctraccConf
-        transform_handler = s.defer(minctracc(src_blur, target_blur, conf=conf, transform=transform))
+    for idx, conf in enumerate(confs):
+        transform_handler = s.defer(minctracc(source, target, conf=conf,
+                                              transform=transform,
+                                              generation=idx))
         # minctracc returns an XfmHandler. When we call minctracc again, or return an XfmHandler at the
         # end of this function, we need to make sure that the XfmAtom is actually that part
         transform = transform_handler.xfm
     return Result(stages=s,
                   output=XfmHandler(xfm=transform,
-                                    source=src_blur,
-                                    target=target_blur))
+                                    source=source,
+                                    target=target))
 
 
 # """Multilevel registration of many images to a single target"""
