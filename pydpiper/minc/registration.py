@@ -171,8 +171,22 @@ def mincaverage(imgs: List[MincAtom],
     if len(imgs) == 0:
         raise ValueError("`mincaverage` arg `imgs` is empty (can't average zero files)")
     # TODO: propagate masks/labels??
-    avg = avg_file or MincAtom(name=os.path.join(output_dir, '%s.mnc' % name_wo_ext), orig_name=None)
-    sdfile = MincAtom(name=os.path.join(output_dir, '%s_sd.mnc' % name_wo_ext), orig_name=None)
+
+    # the output_dir basically gives us the equivalent of the pipeline_sub_dir for
+    # regular input files to a pipeline, so use that here
+    avg = avg_file or MincAtom(name=os.path.join(output_dir, '%s.mnc' % name_wo_ext),
+                               orig_name=None,
+                               pipeline_sub_dir=output_dir)
+    # if the average was provided as a MincAtom there is probably a output_sub_dir
+    # set. However, this is something we only really use for input files. All averages
+    # and related files to directly into the _lsq6, _lsq12 and _nlin directories. That's
+    # why we'll create this MincAtom here if avg_file was provided:
+    sdfile = MincAtom(name=os.path.join(avg_file.dir, '%s_sd.mnc' % avg_file.filename_wo_ext),
+                      orig_name=None,
+                      pipeline_sub_dir=avg_file.pipeline_sub_dir) if avg_file else \
+             MincAtom(name=os.path.join(output_dir, '%s_sd.mnc' % name_wo_ext),
+                      orig_name=None,
+                      pipeline_sub_dir=output_dir)
     additional_flags = ["-copy_header"] if copy_header_from_first_input else []  # type: List[str]
     s = CmdStage(inputs=tuple(imgs), outputs=(avg, sdfile),
                  cmd=['mincaverage', '-clobber', '-normalize',
