@@ -1377,22 +1377,26 @@ default_lsq12_multi_level_minctracc = [default_lsq12_multi_level_minctracc_level
 def multilevel_minctracc(source: MincAtom,
                          target: MincAtom,
                          confs: MultilevelMinctraccConf,
-                         transform: Optional[XfmAtom] = None) -> Result[XfmHandler]:
-    # TODO fold curr_dir into conf?
+                         transform: Optional[XfmAtom] = None,
+                         resample_input: bool = False) -> Result[XfmHandler]:
     if len(confs) == 0:  # not a "registration" at all; also, src_blur/target_blur will be undefined ...
         raise ValueError("No configurations supplied")
     s = Stages()
+    last_resampled = None
     for idx, conf in enumerate(confs):
         transform_handler = s.defer(minctracc(source, target, conf=conf,
                                               transform=transform,
-                                              generation=idx))
+                                              generation=idx,
+                                              resample_source=resample_input))
         # minctracc returns an XfmHandler. When we call minctracc again, or return an XfmHandler at the
         # end of this function, we need to make sure that the XfmAtom is actually that part
         transform = transform_handler.xfm
+        last_resampled = transform_handler.resampled if resample_input else None
     return Result(stages=s,
                   output=XfmHandler(xfm=transform,
                                     source=source,
-                                    target=target))
+                                    target=target,
+                                    resampled=last_resampled))
 
 
 # """Multilevel registration of many images to a single target"""
