@@ -877,7 +877,9 @@ def minctracc(source: MincAtom,
                                             "%s.xfm" % (transform_name_wo_ext)),
                           pipeline_sub_dir=source.pipeline_sub_dir,
                           output_sub_dir=source.output_sub_dir)
-    elif generation:
+    # the generation provided can be 0 (zero), but that's a proper generation,
+    # so we should explicitly test for != None here.
+    elif generation != None:
         if lin_conf:
             trans_type = lin_conf.transform_type
         else:
@@ -1117,7 +1119,7 @@ def mincANTS(source: MincAtom,
     if transform_name_wo_ext:
         name = os.path.join(source.pipeline_sub_dir, source.output_sub_dir, 'transforms',
                             "%s.xfm" % (transform_name_wo_ext))
-    elif generation:
+    elif generation != None:
         name = os.path.join(source.pipeline_sub_dir, source.output_sub_dir, 'transforms',
                             "%s_mincANTS_nlin-%s.xfm" % (source.filename_wo_ext, generation))
     else:
