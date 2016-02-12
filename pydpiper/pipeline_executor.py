@@ -7,7 +7,8 @@ import os
 from configargparse import ArgParser
 from datetime import datetime
 from multiprocessing import Process, Pool
-import subprocess
+import math as m
+import subprocess32 as subprocess
 import shlex
 import pydpiper.queueing as q
 import atoms_and_modules.registration_functions as rf
@@ -163,10 +164,22 @@ def launchExecutor(executor):
         # run the daemon, not the executor mainLoop, in a new thread
         # so that mainLoop exceptions (e.g., if we lose contact with the server)
         # cause us to shutdown (as Python makes it tedious to re-throw to calling thread)
-        t = threading.Thread(target=daemon.requestLoop)
+        def with_exception_logging(f, thread_description, crash_hook=None):
+            def _f(*args, **kwargs):
+                try:
+                    return f(*args, **kwargs)
+                except Exception:
+                    logger.exception("Crash in '%s' thread!  Details: " % thread_description)
+                    crash_hook() if crash_hook else ()
+                    raise
+            return _f
+        t = threading.Thread(target=with_exception_logging(daemon.requestLoop, "Pyro daemon"))
         t.daemon = True
         t.start()
-        h = threading.Thread(target=executor.heartbeat)
+        h = threading.Thread(target=with_exception_logging(executor.heartbeat, "heartbeat",
+                                                           crash_hook=lambda : setattr(executor,  # Python is 'funny'
+                                                                                       "heartbeat_thread_crashed",
+                                                                                       True)))
         h.daemon = True
         h.start()
         executor.mainLoop()
@@ -228,21 +241,20 @@ def runStage(serverURI, clientURI, i):
         logger.exception("Error communicating to server in runStage. " 
                         "Error raised to calling thread in launchExecutor. ")
         raise     
-        
 
-        """
-        This class is used for the actual commands that are run by the 
-        executor. A child process is defined as a process that was 
-        initiated by the executor
-        """
+
 class ChildProcess(object):
+    """Used by the executor to store runtime information about the child processes it initiates to run commands."""
     def __init__(self, stage, result, mem, procs):
         self.stage = stage
         self.result = result
         self.mem = mem
-        self.procs = procs 
+        self.procs = procs
 
 class InsufficientResources(Exception):
+    pass
+
+class SubmitError(IOError):
     pass
 
 class pipelineExecutor(object):
@@ -414,16 +426,19 @@ class pipelineExecutor(object):
                 header = '\n'.join(["#!/usr/bin/env bash",
                                     "#PBS -N %s" % jobname,
                                     "#PBS -l nodes=1:ppn=1",
-                                    # CCM doesn't like float values:
-                                    "#PBS -l %s=%dg\n" % (self.mem_request_attribute, round(self.mem)),
+                                    # CCM is strict, and doesn't like float values:
+                                    "#PBS -l %s=%dg\n" % (self.mem_request_attribute, m.ceil(self.mem)),
                                     # TODO potentially add a walltime here
                                     "cd $PBS_O_WORKDIR"])
-                qsub_cmd = ['qsub', '-V', '-o', jobname + '-o.log', '-e', jobname + '-e.log']
+                qsub_cmd = (['qsub', '-V', '-o', jobname + '-o.log', '-e', jobname + '-e.log', '-Wumask=0137']
+                             + (['-q', self.queue_name] if self.queue_name else []))
 
             script = header + '\n' + ' '.join(cmd) + '\n'
+            # TODO change to use subprocess.run(qsub_cmd, input=...) (Python >= 3.5)
             p = subprocess.Popen(qsub_cmd, stdin=subprocess.PIPE, shell=False, env=env)
-            p.communicate(script)
-            # FIXME check for failed qsub!!
+            out_data, err_data = p.communicate(script)
+            if p.returncode != 0:
+                raise SubmitError("qsub returned: ", p.returncode)
 
 
     def canRun(self, stageMem, stageProcs, runningMem, runningProcs):
@@ -479,22 +494,19 @@ class pipelineExecutor(object):
         return self.runningMem == 0 and self.runningProcs == 0 and self.prev_time
 
     def heartbeat(self):
-        try:
-            tick = 0
-            while self.registered_with_server:
-                logger.debug("Heartbeat %d...", tick)
-                tick += 1
-                self.pyro_proxy_for_server.updateClientTimestamp(self.clientURI, tick)
-                time.sleep(HEARTBEAT_INTERVAL)
-        except:
-            logger.exception("Heartbeat thread crashed: ")
+        tick = 0
+        while self.registered_with_server:
+            logger.debug("Sending heartbeat %d...", tick)
+            tick += 1
+            self.pyro_proxy_for_server.updateClientTimestamp(self.clientURI, tick)
+            logger.debug("...finished")
+            time.sleep(HEARTBEAT_INTERVAL)
             # this will take down the executor to avoid the case
             # where an executor wastes time processing jobs which the server
             # considers lost; there might be a better way to do this
             # (re-register/restart heartbeat and notify server of existing
             # jobs? quite complicated ...), and it could be done
             # 'atomically' using an event for better guarantees ...
-            self.heartbeat_thread_crashed = True
 
     # use an event set/timeout system to run the executor mainLoop -
     # we might want to pass some extra information in addition to waking the system

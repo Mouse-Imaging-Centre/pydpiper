@@ -491,8 +491,13 @@ class Pipeline(object):
         # write out the (index, hash) pairs to disk.  We don't actually need the indices
         # for anything (in fact, the restart code in skip_completed_stages is resilient 
         # against an arbitrary renumbering of stages), but a human-readable log is somewhat useful.
-        self.finished_stages_fh.write("%d,%s\n" % (index, self.stages[index].getHash()))
-        self.finished_stages_fh.flush()
+        if not checking_pipeline_status:
+            self.finished_stages_fh.write("%d,%s\n" % (index, self.stages[index].getHash()))
+            self.finished_stages_fh.flush()
+        # flush turned off as an optimization ... though we might not record
+        # a stage's completion, this doesn't affect correctness.
+        # For further optimization at pipeline start, it might (?) be even faster to write to memory and then
+        # make a single file write when finished.
         for i in self.G.successors(index):
             self.unfinished_pred_counts[i] -= 1
             if self.checkIfRunnable(i):
@@ -666,7 +671,7 @@ class Pipeline(object):
                 elif memWanted <= self.memAvail:
                     mem = memWanted
                 else:
-                    mem = self.memAvail #memNeeded?
+                    mem = self.memAvail  #memNeeded?
                 self.launchExecutorsFromServer(executors_to_launch, mem)
         if self.options.monitor_heartbeats:
             # look for dead clients and requeue their jobs
@@ -710,17 +715,18 @@ class Pipeline(object):
             # Server should launch executors itself
             # This should happen regardless of whether or not executors
             # can kill themselves, because the server is now responsible 
-            # for the inital launches as well.
+            # for the initial launches as well.
             active_executors = self.number_launched_and_waiting_clients + len(self.clients)
-            max_num_executors = self.options.num_exec
-            executor_launch_room = max_num_executors - active_executors
+            desired_num_executors = min(len(self.runnable), self.options.num_exec)
+            executor_launch_room = desired_num_executors - active_executors
             # there are runnable stages, and there is room to launch 
             # additional executors
-            return min(len(self.runnable), executor_launch_room)
+            return max(executor_launch_room, 0)
         else:
             return 0
         
     def launchExecutorsFromServer(self, number_to_launch, memNeeded):
+        logger.info("Launching %i executors", number_to_launch)
         try:
             logger.info("Launching %i executors", number_to_launch)
             for i in range(number_to_launch):
@@ -752,7 +758,7 @@ class Pipeline(object):
         # removes a client URI string from the table of registered clients. An executor 
         # calls this method when it decides on its own to shut down,
         # and the server may call it when a client is unresponsive
-        logger.debug("Client %s calling unregisterClient", clientURI)
+        logger.debug("unregisterClient: un-registering %s", clientURI)
         try:
             for s in self.clients[clientURI].running_stages.copy():
                 self.setStageLost(s, clientURI)
@@ -770,6 +776,7 @@ class Pipeline(object):
         self.number_launched_and_waiting_clients += 1
 
     def skip_completed_stages(self):
+        logger.debug("Consulting logs to determine skippable stages...")
         try:
             with open(self.backupFileLocation, 'r') as fh:
                 # a stage's index is just an artifact of the graph construction,
@@ -778,8 +785,9 @@ class Pipeline(object):
         except:
             logger.info("Finished stages log doesn't exist or is corrupt.")
             return
-        self.finished_stages_fh = open(self.backupFileLocation, 'w')
+
         runnable  = []
+        finished  = []
         completed = 0
         while True:
             # self.runnable should be populated initially by the graph heads.
@@ -800,19 +808,25 @@ class Pipeline(object):
                 runnable.append(i)
                 continue
 
+            h = s.getHash()
+
             # we've never run this command before
-            if not s.getHash() in previous_hashes:
+            if not h in previous_hashes:
                 runnable.append(i)
                 continue
 
             self.setStageFinished(i, clientURI = "fake_client_URI", checking_pipeline_status = True)
+
+            finished.append((i, h))  # stupid ... duplicates logic in setStageFinished ...
             completed += 1
 
         logger.debug("Runnable: %s", runnable)
         for i in runnable:
             self.enqueue(i)
-
-        self.finished_stages_fh.close()
+        with open(self.backupFileLocation, 'w') as fh:
+            # TODO could write to tmp file in same dir, then "atomically" `mv`
+            for l in finished:
+                fh.write("%d,%s\n" % l)
         logger.info('Previously completed stages (of %d total): %d', len(self.stages), completed)
 
     def printShutdownMessage(self):
@@ -899,7 +913,7 @@ def launchServer(pipeline, options):
         t.start()
 
         # at this point requests made to the Pyro daemon will touch process `t`'s copy
-        # of the pipeline, so modifiying `pipeline` won't have any effect.  The exception is
+        # of the pipeline, so modifying `pipeline` won't have any effect.  The exception is
         # communication through its multiprocessing.Event, which we use below to wait
         # for termination.
         #FIXME does this leak the memory used by the old pipeline?
@@ -910,12 +924,14 @@ def launchServer(pipeline, options):
         verboseprint("The pipeline's uri is: %s" % str(pipelineURI))
         logger.info("The pipeline's uri is: %s", str(pipelineURI))
 
+        e = pipeline.shutdown_ev
+
         # handle SIGTERM (sent by SciNet 15-30s before hard kill) by setting
         # the shutdown event (we shouldn't actually see a SIGTERM on PBS
         # since PBS submission logic gives us a lifetime related to our walltime
         # request ...)
         def handler(sig, _stack):
-            pipeline.shutdown_ev.set()
+            e.set()
         signal.signal(signal.SIGTERM, handler)
 
         # spawn a loop to manage executors in a separate process
@@ -924,13 +940,15 @@ def launchServer(pipeline, options):
         # not interleaved with calls from executors.  We could instead use a `select`
         # for both Pyro and non-Pyro socket events; see the Pyro documentation)
         p = Pyro4.Proxy(pipelineURI)
+
+        mem, memAvail = pipeline.options.mem, pipeline.memAvail
         def loop():
             try:
                 logger.debug("Auxiliary loop started")
-                logger.debug("memory limit: %.4fG; available after server overhead: %.4fG" % (pipeline.options.mem, pipeline.memAvail))
+                logger.debug("memory limit: %.4fG; available after server overhead: %.4fG" % (mem, memAvail))
                 while p.continueLoop():
                     p.manageExecutors()
-                    pipeline.shutdown_ev.wait(LOOP_INTERVAL)
+                    e.wait(LOOP_INTERVAL)
             except:
                 logger.exception("Server loop encountered a problem.  Shutting down.")
             finally:
@@ -940,6 +958,7 @@ def launchServer(pipeline, options):
         h = Process(target=loop)
         h.daemon = True
         h.start()
+        del pipeline
 
         try:
             jid    = os.environ["PBS_JOBID"]
@@ -951,10 +970,10 @@ def launchServer(pipeline, options):
         except:
             logger.info("I couldn't determine your remaining walltime from qstat.")
             time_to_live = None
-        flag = pipeline.shutdown_ev.wait(time_to_live)
+        flag = e.wait(time_to_live)
         if not flag:
             logger.info("Time's up!")
-        pipeline.shutdown_ev.set()
+        e.set()
 
     # FIXME if we terminate abnormally, we should _actually_ kill child executors (if running locally)
     except KeyboardInterrupt:
@@ -1005,7 +1024,6 @@ def pipelineDaemon(pipeline, options, programName=None):
         options.urifile = os.path.abspath(os.path.join(os.curdir, options.pipeline_name + "_uri"))
 
     if options.restart:
-        logger.debug("Examining filesystem to determine skippable stages...")
         pipeline.skip_completed_stages()
 
     #check for valid pipeline 

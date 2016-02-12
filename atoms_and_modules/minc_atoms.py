@@ -826,7 +826,7 @@ class mincAverage(CmdStage):
         self.cmd += ["mincaverage",
                      "-clobber", "-normalize", 
                      "-sdfile", self.sd, 
-                     "-max_buffer_size_in_kb", str(409620)] +  additionalFlags
+                     "-max_buffer_size_in_kb", str(409620)] + additionalFlags
                  
     def finalizeCommand(self):
         for i in range(len(self.filesToAvg)):
