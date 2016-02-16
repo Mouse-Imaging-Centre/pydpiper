@@ -25,7 +25,7 @@ class CmdStage(object):
         self.outputs = outputs         # type: Tuple[FileAtom, ...]
         #self.conf    = conf           # not needed at present -- see note on render_fn
         self._cmd    = cmd             # type: List[str]
-        # TODO: why not expose this publically?
+        # TODO: why not expose this publicly?
         self.when_runnable_hooks = []  # type: List[Callable[[], Any]]
         # TODO: make the hooks accessible via the constructor?
         self.when_finished_hooks = []  # type: List[Callable[[], Any]]
