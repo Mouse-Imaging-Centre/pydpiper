@@ -11,7 +11,7 @@ import time
 import re
 import resource
 from datetime import datetime
-from subprocess import call, check_output
+from subprocess32 import call, check_output
 from shlex import split
 from multiprocessing import Process, Event
 import logging

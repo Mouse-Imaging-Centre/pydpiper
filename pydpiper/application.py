@@ -156,7 +156,7 @@ class AbstractApplication(object):
 
         submit_server = self.options.submit_server and not self.options.local
         if self.options.queue_type is None and submit_server:
-            raise ValueError("Nothing to submit to...")
+            raise ValueError("No queue specified to submit to...")
 
         # --create-graph causes the pipeline to be constructed
         # both at PBS submit time and on the grid; this may be an extremely
@@ -182,7 +182,7 @@ class AbstractApplication(object):
                 roq = runOnQueueingSystem(self.options, sys.argv)
                 roq.createAndSubmitPbsScripts()
             else:
-                raise NotImplemented
+                raise NotImplementedError
             logger.info("Finished submitting jobs...quitting")
             return
                 
