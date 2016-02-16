@@ -1664,8 +1664,8 @@ def check_MINC_files_have_equal_dimensions_and_resolution(args: List[str],
 
 
 # data structures to hold setting for the parameter settings we know about:
-mousebrain = {'res': 0.056}
-human = {'res': 1.00}
+mousebrain = {'resolution': 0.056}
+human = {'resolution': 1.00}
 # we want to set the parameters such that 
 # blur          ->  560 micron (10 * resolution)
 # resample step ->  224 micron ( 4 * resolution)
@@ -1718,7 +1718,7 @@ def get_parameters_for_rotational_minctracc(resolution,  # TODO why do most argu
     # for mouse brains we have fixed parameters:
     # if rotation_params == "mousebrain":
     if rotation_params in known_settings:
-        rotational_resolution = known_settings[rotation_params]
+        rotational_resolution = known_settings[rotation_params]['resolution']
     else:
         if rotation_params:
             blur_factor, resample_step_factor, registration_step_factor, w_translations_factor = (
