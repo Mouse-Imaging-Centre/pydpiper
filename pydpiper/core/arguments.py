@@ -461,7 +461,7 @@ def _mk_lsq6_parser():
     p.add_argument("--no-copy-header-info-to-average", dest="copy_header_info",
                    action="store_false",
                    help="Opposite of --copy-header-info-to-average.")
-    p.add_argument("--lsq6-protocol", dest="lsq6_protocol",
+    p.add_argument("--lsq6-protocol", dest="protocol_file",
                    type=str, default=None,
                    help="Specify an lsq6 protocol that overrides the default setting for stages in "
                         "the 6 parameter minctracc call. Parameters must be specified as in the following \n"

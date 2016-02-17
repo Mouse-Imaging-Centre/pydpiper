@@ -52,7 +52,8 @@ RegistrationConf = NamedTuple("RegistrationConf", [("input_space", InputSpace),
                                                    ])
 
 
-LSQ6Conf = NamedTuple("LSQ6Conf", [("lsq6_method", str),
+LSQ6Conf = NamedTuple("LSQ6Conf", [("run_lsq6", bool),
+                                   ("lsq6_method", str),
                                    ("rotation_tmp_dir", Optional[str]),
                                    ("rotation_range", Optional[float]),
                                    ("rotation_interval", Optional[float]),
@@ -65,8 +66,7 @@ LSQ6Conf = NamedTuple("LSQ6Conf", [("lsq6_method", str),
                                    ("target_file", Optional[str]),
                                    ("inormalize", bool),
                                    ("nuc", bool),
-                                   ("run_lsq6", bool),
-                                   ("lsq6_protocol", Optional[str]),
+                                   ("protocol_file", Optional[str]),
                                    ])
 
 
@@ -84,6 +84,9 @@ LinearMinctraccConf = NamedTuple("LinearMinctraccConf",
                                   ("w_translations", R3),
                                   ("w_scales", R3),
                                   ("w_shear", R3)])
+
+# TODO writing a LinearMinctraccConf is annoying b/c of the nested structure,
+# so write linear_minctracc_conf : ... -> MinctraccConf
 
 NonlinearMinctraccConf = NamedTuple("NonlinearMinctraccConf",
                                     [("iterations", int),
@@ -758,7 +761,11 @@ def parse_n(p, n):
             raise ParseError("Wrong number of values")
     return f
 
-def parse_minctracc_lin_protocol_file(f, minctracc_conf=default_linear_minctracc_conf) -> MinctraccConf:
+def parse_minctracc_lin_protocol_file(filename : str, minctracc_conf=default_linear_minctracc_conf) -> MultilevelMinctraccConf:
+    with open(filename, 'r') as f:
+        return parse_minctracc_lin_protocol(csv.read(f), minctracc_conf)
+
+def parse_minctracc_lin_protocol(f, minctracc_conf : LinearMinctraccConf = default_linear_minctracc_conf) -> MultilevelMinctraccConf:
     """Use the resulting list to `.replace` the default values.  Needs to return a full MinctraccConf
     in order to encode blur and step information."""
 
@@ -774,11 +781,10 @@ def parse_minctracc_lin_protocol_file(f, minctracc_conf=default_linear_minctracc
                "w_scales"           : float,
                "w_shear"            : float}
 
-    # mapping from protocol file names to Python field names of the mincANTS and similarity metric configurations
-    #names = {"blur" : "blur",
+    # mapping from protocol file names to Python field names of the MinctraccConf fields
+    #names = {"blur" : "blur_resolution",
     #         "step" : "step",
-    #         "gradient" : "gradient",
-    #         "simplex"}
+    #         "gradient" : "gradient"} and the other ones go in the linear part of the configuration
     params = list(parsers.keys())
 
     # build a mapping from (Python, not file) field names to a list of values (one for each generation)
@@ -799,10 +805,6 @@ def parse_minctracc_lin_protocol_file(f, minctracc_conf=default_linear_minctracc
         raise ParseError("Invalid minctracc configuration: all params must have the same number of generations.")
     if len(d) == 0:
         raise ParseError("Empty file ...")   # TODO should this really be an error?
-    if "blur" in d:
-        print("Warning: no longer using `blur` even though it's specified in the protocol ...")
-        # TODO should be a logger.warning, not a print
-        del d["blur"]
     if "memory_required" in d:
         print("Warning: don't currently use the memory ...")  # doesn't have to be same length -> can crash code below
         del d["memory_required"]
@@ -810,27 +812,29 @@ def parse_minctracc_lin_protocol_file(f, minctracc_conf=default_linear_minctracc
     vs = list(d.values())
     l = len(vs[0])
 
-    # convert a mapping of options to _single_ values to a single-generation mincANTS configuration object:
-    def convert_single_gen(single_gen_params) -> MincANTSConf:  # TODO name this better ...
+    # LinearMinctraccConf = NamedTuple("LinearMinctraccConf",
+    #                              [("simplex", float),
+    #                               ("transform_type", Optional[LinearTransType]),
+    #                               ("tolerance", float),
+    #                               ("w_rotations", R3),
+    #                               ("w_translations", R3),
+    #                               ("w_scales", R3),
+    #                               ("w_shear", R3)])
+    
+    # convert a mapping of options to _single_ values to a single-generation minctracc configuration object:
+    def convert_single_gen(single_gen_params) -> LinearMinctraccConf:  # TODO name this better ...
         # TODO check for/catch IndexError ... a bit hard to use zip since some params may not be defined ...
-        sim_metric_names = {"use_gradient_image", "metric", "weight", "radius_or_bins"}
-        # TODO duplication; e.g., parsers = sim_metric_parsers U <...>
-        sim_metric_params = {k : v for k, v in single_gen_params.items() if k in sim_metric_names}
-        other_attrs       = {k : v for k, v in single_gen_params.items() if k not in sim_metric_names}
-        if len(sim_metric_params) > 0:
-            sim_metric_values = list(sim_metric_params.values())
-            if not all_equal(sim_metric_values, by=len):
-                raise ParseError("All parts of the objective function specification must be the same length ...")
-            sim_metric_params = [{ k : v[j] for k, v in sim_metric_params.items() } for j in range(len(sim_metric_values[0]))]
-            # TODO could warn here if a given param is missing from a given metric specification
-            sim_metric_confs = [default_similarity_metric_conf.replace(**s) for s in sim_metric_params]
-        else:
-            sim_metric_confs = []
+        linear_attrs = { k : v for k, v in single_gen_params.items() if k not in ('blur_resolution', 'step', 'gradient')}
 
-        return mincANTS_default_conf.replace(sim_metric_confs=sim_metric_confs,
-                                             #resolution=NotImplemented, #ugh...don't know this yet
-                                             **other_attrs)
-    return MultilevelMincANTSConf([convert_single_gen({ key : vs[j] for key, vs in d.items() }) for j in range(l)])
+        linear_conf  =  default_lsq6_conf.replace(**linear_attrs)
+        return MinctraccConf(blur_resolution=single_gen_params["blur"],
+                             use_gradient=single_gen_params["gradient"],
+                             step_sizes=single_gen_params["step"],
+                             use_masks=True, #FIXME
+                             linear_conf=linear_conf,
+                             nonlinear_conf=None)
+                             
+    return MultilevelMinctraccConf([convert_single_gen({ key : vs[j] for key, vs in d.items() }) for j in range(l)])
 
 # TODO: add memory estimation hook
 def minctracc(source: MincAtom,
@@ -1009,9 +1013,6 @@ def parse_nullable(parser):
     return p
 
 class ParseError(ValueError): pass
-
-def parse_minctracc_lin_protocol_file(f, minctracc_conf=NotImplemented):
-    pass
 
 def parse_mincANTS_protocol_file(f, mincANTS_conf=mincANTS_default_conf) -> MultilevelMincANTSConf:
     """Use the resulting list to `.replace` the default values."""
@@ -1350,47 +1351,46 @@ _lin_conf_1 = LinearMinctraccConf(simplex=2.8,
                                   w_scales=(0.02,0.02,0.02),
                                   w_shear=(0.02,0.02,0.02))
 
-default_lsq12_multi_level_minctracc_level1 = MinctraccConf(step_sizes=(0.9,0.9,0.9),
-                                                           blur_resolution=0.28,
-                                                           use_masks=False,
-                                                           use_gradient=False,
-                                                           linear_conf=_lin_conf_1,
-                                                           nonlinear_conf=None)
+default_lsq12_multilevel_minctracc_level1 = MinctraccConf(step_sizes=(0.9,0.9,0.9),
+                                                          blur_resolution=0.28,
+                                                          use_masks=False,
+                                                          use_gradient=False,
+                                                          linear_conf=_lin_conf_1,
+                                                          nonlinear_conf=None)
 
-default_lsq12_multi_level_minctracc_level2 = MinctraccConf(step_sizes=(0.46,0.46,0.46),
-                                                           blur_resolution=0.19,
-                                                           use_masks=False,
-                                                           use_gradient=True,
-                                                           linear_conf=_lin_conf_1.replace(simplex=1.4),
-                                                           nonlinear_conf=None)
+default_lsq12_multilevel_minctracc_level2 = MinctraccConf(step_sizes=(0.46,0.46,0.46),
+                                                          blur_resolution=0.19,
+                                                          use_masks=False,
+                                                          use_gradient=True,
+                                                          linear_conf=_lin_conf_1.replace(simplex=1.4),
+                                                          nonlinear_conf=None)
 
-default_lsq12_multi_level_minctracc_level3 = MinctraccConf(step_sizes=(0.3,0.3,0.3),
-                                                           blur_resolution=0.14,
-                                                           use_masks=False,
-                                                           use_gradient=False,
-                                                           linear_conf=_lin_conf_1.replace(simplex=0.9),
-                                                           nonlinear_conf=None)
-default_lsq12_multi_level_minctracc = [default_lsq12_multi_level_minctracc_level1,
-                                       default_lsq12_multi_level_minctracc_level2,
-                                       default_lsq12_multi_level_minctracc_level3]
+default_lsq12_multilevel_minctracc_level3 = MinctraccConf(step_sizes=(0.3,0.3,0.3),
+                                                          blur_resolution=0.14,
+                                                          use_masks=False,
+                                                          use_gradient=False,
+                                                          linear_conf=_lin_conf_1.replace(simplex=0.9),
+                                                          nonlinear_conf=None)
+default_lsq12_multilevel_minctracc = MultilevelMinctraccConf([default_lsq12_multilevel_minctracc_level1,
+                                                              default_lsq12_multilevel_minctracc_level2,
+                                                              default_lsq12_multilevel_minctracc_level3])
 
 def multilevel_minctracc(source: MincAtom,
                          target: MincAtom,
-                         confs: MultilevelMinctraccConf,
+                         conf: MultilevelMinctraccConf,
                          transform: Optional[XfmAtom] = None,
                          resample_input: bool = False) -> Result[XfmHandler]:
-    if len(confs) == 0:  # not a "registration" at all; also, src_blur/target_blur will be undefined ...
+    if len(conf.confs) == 0:  # not a "registration" at all; also, src_blur/target_blur will be undefined ...
         raise ValueError("No configurations supplied")
     s = Stages()
     last_resampled = None
-    for idx, conf in enumerate(confs):
+    for idx, conf in enumerate(conf.confs):
         transform_handler = s.defer(minctracc(source, target, conf=conf,
                                               transform=transform,
                                               generation=idx,
                                               resample_source=resample_input))
-        # minctracc returns an XfmHandler. When we call minctracc again, or return an XfmHandler at the
-        # end of this function, we need to make sure that the XfmAtom is actually that part
         transform = transform_handler.xfm
+        # why potentially throw away the resampled image?
         last_resampled = transform_handler.resampled if resample_input else None
     return Result(stages=s,
                   output=XfmHandler(xfm=transform,
@@ -1462,7 +1462,7 @@ def multilevel_pairwise_minctracc(imgs: List[MincAtom],
         # being careful not to register the img against itself
         # TODO: do something about the configuration, currently it all seems a bit broken...
         xfms = [s.defer(multilevel_minctracc(src_img, target_img,
-                                             confs=default_lsq12_multi_level_minctracc))
+                                             confs=default_lsq12_multilevel_minctracc))
                 for target_img in target_imgs if src_img != target_img]  # TODO src_img.name != ....name ??
 
         avg_xfm = s.defer(xfmaverage([xfm.xfm for xfm in xfms],
@@ -1564,7 +1564,7 @@ def lsq12_nlin_build_model(imgs       : List[MincAtom],
     # it should be able to get this passed in....
     lsq12_result = s.defer(lsq12_pairwise(imgs=imgs, like=None,
                                           lsq12_conf=lsq12_conf,
-                                          conf=default_lsq12_multi_level_minctracc, lsq12_dir=lsq12_dir))
+                                          conf=default_lsq12_multilevel_minctracc, lsq12_dir=lsq12_dir))
 
     # extract the resampled lsq12 images
     lsq12_resampled_imgs = [xfm_handler.resampled for xfm_handler in  lsq12_result.output]
@@ -1783,6 +1783,8 @@ def lsq6(imgs: List[MincAtom],
     # Calling rotational_minctracc
     #
     if conf.lsq6_method == "lsq6_large_rotations":
+        # still not convinced this shouldn't go inside rotational_minctracc somehow,
+        # though you may want to override ...
         rotational_configuration, resolution_for_rot = \
             get_parameters_for_rotational_minctracc(resolution=resolution,
                                                     rotation_tmp_dir=conf.rotation_tmp_dir,
@@ -1796,16 +1798,30 @@ def lsq6(imgs: List[MincAtom],
                                                        output_name_wo_ext=None if post_alignment_xfm else
                                                                         img.output_sub_dir + "_lsq6"))
                           for img in imgs]
-    #
-    # Center estimation
-    #
     elif conf.lsq6_method == "lsq6_centre_estimation":
         raise NotImplementedError("lsq6_centre_estimation is not implemented yet...")
-    #
-    # Simple lsq6 (files already roughly aligned)
-    #
     elif conf.lsq6_method == "lsq6_simple":
-        raise NotImplementedError("lsq6_simple is not implemented yet...")
+        defaults = { 'blur_factors'    : [   17,    9,     4],
+                     'simplex_factors' : [   40,   28,    16],
+                     'step_factors'    : [   17,    9,     4],
+                     'gradients'       : [False, True, False],
+                     'translations'    : [  0.4,  0.4,   0.4] }
+        confs = MultilevelMinctraccConf(
+            [MinctraccConf(step_sizes=[defaults["blur_factors"][i] * resolution] * 3,
+                           blur_resolution=defaults["blur_factors"][i] * resolution,
+                           use_gradient=defaults["gradients"][i],
+                           use_masks=True,
+                           linear_conf=default_linear_minctracc_conf('lsq6').replace(w_translations=[defaults["translations"][i]] * 3,
+                                                                                     simplex=defaults["simplex_factors"][i]),
+                           nonlinear_conf=None)
+            for i in range(len(defaults["blur_factors"]))])
+        
+        if conf.protocol_file is not None:  # FIXME the proliferations of LSQ6Confs vs. MultilevelMinctraccConfs here is very confusing ...
+            confs = parse_minctracc_lin_protocol_file(conf.protocol_file, NotImplemented)
+        #else:
+        #    confs = confs
+        xfms_to_target = [s.defer(multilevel_minctracc(source=img, target=target, conf=confs))
+                          for img in imgs]
     else:
         raise ValueError("bad lsq6 method: %s" % conf.lsq6_method)
 
@@ -1813,7 +1829,7 @@ def lsq6(imgs: List[MincAtom],
     if post_alignment_xfm:
         final_xfmhs = [XfmHandler(xfm=s.defer(xfmconcat([first_xfm.xfm,
                                                          post_alignment_xfm],
-                                                        name=first_xfm.xfm.output_sub_dir + "_lsq6")),
+                                                         name=first_xfm.xfm.output_sub_dir + "_lsq6")),
                                   target=post_alignment_target,
                                   source=img,
                                   resampled=None)
