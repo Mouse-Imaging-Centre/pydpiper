@@ -2200,9 +2200,11 @@ def create_quality_control_images(imgs: List[MincAtom],
         img_verification_convert = img.newname_with_suffix("_QC_image_labeled",
                                                            subdir="tmp",
                                                            ext=".png")
-        # TODO: the memory and procs are set to 0 to ensure that
+        # FIXME: the memory and procs are set to 0 to ensure that
         # these stages finish soonish. No other stages depend on
         # these, but we do want them to finish as soon as possible
+        # (Note that this may lead to large memory consumption by individual executors,
+        # particularly for large pipelines, and seems unlikely to work at all on the HPF)
         convert_stage = CmdStage(
             inputs=(img_verification,),
             outputs=(img_verification_convert,),

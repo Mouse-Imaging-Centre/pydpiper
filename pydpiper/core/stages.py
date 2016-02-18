@@ -1,3 +1,4 @@
+import ordered_set
 import shlex
 from typing import Any, Callable, Generic, Iterable, List, Set, Tuple, TypeVar, Union
 
@@ -74,7 +75,7 @@ class CmdStage(object):
 
 T = TypeVar('T')
 
-class Stages(set):
+class Stages(ordered_set.OrderedSet):
     """A set of stages to be run.  In addition to the usual set operations,
     contains a single extra method, `defer`.  The idea here is as follows: procedures
     to create various commands and pipelines will return both
