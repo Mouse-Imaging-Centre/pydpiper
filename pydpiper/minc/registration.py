@@ -703,7 +703,7 @@ def rotational_minctracc(source: MincAtom,
 def default_linear_minctracc_conf(transform_type: LinearTransType) -> LinearMinctraccConf:
     return LinearMinctraccConf(simplex=1,  # TODO simplex=1 -> simplex_factor=20?
                                transform_type=transform_type,
-                               tolerance=0.001,
+                               tolerance=0.0001,
                                w_scales=(0.02, 0.02, 0.02),
                                w_shear=(0.02, 0.02, 0.02),
                                w_rotations=(0.0174533, 0.0174533, 0.0174533),
@@ -842,6 +842,7 @@ def minctracc(source: MincAtom,
               conf: MinctraccConf,
               transform: Optional[XfmAtom] = None,
               transform_name_wo_ext: Optional[str] = None,
+              transform_info: Optional[List[str]] = None,
               generation: Optional[int] = None,
               resample_source: bool = False) -> Result[XfmHandler]:
     """
@@ -881,7 +882,7 @@ def minctracc(source: MincAtom,
                                             "%s.xfm" % (transform_name_wo_ext)),
                           pipeline_sub_dir=source.pipeline_sub_dir,
                           output_sub_dir=source.output_sub_dir)
-    elif generation:
+    elif generation is not None:
         if lin_conf:
             trans_type = lin_conf.transform_type
         else:
@@ -913,12 +914,12 @@ def minctracc(source: MincAtom,
     # TODO: FIXME: currently broken in the presence of None fields; should fall back to our defaults
     # and/or minctracc's own defaults.
     stage = CmdStage(cmd=['minctracc', '-clobber', '-debug', '-xcorr']  # TODO: remove hard-coded `xcorr`?
-                         + (['-transformation', transform.path] if transform else [])
+                         + (['-transformation', transform.path] if transform
+                            else (transform_info if transform_info else ["-identity"]))
                          + (['-' + lin_conf.transform_type]
                             if lin_conf and lin_conf.transform_type else [])
                          + (['-use_simplex']
                             if nlin_conf and nlin_conf.use_simplex is not None else [])
-                         # FIXME add -est_centre, -est_translations/-identity if not transform (else add transform) !!
                          + (['-step'] + space_sep(conf.step_sizes))
                          + ((['-simplex', str(lin_conf.simplex)]
                              + ['-tol', str(lin_conf.tolerance)]
@@ -1379,6 +1380,7 @@ def multilevel_minctracc(source: MincAtom,
                          target: MincAtom,
                          conf: MultilevelMinctraccConf,
                          transform: Optional[XfmAtom] = None,
+                         transform_info: Optional[List[str]] = None,
                          resample_input: bool = False) -> Result[XfmHandler]:
     if len(conf.confs) == 0:  # not a "registration" at all; also, src_blur/target_blur will be undefined ...
         raise ValueError("No configurations supplied")
@@ -1387,6 +1389,7 @@ def multilevel_minctracc(source: MincAtom,
     for idx, conf in enumerate(conf.confs):
         transform_handler = s.defer(minctracc(source, target, conf=conf,
                                               transform=transform,
+                                              transform_info=transform_info if idx == 0 else None,
                                               generation=idx,
                                               resample_source=resample_input))
         transform = transform_handler.xfm
@@ -1776,37 +1779,9 @@ def lsq6(imgs: List[MincAtom],
     if not conf.run_lsq6:
         raise ValueError("You silly person... you've called lsq6(), but also specified --no-run-lsq6. That's not a very sensible combination of things.")
 
-    ############################################################################
-    # alignment
-    ############################################################################
-    #
-    # Calling rotational_minctracc
-    #
-    if conf.lsq6_method == "lsq6_large_rotations":
-        # still not convinced this shouldn't go inside rotational_minctracc somehow,
-        # though you may want to override ...
-        rotational_configuration, resolution_for_rot = \
-            get_parameters_for_rotational_minctracc(resolution=resolution,
-                                                    rotation_tmp_dir=conf.rotation_tmp_dir,
-                                                    rotation_range=conf.rotation_range,
-                                                    rotation_interval=conf.rotation_interval,
-                                                    rotation_params=conf.rotation_params)
-        # now call rotational_minctracc on all input images 
-        xfms_to_target = [s.defer(rotational_minctracc(source=img, target=target,
-                                                       conf=rotational_configuration,
-                                                       resolution=resolution_for_rot,
-                                                       output_name_wo_ext=None if post_alignment_xfm else
-                                                                        img.output_sub_dir + "_lsq6"))
-                          for img in imgs]
-    elif conf.lsq6_method == "lsq6_centre_estimation":
-        raise NotImplementedError("lsq6_centre_estimation is not implemented yet...")
-    elif conf.lsq6_method == "lsq6_simple":
-        defaults = { 'blur_factors'    : [   17,    9,     4],
-                     'simplex_factors' : [   40,   28,    16],
-                     'step_factors'    : [   17,    9,     4],
-                     'gradients'       : [False, True, False],
-                     'translations'    : [  0.4,  0.4,   0.4] }
-        confs = MultilevelMinctraccConf(
+    # FIXME this is a stupid function: it's not very safe (note lack of type of argument) and rather redundant ...
+    def conf_from_defaults(defaults) -> MultilevelMinctraccConf:
+        conf = MultilevelMinctraccConf(
             [MinctraccConf(step_sizes=[defaults["blur_factors"][i] * resolution] * 3,
                            blur_resolution=defaults["blur_factors"][i] * resolution,
                            use_gradient=defaults["gradients"][i],
@@ -1814,13 +1789,55 @@ def lsq6(imgs: List[MincAtom],
                            linear_conf=default_linear_minctracc_conf('lsq6').replace(w_translations=[defaults["translations"][i]] * 3,
                                                                                      simplex=defaults["simplex_factors"][i]),
                            nonlinear_conf=None)
-            for i in range(len(defaults["blur_factors"]))])
-        
+            for i in range(len(defaults["blur_factors"]))])  # FIXME: don't assume all lengths are equal
+        return conf
+
+    ############################################################################
+    # alignment - switch on lsq6_method
+    ############################################################################
+    if conf.lsq6_method == "lsq6_large_rotations":
+        # still not convinced this shouldn't go inside rotational_minctracc somehow,
+        # though you may want to override ...
+        rotational_configuration, resolution_for_rot = \
+            get_parameters_for_rotational_minctracc(resolution=resolution,
+                                                    rotation_tmp_dir=lsq6_conf.rotation_tmp_dir,
+                                                    rotation_range=lsq6_conf.rotation_range,
+                                                    rotation_interval=lsq6_conf.rotation_interval,
+                                                    rotation_params=lsq6_conf.rotation_params)
+        # now call rotational_minctracc on all input images 
+        xfms_to_target = [s.defer(rotational_minctracc(source=img, target=target,
+                                                       conf=rotational_configuration,
+                                                       resolution=resolution_for_rot,
+                                                       output_name_wo_ext=None if post_alignment_xfm else
+                                                                          img.output_sub_dir + "_lsq6"))
+                          for img in imgs]
+    elif conf.lsq6_method == "lsq6_centre_estimation":
+        defaults = { 'blur_factors'    : [   90,    35,    17,    9,     4],
+                     'simplex_factors' : [  128,    64,    40,   28,    16],
+                     'step_factors'    : [   90,    35,    17,    9,     4],
+                     'gradients'       : [False, False, False, True, False],
+                     'translations'    : [  0.4,   0.4,   0.4,  0.4,   0.4] }
+        if conf.protocol_file is not None:
+            mt_conf = parse_minctracc_lin_protocol_file(conf.protocol_file, NotImplemented)
+        else:
+            mt_conf = conf_from_defaults(defaults)
+        xfms_to_target = [s.defer(multilevel_minctracc(source=img, target=target, conf=mt_conf,
+                                                       transform_info=["-est_center", "-est_translations"]))
+                          for img in imgs]
+    elif conf.lsq6_method == "lsq6_simple":
+        defaults = { 'blur_factors'    : [   17,    9,     4],
+                     'simplex_factors' : [   40,   28,    16],
+                     'step_factors'    : [   17,    9,     4],
+                     'gradients'       : [False, True, False],
+                     'translations'    : [  0.4,  0.4,   0.4] }
+
+
         if conf.protocol_file is not None:  # FIXME the proliferations of LSQ6Confs vs. MultilevelMinctraccConfs here is very confusing ...
-            confs = parse_minctracc_lin_protocol_file(conf.protocol_file, NotImplemented)
-        #else:
-        #    confs = confs
-        xfms_to_target = [s.defer(multilevel_minctracc(source=img, target=target, conf=confs))
+            mt_conf = parse_minctracc_lin_protocol_file(conf.protocol_file, NotImplemented)  # FIXME don't totally ignore confs here ?!
+        else:
+            mt_conf = conf_from_defaults(defaults)
+
+        xfms_to_target = [s.defer(multilevel_minctracc(source=img, target=target, conf=mt_conf))
                           for img in imgs]
     else:
         raise ValueError("bad lsq6 method: %s" % conf.lsq6_method)
