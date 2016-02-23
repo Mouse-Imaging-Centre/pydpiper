@@ -1590,9 +1590,11 @@ def lsq12_nlin_build_model(imgs       : List[MincAtom],
     nlin_resampled_imgs = [xfm_handler.resampled for xfm_handler in nlin_result.output]
 
     # concatenate the transformations from lsq12 and nlin before returning them
-    from_imgs_to_nlin_xfms = [s.defer(concat_xfmhandlers(xfms=[lsq12_xfmh, nlin_xfmh])) for
-                              lsq12_xfmh, nlin_xfmh in zip(lsq12_result.output,
-                                                           nlin_result.output)]
+    from_imgs_to_nlin_xfms = [s.defer(concat_xfmhandlers(xfms=[lsq12_xfmh, nlin_xfmh],
+                                                         name=img.filename_wo_ext + "_lsq12_and_nlin")) for
+                              lsq12_xfmh, nlin_xfmh, img in zip(lsq12_result.output,
+                                                                     nlin_result.output,
+                                                                     imgs)]
 
     return Result(stages=s, output=WithAvgImgs(output=from_imgs_to_nlin_xfms,
                                                avg_img=nlin_result.avg_img,
