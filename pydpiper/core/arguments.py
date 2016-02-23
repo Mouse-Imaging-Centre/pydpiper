@@ -390,6 +390,16 @@ def _mk_lsq6_parser():
                    action="store_true", default=False,
                    help="Use the first input file to the pipeline as the target for the "
                         "initial (often 6-parameter) alignment. [Default = %(default)s]")
+    # TODO: add information about the pride of models to the code in such a way that it
+    # is reflected on GitHub
+    p.add_argument("--pride-of-models", dest="pride_of_models",
+                   type=str, default=None,
+                   help="(registration_chain.py only!) Specify the top level directory of the \"pride\" of models. "
+                        "The idea is that you might want to use different initial models for "
+                        "the time points in your data. The directories in the top level should "
+                        "be named numerically indicating the time point for that model. E.g., "
+                        "there could be a directory \"3\" which contains the initial mode for "
+                        "time point 3, and one called \"10\" for time point 10. [Default = %(default)s]")
     # TODO: do we need to implement this option? This was for Kieran Short, but the procedure
     # he will be using in the future most likely will not involve this option.
     # group.add_argument("--lsq6-alternate-data-prefix", dest="lsq6_alternate_prefix",
@@ -526,13 +536,6 @@ def _mk_chain_parser():
                         "creation of more readable output file names. Default is \"common\". Note "
                         "that the common time point is the one created by an iterative group-wise "
                         "registration (inter-subject).")
-    # TODO: add information about the pride of models to the code in such a way that it
-    # is reflected on GitHub
-    p.add_argument("--pride-of-models", dest="pride_of_models",
-                   type=str, default=None,
-                   help="Specify the top level directory of the \"pride\" of models. "
-                        "The idea is that you might want to use different initial models for "
-                        "the time points in your data. [Default = %(default)s]")
     return p
 
 

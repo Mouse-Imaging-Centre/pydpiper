@@ -4,6 +4,8 @@ import random
 import shlex
 import subprocess
 import sys
+import inspect
+import re
 
 from configargparse import Namespace
 from typing import Any, cast, Dict, Generic, Iterable, List, Optional, Set, Tuple, TypeVar, Union
@@ -41,7 +43,7 @@ class InputSpace(AutoEnum):
 
 
 class TargetType(AutoEnum):
-    initial_model = bootstrap = target = ()
+    initial_model = bootstrap = target = pride_of_models = ()
 
 
 RegistrationConf = NamedTuple("RegistrationConf", [("input_space", InputSpace),
@@ -1740,9 +1742,10 @@ def to_lsq6_conf(lsq6_args : Namespace) -> LSQ6Conf:
     and we also change the three flags into a single enum + value to reduce the risk of later errors."""
     target_type, target_file = verify_correct_lsq6_target_options(init_model=lsq6_args.init_model,
                                                                   bootstrap=lsq6_args.bootstrap,
-                                                                  lsq6_target=lsq6_args.lsq6_target)
+                                                                  lsq6_target=lsq6_args.lsq6_target,
+                                                                  pride_of_models=lsq6_args.pride_of_models)
     new_args = lsq6_args.__dict__.copy()
-    for k in ["init_model", "bootstrap", "lsq6_target"]:
+    for k in ["init_model", "bootstrap", "lsq6_target", "pride_of_models"]:
         del new_args[k]
     new_args["target_type"] = target_type
     new_args["target_file"] = target_file
@@ -2039,34 +2042,56 @@ def get_registration_targets_from_init_model(init_model_standard_file: str,
 # TODO rename this function since it now returns interesting stuff ...
 def verify_correct_lsq6_target_options(init_model: str,
                                        lsq6_target: str,
-                                       bootstrap: bool) -> Tuple[TargetType, Optional[str]]:
+                                       bootstrap: bool,
+                                       pride_of_models: str = None) -> Tuple[TargetType, Optional[str]]:
     """
     This function can be called using the parameters that are set using 
     the flags:
     --init-model
     --lsq6-target
     --bootstrap
+    --pride-of-models (when running the registration_chain.py)
     
     it will check that exactly one of the options is provided, returning a filename (or None) tagged with
     the chosen target type, and raises an error otherwise.
     """
+
+    # the registration_chain.py is the only program that works with the
+    # pride_of_models. It is a little cleaner (I think?) to only show this
+    # option when the main calling program is actually the registration_chain.py.
+    # So let's find out! The stack is first in last out, so we need to last element:
+    calling_program = inspect.stack()[-1][1]
+
     # check how many options have been specified that can be used as the initial target
     number_of_target_options = sum((bootstrap is not False,
                                     init_model is not None,
-                                    lsq6_target is not None))
+                                    lsq6_target is not None,
+                                    pride_of_models is not None))
+
+    no_target_msg = "Error: please specify a target for the 6 parameter alignment. " \
+                    "Options are: --lsq6-target, --init-model, --bootstrap"
+    if re.search(calling_program, "registration_chain.py"):
+        no_target_msg += ", --pride-of-models"
+    too_many_target_msg = "Error: please specify only one of the following options: " \
+                          "--lsq6-target, --init-model, --bootstrap"
+    if re.search(calling_program, "registration_chain.py"):
+        too_many_target_msg += ", --pride-of-models. "
+    too_many_target_msg += " Don't know which target to use..."
+
+
     if number_of_target_options == 0:
-        raise ValueError("Error: please specify a target for the 6 parameter alignment. "
-                         "Options are: --lsq6-target, --init-model, --bootstrap.")
+        raise ValueError(no_target_msg)
     if number_of_target_options > 1:
-        raise ValueError("Error: please specify only one of the following options: "
-                         "--lsq6-target, --init-model, --bootstrap. Don't know which "
-                         "target to use...")
+        raise ValueError(too_many_target_msg)
+
     if init_model:
         return TargetType.initial_model, init_model
     elif bootstrap:
         return TargetType.bootstrap, None
     elif lsq6_target:
         return TargetType.target, lsq6_target
+    elif pride_of_models:
+        return TargetType.pride_of_models, pride_of_models
 
 
 # TODO: why is this separate?
