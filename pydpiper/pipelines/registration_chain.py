@@ -15,7 +15,7 @@ from pydpiper.minc.registration import (Subject, Stages, mincANTS_NLIN_build_mod
                                         RegistrationConf, InputSpace, LSQ12Conf, lsq12_nlin_build_model, TargetType,
                                         MultilevelMincANTSConf, create_quality_control_images,
                                         check_MINC_files_have_equal_dimensions_and_resolution,
-                                        default_lsq12_multi_level_minctracc, get_pride_of_models_mapping)
+                                        default_lsq12_multilevel_minctracc, get_pride_of_models_mapping)
 from pydpiper.minc.files import MincAtom
 from pydpiper.execution.application import execute  # type: ignore
 from pydpiper.core.arguments import (application_parser,
@@ -288,7 +288,7 @@ def chain(options):
 
     chain_xfms = { s_id : s.defer(intrasubject_registrations(
                                     subj=subj,
-                                    linear_conf=default_lsq12_multi_level_minctracc,
+                                    linear_conf=default_lsq12_multilevel_minctracc,
                                     nlin_conf=mincANTS_default_conf.replace(file_resolution=options.registration.resolution,
                                                                   iterations="100x100x100x20")))
                    for s_id, subj in subj_id_to_Subjec_for_within_dict.items() }
@@ -388,6 +388,8 @@ def parse_csv(rows : Iterator[Row], common_time_pt : int) -> Dict[str, Subject[F
     ...   == { 's1' : Subject(intersubject_registration_time_pt=1, time_pt_dict={ 1 : 's1_1.mnc'})})
     True
     """
+    # FIXME the type/name of `rows` is slightly a lie; it probably has a header row which isn't an ordinary Row
+    # (otherwise we wouldn't be able to use csv.DictReader on it)
     subject_info = defaultdict(lambda: Subject(intersubject_registration_time_pt=None))
     # Populate the subject -> Subject dictionary from the rows"""
     for row in csv.DictReader(rows):

@@ -1,4 +1,4 @@
-#!/usr/bin/env/python
+#!/usr/bin/env python3
 
 import sys
 from setuptools import setup
@@ -16,6 +16,7 @@ setup(name='pydpiper',
         'ConfigArgParse',
         'networkx',
         #'pygraphviz',
+        'ordered-set',
         'pyminc',
         'Pyro4',
         'pytest',
@@ -30,7 +31,8 @@ setup(name='pydpiper',
                'pydpiper/pipelines/LSQ12.py', 
                'pydpiper/pipelines/LSQ6.py',
                'pydpiper/pipelines/MBM.py',
-               'pydpiper/pipelines/registration_chain.py'],
+               'pydpiper/pipelines/registration_chain.py',
+               'pydpiper/pipelines/twolevel_model_building.py'],
       #tests_require=['pytest']
       )
 

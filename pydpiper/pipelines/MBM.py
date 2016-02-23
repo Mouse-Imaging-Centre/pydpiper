@@ -2,6 +2,9 @@
 import csv
 import os.path
 
+from configargparse import Namespace
+from typing import List
+
 from pydpiper.core.util import NamedTuple
 
 from pydpiper.core.stages       import Result, Stages
@@ -9,7 +12,7 @@ from pydpiper.core.stages       import Result, Stages
 from pydpiper.minc.files        import MincAtom
 from pydpiper.minc.registration import (lsq6_nuc_inorm, lsq12_nlin_build_model, registration_targets,
                                         mincANTS_default_conf, MultilevelMincANTSConf, LSQ6Conf, LSQ12Conf,
-                                        get_resolution_from_file, parse_mincANTS_protocol_file)
+                                        get_resolution_from_file, parse_mincANTS_protocol_file, concat_xfmhandlers)
 from pydpiper.minc.analysis     import determinants_at_fwhms, StatsConf
 from pydpiper.core.arguments    import (lsq6_parser, lsq12_parser, nlin_parser, stats_parser, CompoundParser,
                                         AnnotatedParser, NLINConf)
@@ -24,7 +27,14 @@ MBMConf = NamedTuple('MBMConf', [('lsq6',  LSQ6Conf),
 # TODO abstract out some common configuration functionality and think about argparsing ...
 
 
-def mbm(options : MBMConf):
+def mbm_pipeline(options : MBMConf):
+    imgs = [MincAtom(name, pipeline_sub_dir=os.path.join(options.application.output_directory,
+                                                         options.application.pipeline_name + "_processed"))
+            for name in options.application.files]
+
+    return mbm(imgs=imgs, options=options)
+
+def mbm(imgs : List[MincAtom], options : MBMConf):
 
     # TODO could also allow pluggable pipeline parts e.g. LSQ6 could be substituted out for the modified LSQ6
     # for the kidney tips, etc...
@@ -32,15 +42,14 @@ def mbm(options : MBMConf):
     pipeline_name = options.application.pipeline_name
 
     # TODO this is tedious and annoyingly similar to the registration chain ...
-    processed_dir = os.path.join(output_dir, pipeline_name + "_processed")
+
+    #processed_dir = os.path.join(output_dir, pipeline_name + "_processed")
     lsq12_dir = os.path.join(output_dir, pipeline_name + "_lsq12")
     nlin_dir = os.path.join(output_dir, pipeline_name + "_nlin")
 
-    imgs = [MincAtom(name, pipeline_sub_dir=processed_dir) for name in options.application.files]
-
     s = Stages()
 
-    if len(options.application.files) == 0:
+    if len(imgs) == 0:
         raise ValueError("Please, some files!")
 
     # TODO this is quite tedious and duplicates stuff in the registration chain ...
@@ -83,7 +92,16 @@ def mbm(options : MBMConf):
     determinants = [s.defer(determinants_at_fwhms(xfm, blur_fwhms=options.mbm.stats.stats_kernels))
                     for xfm in lsq12_nlin_result.output]
 
-    return Result(stages=s, output=determinants)  # TODO: add more outputs
+    overall_xfms = [s.defer(concat_xfmhandlers([rigid_xfm, nlin_xfm]))
+                    for rigid_xfm, nlin_xfm in zip(lsq6_result, lsq12_nlin_result.output)]
+
+    return Result(stages=s,
+                  output=Namespace(rigid_xfms=lsq6_result,
+                                   lsq12_nlin_xfms=lsq12_nlin_result,
+                                   overall_xfms=overall_xfms,
+                                   # TODO transpose these fields?
+                                   avg_img=lsq12_nlin_result.avg_img,  # inconsistent w/ WithAvgImgs[...]-style outputs
+                                   determinants=determinants))  # TODO better naming
 
 # TODO write a function 'ordinary_parser' ...
 mbm_parser = CompoundParser(
@@ -94,7 +112,7 @@ mbm_parser = CompoundParser(
 
 # TODO could make an MBMConf and cast to it ...
 mbm_application = mk_application(parsers=[AnnotatedParser(parser=mbm_parser, namespace='mbm')],
-                                 pipeline=mbm)
+                                 pipeline=mbm_pipeline)
 
 
 # stuff to do:

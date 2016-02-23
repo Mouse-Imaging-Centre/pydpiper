@@ -1,3 +1,4 @@
+import ordered_set
 import shlex
 from typing import Any, Callable, Generic, Iterable, List, Set, Tuple, TypeVar, Union
 
@@ -25,7 +26,7 @@ class CmdStage(object):
         self.outputs = outputs         # type: Tuple[FileAtom, ...]
         #self.conf    = conf           # not needed at present -- see note on render_fn
         self._cmd    = cmd             # type: List[str]
-        # TODO: why not expose this publically?
+        # TODO: why not expose this publicly?
         self.when_runnable_hooks = []  # type: List[Callable[[], Any]]
         # TODO: make the hooks accessible via the constructor?
         self.when_finished_hooks = []  # type: List[Callable[[], Any]]
@@ -74,7 +75,7 @@ class CmdStage(object):
 
 T = TypeVar('T')
 
-class Stages(set):
+class Stages(ordered_set.OrderedSet):
     """A set of stages to be run.  In addition to the usual set operations,
     contains a single extra method, `defer`.  The idea here is as follows: procedures
     to create various commands and pipelines will return both
