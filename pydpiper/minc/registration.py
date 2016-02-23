@@ -1977,8 +1977,14 @@ def lsq6_nuc_inorm(imgs: List[MincAtom],
 
 def get_registration_targets_from_init_model(init_model_standard_file: str,
                                              output_dir: str,
-                                             pipeline_name: str) -> RegistrationTargets:
+                                             pipeline_name: str,
+                                             timepoint: str = None) -> RegistrationTargets:
     """
+    -- timepoint - this argument is used when a pride of models
+                   is specified by the user (registration_chain).
+                   In that case several directories should be created,
+                   one for each of the time points
+
     An initial model can have two forms:
     
     1) a model that only has standard space files
@@ -1993,7 +1999,10 @@ def get_registration_targets_from_init_model(init_model_standard_file: str,
     name_native_to_standard.xfm --> Transform from native space to standard space
     """
     # the output directory for files related to the initial model:
-    init_model_output_dir = os.path.join(output_dir, pipeline_name + "_init_model")
+    if not timepoint:
+        init_model_output_dir = os.path.join(output_dir, pipeline_name + "_init_model")
+    else:
+        init_model_output_dir = os.path.join(output_dir, pipeline_name + "_" + timepoint +"_init_model")
 
     # first things first, is this a nice MINC file:
     if not can_read_MINC_file(init_model_standard_file):
