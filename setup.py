@@ -31,7 +31,8 @@ setup(name='pydpiper',
                'pydpiper/pipelines/LSQ12.py', 
                'pydpiper/pipelines/LSQ6.py',
                'pydpiper/pipelines/MBM.py',
-               'pydpiper/pipelines/registration_chain.py'],
+               'pydpiper/pipelines/registration_chain.py',
+               'pydpiper/pipelines/twolevel_model_building.py'],
       #tests_require=['pytest']
       )
 

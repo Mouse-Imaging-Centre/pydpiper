@@ -1,3 +1,4 @@
+import csv
 import os.path
 import os
 import random
@@ -131,6 +132,12 @@ def atoms_from_same_subject(atoms: List[FileAtom]):
 
 # TODO should these atoms/modules be remade as distinct classes with public outf and stage fields (only)?
 # TODO output_dir (work_dir?) isn't used but could be useful; assert not(subdir and output_dir)?
+
+# FIXME mincblur has a slight weirdness that it returns a single file determined by the gradient parameter,
+# but the command-line tool actually creates both files if gradient=True.  As a result, there's a possibility that
+# two distinct mincblur stages may try to write to the same blur file, since that output is not tracked in the
+# mincblur stage running with -gradient.  Obvious solution: just return both outputs.
+# Maybe this is one cause of the empty/corrupted files occasionally encountered?
 def mincblur(img: MincAtom,
              fwhm: float,
              gradient: bool = False,
@@ -1253,9 +1260,9 @@ def LSQ12_mincANTS_nlin(source: MincAtom,
     # we need to resample the source file in this case, because that will
     # be the input for the non linear stage
     lsq12_transform_handler = s.defer(multilevel_minctracc(source,
-                                                   target,
-                                                   linear_conf,
-                                                   resample_input=True))
+                                                           target,
+                                                           conf=linear_conf,
+                                                           resample_input=True))
 
     nlin_transform_handler = s.defer(mincANTS(source=lsq12_transform_handler.resampled,
                                               target=target,
@@ -1440,12 +1447,13 @@ def multilevel_pairwise_minctracc(imgs: List[MincAtom],
         raise ValueError("currently need at least two images")
         # otherwise 0 imgs passed to mincavg (could special-case)
 
+    confs = conf.confs
     # the name of the average file that is produced by this function:
     if not output_name_for_avg:
         all_same_transform_type = True
-        first_transform_type = conf[0].linear_conf.transform_type if conf[0].linear_conf else "nlin"
+        first_transform_type = confs[0].linear_conf.transform_type if confs[0].linear_conf else "nlin"
         alternate_name = "avg"
-        for stage in conf:
+        for stage in confs:
             current_transform_type = stage.linear_conf.transform_type if stage.linear_conf else "nlin"
             if current_transform_type != first_transform_type:
                 all_same_transform_type = False
@@ -1463,9 +1471,9 @@ def multilevel_pairwise_minctracc(imgs: List[MincAtom],
         """Compute xfm from src_img to each target img, average them, and resample along the result"""
         # TODO to save creation of lots of duplicate blurs, could use multilevel_minctracc_all,
         # being careful not to register the img against itself
-        # TODO: do something about the configuration, currently it all seems a bit broken...
+        # FIXME: do something about the configuration, currently it all seems a bit broken...
         xfms = [s.defer(multilevel_minctracc(src_img, target_img,
-                                             confs=default_lsq12_multilevel_minctracc))
+                                             conf=default_lsq12_multilevel_minctracc))
                 for target_img in target_imgs if src_img != target_img]  # TODO src_img.name != ....name ??
 
         avg_xfm = s.defer(xfmaverage([xfm.xfm for xfm in xfms],
@@ -1555,13 +1563,12 @@ def lsq12_nlin_build_model(imgs       : List[MincAtom],
                            lsq12_dir  : str,
                            nlin_dir   : str,
                            nlin_conf  : Union[MultilevelMinctraccConf, MultilevelMincANTSConf],
-                           resolution : float) -> Result[List[XfmHandler]]:
+                           resolution : float) -> Result[WithAvgImgs[List[XfmHandler]]]:
     """
     Runs both a pairwise lsq12 registration followed by a non linear
     registration procedure on the input files.
     """
     s = Stages()
-
 
     # TODO: make sure that we pass on a correct configuration for lsq12_pairwise
     # it should be able to get this passed in....
@@ -1787,9 +1794,9 @@ def lsq6(imgs: List[MincAtom],
                            use_gradient=defaults["gradients"][i],
                            use_masks=True,
                            linear_conf=default_linear_minctracc_conf('lsq6').replace(w_translations=[defaults["translations"][i]] * 3,
-                                                                                     simplex=defaults["simplex_factors"][i]),
+                                                                                     simplex=defaults["simplex_factors"][i] * resolution),
                            nonlinear_conf=None)
-            for i in range(len(defaults["blur_factors"]))])  # FIXME: don't assume all lengths are equal
+             for i in range(len(defaults["blur_factors"]))])  # FIXME: don't assume all lengths are equal
         return conf
 
     ############################################################################
@@ -1800,10 +1807,10 @@ def lsq6(imgs: List[MincAtom],
         # though you may want to override ...
         rotational_configuration, resolution_for_rot = \
             get_parameters_for_rotational_minctracc(resolution=resolution,
-                                                    rotation_tmp_dir=lsq6_conf.rotation_tmp_dir,
-                                                    rotation_range=lsq6_conf.rotation_range,
-                                                    rotation_interval=lsq6_conf.rotation_interval,
-                                                    rotation_params=lsq6_conf.rotation_params)
+                                                    rotation_tmp_dir=conf.rotation_tmp_dir,
+                                                    rotation_range=conf.rotation_range,
+                                                    rotation_interval=conf.rotation_interval,
+                                                    rotation_params=conf.rotation_params)
         # now call rotational_minctracc on all input images 
         xfms_to_target = [s.defer(rotational_minctracc(source=img, target=target,
                                                        conf=rotational_configuration,
@@ -2112,7 +2119,6 @@ def registration_targets(lsq6_conf: LSQ6Conf,
     # TODO currently the 'files' must come from the app_conf, but we might want to supply them separately
     # (e.g., for a pipeline which takes files in a csv but for which, e.g., bootstrap is still meaningful)
 
-    target_file = lsq6_conf.target_file
     # if we are dealing with either an lsq6 target or a bootstrap model
     # create the appropriate directories for those
     if target_type == TargetType.target:

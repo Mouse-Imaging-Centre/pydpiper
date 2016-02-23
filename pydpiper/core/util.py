@@ -1,9 +1,10 @@
 import os
 import functools  # type: ignore
+from collections import defaultdict
 from operator import add
 from enum import Enum
 import typing
-from typing import Any, Callable, List, Set, Tuple, TypeVar
+from typing import Any, Callable, Dict, Iterable, List, Set, Tuple, TypeVar
 
 from pydpiper.execution.pipeline import CmdStage
 
@@ -27,6 +28,17 @@ def NamedTuple(name : str, fields : List[Tuple[str, Callable[[Any], Any]]]):
     return F
 
 
+T = TypeVar('T')
+U = TypeVar('U')
+
+
+def collect(xs : Iterable[Tuple[T, U]]) -> Dict[T, List[U]]:  # TODO could add 'by=...' instead of just accumulating
+    d = defaultdict(list)
+    for a, b in xs:
+        d[a] += [b]
+    return d
+
+
 def raise_(err: BaseException):
     """`raise` is a keyword and `raise e` isn't an expression, so can't be used freely"""
     raise err
@@ -45,9 +57,6 @@ def explode(filename: str) -> Tuple[str, str, str]:
     base, ext = os.path.splitext(filename)
     directory, name = os.path.split(base)
     return (directory, name, ext)
-
-
-T = TypeVar('T')
 
 
 def pairs(lst: List[T]) -> List[Tuple[T, T]]:
