@@ -2149,6 +2149,57 @@ def registration_targets(lsq6_conf: LSQ6Conf,
     else:
         raise ValueError("Invalid target type: %s" % lsq6_conf.target_type)
 
+def is_number(s):
+    try:
+        float(s)
+        return True
+    except ValueError:
+        return False
+
+def get_pride_of_models_mapping(pride_top_level_dir: str,
+                                output_dir: str,
+                                pipeline_name: str):
+    """
+    Assumptions/requirements for a pride of models:
+    -- all initial models have the same resolution
+
+    returns:
+    dictionary mapping from:
+    time_point -> RegistrationTargets
+    """
+    list_of_initial_model_dirs = os.listdir(pride_top_level_dir)
+    common_resolution = None
+
+    pride_of_models_dict = {}
+    for init_model_dir in list_of_initial_model_dirs:
+        # in order to use the names of the initial model directories as
+        # timepoints, they need to be integers (floats would be okay too)
+        if not is_number(init_model_dir):
+            raise ValueError("Error: the directory names of the initial models "
+                             "that make up the pride of models are used to determine "
+                             "its timepoint. These directory names need to be either "
+                             "integers or floats. Please rename this directory: " +
+                             os.path.join(pride_top_level_dir, init_model_dir))
+
+        files_in_dir = next(os.walk(os.path.join(pride_top_level_dir, init_model_dir)))[2]
+        commonprefix = os.path.commonprefix(files_in_dir)
+        model_in_standard_space = os.path.join(pride_top_level_dir, init_model_dir, commonprefix + ".mnc")
+        if not common_resolution:
+            common_resolution = get_resolution_from_file(model_in_standard_space)
+        else:
+            if not common_resolution == get_resolution_from_file(model_in_standard_space):
+                raise ValueError("Error: we currently require all the initial models in the "
+                                 "pride of models to have the same resolution. The resolution of "
+                                 "this file: " + str(model_in_standard_space) + " (" +
+                                 str(get_resolution_from_file(model_in_standard_space)) + ") is different "
+                                 "from the resolution we found so far: " + str(common_resolution))
+
+        pride_of_models_dict[init_model_dir] = get_registration_targets_from_init_model(model_in_standard_space,
+                                                                                        output_dir,
+                                                                                        pipeline_name,
+                                                                                        init_model_dir)
+    return pride_of_models_dict
+
 
 def get_resolution_from_file(input_file: str) -> float:
     """
