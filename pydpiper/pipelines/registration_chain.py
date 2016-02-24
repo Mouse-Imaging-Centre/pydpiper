@@ -15,7 +15,7 @@ from pydpiper.minc.registration import (Subject, Stages, mincANTS_NLIN_build_mod
                                         RegistrationConf, InputSpace, LSQ12Conf, lsq12_nlin_build_model, TargetType,
                                         MultilevelMincANTSConf, create_quality_control_images,
                                         check_MINC_files_have_equal_dimensions_and_resolution,
-                                        default_lsq12_multilevel_minctracc)
+                                        default_lsq12_multilevel_minctracc, get_pride_of_models_mapping)
 from pydpiper.minc.files import MincAtom
 from pydpiper.execution.application import execute  # type: ignore
 from pydpiper.core.arguments import (application_parser,
@@ -288,7 +288,7 @@ def chain(options):
 
     chain_xfms = { s_id : s.defer(intrasubject_registrations(
                                     subj=subj,
-                                    linear_conf=default_lsq12_multi_level_minctracc,
+                                    linear_conf=default_lsq12_multilevel_minctracc,
                                     nlin_conf=mincANTS_default_conf.replace(file_resolution=options.registration.resolution,
                                                                   iterations="100x100x100x20")))
                    for s_id, subj in subj_id_to_Subjec_for_within_dict.items() }
@@ -509,10 +509,23 @@ if __name__ == "__main__":
     # of any actual function? Maybe the right time to set this, is here
     # when options are gathered?
     if not options.registration.resolution:
+        # if the target for the registration_chain comes from the pride_of_models
+        # we can not use the registration_targets() function. The pride_of_models
+        # works in a fairly different way, so we will separate out that option.
+        if options.lsq6.target_type == TargetType.pride_of_models:
+            pride_of_models_mapping = get_pride_of_models_mapping(options.lsq6.target_file,
+                                                                  options.application.output_directory,
+                                                                  options.application.pipeline_name)
+            # all initial models that are part of the pride of models must have
+            # the same resolution (it's currently a requirement). So we can get the
+            # resolution from any of the RegistrationTargets:
+            random_key = list(pride_of_models_mapping)[0]
+            file_for_resolution = pride_of_models_mapping[random_key].registration_standard.path
+        else:
+            file_for_resolution = registration_targets(lsq6_conf=options.lsq6,
+                                                       app_conf=options.application).registration_standard.path
         options.registration = options.registration.replace(
-                                   resolution=get_resolution_from_file(
-                                       registration_targets(lsq6_conf=options.lsq6,
-                                                            app_conf=options.application).registration_standard.path))
+                                   resolution=get_resolution_from_file(file_for_resolution))
     
     print("Ha! The registration resolution is: %s\n" % options.registration.resolution)
     # *** *** *** *** *** *** *** *** ***

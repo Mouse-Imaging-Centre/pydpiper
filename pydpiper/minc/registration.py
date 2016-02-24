@@ -5,6 +5,8 @@ import random
 import shlex
 import subprocess
 import sys
+import inspect
+import re
 
 from configargparse import Namespace
 from typing import Any, cast, Dict, Generic, Iterable, List, Optional, Set, Tuple, TypeVar, Union
@@ -42,7 +44,7 @@ class InputSpace(AutoEnum):
 
 
 class TargetType(AutoEnum):
-    initial_model = bootstrap = target = ()
+    initial_model = bootstrap = target = pride_of_models = ()
 
 
 RegistrationConf = NamedTuple("RegistrationConf", [("input_space", InputSpace),
@@ -884,6 +886,8 @@ def minctracc(source: MincAtom,
                                             "%s.xfm" % (transform_name_wo_ext)),
                           pipeline_sub_dir=source.pipeline_sub_dir,
                           output_sub_dir=source.output_sub_dir)
+    # the generation provided can be 0 (zero), but that's a proper generation,
+    # so we should explicitly test for "is not None" here.
     elif generation is not None:
         if lin_conf:
             trans_type = lin_conf.transform_type
@@ -1121,7 +1125,7 @@ def mincANTS(source: MincAtom,
     if transform_name_wo_ext:
         name = os.path.join(source.pipeline_sub_dir, source.output_sub_dir, 'transforms',
                             "%s.xfm" % (transform_name_wo_ext))
-    elif generation:
+    elif generation != None:
         name = os.path.join(source.pipeline_sub_dir, source.output_sub_dir, 'transforms',
                             "%s_mincANTS_nlin-%s.xfm" % (source.filename_wo_ext, generation))
     else:
@@ -1591,9 +1595,11 @@ def lsq12_nlin_build_model(imgs       : List[MincAtom],
     nlin_resampled_imgs = [xfm_handler.resampled for xfm_handler in nlin_result.output]
 
     # concatenate the transformations from lsq12 and nlin before returning them
-    from_imgs_to_nlin_xfms = [s.defer(concat_xfmhandlers(xfms=[lsq12_xfmh, nlin_xfmh])) for
-                              lsq12_xfmh, nlin_xfmh in zip(lsq12_result.output,
-                                                           nlin_result.output)]
+    from_imgs_to_nlin_xfms = [s.defer(concat_xfmhandlers(xfms=[lsq12_xfmh, nlin_xfmh],
+                                                         name=img.filename_wo_ext + "_lsq12_and_nlin")) for
+                              lsq12_xfmh, nlin_xfmh, img in zip(lsq12_result.output,
+                                                                     nlin_result.output,
+                                                                     imgs)]
 
     return Result(stages=s, output=WithAvgImgs(output=from_imgs_to_nlin_xfms,
                                                avg_img=nlin_result.avg_img,
@@ -1743,9 +1749,10 @@ def to_lsq6_conf(lsq6_args : Namespace) -> LSQ6Conf:
     and we also change the three flags into a single enum + value to reduce the risk of later errors."""
     target_type, target_file = verify_correct_lsq6_target_options(init_model=lsq6_args.init_model,
                                                                   bootstrap=lsq6_args.bootstrap,
-                                                                  lsq6_target=lsq6_args.lsq6_target)
+                                                                  lsq6_target=lsq6_args.lsq6_target,
+                                                                  pride_of_models=lsq6_args.pride_of_models)
     new_args = lsq6_args.__dict__.copy()
-    for k in ["init_model", "bootstrap", "lsq6_target"]:
+    for k in ["init_model", "bootstrap", "lsq6_target", "pride_of_models"]:
         del new_args[k]
     new_args["target_type"] = target_type
     new_args["target_file"] = target_file
@@ -2005,8 +2012,14 @@ def lsq6_nuc_inorm(imgs: List[MincAtom],
 
 def get_registration_targets_from_init_model(init_model_standard_file: str,
                                              output_dir: str,
-                                             pipeline_name: str) -> RegistrationTargets:
+                                             pipeline_name: str,
+                                             timepoint: str = None) -> RegistrationTargets:
     """
+    -- timepoint - this argument is used when a pride of models
+                   is specified by the user (registration_chain).
+                   In that case several directories should be created,
+                   one for each of the time points
+
     An initial model can have two forms:
     
     1) a model that only has standard space files
@@ -2021,7 +2034,10 @@ def get_registration_targets_from_init_model(init_model_standard_file: str,
     name_native_to_standard.xfm --> Transform from native space to standard space
     """
     # the output directory for files related to the initial model:
-    init_model_output_dir = os.path.join(output_dir, pipeline_name + "_init_model")
+    if not timepoint:
+        init_model_output_dir = os.path.join(output_dir, pipeline_name + "_init_model")
+    else:
+        init_model_output_dir = os.path.join(output_dir, pipeline_name + "_" + timepoint +"_init_model")
 
     # first things first, is this a nice MINC file:
     if not can_read_MINC_file(init_model_standard_file):
@@ -2072,34 +2088,56 @@ def get_registration_targets_from_init_model(init_model_standard_file: str,
 # TODO rename this function since it now returns interesting stuff ...
 def verify_correct_lsq6_target_options(init_model: str,
                                        lsq6_target: str,
-                                       bootstrap: bool) -> Tuple[TargetType, Optional[str]]:
+                                       bootstrap: bool,
+                                       pride_of_models: str = None) -> Tuple[TargetType, Optional[str]]:
     """
     This function can be called using the parameters that are set using 
     the flags:
     --init-model
     --lsq6-target
     --bootstrap
+    --pride-of-models (when running the registration_chain.py)
     
     it will check that exactly one of the options is provided, returning a filename (or None) tagged with
     the chosen target type, and raises an error otherwise.
     """
+
+    # the registration_chain.py is the only program that works with the
+    # pride_of_models. It is a little cleaner (I think?) to only show this
+    # option when the main calling program is actually the registration_chain.py.
+    # So let's find out! The stack is first in last out, so we need to last element:
+    calling_program = inspect.stack()[-1][1]
+
     # check how many options have been specified that can be used as the initial target
     number_of_target_options = sum((bootstrap is not False,
                                     init_model is not None,
-                                    lsq6_target is not None))
+                                    lsq6_target is not None,
+                                    pride_of_models is not None))
+
+    no_target_msg = "Error: please specify a target for the 6 parameter alignment. " \
+                    "Options are: --lsq6-target, --init-model, --bootstrap"
+    if re.search(calling_program, "registration_chain.py"):
+        no_target_msg += ", --pride-of-models"
+    too_many_target_msg = "Error: please specify only one of the following options: " \
+                          "--lsq6-target, --init-model, --bootstrap"
+    if re.search(calling_program, "registration_chain.py"):
+        too_many_target_msg += ", --pride-of-models. "
+    too_many_target_msg += " Don't know which target to use..."
+
+
     if number_of_target_options == 0:
-        raise ValueError("Error: please specify a target for the 6 parameter alignment. "
-                         "Options are: --lsq6-target, --init-model, --bootstrap.")
+        raise ValueError(no_target_msg)
     if number_of_target_options > 1:
-        raise ValueError("Error: please specify only one of the following options: "
-                         "--lsq6-target, --init-model, --bootstrap. Don't know which "
-                         "target to use...")
+        raise ValueError(too_many_target_msg)
+
     if init_model:
         return TargetType.initial_model, init_model
     elif bootstrap:
         return TargetType.bootstrap, None
     elif lsq6_target:
         return TargetType.target, lsq6_target
+    elif pride_of_models:
+        return TargetType.pride_of_models, pride_of_models
 
 
 # TODO: why is this separate?
@@ -2144,6 +2182,57 @@ def registration_targets(lsq6_conf: LSQ6Conf,
         return get_registration_targets_from_init_model(target_file, output_dir, pipeline_name)
     else:
         raise ValueError("Invalid target type: %s" % lsq6_conf.target_type)
+
+def is_number(s):
+    try:
+        float(s)
+        return True
+    except ValueError:
+        return False
+
+def get_pride_of_models_mapping(pride_top_level_dir: str,
+                                output_dir: str,
+                                pipeline_name: str):
+    """
+    Assumptions/requirements for a pride of models:
+    -- all initial models have the same resolution
+
+    returns:
+    dictionary mapping from:
+    time_point -> RegistrationTargets
+    """
+    list_of_initial_model_dirs = os.listdir(pride_top_level_dir)
+    common_resolution = None
+
+    pride_of_models_dict = {}
+    for init_model_dir in list_of_initial_model_dirs:
+        # in order to use the names of the initial model directories as
+        # timepoints, they need to be integers (floats would be okay too)
+        if not is_number(init_model_dir):
+            raise ValueError("Error: the directory names of the initial models "
+                             "that make up the pride of models are used to determine "
+                             "its timepoint. These directory names need to be either "
+                             "integers or floats. Please rename this directory: " +
+                             os.path.join(pride_top_level_dir, init_model_dir))
+
+        files_in_dir = next(os.walk(os.path.join(pride_top_level_dir, init_model_dir)))[2]
+        commonprefix = os.path.commonprefix(files_in_dir)
+        model_in_standard_space = os.path.join(pride_top_level_dir, init_model_dir, commonprefix + ".mnc")
+        if not common_resolution:
+            common_resolution = get_resolution_from_file(model_in_standard_space)
+        else:
+            if not common_resolution == get_resolution_from_file(model_in_standard_space):
+                raise ValueError("Error: we currently require all the initial models in the "
+                                 "pride of models to have the same resolution. The resolution of "
+                                 "this file: " + str(model_in_standard_space) + " (" +
+                                 str(get_resolution_from_file(model_in_standard_space)) + ") is different "
+                                 "from the resolution we found so far: " + str(common_resolution))
+
+        pride_of_models_dict[init_model_dir] = get_registration_targets_from_init_model(model_in_standard_space,
+                                                                                        output_dir,
+                                                                                        pipeline_name,
+                                                                                        init_model_dir)
+    return pride_of_models_dict
 
 
 def get_resolution_from_file(input_file: str) -> float:
