@@ -13,7 +13,7 @@ import os
 
 def lin_from_nlin(xfm : XfmHandler) -> Result[XfmHandler]:
     # TODO add dir argument
-    out_xfm = xfm.xfm.newname_with_suffix("_linear_part")
+    out_xfm = xfm.xfm.newname_with_suffix("_linear_part", subdir="tmp")
     stage = CmdStage(inputs=(xfm.source, xfm.xfm), outputs=(out_xfm,),
                      cmd = (['lin_from_nlin', '-clobber', '-lsq12']
                             + (['-mask', xfm.source.mask.path] if xfm.source.mask else [])
@@ -29,7 +29,7 @@ def lin_from_nlin(xfm : XfmHandler) -> Result[XfmHandler]:
 def minc_displacement(xfm : XfmHandler) -> Result[MincAtom]:
     # TODO: add dir argument
     # TODO: this coercion is lame
-    output_grid = xfmToMinc(xfm.xfm.newname_with_suffix("_displacement", ext='.mnc'))
+    output_grid = xfmToMinc(xfm.xfm.newname_with_suffix("_displacement", ext='.mnc', subdir="tmp"))
     stage = CmdStage(inputs=(xfm.source, xfm.xfm), outputs=(output_grid,),
                      cmd=['minc_displacement', '-clobber', xfm.source.path, xfm.xfm.path, output_grid.path])
     stage.set_log_file(os.path.join(output_grid.pipeline_sub_dir,
@@ -38,7 +38,7 @@ def minc_displacement(xfm : XfmHandler) -> Result[MincAtom]:
                                     "minc_displacement_" + output_grid.filename_wo_ext + ".log"))
     return Result(stages=Stages([stage]), output=output_grid)
 
-def mincblob(op : str, grid : MincAtom) -> Result[MincAtom]:
+def mincblob(op : str, grid : MincAtom, subdir : str = "tmp") -> Result[MincAtom]:
     """
     Low-level mincblob wrapper -- use `determinant` instead to actually compute a determinant ...
     >>> stages = mincblob('determinant', MincAtom("/images/img_1.mnc", pipeline_sub_dir="/tmp")).stages
@@ -48,7 +48,7 @@ def mincblob(op : str, grid : MincAtom) -> Result[MincAtom]:
     # FIXME could automatically add 1 here for determinant; what about others?
     if op not in ["determinant", "trace", "translation", "magnitude"]:
         raise ValueError('mincblob: invalid operation %s' % op)
-    out_grid = grid.newname_with_suffix('_' + op)
+    out_grid = grid.newname_with_suffix('_' + op, subdir=subdir)
     s = CmdStage(inputs=(grid,), outputs=(out_grid,),
                  cmd=['mincblob', '-clobber', '-' + op, grid.path, out_grid.path])
     s.set_log_file(os.path.join(out_grid.pipeline_sub_dir,
@@ -58,12 +58,12 @@ def mincblob(op : str, grid : MincAtom) -> Result[MincAtom]:
     return Result(stages=Stages([s]), output=out_grid)
     #TODO add a 'before' to newname_with, e.g., before="grid" -> disp._grid.mnc
 
-def det_and_log_det(displacement_grid : MincAtom, fwhm : float) -> Result[Tuple[MincAtom, MincAtom]]:
+def det_and_log_det(displacement_grid : MincAtom, fwhm : Optional[float]) -> Result[Tuple[MincAtom, MincAtom]]:
     s = Stages()
     # TODO: naming doesn't correspond with the (automagic) file naming: d-1 <=> det(f), det <=> det+1(f)
     det = s.defer(determinant(s.defer(smooth_vector(source=displacement_grid, fwhm=fwhm))
-                           if fwhm else displacement_grid))
-    log_det = s.defer(mincmath(op='log', vols=[det]))
+                              if fwhm else displacement_grid))
+    log_det = s.defer(mincmath(op='log', vols=[det], subdir="stats-volumes"))
     return Result(stages=s, output=(det, log_det))
 
 def nlin_part(xfm : XfmHandler, inv_xfm : Optional[XfmHandler] = None) -> Result[XfmHandler]:
@@ -117,9 +117,9 @@ def determinants_at_fwhms(xfm        : XfmHandler,
     # TODO add the option to add additional xfm?  (do we even need this? used in mbm etc but might be trivial)
    
     fwhms = [float(x) for x in blur_fwhms.split(',')]
- 
-    nlin_dets = [(fwhm, s.defer(det_and_log_det(displacement_grid=nlin_disp, fwhm=fwhm))) for fwhm in fwhms]
-    full_dets = [(fwhm, s.defer(det_and_log_det(displacement_grid=full_disp, fwhm=fwhm))) for fwhm in fwhms]
+
+    nlin_dets = [(fwhm, s.defer(det_and_log_det(displacement_grid=nlin_disp, fwhm=fwhm))) for fwhm in fwhms + [None]]
+    full_dets = [(fwhm, s.defer(det_and_log_det(displacement_grid=full_disp, fwhm=fwhm))) for fwhm in fwhms + [None]]
     # won't work when additional xfm is specified for nlin_dets:
     #(nlin_dets, full_dets) = [[(fwhm, s.defer(det_and_log_det(disp, fwhm))) for fwhm in blur_fwhms]
     #                          for disp in (nlin_disp, full_disp)]
@@ -130,7 +130,8 @@ def determinants_at_fwhms(xfm        : XfmHandler,
 def mincmath(op       : str,
              vols     : List[MincAtom],
              const    : Optional[float] = None,
-             new_name : Optional[str]   = None) -> Result[MincAtom]:
+             new_name : Optional[str]   = None,
+             subdir   : str             = "tmp") -> Result[MincAtom]:
     """
     Low-level/stupid interface to mincmath
     """
@@ -139,12 +140,12 @@ def mincmath(op       : str,
     if new_name:
         name = new_name
     elif len(vols) == 1:
-        name = vols[0].filename_wo_ext + "_" + op + "_" + _const
+        name = vols[0].filename_wo_ext + "_" + op + (("_" + _const) if _const else "")
     else:
         name = (op + '_' + ((_const + '_') if _const else '') +
              '_'.join([vol.filename_wo_ext for vol in vols]))
 
-    outf = vols[0].newname(name=name)
+    outf = vols[0].newname(name=name, subdir=subdir)
     s = CmdStage(inputs=tuple(vols), outputs=(outf,),
                  cmd=(['mincmath', '-clobber', '-2']
                    + (['-const', _const] if _const else [])
@@ -158,11 +159,11 @@ def mincmath(op       : str,
 def determinant(displacement_grid : MincAtom) -> Result[MincAtom]:
     s = Stages()
     det_m_1 = s.defer(mincblob(op='determinant', grid=displacement_grid))
-    det = s.defer(mincmath(op='add', const=1, vols=[det_m_1]))
+    det = s.defer(mincmath(op='add', const=1, vols=[det_m_1], subdir="stats-volumes"))
     return Result(stages=s, output=det)
 
 def smooth_vector(source : MincAtom, fwhm : float) -> Result[MincAtom]:
-    outf = source.newname_with_suffix("_smooth_fwhm%s" % fwhm) # TODO smooth_displacement_?
+    outf = source.newname_with_suffix("_smooth_fwhm%s" % fwhm, subdir="tmp") # TODO smooth_displacement_?
     cmd  = ['smooth_vector', '--clobber', '--filter', '--fwhm=%s' % fwhm,
             source.path, outf.path]
     stage = CmdStage(inputs=(source,), outputs=(outf,), cmd=cmd)
