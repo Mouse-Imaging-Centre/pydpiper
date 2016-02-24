@@ -88,7 +88,7 @@ def nlin_displacement(xfm : XfmHandler, inv_xfm : Optional[XfmHandler] = None) -
     s = Stages()
     return Result(stages=s,
                   output=s.defer(minc_displacement(
-                         s.defer(nlin_part(xfm, inv_xfm)))))
+                                   s.defer(nlin_part(xfm, inv_xfm=inv_xfm)))))
 
 def determinants_at_fwhms(xfm        : XfmHandler,
                           blur_fwhms : str, # TODO: change back to List[float]
@@ -118,8 +118,8 @@ def determinants_at_fwhms(xfm        : XfmHandler,
    
     fwhms = [float(x) for x in blur_fwhms.split(',')]
  
-    nlin_dets = [(fwhm, s.defer(det_and_log_det(nlin_disp, fwhm))) for fwhm in fwhms]
-    full_dets = [(fwhm, s.defer(det_and_log_det(full_disp, fwhm))) for fwhm in fwhms]
+    nlin_dets = [(fwhm, s.defer(det_and_log_det(displacement_grid=nlin_disp, fwhm=fwhm))) for fwhm in fwhms]
+    full_dets = [(fwhm, s.defer(det_and_log_det(displacement_grid=full_disp, fwhm=fwhm))) for fwhm in fwhms]
     # won't work when additional xfm is specified for nlin_dets:
     #(nlin_dets, full_dets) = [[(fwhm, s.defer(det_and_log_det(disp, fwhm))) for fwhm in blur_fwhms]
     #                          for disp in (nlin_disp, full_disp)]
@@ -144,7 +144,7 @@ def mincmath(op       : str,
         name = (op + '_' + ((_const + '_') if _const else '') +
              '_'.join([vol.filename_wo_ext for vol in vols]))
 
-    outf = vols[0].newname_with_fn(lambda x: name)
+    outf = vols[0].newname(name=name)
     s = CmdStage(inputs=tuple(vols), outputs=(outf,),
                  cmd=(['mincmath', '-clobber', '-2']
                    + (['-const', _const] if _const else [])
