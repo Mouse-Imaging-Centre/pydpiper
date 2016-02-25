@@ -237,7 +237,7 @@ class Interpolation(AutoEnum):
 def mincresample_simple(img: MincAtom,
                         xfm: XfmAtom,
                         like: MincAtom,
-                        extra_flags: Tuple[str] =(),
+                        extra_flags: Tuple[str] = (),
                         interpolation: Optional[Interpolation] = None,
                         new_name_wo_ext: str = None,
                         subdir: str = None) -> Result[MincAtom]:
@@ -251,6 +251,10 @@ def mincresample_simple(img: MincAtom,
         subdir = 'resampled'
 
     if not new_name_wo_ext:
+        # FIXME the path to `outf` is wrong.  For instance, resampling a mask file ends up in the initial model
+        # FIXME directory instead of in the resampled directory.
+        # FIXME At the same time, `like.newname(...)` doesn't work either, for similar reasons.
+        # FIXME Not clear if there's a general "automagic" fix for this.
         outf = img.newname(name=xfm.filename_wo_ext + '-resampled', subdir=subdir)
     else:
         # we have the output filename without extension. This should replace the entire
@@ -514,7 +518,6 @@ def xfmaverage(xfms: List[XfmAtom],
 
     # if all transformations belong to the same subject, we should place the average
     # transformation in the directories belonging to that file
-    first_output_sub_dir = xfms[0].output_sub_dir
     all_from_same_sub = atoms_from_same_subject(xfms)
 
     # TODO: the path here is probably not right...
@@ -765,11 +768,13 @@ def parse_n(p, n):
             raise ParseError("Wrong number of values")
     return f
 
-def parse_minctracc_lin_protocol_file(filename : str, minctracc_conf=default_linear_minctracc_conf) -> MultilevelMinctraccConf:
+def parse_minctracc_lin_protocol_file(filename : str, minctracc_conf=default_linear_minctracc_conf) \
+        -> MultilevelMinctraccConf:
     with open(filename, 'r') as f:
         return parse_minctracc_lin_protocol(csv.read(f), minctracc_conf)
 
-def parse_minctracc_lin_protocol(f, minctracc_conf : LinearMinctraccConf = default_linear_minctracc_conf) -> MultilevelMinctraccConf:
+def parse_minctracc_lin_protocol(f, minctracc_conf : LinearMinctraccConf = default_linear_minctracc_conf) \
+        -> MultilevelMinctraccConf:
     """Use the resulting list to `.replace` the default values.  Needs to return a full MinctraccConf
     in order to encode blur and step information."""
 
