@@ -280,11 +280,11 @@ class Pipeline(object):
         bad_outputs = nondistinct_outputs(stages)
         if len(bad_outputs) > 1:
             print("Uh-oh - some files appear as outputs of multiple stages, to wit:", file=sys.stderr)
-            for o, ss in bad_outputs:
+            for o, ss in bad_outputs.items():
                 print("output: %s\nstages:\n" % o, file=sys.stderr)
                 for s in ss:
                     print(ss, file=sys.stderr)
-            sys.exit("Bye")
+            raise ValueError("Conflicting outputs:", bad_outputs)
 
         for s in stages:
             self._add_stage(s)
