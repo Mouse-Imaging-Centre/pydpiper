@@ -32,20 +32,20 @@ def mbm_pipeline(options : MBMConf):
                                                          options.application.pipeline_name + "_processed"))
             for name in options.application.files]
 
-    return mbm(imgs=imgs, options=options)
+    return mbm(imgs=imgs, options=options,
+               prefix=options.application.pipeline_name,
+               output_dir=options.application.output_directory)
 
-def mbm(imgs : List[MincAtom], options : MBMConf):
+def mbm(imgs : List[MincAtom], options : MBMConf, prefix : str, output_dir : str = ""):
 
     # TODO could also allow pluggable pipeline parts e.g. LSQ6 could be substituted out for the modified LSQ6
     # for the kidney tips, etc...
-    output_dir    = options.application.output_directory
-    pipeline_name = options.application.pipeline_name
 
     # TODO this is tedious and annoyingly similar to the registration chain ...
 
     #processed_dir = os.path.join(output_dir, pipeline_name + "_processed")
-    lsq12_dir = os.path.join(output_dir, pipeline_name + "_lsq12")
-    nlin_dir = os.path.join(output_dir, pipeline_name + "_nlin")
+    lsq12_dir = os.path.join(output_dir, prefix + "_lsq12")
+    nlin_dir = os.path.join(output_dir, prefix + "_nlin")
 
     s = Stages()
 
@@ -89,7 +89,9 @@ def mbm(imgs : List[MincAtom], options : MBMConf):
                                                        lsq12_conf=options.mbm.lsq12,
                                                        nlin_conf=full_hierarchy))
 
-    determinants = [s.defer(determinants_at_fwhms(xfm, blur_fwhms=options.mbm.stats.stats_kernels))
+    determinants = [s.defer(determinants_at_fwhms(
+                              xfm=xfm,
+                              blur_fwhms=options.mbm.stats.stats_kernels))
                     for xfm in lsq12_nlin_result.output]
 
     overall_xfms = [s.defer(concat_xfmhandlers([rigid_xfm, nlin_xfm]))
