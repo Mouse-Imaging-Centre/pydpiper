@@ -120,4 +120,15 @@ class FileAtom(object):
         'img_1_fwhm0.056.mnc'
         """
         return self.newname_with_fn(lambda n: n + suffix, ext=ext, subdir=subdir)
+
+    def newname(self,
+                name   : str,
+                ext    : str = None,
+                subdir : str = None) -> 'FileAtom':
+        """Create a new FileAtom from an old one, ignoring the existing name (but possibly recycling the extension).
+
+        >>> os.path.basename(FileAtom(name='img_1.mnc').newname(name='img_2').get_basename())
+        'img_2.mnc'
+        """
+        return self.newname_with_fn(lambda _: name, ext=ext, subdir=subdir)
      

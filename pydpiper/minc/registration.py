@@ -251,11 +251,11 @@ def mincresample_simple(img: MincAtom,
         subdir = 'resampled'
 
     if not new_name_wo_ext:
-        outf = img.newname_with_fn(lambda _old: xfm.filename_wo_ext + '-resampled', subdir=subdir)
+        outf = img.newname(name=xfm.filename_wo_ext + '-resampled', subdir=subdir)
     else:
         # we have the output filename without extension. This should replace the entire
         # current "base" of the filename. 
-        outf = img.newname_with_fn(lambda _old: new_name_wo_ext, subdir=subdir)
+        outf = img.newname(name=new_name_wo_ext, subdir=subdir)
 
     stage = CmdStage(
         inputs=(xfm, like, img),
@@ -346,8 +346,7 @@ def xfmconcat(xfms: List[XfmAtom],
         return Result(stages=Stages(), output=xfms[0])
     else:
         if name:
-            outf = xfms[0].newname_with_fn(lambda _: name,
-                                           subdir="transforms")
+            outf = xfms[0].newname(name=name, subdir="transforms")
         elif atoms_from_same_subject(xfms):
             # we can reduce the length of the concatenated filename, because we do not
             # need repeats of the base part of the filename
@@ -357,13 +356,11 @@ def xfmconcat(xfms: List[XfmAtom],
                 # only add the part of each of the files that is not
                 # captured by the common prefix
                 outf_name += "_" + xfm.filename_wo_ext[len(commonprefix):]
-            outf = xfms[0].newname_with_fn(lambda _orig: outf_name,
-                                           subdir="transforms")
+            outf = xfms[0].newname(name=outf_name, subdir="transforms")
         else:
-            outf = xfms[0].newname_with_fn(
-                lambda _orig: "concat_of_%s" % "_and_".join(
-                    [x.filename_wo_ext for x in xfms]),
-                subdir="transforms")  # could do names[1:] if dirname contains names[0]?
+            outf = xfms[0].newname(name="concat_of_%s" % "_and_".join([x.filename_wo_ext for x in xfms]),
+                                   subdir="transforms")
+                   # could do names[1:] if dirname contains names[0]?
         stage = CmdStage(
             inputs=tuple(xfms), outputs=(outf,),
             cmd=shlex.split('xfmconcat -clobber %s %s' % (' '.join([x.path for x in xfms]), outf.path)))
@@ -534,9 +531,7 @@ def xfmaverage(xfms: List[XfmAtom],
     if not output_filename_wo_ext:
         output_filename_wo_ext= "average_xfm"
     if all_from_same_sub:
-        outf = xfms[0].newname_with_fn(fn=lambda name: output_filename_wo_ext,
-                                       subdir="transforms",
-                                       ext=".xfm")
+        outf = xfms[0].newname(name=output_filename_wo_ext, subdir="transforms", ext=".xfm")
     else:
         # it's actually not very clear at this point what to do... will this ever
         # be used? Hope not... :-)
