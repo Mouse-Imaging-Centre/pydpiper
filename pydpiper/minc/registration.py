@@ -1382,21 +1382,21 @@ _lin_conf_1 = LinearMinctraccConf(simplex=2.8,
 
 default_lsq12_multilevel_minctracc_level1 = MinctraccConf(step_sizes=(0.9,0.9,0.9),
                                                           blur_resolution=0.28,
-                                                          use_masks=False,
+                                                          use_masks=True,
                                                           use_gradient=False,
                                                           linear_conf=_lin_conf_1,
                                                           nonlinear_conf=None)
 
 default_lsq12_multilevel_minctracc_level2 = MinctraccConf(step_sizes=(0.46,0.46,0.46),
                                                           blur_resolution=0.19,
-                                                          use_masks=False,
+                                                          use_masks=True,
                                                           use_gradient=True,
                                                           linear_conf=_lin_conf_1.replace(simplex=1.4),
                                                           nonlinear_conf=None)
 
 default_lsq12_multilevel_minctracc_level3 = MinctraccConf(step_sizes=(0.3,0.3,0.3),
                                                           blur_resolution=0.14,
-                                                          use_masks=False,
+                                                          use_masks=True,
                                                           use_gradient=False,
                                                           linear_conf=_lin_conf_1.replace(simplex=0.9),
                                                           nonlinear_conf=None)
