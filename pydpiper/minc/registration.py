@@ -301,6 +301,16 @@ def mincresample(img: MincAtom,
                          + (('-keep_real_range',) if "-keep_real_range"
                                                     not in extra_flags else ()))
 
+    if not subdir:
+        subdir = 'resampled'
+
+    # we need to get the filename without extension here in case we have
+    # masks/labels associated with the input file. When that's the case,
+    # we supply its name with "_mask" and "_labels" for which we need
+    # to know what the main file will be resampled as
+    if not new_name_wo_ext:
+        new_name_wo_ext = xfm.filename_wo_ext + '-resampled'
+
     new_img = s.defer(mincresample_simple(img=img, xfm=xfm, like=like,
                                           extra_flags=extra_flags,
                                           new_name_wo_ext=new_name_wo_ext,
