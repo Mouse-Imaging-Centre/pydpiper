@@ -4,6 +4,7 @@ import csv
 from collections import defaultdict
 import os
 import sys
+import bisect
 
 from typing import Callable, Dict, List, TypeVar, Iterator
 from pydpiper.minc.analysis import determinants_at_fwhms, invert_xfmhandler
@@ -123,9 +124,19 @@ def chain(options):
             raise ValueError("\nA bootstrap model is ill-defined for the registration chain. "
                              "(Which file is the 'first' input file?). Please use the --lsq6-target "
                              "flag to specify a target for the lsq6 stage, or use an initial model.")
-        if options.chain.pride_of_models:
-            raise NotImplementedError(
-                "We currently have not implemented the code that handles the pride of initial models...")
+        if options.lsq6.target_type == TargetType.pride_of_models:
+            pride_of_models_dict = get_pride_of_models_mapping(pride_top_level_dir=options.lsq6.target_file,
+                                                               output_dir=options.application.output_directory,
+                                                               pipeline_name=options.application.pipeline_name)
+            subj_id_to_subj_with_lsq6_xfm_dict = map_with_index_over_time_pt_dict_in_Subject(
+                                    lambda subj_atom, time_point:
+                                        s.defer(lsq6_nuc_inorm([subj_atom],
+                                                               registration_targets=get_closest_model_from_pride_of_models(
+                                                                                        pride_of_models_dict, time_point),
+                                                               resolution=options.registration.resolution,
+                                                               lsq6_options=options.lsq6,
+                                                               subject_matter=options.registration.subject_matter))[0],
+                                        pipeline_subject_info)  # type: Dict[str, Subject[XfmHandler]]
         else:
             # if we are not dealing with a pride of models, we can retrieve a fixed
             # registration target for all input files:
@@ -328,6 +339,67 @@ def chain(options):
 K = TypeVar('K')
 T = TypeVar('T')
 U = TypeVar('U')
+
+def get_closest_model_from_pride_of_models(pride_of_models_dict,
+                                           time_point):
+    """
+    returns the RegistrationTargets from the "closest" initial model in the
+    pride_of_models_dict. If the exact time point is not present in the
+    pride_of_models_dict, and there is a tie, the RegistrationTargets from the
+    larger/older time point will be returned
+    """
+
+    time_point_float = float(time_point)
+
+    # the trivial case first: a time_point that is part of the
+    # pride of models
+    if time_point_float in pride_of_models_dict:
+        return pride_of_models_dict[time_point_float]
+
+    # if the exact time point is not present, get the
+    # closest match
+    sorted_keys = sorted(pride_of_models_dict.keys())
+    for i in range(len(sorted_keys)):
+        sorted_keys[i] = float(sorted_keys[i])
+
+    index_on_the_right = bisect.bisect(sorted_keys, time_point_float)
+    diff_with_smaller_timepoint = time_point_float - float(sorted(pride_of_models_dict.keys())[index_on_the_right - 1])
+    diff_with_larger_timepoint = float(sorted(pride_of_models_dict.keys())[index_on_the_right]) - time_point_float
+
+    if diff_with_smaller_timepoint >= diff_with_larger_timepoint:
+        print("Using initial model of time point: " + str(sorted(pride_of_models_dict.keys())[index_on_the_right]) +
+              " for file with actual time point: " + str(time_point_float))
+        return pride_of_models_dict[sorted(pride_of_models_dict.keys())[index_on_the_right]]
+    else:
+        print("Using initial model of time point: " + str(sorted(pride_of_models_dict.keys())[index_on_the_right - 1]) +
+              " for file with actual time point: " + str(time_point_Float))
+        return pride_of_models_dict[sorted(pride_of_models_dict.keys())[index_on_the_right - 1]]
+
+
+
+def map_with_index_over_time_pt_dict_in_Subject(f : Callable[[T], U],
+                                                d : Dict[K, Subject[T]]) -> Dict[K, Subject[U]]:
+    #TODO: fix the documentation...
+    ## """Map `f` non-destructively (if `f` is) over (the values of)
+    ##the inner time_pt_dict of a { subject : Subject }
+    ##
+    ##>>> (map_over_time_pt_dict_in_Subject(lambda x: x[3],
+    ##...          { 's1' : Subject(intersubject_registration_time_pt=4, time_pt_dict={3:'s1_3.mnc', 4:'s1_4.mnc'}),
+    ##...            's2' : Subject(intersubject_registration_time_pt=4, time_pt_dict={4:'s2_4.mnc', 5:'s2_5.mnc'})} )
+    ##...   == { 's1' : Subject(intersubject_registration_time_pt=4, time_pt_dict= {3:'3',4:'4'}),
+    ##...        's2' : Subject(intersubject_registration_time_pt=4, time_pt_dict= {4:'4',5:'5'}) })
+    ##True
+    ##"""
+    new_d = {}  # type: Dict[K, Subject[T]]
+    for s_id, subj in d.items():
+        new_time_pt_dict = {}  # type: Dict[int, U]
+        for t, x in subj.time_pt_dict.items():
+            new_time_pt_dict[t] = f(x, t)
+        new_subj = Subject(intersubject_registration_time_pt = subj.intersubject_registration_time_pt,
+                           time_pt_dict = new_time_pt_dict)  # type: Subject[U]
+        new_d[s_id] = new_subj
+    return new_d # type: Dict[K, Subject[U]]
+
 
 def map_over_time_pt_dict_in_Subject(f : Callable[[T], U],
                                      d : Dict[K, Subject[T]]) -> Dict[K, Subject[U]]:

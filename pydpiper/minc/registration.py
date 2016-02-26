@@ -2237,6 +2237,8 @@ def get_pride_of_models_mapping(pride_top_level_dir: str,
     Assumptions/requirements for a pride of models:
     -- all initial models have the same resolution
 
+    -- all keys in the dictionary will be mapped as float
+
     returns:
     dictionary mapping from:
     time_point -> RegistrationTargets
@@ -2268,7 +2270,7 @@ def get_pride_of_models_mapping(pride_top_level_dir: str,
                                  str(get_resolution_from_file(model_in_standard_space)) + ") is different "
                                  "from the resolution we found so far: " + str(common_resolution))
 
-        pride_of_models_dict[init_model_dir] = get_registration_targets_from_init_model(model_in_standard_space,
+        pride_of_models_dict[float(init_model_dir)] = get_registration_targets_from_init_model(model_in_standard_space,
                                                                                         output_dir,
                                                                                         pipeline_name,
                                                                                         init_model_dir)
