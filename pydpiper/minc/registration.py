@@ -450,7 +450,7 @@ def nu_estimate(src: MincAtom,
 
 def nu_evaluate(img: MincAtom,
                 field: FileAtom) -> Result[MincAtom]:
-    out = img.newname_with_suffix("_nuc")
+    out = img.newname_with_suffix("_N")
     cmd = CmdStage(inputs=(img, field), outputs=(out,),
                    cmd=['nu_evaluate', '-clobber', '-mapping', field.path, img.path, out.path])
     cmd.set_log_file(os.path.join(out.pipeline_sub_dir,
@@ -497,7 +497,7 @@ def inormalize(src: MincAtom,
     precedence over the mask that might be associated with the 
     src file.
     """
-    out = src.newname_with_suffix('_inorm')
+    out = src.newname_with_suffix('_I')
 
     mask_for_inormalize = mask or src.mask
 
@@ -1985,14 +1985,14 @@ def lsq6_nuc_inorm(imgs: List[MincAtom],
                                                 xfm=xfm_to_lsq6,
                                                 like=registration_targets.registration_standard,
                                                 interpolation=Interpolation.sinc,
-                                                new_name_wo_ext=inorm_img.filename_wo_ext + "_resampled_lsq6"))
+                                                new_name_wo_ext=inorm_img.filename_wo_ext + "_lsq6"))
                                       for inorm_img, xfm_to_lsq6
                                       in zip(inorm_imgs_in_native_space,
                                              xfms_to_final_target_space)]
     elif lsq6_options.nuc:
         # the final resampled files should be the non uniformity corrected files 
         # resampled with the lsq6 transformation
-        nuc_filenames_wo_ext_lsq6 = [nuc_img.filename_wo_ext + "_resampled_lsq6" for nuc_img in
+        nuc_filenames_wo_ext_lsq6 = [nuc_img.filename_wo_ext + "_lsq6" for nuc_img in
                                      nuc_imgs_in_native_space]
         final_resampled_lsq6_files = [s.defer(mincresample(img=nuc_img,
                                                            xfm=xfm_to_lsq6,
