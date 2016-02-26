@@ -709,6 +709,13 @@ def rotational_minctracc(source: MincAtom,
                                       interpolation=Interpolation.sinc))
                  if resample_source else None)
 
+    # This is a point where it's likely for the input file not to have a mask associated with it
+    # (given that this is the lsq6 alignment). If the target has a mask, or there was a mask
+    # provided, we can add it to the resampled file.
+    if resampled:
+        if not resampled.mask and mask_for_command:
+            resampled.mask = mask_for_command
+
     return Result(stages=s,
                   output=XfmHandler(source=source,
                                     target=target,
@@ -1928,8 +1935,17 @@ def lsq6_nuc_inorm(imgs: List[MincAtom],
         xfm=xfm_to_lsq6,
         like=registration_targets.registration_standard,
         interpolation=Interpolation.sinc,
-        new_name_wo_ext=native_img.filename_wo_ext + "_resampled_lsq6"))
+        new_name_wo_ext=native_img.filename_wo_ext + "_lsq6"))
                           for native_img, xfm_to_lsq6 in zip(imgs, xfms_to_final_target_space)]
+
+    # we've just performed a 6 parameter alignment between a bunch of input files
+    # and a target. The input files could have been the very initial input files to the
+    # pipeline, and have no masks associated with them. In that case, and if the target does
+    # have a mask, we should add masks to the resampled files now.
+    mask_to_add = registration_targets.registration_standard.mask
+    for resampled_input in imgs_in_lsq6_space:
+        if not resampled_input.mask:
+            resampled_input.mask = mask_to_add
 
     # resample the mask from the initial model to native space
     # we can use it for either the non uniformity correction or
@@ -2008,6 +2024,15 @@ def lsq6_nuc_inorm(imgs: List[MincAtom],
         # normalization, so the initialization of the final_resampled_lsq6_files 
         # variable is already correct
         pass
+
+    # we've just performed a 6 parameter alignment between a bunch of input files
+    # and a target. The input files could have been the very initial input files to the
+    # pipeline, and have no masks associated with them. In that case, and if the target does
+    # have a mask, we should add masks to the resampled files now.
+    mask_to_add = registration_targets.registration_standard.mask
+    for resampled_input in final_resampled_lsq6_files:
+        if not resampled_input.mask:
+            resampled_input.mask = mask_to_add
 
         # note that in the return, the registration target is given as "registration_standard".
     # the actual registration might have been between the input file and a potential
