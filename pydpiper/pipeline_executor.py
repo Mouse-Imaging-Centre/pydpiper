@@ -313,10 +313,12 @@ class pipelineExecutor(object):
         
     def registeredWithServer(self):
         self.registered_with_server = True
-        
+
+    @Pyro4.oneway
     def addPIDtoRunningList(self, pid):
         self.current_running_job_pids.append(pid)
-    
+
+    @Pyro4.oneway
     def removePIDfromRunningList(self, pid):
         self.current_running_job_pids.remove(pid)
 
@@ -474,6 +476,7 @@ class pipelineExecutor(object):
                 self.runningProcs -= child.procs
                 self.runningChildren.remove(child)
 
+    @Pyro4.oneway
     def notifyStageTerminated(self, i, returncode=None):
         #try:
             if returncode == 0:
