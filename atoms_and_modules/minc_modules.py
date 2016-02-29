@@ -529,6 +529,7 @@ class createQualityControlImages(object):
                 print(message_to_print)
             montage.finished_hooks.append(
                 lambda : printMessageForMontage())
+            montage.setMem(7.4)  # FIXME: magic value ...
             self.p.addStage(montage)
 
             

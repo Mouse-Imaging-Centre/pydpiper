@@ -47,6 +47,7 @@ with each scan per subject listed on the same line and separated by a comma.
         nl.addNlinRegArgumentGroup(self.parser)
         rf.addGenRegArgumentGroup(self.parser)
         st.addStatsArguments(self.parser)
+        self.parser.add_argument("--use-dir-names", dest="use_dir_names", action='store_true', default=False)
         
         # set help - note that the format is messed up, something that can be fixed if we upgrade
         # from optparse to argparse.
@@ -61,7 +62,10 @@ with each scan per subject listed on the same line and separated by a comma.
         args = self.args
         
         # Setup output directories for two-level model building: 
-        (subjectDirs, dirs) = rf.setupTwoLevelDirectories(args[0], self.outputDir, options.pipeline_name, module="ALL")
+        (subjectDirs, dirs) = rf.setupTwoLevelDirectories(args[0], self.outputDir,
+                                                          pipeName=options.pipeline_name,
+                                                          use_dir_names=options.use_dir_names,
+                                                          module="ALL")
         
         # read in files from CSV
         subjects = rf.setupSubjectHash(args[0], subjectDirs, options.mask_dir)
