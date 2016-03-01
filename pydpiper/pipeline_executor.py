@@ -23,7 +23,7 @@ Pyro4.config.SERVERTYPE = "multiplex"
 
 #TODO add these to executorArgumentGroup as options, pass into pipelineExecutor
 WAIT_TIMEOUT = 5.0
-HEARTBEAT_INTERVAL = 10.0
+HEARTBEAT_INTERVAL = WAIT_TIMEOUT  # These must currently be the same since the two threads have been merged  #was 10.0
 #SHUTDOWN_TIME = WAIT_TIMEOUT + LATENCY_TOLERANCE
 
 logger = logging.getLogger(__name__)
@@ -105,6 +105,9 @@ def addExecutorArgumentGroup(parser):
     group.add_argument("--default-job-mem", dest="default_job_mem",
                        type=float, default = 1.75,
                        help="Memory (in GB) to allocate to jobs which don't make a request. [Default=%(default)s]")
+    group.add_argument("--cmd-wrapper", dest="cmd_wrapper",
+                       type=str, default="",
+                       help="Wrapper inside which to run the command, e.g., '/usr/bin/time -v'. [Default='%(default)s']")
 
 
 def noExecSpecified(numExec):
@@ -176,30 +179,30 @@ def launchExecutor(executor):
         t = threading.Thread(target=with_exception_logging(daemon.requestLoop, "Pyro daemon"))
         t.daemon = True
         t.start()
-        h = threading.Thread(target=with_exception_logging(executor.heartbeat, "heartbeat",
-                                                           crash_hook=lambda : setattr(executor,  # Python is 'funny'
-                                                                                       "heartbeat_thread_crashed",
-                                                                                       True)))
-        h.daemon = True
-        h.start()
+        #h = threading.Thread(target=with_exception_logging(executor.heartbeat, "heartbeat",
+        #                                                   crash_hook=lambda : setattr(executor,  # Python is 'funny'
+        #                                                                               "heartbeat_thread_crashed",
+        #                                                                               True)))
+        #h.daemon = True
+        #h.start()
         executor.mainLoop()
     except KeyboardInterrupt:
         logger.exception("Caught keyboard interrupt. Shutting down executor...")
         executor.generalShutdownCall()
         #daemon.shutdown()
-        sys.exit(0)
+        sys.exit(1)
     except Exception:
         logger.exception("Error during executor loop. Shutting down executor...")
         executor.generalShutdownCall()
         #daemon.shutdown()
-        sys.exit(0)
+        sys.exit(1)
     else:
         executor.completeAndExitChildren()
         logger.info("Executor shutting down.")
         daemon.shutdown()
         t.join()
 
-def runStage(serverURI, clientURI, i):
+def runStage(serverURI, clientURI, i, cmd_wrapper):
     ## Proc needs its own proxy as it's independent of executor
     p = Pyro4.core.Proxy(serverURI)
     client = Pyro4.core.Proxy(clientURI)
@@ -211,13 +214,13 @@ def runStage(serverURI, clientURI, i):
         p.setStageStarted(i, clientURI)
         try:
             # get stage information
-            command_to_run  = str(p.getStageCommand(i))
+            command_to_run  = ((cmd_wrapper + ' ') if cmd_wrapper else '') + str(p.getStageCommand(i))
             logger.info(command_to_run)
             command_logfile = p.getStageLogfile(i)
             
             # log file for the stage
             of = open(command_logfile, 'a')
-            of.write("Stage " + str(i) + " running on " + socket.gethostname() + " at " + datetime.isoformat(datetime.now(), " ") + ":\n")
+            of.write("Stage " + str(i) + " running on " + socket.gethostname() + " (" + clientURI + ") at " + datetime.isoformat(datetime.now(), " ") + ":\n")
             of.write(command_to_run + "\n")
             of.flush()
             
@@ -392,11 +395,11 @@ class pipelineExecutor(object):
             logfile = os.path.join(os.getcwd(), ident + '.log')  # aren't the join/getcwd here and below redundant?
             env = os.environ.copy()
             env['PYRO_LOGFILE'] = logfile  # os.path.join(os.getcwd(), ident + ".log")
-            cmd = ["pipeline_executor.py", "--local",
-                   '--uri-file', self.uri_file,
-                   # Only one exec is launched at a time in this manner, so:
-                   "--num-executors", str(1), '--mem', str(self.mem)] + q.remove_flags(['--num-exec', '--mem'],
-                                                                                        sys.argv[1:])
+            cmd = (["pipeline_executor.py", "--local",
+                       '--uri-file', self.uri_file,
+                       # Only one exec is launched at a time in this manner, so:
+                       "--num-executors", str(1), '--mem', str(self.mem)]
+                    + q.remove_flags(['--num-exec', '--mem'], sys.argv[1:]))
             if self.queue_type == "sge":
                 strprocs = str(self.procs)
                 strmem = "%s=%sG" % (self.mem_request_attribute, float(self.mem))
@@ -430,7 +433,8 @@ class pipelineExecutor(object):
                                     "#PBS -l nodes=1:ppn=1",
                                     # CCM is strict, and doesn't like float values:
                                     "#PBS -l %s=%dg\n" % (self.mem_request_attribute, m.ceil(self.mem)),
-                                    # TODO potentially add a walltime here
+                                    # FIXME add walltime stuff here if specified (and check <= max_walltime ??)
+                                    "df /dev/shm >&2",  # FIXME: remove
                                     "cd $PBS_O_WORKDIR"])
                 qsub_cmd = (['qsub', '-V', '-o', jobname + '-o.log', '-e', jobname + '-e.log', '-Wumask=0137']
                              + (['-q', self.queue_name] if self.queue_name else []))
@@ -523,7 +527,7 @@ class pipelineExecutor(object):
         """Try to get a job from the server (if appropriate) and update
         internal state accordingly.  Return True if it should be called
         again (i.e., there is more to do before shutting down),
-        otherwise False."""
+        otherwise False (contract: but never False if there are still running jobs)."""
 
         self.prev_time = self.current_time
         self.current_time = time.time()
@@ -537,13 +541,17 @@ class pipelineExecutor(object):
         # to other servers)
         self.free_resources()
 
-        if self.heartbeat_thread_crashed:
-            logger.debug("Heartbeat thread crashed; quitting")
-            return False
+        logger.debug("Updating timestamp...")
+        self.pyro_proxy_for_server.updateClientTimestamp(self.clientURI, tick=42)  # FIXME (42)
+        logger.debug("Done")
+        #if self.heartbeat_thread_crashed:
+        #    logger.debug("Heartbeat thread crashed; quitting")
+        #    return False
 
         if self.idle():
             self.idle_time += self.current_time - self.prev_time
-            logger.debug("Current idle time: %d, and total seconds allowed: %d", self.idle_time, self.time_to_seppuku * 60)
+            logger.debug("Current idle time: %d, and total seconds allowed: %d",
+                         self.idle_time, self.time_to_seppuku * 60)
 
         if self.is_seppuku_time():
             logger.warn("Exceeded allowed idle time... Seppuku!")
@@ -553,8 +561,9 @@ class pipelineExecutor(object):
         # anymore. If that is the case, we can leave this main loop
         # and just wait until current running jobs (children) have finished
         if self.is_time_to_drain():
-            logger.info("Time expired for accepting new jobs...leaving main loop.")
-            return False
+            logger.info("Time expired for accepting new jobs")  #...leaving main loop.")
+            #return False
+            return True
 
         # TODO we get only one stage per loop iteration, so we have to wait for
         # another event/timeout to get another.  In general we might want 
@@ -590,7 +599,7 @@ class pipelineExecutor(object):
             # this correctly, that binds the function to a class instance). There is
             # a way to make a bound function picklable, but this seems cumbersome. So instead
             # runStage is now a standalone function.
-            result = self.pool.apply_async(runStage, (self.serverURI, self.clientURI, i))
+            result = self.pool.apply_async(runStage, (self.serverURI, self.clientURI, i, options.cmd_wrapper))
 
             self.runningChildren.append(ChildProcess(i, result, stageMem, stageProcs))
             logger.debug("Added stage %i to the running pool.", i)
@@ -620,9 +629,7 @@ if __name__ == "__main__":
     addExecutorArgumentGroup(parser)
 
     # using parse_known_args instead of parse_args is a hack since we
-    # currently send ALL arguments from the main program to the executor
-    # on PBS queues (FIXME not yet true on SGE queues, but this is
-    # not the best solution anyway).
+    # currently send ALL arguments from the main program to the executor.
     # Alternately, we could keep a copy of the executor parser around
     # when constructing the executor shell command
     options = parser.parse_known_args()[0]
