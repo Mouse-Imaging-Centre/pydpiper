@@ -845,6 +845,7 @@ class pMincAverage(mincAverage):
         self.inputFiles.extend(self.filesToAvg)
         self.outputFiles += [self.output]
         self.cmd += ["pmincaverage", "--clobber"]
+        self.setMem(17)  #FIXME magic value ...
     #def finalizeCommand(self):
     #    self.cmd.extend(self.filesToAvg)
     #    self.cmd.append(self.output)
@@ -863,6 +864,7 @@ def average(inputArray,
         stage = pMincAverage
     else:
         stage = mincAverage
+    stage = pMincAverage  # FIXME
     return stage(inputArray, outputAvg=outputAvg, output=output,
                  logFile=logFile, defaultDir=defaultDir,
                  copyHeaderInfo=copyHeaderInfo)
