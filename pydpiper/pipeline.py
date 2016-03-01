@@ -483,7 +483,7 @@ class Pipeline(object):
             logger.log(SUBDEBUG, "Already finished stage " + str(index))
             s.status = "finished"
         else:
-            logger.info("Finished Stage " + str(index) + ": " + str(self.stages[index]))
+            logger.info("Finished Stage %s: %s (on %s)", str(index), str(self.stages[index]), clientURI)
             self.removeFromRunning(index, clientURI, new_status = "finished")
             # run any potential hooks now that the stage has finished:
             for f in s.finished_hooks:
@@ -497,8 +497,6 @@ class Pipeline(object):
             self.finished_stages_fh.flush()
         # flush turned off as an optimization ... though we might not record
         # a stage's completion, this doesn't affect correctness.
-        # For further optimization at pipeline start, it might (?) be even faster to write to memory and then
-        # make a single file write when finished.
         for i in self.G.successors(index):
             self.unfinished_pred_counts[i] -= 1
             if self.checkIfRunnable(i):
@@ -514,7 +512,7 @@ class Pipeline(object):
 
     def setStageLost(self, index, clientURI):
         """Clean up a stage lost due to unresponsive client"""
-        logger.info("Lost Stage %d: %s: ", index, self.stages[index])
+        logger.warning("Lost Stage %d: %s: ", index, self.stages[index])
         self.removeFromRunning(index, clientURI, new_status = None)
         self.enqueue(index)
 
@@ -631,7 +629,9 @@ class Pipeline(object):
 
     @Pyro4.oneway
     def updateClientTimestamp(self, clientURI, tick):
-        t = time.time() # use server clock for consistency
+        logger.debug("Time... (%s)" % clientURI)
+        t = time.time()  # use server clock for consistency
+        logger.debug("Got it... (%s)" % clientURI)
         try:
             self.clients[clientURI].timestamp = t
             logger.debug("Client %s updated timestamp (tick %d)",
@@ -827,7 +827,10 @@ class Pipeline(object):
         for i in runnable:
             self.enqueue(i)
         with open(self.backupFileLocation, 'w') as fh:
-            # TODO could write to tmp file in same dir, then "atomically" `mv`
+            # TODO For further optimization, it might (?) be even faster to write to memory and then
+            # make a single file write when finished.
+            # FIXME should write to tmp file in same dir, then overwrite (?) since a otherwise an interruption
+            # in writing this file will cause progress to be lost
             for l in finished:
                 fh.write("%d,%s\n" % l)
         logger.info('Previously completed stages (of %d total): %d', len(self.stages), completed)
