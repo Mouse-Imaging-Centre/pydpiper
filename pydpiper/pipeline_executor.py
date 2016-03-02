@@ -20,6 +20,11 @@ import Pyro4
 
 Pyro4.config.SERVERTYPE = "multiplex"
 
+from pyminc.volumes.volumes import mincException
+
+Pyro4.util.SerializerBase.register_dict_to_class("mincException", lambda _classname, dict: mincException)
+Pyro4.util.SerializerBase.register_class_to_dict(mincException, lambda obj: { "__class__" : "mincException" })
+
 
 #TODO add these to executorArgumentGroup as options, pass into pipelineExecutor
 WAIT_TIMEOUT = 5.0
