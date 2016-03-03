@@ -474,10 +474,9 @@ class Pipeline(object):
 
     def checkIfRunnable(self, index):
         """stage added to runnable set if all predecessors finished"""
-        logger.log(SUBDEBUG, "Checking if stage " + str(index) + " is runnable ...")
-        canRun = (not self.stages[index].isFinished()) \
-                 and self.unfinished_pred_counts[index] == 0
-        logger.log(SUBDEBUG, "Stage " + str(index) + " Runnable: " + str(canRun))
+        logger.log(SUBDEBUG, "Checking if stage %s is runnable ...", str(index))
+        canRun = ((not self.stages[index].isFinished()) and (self.unfinished_pred_counts[index] == 0))
+        logger.log(SUBDEBUG, "Stage %s Runnable: %s", str(index), str(canRun))
         return canRun
 
     def setStageFinished(self, index, clientURI, save_state = True,
@@ -517,8 +516,8 @@ class Pipeline(object):
         if not checking_pipeline_status:
             self.finished_stages_fh.write("%d,%s\n" % (index, self.stages[index].getHash()))
             self.finished_stages_fh.flush()
-        # flush turned off as an optimization ... though we might not record
-        # a stage's completion, this doesn't affect correctness.
+        # FIXME flush could turned off as an optimization (more sensibly, a small buffer size could be set)
+        # ... though we might not record a stage's completion, this doesn't affect correctness.
         for i in self.G.successors(index):
             self.unfinished_pred_counts[i] -= 1
             if self.checkIfRunnable(i):
