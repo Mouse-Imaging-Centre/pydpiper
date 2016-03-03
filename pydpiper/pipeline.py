@@ -14,6 +14,7 @@ from datetime import datetime
 from subprocess32 import call, check_output
 from shlex import split
 from multiprocessing import Process, Event
+from configargparse import Namespace
 import logging
 
 # TODO move this and Pyro4 imports down into launchServer where pipeline name is available?
@@ -70,6 +71,17 @@ class ExecClient(object):
         self.running_stages = set([])
         self.timestamp = time.time()
 
+def memoize_hook(hook):  # TODO replace with functools.lru_cache (?!) in python3
+    data = Namespace(called=False, result=None)  # because of Python's bizarre assignment rules
+    def g():
+        if data.called:
+            return data.result
+        else:
+            data.result = hook()
+            data.called = True
+            return data.result
+    return g
+
 class PipelineStage(object):
     def __init__(self):
         self.mem = None # if not set, use pipeline default
@@ -80,7 +92,16 @@ class PipelineStage(object):
         self.status = None
         self.name = ""
         self.colour = "black" # used when a graph is created of all stages to colour the nodes
-        self.number_retries = 0 
+        self.number_retries = 0
+        # functions to be called when the stage becomes runnable
+        # (these might be called multiple times, so should be benign
+        # in some sense)
+        self._runnable_hooks = []
+        # functions to be called when a stage finishes
+        self.finished_hooks = []
+
+    def add_runnable_hook(self, h, memoize=True):
+        self._runnable_hooks.append((memoize_hook if memoize else lambda x: x)(h))
 
     def isFinished(self):
         return self.status == "finished"
@@ -119,12 +140,6 @@ class CmdStage(PipelineStage):
         self.cmd = [] # the input array converted to strings
         self.parseArgs(argArray)
         #self.checkLogFile()
-        # functions to be called when the stage becomes runnable
-        # (these might be called multiple times, so should be benign
-        # in some sense)
-        self.runnable_hooks = []
-        # functions to be called when a stage finishes
-        self.finished_hooks = []
     def parseArgs(self, argArray):
         if argArray:
             for a in argArray:
@@ -551,7 +566,7 @@ class Pipeline(object):
         """If stage cannot be run due to insufficient mem/procs, executor returns it to the runnable set"""
         logger.log(SUBDEBUG, "Queueing stage %d", i)
         self.runnable.add(i)
-        for f in self.stages[i].runnable_hooks:
+        for f in self.stages[i]._runnable_hooks:
             f()
         # keep track of the memory requirements of the runnable jobs
         self.mem_req_for_runnable.append(self.stages[i].mem)

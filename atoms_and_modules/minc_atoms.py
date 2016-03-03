@@ -97,7 +97,7 @@ class mincANTS(CmdStage):
         self.colour = "red"
         # defer calculation of memory use until the actual file to be used
         # is available (since the input file may be, e.g., much larger)
-        self.runnable_hooks.append(
+        self.add_runnable_hook(
             lambda : self.setMemory(inSource, memoryCoeffs))
         
     def setMemory(self, inSource, memoryCoeffs):
@@ -263,7 +263,7 @@ class minctracc(CmdStage):
         if memory is not None:
             self.mem = memory
         else:
-            self.runnable_hooks.append(
+            self.add_runnable_hook(
                 lambda : self.setMemory(self.source, minctracc_default_mem_cfg))
 
     def setMemory(self, source, cfg):
@@ -423,7 +423,7 @@ class blur(CmdStage):
             # must do this now due to inFile mutation (ugh)
             # otherwise we'll get filename of a future file
             vol = inFile.getLastBasevol()
-        self.runnable_hooks.append(
+        self.add_runnable_hook(
             lambda : self.setMemory(vol, mincblur_mem_cfg))
 
     def setMemory(self, volname, mem_cfg):
