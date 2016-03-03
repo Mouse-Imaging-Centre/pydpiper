@@ -391,6 +391,13 @@ class Pipeline(object):
         # intelligently look for something this client can run
         # (e.g., by passing available resources
         # into getRunnableStageIndex)?
+        if clientMemFree == 0:
+            logger.debug("Executor has no free memory")
+            return ("wait", None)
+        if clientProcsFree == 0:
+            logger.debug("Executor has no free processors")
+            return ("wait", None)
+
         flag, i = self.getRunnableStageIndex()
         if flag == "run_stage":
             eps = 0.000001
