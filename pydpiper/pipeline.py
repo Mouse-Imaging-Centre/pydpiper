@@ -202,7 +202,7 @@ class Pipeline(object):
         self.mem_req_for_runnable = []
         # a hideous hack; the idea is that after constructing the underlying graph,
         # a pipeline running executors locally will measure its own maxRSS (once)
-        # and subtract this from the amount of memory claimed available for use on the node
+        # and subtract this from the amount of memory claimed available for use on the node.
         self.memAvail = None
         self.currently_running_stages = set()
         # the current stage counter
@@ -640,8 +640,8 @@ class Pipeline(object):
           # the latter choice might lead to the system
           # running indefinitely with no jobs
           (self.number_launched_and_waiting_clients + len(self.clients) == 0 and
-          self.executor_memory_required(self.runnable) > self.memAvail)):
-            msg = "Shutting down due to jobs which require more memory (%.2fG) than available anywhere." % self.executor_memory_required(self.runnable)
+          self.max_memory_required(self.runnable) > self.memAvail)):
+            msg = "Shutting down due to jobs which require more memory (%.2fG) than available anywhere." % self.max_memory_required(self.runnable)
             print(msg)
             logger.warn(msg)
             return False
@@ -650,9 +650,9 @@ class Pipeline(object):
 
     #@Pyro4.oneway
     def updateClientTimestamp(self, clientURI, tick):
-        logger.debug("Time... (%s)" % clientURI)
+        logger.debug("Time... (%s)", clientURI)
         t = time.time()  # use server clock for consistency
-        logger.debug("Got it... (%s)" % clientURI)
+        logger.debug("Got it... (%s)", clientURI)
         try:
             self.clients[clientURI].timestamp = t
             logger.debug("Client %s updated timestamp (tick %d)",
@@ -665,7 +665,7 @@ class Pipeline(object):
     # requires: stages != []
     # a better interface might be (self, [stage]) -> { MemAmount : (NumStages, [Stage]) }
     # or maybe the same in a heap (to facilitate getting N stages with most memory)
-    def executor_memory_required(self, stages):
+    def max_memory_required(self, stages):
         s = max(stages, key=lambda i: self.stages[i].mem)
         return self.stages[s].mem
 
@@ -675,13 +675,13 @@ class Pipeline(object):
         executors_to_launch = self.numberOfExecutorsToLaunch()
         if executors_to_launch > 0:
             # RAM needed to run a single job:
-            memNeeded = self.executor_memory_required(self.runnable)
+            memNeeded = self.max_memory_required(self.runnable)
             # RAM needed to run `proc` most expensive jobs (not the ideal choice):
             memWanted = sum(sorted(map(lambda i: self.stages[i].mem,
                                        self.runnable),
                                    key = lambda x: -x)[0:self.options.proc])
-            logger.debug("wanted: %s" % memWanted)
-            logger.debug("needed: %s" % memNeeded)
+            logger.debug("wanted: %s", memWanted)
+            logger.debug("needed: %s", memNeeded)
                 
             if memNeeded > self.memAvail:
                 msg = "A stage requires %.2fG of memory to run, but max allowed is %.2fG" \
@@ -729,7 +729,7 @@ class Pipeline(object):
             return 0
 
         if (len(self.runnable) > 0 and
-            self.executor_memory_required(self.runnable) > self.memAvail):
+            self.max_memory_required(self.runnable) > self.memAvail):
             # we might still want to launch executors for the stages with smaller
             # requirements
             return 0
