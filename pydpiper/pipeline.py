@@ -671,7 +671,7 @@ class Pipeline(object):
 
     # this can't be a loop since we call it via sockets and don't want to block the socket forever
     def manageExecutors(self):
-        logger.debug("Looping ...")
+        logger.debug("Checking if executors need to be launched ...")
         executors_to_launch = self.numberOfExecutorsToLaunch()
         if executors_to_launch > 0:
             # RAM needed to run a single job:
@@ -696,6 +696,7 @@ class Pipeline(object):
                 else:
                     mem = self.memAvail  #memNeeded?
                 self.launchExecutorsFromServer(executors_to_launch, mem)
+        logger.debug("... checking for crashed executors ...")
         if self.options.monitor_heartbeats:
             # look for dead clients and requeue their jobs
             t = time.time()
@@ -713,6 +714,7 @@ class Pipeline(object):
                     # the unregisterClient function will automatically requeue the
                     # stages that were associated with the lost client
                     self.unregisterClient(client.clientURI)
+        logger.debug("...done.")
 
     """
         Returns an integer indicating the number of executors to launch
