@@ -929,7 +929,7 @@ def launchServer(pipeline, options):
     
     pipeline.setVerbosity(options.verbose)
 
-    shutdown_time = pe.WAIT_TIMEOUT + pipeline.options.latency_tolerance
+    shutdown_time = pe.EXECUTOR_MAIN_LOOP_INTERVAL + pipeline.options.latency_tolerance
     
     try:
         t = Process(target=daemon.requestLoop)

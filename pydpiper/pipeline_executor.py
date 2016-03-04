@@ -11,25 +11,33 @@ import math as m
 import subprocess32 as subprocess
 import shlex
 import pydpiper.queueing as q
-import atoms_and_modules.registration_functions as rf
 import logging
 import socket
 import signal
 import threading
 import Pyro4
 
-Pyro4.config.SERVERTYPE = "multiplex"
+import atoms_and_modules.registration_functions as rf
 
 from pyminc.volumes.volumes import mincException
+
+Pyro4.config.SERVERTYPE = "multiplex"
+
+
+class SubmitError(IOError): pass
+
+for boring_exception, name in [(mincException, "mincException"), (SubmitError, "SubmitError")]:
+    Pyro4.util.SerializerBase.register_dict_to_class(name, lambda _classname, dict: boring_exception)
+    Pyro4.util.SerializerBase.register_class_to_dict(boring_exception, lambda obj: { "__class__" : name })
 
 Pyro4.util.SerializerBase.register_dict_to_class("mincException", lambda _classname, dict: mincException)
 Pyro4.util.SerializerBase.register_class_to_dict(mincException, lambda obj: { "__class__" : "mincException" })
 
 
 #TODO add these to executorArgumentGroup as options, pass into pipelineExecutor
-WAIT_TIMEOUT = 5.0
-HEARTBEAT_INTERVAL = WAIT_TIMEOUT  # These must currently be the same since the two threads have been merged  #was 10.0
-#SHUTDOWN_TIME = WAIT_TIMEOUT + LATENCY_TOLERANCE
+EXECUTOR_MAIN_LOOP_INTERVAL = 10.0
+HEARTBEAT_INTERVAL = EXECUTOR_MAIN_LOOP_INTERVAL  # Logically necessary since the two threads have been merged
+#SHUTDOWN_TIME = EXECUTOR_MAIN_LOOP_INTERVAL + LATENCY_TOLERANCE
 
 logger = logging.getLogger(__name__)
 
@@ -262,9 +270,6 @@ class ChildProcess(object):
 class InsufficientResources(Exception):
     pass
 
-class SubmitError(IOError):
-    pass
-
 class pipelineExecutor(object):
     def __init__(self, options, memNeeded = None):
         # better: self.options = options ... ?
@@ -398,9 +403,7 @@ class pipelineExecutor(object):
             ident = "pipeline-executor-" + now
             jobname = ((os.path.basename(program_name) + '-') if program_name is not None else "") + ident
             # do we really need the program name here?
-            #logfile = os.path.join(os.getcwd(), ident + '.log')  # aren't the join/getcwd here and below redundant?
             env = os.environ.copy()
-            #env['PYRO_LOGFILE'] = logfile  # os.path.join(os.getcwd(), ident + ".log")
             cmd = (["pipeline_executor.py", "--local",
                        '--uri-file', self.uri_file,
                        # Only one exec is launched at a time in this manner, so:
@@ -413,9 +416,8 @@ class pipelineExecutor(object):
                 strmem = "%s=%sG" % (self.mem_request_attribute, float(self.mem))
                 queue_opts = (['-V', '-j', 'yes', '-cwd', '-t', '1-%d' % number,
                               '-N', jobname,
-                              '-l', strmem,   #]
+                              '-l', strmem,
                               '-o', "logs/%s-$JOB_ID-$TASK_ID-eo.log" % jobname]
-                              #'-o', os.path.join(os.getcwd(), ident + '-eo.log')]
                               + (['-q', self.queue_name]
                                 if self.queue_name else [])
                               + (['-pe', self.pe, strprocs]
@@ -540,7 +542,7 @@ class pipelineExecutor(object):
     # we might want to pass some extra information in addition to waking the system
     def mainLoop(self):
         while self.mainFn():
-            self.e.wait(WAIT_TIMEOUT)
+            self.e.wait(EXECUTOR_MAIN_LOOP_INTERVAL)
             self.e.clear()
         logger.debug("Main loop finished")
 
