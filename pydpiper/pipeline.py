@@ -648,7 +648,7 @@ class Pipeline(object):
         else:
             return True
 
-    @Pyro4.oneway
+    #@Pyro4.oneway
     def updateClientTimestamp(self, clientURI, tick):
         logger.debug("Time... (%s)" % clientURI)
         t = time.time()  # use server clock for consistency
@@ -751,12 +751,17 @@ class Pipeline(object):
     def launchExecutorsFromServer(self, number_to_launch, memNeeded):
         logger.info("Launching %i executors", number_to_launch)
         try:
-            logger.info("Launching %i executors", number_to_launch)
-            for i in range(number_to_launch):
-                p = Process(target=launchPipelineExecutor,
-                            args=(self.options, memNeeded, self.programName))
-                p.start()
-                self.incrementLaunchedClients()
+            # quick hack to keep down vmem usage on CCM by using processes instead of threads,
+            # which might cause deadlocks when running locally:
+            executors_local = self.options.local or not self.options.queue_type
+            control = Process #Process if executors_local else Thread
+            launchPipelineExecutors(options=self.options, number=number_to_launch, mem_needed=memNeeded, program_name=self.programName)
+            self.number_launched_and_waiting_clients += number_to_launch
+            #for i in range(number_to_launch):
+            #    p = control(target=launchPipelineExecutor,
+            #                args=(self.options, memNeeded, self.programName))
+            #    p.start()
+            #    self.incrementLaunchedClients()
         except:
             logger.exception("Failed launching executors from the server.")
             raise
@@ -873,13 +878,15 @@ class Pipeline(object):
         logger.debug("Clients still registered at shutdown: " + str(self.clients))
         sys.stdout.flush()
 
-def launchPipelineExecutor(options, memNeeded, programName=None):
+def launchPipelineExecutors(options, mem_needed, number, program_name=None):
     """Launch pipeline executor directly from pipeline"""
-    pipelineExecutor = pe.pipelineExecutor(options, memNeeded)
     if options.local or not options.queue_type:
-        pe.launchExecutor(pipelineExecutor)
+        for _ in xrange(number):
+            e = pe.pipelineExecutor(options, mem_needed)
+            pe.launchExecutor(e)
     else:
-        pipelineExecutor.submitToQueue(programName)
+        pipelineExecutor = pe.pipelineExecutor(options, mem_needed)
+        pipelineExecutor.submitToQueue(number=number, program_name=program_name)
 
 def launchServer(pipeline, options):
     # first follow up on the previously reported total number of 
@@ -934,15 +941,10 @@ def launchServer(pipeline, options):
     shutdown_time = pe.WAIT_TIMEOUT + pipeline.options.latency_tolerance
     
     try:
-        # start Pyro server
         t = Process(target=daemon.requestLoop)
-        # t.daemon = True # this isn't allowed
+        # t.daemon = True
         t.start()
 
-        # at this point requests made to the Pyro daemon will touch process `t`'s copy
-        # of the pipeline, so modifying `pipeline` won't have any effect.  The exception is
-        # communication through its multiprocessing.Event, which we use below to wait
-        # for termination.
         #FIXME does this leak the memory used by the old pipeline?
         #if so, avoid doing this or at least `del` the old graph ...
 
@@ -962,7 +964,7 @@ def launchServer(pipeline, options):
         signal.signal(signal.SIGTERM, handler)
 
         # spawn a loop to manage executors in a separate process
-        # (here we use a proxy to make calls to manageExecutors because (a) 
+        # (here we use a proxy to make calls to manageExecutors because (a)
         # processes don't share memory, (b) so that its logic is
         # not interleaved with calls from executors.  We could instead use a `select`
         # for both Pyro and non-Pyro socket events; see the Pyro documentation)
@@ -985,7 +987,7 @@ def launchServer(pipeline, options):
         h = Process(target=loop)
         h.daemon = True
         h.start()
-        del pipeline
+        #del pipeline   # `top` shows this has no effect on vmem
 
         try:
             jid    = os.environ["PBS_JOBID"]

@@ -385,7 +385,7 @@ class pipelineExecutor(object):
             logger.info("Now going to call unregisterClient on the server (executor: %s)", self.clientURI)
             self.pyro_proxy_for_server.unregisterClient(self.clientURI)
 
-    def submitToQueue(self, program_name=None):
+    def submitToQueue(self, number, program_name=None):
         """Submits to queueing system using qsub"""
         if self.queue_type not in ['sge', 'pbs']:
             msg = ("Specified queueing system is: %s" % (self.queue_type) + 
@@ -394,24 +394,28 @@ class pipelineExecutor(object):
             logger.warn(msg)
             sys.exit(msg)
         else:
-            now = datetime.now().strftime("%Y-%m-%d-at-%H-%M-%S-%f")
+            now = datetime.now().strftime("%Y-%m-%d-at-%H-%M-%S")
             ident = "pipeline-executor-" + now
             jobname = ((os.path.basename(program_name) + '-') if program_name is not None else "") + ident
-            logfile = os.path.join(os.getcwd(), ident + '.log')  # aren't the join/getcwd here and below redundant?
+            # do we really need the program name here?
+            #logfile = os.path.join(os.getcwd(), ident + '.log')  # aren't the join/getcwd here and below redundant?
             env = os.environ.copy()
-            env['PYRO_LOGFILE'] = logfile  # os.path.join(os.getcwd(), ident + ".log")
+            #env['PYRO_LOGFILE'] = logfile  # os.path.join(os.getcwd(), ident + ".log")
             cmd = (["pipeline_executor.py", "--local",
                        '--uri-file', self.uri_file,
                        # Only one exec is launched at a time in this manner, so:
                        "--num-executors", str(1), '--mem', str(self.mem)]
                     + q.remove_flags(['--num-exec', '--mem'], sys.argv[1:]))
+
+            os.system("mkdir -p logs")    # FIXME: this really doesn't belong here
             if self.queue_type == "sge":
                 strprocs = str(self.procs)
                 strmem = "%s=%sG" % (self.mem_request_attribute, float(self.mem))
-                queue_opts = (['-V', '-j', 'yes', '-cwd',
+                queue_opts = (['-V', '-j', 'yes', '-cwd', '-t', '1-%d' % number,
                               '-N', jobname,
-                              '-l', strmem,
-                              '-o', os.path.join(os.getcwd(), ident + '-eo.log')]
+                              '-l', strmem,   #]
+                              '-o', "logs/%s-$JOB_ID-$TASK_ID-eo.log" % jobname]
+                              #'-o', os.path.join(os.getcwd(), ident + '-eo.log')]
                               + (['-q', self.queue_name]
                                 if self.queue_name else [])
                               + (['-pe', self.pe, strprocs]
@@ -419,7 +423,7 @@ class pipelineExecutor(object):
                               + shlex.split(self.queue_opts))
                 qsub_cmd = ['qsub'] + queue_opts
 
-                header = "#!/usr/bin/env bash"
+                header = "#!/usr/bin/env bash\nsetenv PYRO_LOGFILE logs/%s-${JOB_ID}-${SGE_TASK_ID}.log" % ident
                 # FIXME huge hack -- shouldn't we just iterate over options,
                 # possibly checking for membership in the executor option group?
                 # The problem is that we can't easily check if an option is
@@ -433,6 +437,9 @@ class pipelineExecutor(object):
             elif self.queue_type == 'pbs':
                 if self.ppn > 1:
                     logger.warn("ppn of %d currently ignored in this configuration" % self.ppn)
+                if "PBS_O_WORKDIR" in env:
+                    del env["PBS_O_WORKDIR"]  # because on CCM, this is set to /home/user on qlogin nodes ...
+                    del env["PBS_JOBID"]
                 header = '\n'.join(["#!/usr/bin/env bash",
                                     "#PBS -N %s" % jobname,
                                     "#PBS -l nodes=1:ppn=1",
@@ -440,14 +447,21 @@ class pipelineExecutor(object):
                                     "#PBS -l %s=%dg\n" % (self.mem_request_attribute, m.ceil(self.mem)),
                                     # FIXME add walltime stuff here if specified (and check <= max_walltime ??)
                                     "df /dev/shm >&2",  # FIXME: remove
-                                    "cd $PBS_O_WORKDIR"])
-                qsub_cmd = (['qsub', '-V', '-o', jobname + '-o.log', '-e', jobname + '-e.log', '-Wumask=0137']
+                                    "cd $PBS_O_WORKDIR",
+                                    "export PYRO_LOGFILE=logs/%s-${PBS_JOBID}.log"])
+                qsub_cmd = (['qsub', '-V', '-t', '1-%d' % number,
+                             '-o', "logs/%s-$PBS_JOBID-o.log" % jobname,
+                             '-e', "logs/%s-$PBS_JOBID-e.log" % jobname,
+                             '-Wumask=0137']
                              + (['-q', self.queue_name] if self.queue_name else []))
 
             script = header + '\n' + ' '.join(cmd) + '\n'
+            print(script)
             # TODO change to use subprocess.run(qsub_cmd, input=...) (Python >= 3.5)
             p = subprocess.Popen(qsub_cmd, stdin=subprocess.PIPE, shell=False, env=env)
             out_data, err_data = p.communicate(script)
+            #print(out_data)
+            #print(err_data, file=sys.stderr)
             if p.returncode != 0:
                 raise SubmitError("qsub returned: ", p.returncode)
 
