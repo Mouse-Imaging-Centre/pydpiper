@@ -751,17 +751,8 @@ class Pipeline(object):
     def launchExecutorsFromServer(self, number_to_launch, memNeeded):
         logger.info("Launching %i executors", number_to_launch)
         try:
-            # quick hack to keep down vmem usage on CCM by using processes instead of threads,
-            # which might cause deadlocks when running locally:
-            executors_local = self.options.local or not self.options.queue_type
-            control = Process #Process if executors_local else Thread
             launchPipelineExecutors(options=self.options, number=number_to_launch, mem_needed=memNeeded, program_name=self.programName)
             self.number_launched_and_waiting_clients += number_to_launch
-            #for i in range(number_to_launch):
-            #    p = control(target=launchPipelineExecutor,
-            #                args=(self.options, memNeeded, self.programName))
-            #    p.start()
-            #    self.incrementLaunchedClients()
         except:
             logger.exception("Failed launching executors from the server.")
             raise
