@@ -458,7 +458,7 @@ class Pipeline(object):
                 logger.exception("Could not remove stage index from running stages list")
                 raise
 
-    @Pyro4.oneway
+    #@Pyro4.oneway
     def setStageStarted(self, index, clientURI):
         URIstring = "(" + str(clientURI) + ")"
         logger.info("Starting Stage " + str(index) + ": " + str(self.stages[index]) + URIstring)
@@ -773,7 +773,7 @@ class Pipeline(object):
         if self.verbose:
             print("Client registered (banzai!): %s" % clientURI)
 
-    @Pyro4.oneway
+    #@Pyro4.oneway
     def unregisterClient(self, clientURI):
         # removes a client URI string from the table of registered clients. An executor 
         # calls this method when it decides on its own to shut down,
