@@ -841,11 +841,16 @@ class mincAverage(CmdStage):
         return(outputFile)
 
 class pMincAverage(mincAverage):
+    def setMemory(self):
+        memory_per_voxel = 17.0/(1064 * 13158000.0)
+        voxels_per_file  = reduce(mul, volumeFromFile(self.inputFiles[0]).getSizes())
+        self.setMem(0.5 + len(self.inputFiles) * memory_per_voxel * voxels_per_file)  # GB
     def addDefaults(self, copyHeaderInfo=False):
         self.inputFiles.extend(self.filesToAvg)
         self.outputFiles += [self.output]
         self.cmd += ["pmincaverage", "--clobber"]
-        self.setMem(17)  #FIXME magic value ...
+        self.add_runnable_hook(lambda : self.setMemory())
+        #FIXME values are a quick hack - assumed linear in files, voxels and chose constants from Foster data
     #def finalizeCommand(self):
     #    self.cmd.extend(self.filesToAvg)
     #    self.cmd.append(self.output)
