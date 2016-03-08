@@ -1140,14 +1140,20 @@ def mincANTS(source: MincAtom,
     """
     s = Stages()
 
+    # if we resample the source, and place it in the "tmp" directory, we should do
+    # the same with the transformation that is created:
+    trans_output_dir = "transforms"
+    if resample_source and subdir_for_resample == "tmp":
+        trans_output_dir = "tmp"
+
     if transform_name_wo_ext:
-        name = os.path.join(source.pipeline_sub_dir, source.output_sub_dir, 'transforms',
+        name = os.path.join(source.pipeline_sub_dir, source.output_sub_dir, trans_output_dir,
                             "%s.xfm" % (transform_name_wo_ext))
     elif generation != None:
-        name = os.path.join(source.pipeline_sub_dir, source.output_sub_dir, 'transforms',
+        name = os.path.join(source.pipeline_sub_dir, source.output_sub_dir, trans_output_dir,
                             "%s_mincANTS_nlin-%s.xfm" % (source.filename_wo_ext, generation))
     else:
-        name = os.path.join(source.pipeline_sub_dir, source.output_sub_dir, 'transforms',
+        name = os.path.join(source.pipeline_sub_dir, source.output_sub_dir, trans_output_dir,
                             "%s_mincANTS_to_%s.xfm" % (source.filename_wo_ext, target.filename_wo_ext))
     out_xfm = XfmAtom(name=name, pipeline_sub_dir=source.pipeline_sub_dir, output_sub_dir=source.output_sub_dir)
 
