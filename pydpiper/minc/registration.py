@@ -305,6 +305,16 @@ def mincresample(img: MincAtom,
                          + (('-keep_real_range',) if "-keep_real_range"
                                                     not in extra_flags else ()))
 
+    if not subdir:
+        subdir = 'resampled'
+
+    # we need to get the filename without extension here in case we have
+    # masks/labels associated with the input file. When that's the case,
+    # we supply its name with "_mask" and "_labels" for which we need
+    # to know what the main file will be resampled as
+    if not new_name_wo_ext:
+        new_name_wo_ext = xfm.filename_wo_ext + '-resampled'
+
     new_img = s.defer(mincresample_simple(img=img, xfm=xfm, like=like,
                                           extra_flags=extra_flags,
                                           new_name_wo_ext=new_name_wo_ext,
@@ -441,7 +451,7 @@ def nu_estimate(src: MincAtom,
 
 def nu_evaluate(img: MincAtom,
                 field: FileAtom) -> Result[MincAtom]:
-    out = img.newname_with_suffix("_nuc")
+    out = img.newname_with_suffix("_N")
     cmd = CmdStage(inputs=(img, field), outputs=(out,),
                    cmd=['nu_evaluate', '-clobber', '-mapping', field.path, img.path, out.path])
     cmd.set_log_file(os.path.join(out.pipeline_sub_dir,
@@ -488,7 +498,7 @@ def inormalize(src: MincAtom,
     precedence over the mask that might be associated with the 
     src file.
     """
-    out = src.newname_with_suffix('_inorm')
+    out = src.newname_with_suffix('_I')
 
     mask_for_inormalize = mask or src.mask
 
@@ -696,6 +706,13 @@ def rotational_minctracc(source: MincAtom,
     resampled = (s.defer(mincresample(img=source, xfm=out_xfm, like=target,
                                       interpolation=Interpolation.sinc))
                  if resample_source else None)
+
+    # This is a point where it's likely for the input file not to have a mask associated with it
+    # (given that this is the lsq6 alignment). If the target has a mask, or there was a mask
+    # provided, we can add it to the resampled file.
+    if resampled:
+        if not resampled.mask and mask_for_command:
+            resampled.mask = mask_for_command
 
     return Result(stages=s,
                   output=XfmHandler(source=source,
@@ -1365,21 +1382,21 @@ _lin_conf_1 = LinearMinctraccConf(simplex=2.8,
 
 default_lsq12_multilevel_minctracc_level1 = MinctraccConf(step_sizes=(0.9,0.9,0.9),
                                                           blur_resolution=0.28,
-                                                          use_masks=False,
+                                                          use_masks=True,
                                                           use_gradient=False,
                                                           linear_conf=_lin_conf_1,
                                                           nonlinear_conf=None)
 
 default_lsq12_multilevel_minctracc_level2 = MinctraccConf(step_sizes=(0.46,0.46,0.46),
                                                           blur_resolution=0.19,
-                                                          use_masks=False,
+                                                          use_masks=True,
                                                           use_gradient=True,
                                                           linear_conf=_lin_conf_1.replace(simplex=1.4),
                                                           nonlinear_conf=None)
 
 default_lsq12_multilevel_minctracc_level3 = MinctraccConf(step_sizes=(0.3,0.3,0.3),
                                                           blur_resolution=0.14,
-                                                          use_masks=False,
+                                                          use_masks=True,
                                                           use_gradient=False,
                                                           linear_conf=_lin_conf_1.replace(simplex=0.9),
                                                           nonlinear_conf=None)
@@ -1918,8 +1935,17 @@ def lsq6_nuc_inorm(imgs: List[MincAtom],
         xfm=xfm_to_lsq6,
         like=registration_targets.registration_standard,
         interpolation=Interpolation.sinc,
-        new_name_wo_ext=native_img.filename_wo_ext + "_resampled_lsq6"))
+        new_name_wo_ext=native_img.filename_wo_ext + "_lsq6"))
                           for native_img, xfm_to_lsq6 in zip(imgs, xfms_to_final_target_space)]
+
+    # we've just performed a 6 parameter alignment between a bunch of input files
+    # and a target. The input files could have been the very initial input files to the
+    # pipeline, and have no masks associated with them. In that case, and if the target does
+    # have a mask, we should add masks to the resampled files now.
+    mask_to_add = registration_targets.registration_standard.mask
+    for resampled_input in imgs_in_lsq6_space:
+        if not resampled_input.mask:
+            resampled_input.mask = mask_to_add
 
     # resample the mask from the initial model to native space
     # we can use it for either the non uniformity correction or
@@ -1975,14 +2001,14 @@ def lsq6_nuc_inorm(imgs: List[MincAtom],
                                                 xfm=xfm_to_lsq6,
                                                 like=registration_targets.registration_standard,
                                                 interpolation=Interpolation.sinc,
-                                                new_name_wo_ext=inorm_img.filename_wo_ext + "_resampled_lsq6"))
+                                                new_name_wo_ext=inorm_img.filename_wo_ext + "_lsq6"))
                                       for inorm_img, xfm_to_lsq6
                                       in zip(inorm_imgs_in_native_space,
                                              xfms_to_final_target_space)]
     elif lsq6_options.nuc:
         # the final resampled files should be the non uniformity corrected files 
         # resampled with the lsq6 transformation
-        nuc_filenames_wo_ext_lsq6 = [nuc_img.filename_wo_ext + "_resampled_lsq6" for nuc_img in
+        nuc_filenames_wo_ext_lsq6 = [nuc_img.filename_wo_ext + "_lsq6" for nuc_img in
                                      nuc_imgs_in_native_space]
         final_resampled_lsq6_files = [s.defer(mincresample(img=nuc_img,
                                                            xfm=xfm_to_lsq6,
@@ -1998,6 +2024,15 @@ def lsq6_nuc_inorm(imgs: List[MincAtom],
         # normalization, so the initialization of the final_resampled_lsq6_files 
         # variable is already correct
         pass
+
+    # we've just performed a 6 parameter alignment between a bunch of input files
+    # and a target. The input files could have been the very initial input files to the
+    # pipeline, and have no masks associated with them. In that case, and if the target does
+    # have a mask, we should add masks to the resampled files now.
+    mask_to_add = registration_targets.registration_standard.mask
+    for resampled_input in final_resampled_lsq6_files:
+        if not resampled_input.mask:
+            resampled_input.mask = mask_to_add
 
         # note that in the return, the registration target is given as "registration_standard".
     # the actual registration might have been between the input file and a potential
@@ -2202,6 +2237,8 @@ def get_pride_of_models_mapping(pride_top_level_dir: str,
     Assumptions/requirements for a pride of models:
     -- all initial models have the same resolution
 
+    -- all keys in the dictionary will be mapped as float
+
     returns:
     dictionary mapping from:
     time_point -> RegistrationTargets
@@ -2233,7 +2270,7 @@ def get_pride_of_models_mapping(pride_top_level_dir: str,
                                  str(get_resolution_from_file(model_in_standard_space)) + ") is different "
                                  "from the resolution we found so far: " + str(common_resolution))
 
-        pride_of_models_dict[init_model_dir] = get_registration_targets_from_init_model(model_in_standard_space,
+        pride_of_models_dict[float(init_model_dir)] = get_registration_targets_from_init_model(model_in_standard_space,
                                                                                         output_dir,
                                                                                         pipeline_name,
                                                                                         init_model_dir)
