@@ -24,7 +24,7 @@ from pyminc.volumes.volumes import mincException
 Pyro4.config.SERVERTYPE = "multiplex"
 
 
-class SubmitError(IOError): pass
+class SubmitError(ValueError): pass
 
 for boring_exception, name in [(mincException, "mincException"), (SubmitError, "SubmitError")]:
     Pyro4.util.SerializerBase.register_dict_to_class(name, lambda _classname, dict: boring_exception)
@@ -452,22 +452,22 @@ class pipelineExecutor(object):
                                     # FIXME add walltime stuff here if specified (and check <= max_walltime ??)
                                     "df /dev/shm >&2",  # FIXME: remove
                                     "cd $PBS_O_WORKDIR",
-                                    "export PYRO_LOGFILE=logs/%s-${PBS_JOBID}.log"])
+                                    "export PYRO_LOGFILE=logs/%s-${PBS_JOBID}.log" % ident])
                 qsub_cmd = (['qsub', '-V', '-t', '1-%d' % number,
-                             '-o', "logs/%s-$PBS_JOBID-o.log" % jobname,
-                             '-e', "logs/%s-$PBS_JOBID-e.log" % jobname,
+                             '-o', "logs/%s-$PBS_JOBID-o.log" % ident,
+                             '-e', "logs/%s-$PBS_JOBID-e.log" % ident,
                              '-Wumask=0137']
                              + (['-q', self.queue_name] if self.queue_name else []))
 
             script = header + '\n' + ' '.join(cmd) + '\n'
-            print(script)
+            #print(script)
             # TODO change to use subprocess.run(qsub_cmd, input=...) (Python >= 3.5)
             p = subprocess.Popen(qsub_cmd, stdin=subprocess.PIPE, shell=False, env=env)
             out_data, err_data = p.communicate(script)
             #print(out_data)
             #print(err_data, file=sys.stderr)
             if p.returncode != 0:
-                raise SubmitError("qsub returned: ", p.returncode)
+                raise SubmitError({ 'return' : p.returncode, 'failed_command' : qsub_cmd })
 
 
     def canRun(self, stageMem, stageProcs, runningMem, runningProcs):

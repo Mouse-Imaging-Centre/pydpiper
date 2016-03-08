@@ -695,7 +695,11 @@ class Pipeline(object):
                     mem = memWanted
                 else:
                     mem = self.memAvail  #memNeeded?
-                self.launchExecutorsFromServer(executors_to_launch, mem)
+                try:
+                    self.launchExecutorsFromServer(executors_to_launch, mem)
+                except pe.SubmitError:
+                    logger.exception("Failed to submit executors; will retry")
+
         logger.debug("... checking for crashed executors ...")
         if self.options.monitor_heartbeats:
             # look for dead clients and requeue their jobs
@@ -768,6 +772,7 @@ class Pipeline(object):
         # its own clients, we should remove 1 from the number of launched and waiting
         # clients (It's possible though that users launch clients themselves. In that 
         # case we should not decrease this variable)
+        # FIXME this is a completely broken way to decide whether to decrement ...
         self.clients[clientURI] = ExecClient(clientURI, maxmemory)
         if self.number_launched_and_waiting_clients > 0:
             self.number_launched_and_waiting_clients -= 1
