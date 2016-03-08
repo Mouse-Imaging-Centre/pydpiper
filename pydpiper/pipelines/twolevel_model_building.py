@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import csv
+import os
 import sys
 
 from configargparse import Namespace
@@ -25,26 +26,39 @@ def two_level(options : TwoLevelConf):
         raise ValueError("Must supply exactly one input file; got: %s..." % options.application.files)
     with open(options.application.files[0], 'r') as f:
         groups = collect(parse_csv(f))
-    first_level_results  = [s.defer(mbm(imgs=[MincAtom(f, output_sub_dir=) for f in files],
-                                        options=options))
-                                        # FIXME set options.output_dir to be current processed dir + + 1st_level + g_id
-                            for gid, files in groups.items()]
-    print(first_level_results)
+    first_level_results = (
+        [s.defer(mbm(imgs=[MincAtom(f, pipeline_sub_dir=os.path.join(options.application.output_directory,
+                                                                     options.application.pipeline_name + "_first_level",
+                                                                     gid + "_processed"))
+                           for f in files],
+                     options=options,
+                     output_dir=os.path.join(options.application.output_directory,
+                                             options.application.pipeline_name + "_first_level"),
+                     prefix=gid))
+                     # FIXME set options.output_dir to be current processed dir + + 1st_level + g_id
+         for gid, files in groups.items()])
+    #print(first_level_results)
     second_level_results = s.defer(mbm(imgs=[r.avg_img for r in first_level_results],
-                                       options=options))   # TODO: options.first/second_level ???
+                                       options=options,
+                                       prefix=os.path.join(options.application.output_directory,
+                                                           options.application.pipeline_name + "_second_level")))
+                         # TODO: options.first/second_level ???
 
 
-    concatenated_xfms = [s.defer(concat_xfmhandlers([xfm_1, xfm_2]))
-                         for xfms_1, xfm_2 in zip(first_level_results.overall_xfms,
-                                                  second_level_results.overall_xfms)
-                         for xfm_1 in xfms_1]
+    #concatenated_xfms = [s.defer(concat_xfmhandlers([xfm_1, xfm_2]))
+    #                     for xfms_1, xfm_2 in zip([r.overall_xfms for r in first_level_results],
+    #                                              second_level_results.overall_xfms)
+    #                     for xfm_1 in xfms_1]
 
-    resampled_determinants = [s.defer(mincresample(img=det, xfm=xfm, like=second_level_results.average))
-                              for dets, xfm in zip(first_level_results.overall_xfms,
-                                                     second_level_results.overall_xfms)
-                              for det in dets]
+    # FIXME totally broken ...
+    #resampled_determinants = [s.defer(mincresample(img=det, xfm=xfm, like=second_level_results.average))
+    #                          for dets, xfm in zip([result.determinants for result in first_level_results],
+    #                                               second_level_results.overall_xfms)
+    #                          for det in dets]
 
     return Result(stages=s, output=Namespace())
+                                             #concatenated_xfms=concatenated_xfms  ))  #,
+                                             #resampled_determinants=resampled_determinants))
 
 def parse_csv(f):
     for row in csv.DictReader(f):
@@ -63,7 +77,7 @@ def main(args):
 
     options = parse(p, args[1:])
 
-    execute(two_level(options).stages, options.execution)
+    execute(two_level(options).stages, options)
 
 if __name__ == "__main__":
     main(sys.argv)

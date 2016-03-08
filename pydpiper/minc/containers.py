@@ -1,3 +1,4 @@
+import copy
 from collections import namedtuple
 from typing import Optional
 
@@ -30,12 +31,12 @@ class XfmHandler(object):
         self.target     = target
         self._resampled = resampled
     # We thought about including an inverse transform which could be generated automagically (when/how??)
-    # although p.defer(XfmHandler(...)) to collect the relevant stages is a bit nasty ...
+    # although s.defer(XfmHandler(...)) to collect the relevant stages is a bit nasty ...
 
     def __repr__(self) -> str:
         return "%s(xfm=%s)" % (self.__class__, self.xfm.path) 
 
-    # convenience accesor to allow `xfm.path` instead of `xfm.xfm.path`:
+    # convenience accessor to allow `xfm.path` instead of `xfm.xfm.path`:
     # (turned off because it was a bad idea due to lack of types)
     #path = property(lambda self: self.xfm.path, "`path` property")
 
@@ -44,6 +45,15 @@ class XfmHandler(object):
     def resampled(self) -> MincAtom:
         return ensure_nonnull_return(lambda self: self._resampled)(self)
     #resampled = property(ensure_nonnull_return(lambda self: self._resampled), "`resampled` property")
+
+    def replace(self, **kwargs):
+        o = copy.copy(self)
+        for k, v in kwargs.items():
+            if hasattr(o, k):
+                setattr(o, k, v)
+            else:
+                raise ValueError("no field %s" % k)
+        return o
 
     # # some methods we haven't needed yet...
     # def update_src(self, new_src):
