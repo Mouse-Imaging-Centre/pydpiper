@@ -120,7 +120,10 @@ def addExecutorArgumentGroup(parser):
                        help="Memory (in GB) to allocate to jobs which don't make a request. [Default=%(default)s]")
     group.add_argument("--cmd-wrapper", dest="cmd_wrapper",
                        type=str, default="",
-                       help="Wrapper inside which to run the command, e.g., '/usr/bin/time -v'. [Default='%(default)s']")
+                       help="Wrapper inside of which to run the command, e.g., '/usr/bin/time -v'. [Default='%(default)s']")
+    group.add_argument("--executor_wrapper", dest="executor_wrapper",
+                       type=str, default="",
+                       help="Command inside of which to run the executor. [Default='%(default)s']")
 
 
 def noExecSpecified(numExec):
@@ -291,6 +294,7 @@ class pipelineExecutor(object):
         self.queue_type = options.queue_type
         self.queue_name = options.queue_name
         self.queue_opts = options.queue_opts
+        self.executor_wrapper = options.executor_wrapper
         self.ns = options.use_ns
         self.uri_file = options.urifile
         if self.uri_file is None:
@@ -404,11 +408,12 @@ class pipelineExecutor(object):
             jobname = ((os.path.basename(program_name) + '-') if program_name is not None else "") + ident
             # do we really need the program name here?
             env = os.environ.copy()
-            cmd = (["pipeline_executor.py", "--local",
+            cmd = ((self.executor_wrapper.split() if self.executor_wrapper else []) \
+                  + (["pipeline_executor.py", "--local",
                        '--uri-file', self.uri_file,
                        # Only one exec is launched at a time in this manner, so:
                        "--num-executors", str(1), '--mem', str(self.mem)]
-                    + q.remove_flags(['--num-exec', '--mem'], sys.argv[1:]))
+                     + q.remove_flags(['--num-exec', '--mem'], sys.argv[1:])))
 
             os.system("mkdir -p logs")    # FIXME: this really doesn't belong here
             if self.queue_type == "sge":
