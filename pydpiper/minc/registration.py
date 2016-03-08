@@ -1125,7 +1125,8 @@ def mincANTS(source: MincAtom,
              conf: MincANTSConf,
              transform_name_wo_ext: str = None,
              generation: int = None,
-             resample_source: bool = False) -> Result[XfmHandler]:
+             resample_source: bool = False,
+             subdir_for_resample: str = "resampled") -> Result[XfmHandler]:
     """
     ...
     transform_name_wo_ext -- to use for the output transformation (without the extension)
@@ -1192,7 +1193,8 @@ def mincANTS(source: MincAtom,
                                     "mincANTS_" + out_xfm.filename_wo_ext + ".log"))
     s.add(stage)
     resampled = (s.defer(mincresample(img=source, xfm=out_xfm, like=target,
-                                      interpolation=Interpolation.sinc))
+                                      interpolation=Interpolation.sinc,
+                                      subdir=subdir_for_resample))
                  if resample_source else None)  # type: Optional[MincAtom]
     return Result(stages=s,
                   output=XfmHandler(source=source,
@@ -1249,8 +1251,14 @@ def mincANTS_NLIN_build_model(imgs: List[MincAtom],
     s = Stages()
     avg = initial_target
     avg_imgs = []  # type: List[MincAtom]
-    for i, conf in enumerate(conf.confs, start=1):
-        xfms = [s.defer(mincANTS(source=img, target=avg, conf=conf, generation=i, resample_source=True))
+    for i, conf_inst in enumerate(conf.confs, start=1):
+        # in the following command we resample the output of the mincANTS command. This is because
+        # we create an average during each iteration which is used as the target for the next iteration.
+        # However, we should not save all resampled files in the resampled/ directory (default for
+        # the mincANTS() call). Do this only for the last iteration:
+        resampled_subdir = "resampled" if len(conf.confs) == i else "tmp"
+        xfms = [s.defer(mincANTS(source=img, target=avg, conf=conf_inst, generation=i,
+                                 resample_source=True, subdir_for_resample=resampled_subdir))
                 for img in imgs]
         avg = s.defer(mincaverage([xfm.resampled for xfm in xfms], name_wo_ext='nlin-%d' % i, output_dir=nlin_dir))
         avg_imgs.append(avg)
