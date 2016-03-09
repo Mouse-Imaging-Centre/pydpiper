@@ -415,7 +415,8 @@ def nu_estimate(src: MincAtom,
                       distance parameter will be set to 8 times the resolution,
                       if "human" it will be 200 times.
     """
-    out = src.newname_with_suffix("_nu_estimate", ext=".imp")
+    out = src.newname_with_suffix("_nu_estimate", ext=".imp", subdir="tmp")
+
 
     # TODO finish dealing with masking as per lines 436-448 of the old LSQ6.py.  (note: the 'singlemask' option there is never used)
     # (currently we don't allow for a single mask or using the initial model's mask if the inputs don't have them)
@@ -450,8 +451,9 @@ def nu_estimate(src: MincAtom,
 
 
 def nu_evaluate(img: MincAtom,
-                field: FileAtom) -> Result[MincAtom]:
-    out = img.newname_with_suffix("_N")
+                field: FileAtom,
+                subdir: str = "tmp") -> Result[MincAtom]:
+    out = img.newname_with_suffix("_N", subdir=subdir)
     cmd = CmdStage(inputs=(img, field), outputs=(out,),
                    cmd=['nu_evaluate', '-clobber', '-mapping', field.path, img.path, out.path])
     cmd.set_log_file(os.path.join(out.pipeline_sub_dir,
@@ -464,11 +466,13 @@ def nu_evaluate(img: MincAtom,
 def nu_correct(src: MincAtom,
                resolution: float,
                mask: Optional[MincAtom] = None,
-               subject_matter: Optional[str] = None) -> Result[MincAtom]:
+               subject_matter: Optional[str] = None,
+               subdir: str = "tmp") -> Result[MincAtom]:
     s = Stages()
     return Result(stages=s, output=s.defer(nu_evaluate(src, s.defer(nu_estimate(src, resolution,
                                                                                 mask=mask,
-                                                                                subject_matter=subject_matter)))))
+                                                                                subject_matter=subject_matter)),
+                                                       subdir=subdir)))
 
 
 class INormalizeMethod(AutoEnum):
@@ -492,13 +496,14 @@ default_inormalize_conf = INormalizeConf(const=1000, method=INormalizeMethod.rat
 
 def inormalize(src: MincAtom,
                conf: INormalizeConf,
-               mask: Optional[MincAtom] = None) -> Result[MincAtom]:
+               mask: Optional[MincAtom] = None,
+               subdir: str = "tmp") -> Result[MincAtom]:
     """
     Note: if a mask is specified through the "mask" parameter, it will have
     precedence over the mask that might be associated with the 
     src file.
     """
-    out = src.newname_with_suffix('_I')
+    out = src.newname_with_suffix('_I', subdir=subdir)
 
     mask_for_inormalize = mask or src.mask
 
@@ -1141,7 +1146,8 @@ def mincANTS(source: MincAtom,
              conf: MincANTSConf,
              transform_name_wo_ext: str = None,
              generation: int = None,
-             resample_source: bool = False) -> Result[XfmHandler]:
+             resample_source: bool = False,
+             subdir_for_resample: str = "resampled") -> Result[XfmHandler]:
     """
     ...
     transform_name_wo_ext -- to use for the output transformation (without the extension)
@@ -1155,14 +1161,20 @@ def mincANTS(source: MincAtom,
     """
     s = Stages()
 
+    # if we resample the source, and place it in the "tmp" directory, we should do
+    # the same with the transformation that is created:
+    trans_output_dir = "transforms"
+    if resample_source and subdir_for_resample == "tmp":
+        trans_output_dir = "tmp"
+
     if transform_name_wo_ext:
-        name = os.path.join(source.pipeline_sub_dir, source.output_sub_dir, 'transforms',
+        name = os.path.join(source.pipeline_sub_dir, source.output_sub_dir, trans_output_dir,
                             "%s.xfm" % (transform_name_wo_ext))
     elif generation != None:
-        name = os.path.join(source.pipeline_sub_dir, source.output_sub_dir, 'transforms',
+        name = os.path.join(source.pipeline_sub_dir, source.output_sub_dir, trans_output_dir,
                             "%s_mincANTS_nlin-%s.xfm" % (source.filename_wo_ext, generation))
     else:
-        name = os.path.join(source.pipeline_sub_dir, source.output_sub_dir, 'transforms',
+        name = os.path.join(source.pipeline_sub_dir, source.output_sub_dir, trans_output_dir,
                             "%s_mincANTS_to_%s.xfm" % (source.filename_wo_ext, target.filename_wo_ext))
     out_xfm = XfmAtom(name=name, pipeline_sub_dir=source.pipeline_sub_dir, output_sub_dir=source.output_sub_dir)
 
@@ -1208,7 +1220,8 @@ def mincANTS(source: MincAtom,
                                     "mincANTS_" + out_xfm.filename_wo_ext + ".log"))
     s.add(stage)
     resampled = (s.defer(mincresample(img=source, xfm=out_xfm, like=target,
-                                      interpolation=Interpolation.sinc))
+                                      interpolation=Interpolation.sinc,
+                                      subdir=subdir_for_resample))
                  if resample_source else None)  # type: Optional[MincAtom]
     return Result(stages=s,
                   output=XfmHandler(source=source,
@@ -1265,8 +1278,14 @@ def mincANTS_NLIN_build_model(imgs: List[MincAtom],
     s = Stages()
     avg = initial_target
     avg_imgs = []  # type: List[MincAtom]
-    for i, conf in enumerate(conf.confs, start=1):
-        xfms = [s.defer(mincANTS(source=img, target=avg, conf=conf, generation=i, resample_source=True))
+    for i, conf_inst in enumerate(conf.confs, start=1):
+        # in the following command we resample the output of the mincANTS command. This is because
+        # we create an average during each iteration which is used as the target for the next iteration.
+        # However, we should not save all resampled files in the resampled/ directory (default for
+        # the mincANTS() call). Do this only for the last iteration:
+        resampled_subdir = "resampled" if len(conf.confs) == i else "tmp"
+        xfms = [s.defer(mincANTS(source=img, target=avg, conf=conf_inst, generation=i,
+                                 resample_source=True, subdir_for_resample=resampled_subdir))
                 for img in imgs]
         avg = s.defer(mincaverage([xfm.resampled for xfm in xfms], name_wo_ext='nlin-%d' % i, output_dir=nlin_dir))
         avg_imgs.append(avg)
@@ -1937,19 +1956,22 @@ def lsq6_nuc_inorm(imgs: List[MincAtom],
                                                    post_alignment_xfm=registration_targets.xfm_to_standard,
                                                    post_alignment_target=registration_targets.registration_standard))
 
-    # TODO: perhaps this is a bit superfluous
     xfms_to_final_target_space = [xfm_handler.xfm for xfm_handler in source_imgs_to_lsq6_target_xfms]
 
     # resample the input to the final lsq6 space
     # we should go back to basics in terms of the file name that we create here. It should
     # be fairly basic. Something along the lines of:
     # {orig_file_base}_resampled_lsq6.mnc
+    # if we are still going to perform either non uniformity correction, or
+    # intensity normalization, the following file is a temp file:
+    out_dir_for_lsq6_space = "tmp" if lsq6_options.nuc or lsq6_options.inormalize else "resampled"
     imgs_in_lsq6_space = [s.defer(mincresample(
         img=native_img,
         xfm=xfm_to_lsq6,
         like=registration_targets.registration_standard,
         interpolation=Interpolation.sinc,
-        new_name_wo_ext=native_img.filename_wo_ext + "_lsq6"))
+        new_name_wo_ext=native_img.filename_wo_ext + "_lsq6",
+        subdir=out_dir_for_lsq6_space))
                           for native_img, xfm_to_lsq6 in zip(imgs, xfms_to_final_target_space)]
 
     # we've just performed a 6 parameter alignment between a bunch of input files
@@ -1965,7 +1987,8 @@ def lsq6_nuc_inorm(imgs: List[MincAtom],
     # we can use it for either the non uniformity correction or
     # for intensity normalization later on
     masks_in_native_space = None  # type: List[MincAtom]
-    if registration_targets.registration_standard.mask:
+    if registration_targets.registration_standard.mask and \
+        (lsq6_options.nuc or lsq6_options.inormalize):
         # we should apply the non uniformity correction in
         # native space. Given that there is a mask, we should
         # resample it to that space using the inverse of the
@@ -1984,10 +2007,13 @@ def lsq6_nuc_inorm(imgs: List[MincAtom],
         # if not we create a list with the same length as the number
         # of images with None values
         # what we get back here is a list of MincAtoms with NUC files
+        # we will always apply a final resampling to these files,
+        # so these will always be temp files
         nuc_imgs_in_native_space = [s.defer(nu_correct(src=native_img,
                                                        resolution=resolution,
                                                        mask=native_img_mask,
-                                                       subject_matter=subject_matter))
+                                                       subject_matter=subject_matter,
+                                                       subdir="tmp"))
                                     for native_img, native_img_mask
                                     in zip(imgs,
                                            masks_in_native_space if masks_in_native_space
@@ -1998,16 +2024,19 @@ def lsq6_nuc_inorm(imgs: List[MincAtom],
         # TODO: this is still static
         inorm_conf = default_inormalize_conf
         input_imgs_for_inorm = nuc_imgs_in_native_space if nuc_imgs_in_native_space else imgs
+        # same as with the NUC files, these intensity normalized files will be resampled
+        # using the lsq6 transform no matter what, so these ones are temp files
         inorm_imgs_in_native_space = (
             [s.defer(inormalize(src=nuc_img,
                                 conf=inorm_conf,
-                                mask=native_img_mask))
+                                mask=native_img_mask,
+                                subdir="tmp"))
              for nuc_img, native_img_mask in zip(input_imgs_for_inorm,
                                                  masks_in_native_space or [None] * len(input_imgs_for_inorm))])
 
     # the only thing left to check is whether we have to resample the NUC/inorm images to LSQ6 space:
     final_resampled_lsq6_files = imgs_in_lsq6_space
-    if (lsq6_options.nuc and lsq6_options.inormalize) or lsq6_options.inormalize:  # FIXME 'and' clause is redundant !?
+    if lsq6_options.inormalize:
         # the final resampled files should be the normalized files resampled with the 
         # lsq6 transformation
         final_resampled_lsq6_files = [s.defer(mincresample(
@@ -2015,7 +2044,8 @@ def lsq6_nuc_inorm(imgs: List[MincAtom],
                                                 xfm=xfm_to_lsq6,
                                                 like=registration_targets.registration_standard,
                                                 interpolation=Interpolation.sinc,
-                                                new_name_wo_ext=inorm_img.filename_wo_ext + "_lsq6"))
+                                                new_name_wo_ext=inorm_img.filename_wo_ext + "_lsq6",
+                                                subdir="resampled"))
                                       for inorm_img, xfm_to_lsq6
                                       in zip(inorm_imgs_in_native_space,
                                              xfms_to_final_target_space)]
@@ -2028,7 +2058,8 @@ def lsq6_nuc_inorm(imgs: List[MincAtom],
                                                            xfm=xfm_to_lsq6,
                                                            like=registration_targets.registration_standard,
                                                            interpolation=Interpolation.sinc,
-                                                           new_name_wo_ext=nuc_filename_wo_ext))
+                                                           new_name_wo_ext=nuc_filename_wo_ext,
+                                                           subdir="resampled"))
                                       for nuc_img, xfm_to_lsq6, nuc_filename_wo_ext
                                       in zip(nuc_imgs_in_native_space,
                                              xfms_to_final_target_space,
@@ -2048,7 +2079,7 @@ def lsq6_nuc_inorm(imgs: List[MincAtom],
         if not resampled_input.mask:
             resampled_input.mask = mask_to_add
 
-        # note that in the return, the registration target is given as "registration_standard".
+    # note that in the return, the registration target is given as "registration_standard".
     # the actual registration might have been between the input file and a potential
     # "registration_native", but since we concatenated that transform with the
     # native_to_standard.xfm, the "registration_standard" file is the correct target
