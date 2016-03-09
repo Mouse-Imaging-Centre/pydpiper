@@ -1,5 +1,4 @@
 import copy
-from collections import namedtuple
 from typing import Optional
 
 from pydpiper.core.util  import ensure_nonnull_return
