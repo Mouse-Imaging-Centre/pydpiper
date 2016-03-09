@@ -813,6 +813,7 @@ def parse_minctracc_lin_protocol(f,
                "w_translations"     : float,
                "w_scales"           : float,
                "w_shear"            : float}
+    # FIXME it's silly that our code handles triples of weights, but this parser only understands a single value
 
     # mapping from protocol file names to Python field names of the MinctraccConf fields
     #names = {"blur" : "blur_resolution",
@@ -857,7 +858,7 @@ def parse_minctracc_lin_protocol(f,
                          for k, v in single_gen_params.items()
                          if k not in ('blur', 'step', 'gradient')}
 
-        linear_conf  =  base_minctracc_conf.replace(**linear_attrs)  # FIXME would need to specify the default confs
+        linear_conf  =  base_minctracc_conf.replace(**linear_attrs)  # FIXME this is rather unsafe
         return MinctraccConf(blur_resolution=single_gen_params["blur"],
                              use_gradient=single_gen_params["gradient"],
                              step_sizes=(single_gen_params["step"],) * 3,
@@ -917,7 +918,7 @@ def minctracc(source: MincAtom,
     # so we should explicitly test for "is not None" here.
     elif generation is not None:
         if lin_conf:
-            trans_type = lin_conf.transform_type
+            trans_type = lin_conf.transform_type.name
         else:
             trans_type = "nlin"
 
