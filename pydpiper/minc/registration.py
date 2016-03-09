@@ -559,8 +559,10 @@ def xfmaverage(xfms: List[XfmAtom],
     return Result(stages=Stages([stage]), output=outf)
 
 
-def xfminvert(xfm: XfmAtom) -> Result[XfmAtom]:
-    inv_xfm = xfm.newname_with_suffix('_inverted')  # type: XfmAtom
+def xfminvert(xfm: XfmAtom,
+              subdir: str = "transforms") -> Result[XfmAtom]:
+    inv_xfm = xfm.newname_with_suffix('_inverted',
+                                      subdir=subdir)  # type: XfmAtom
     s = CmdStage(inputs=(xfm,), outputs=(inv_xfm,),
                  cmd=['xfminvert', '-clobber', xfm.path, inv_xfm.path])
     s.set_log_file(os.path.join(inv_xfm.pipeline_sub_dir,
@@ -570,7 +572,8 @@ def xfminvert(xfm: XfmAtom) -> Result[XfmAtom]:
     return Result(stages=Stages([s]), output=inv_xfm)
 
 
-def invert_xfmhandler(xfm: XfmHandler) -> Result[XfmHandler]:
+def invert_xfmhandler(xfm: XfmHandler,
+                      subdir: str = "transforms") -> Result[XfmHandler]:
     """
     xfminvert lifted to work on XfmHandlers instead of MincAtoms
     """
@@ -590,7 +593,7 @@ def invert_xfmhandler(xfm: XfmHandler) -> Result[XfmHandler]:
     # TODO: instead of have "final_nlin.mnc" as the source for this XfmHandler... we might
     # TODO: run into issues here...
     s = Stages()
-    inv_xfm = s.defer(xfminvert(xfm.xfm))  # type: XfmAtom
+    inv_xfm = s.defer(xfminvert(xfm.xfm, subdir=subdir))  # type: XfmAtom
     return Result(stages=s,
                   output=XfmHandler(xfm=inv_xfm,
                                     source=xfm.target, target=xfm.source, resampled=None))
