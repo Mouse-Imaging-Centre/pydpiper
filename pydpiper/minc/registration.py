@@ -844,15 +844,6 @@ def parse_minctracc_lin_protocol(f,
 
     vs = list(d.values())
     l = len(vs[0])
-
-    # LinearMinctraccConf = NamedTuple("LinearMinctraccConf",
-    #                              [("simplex", float),
-    #                               ("transform_type", Optional[LinearTransType]),
-    #                               ("tolerance", float),
-    #                               ("w_rotations", R3),
-    #                               ("w_translations", R3),
-    #                               ("w_scales", R3),
-    #                               ("w_shear", R3)])
     
     # convert a mapping of options to _single_ values to a single-generation minctracc configuration object:
     def convert_single_gen(single_gen_params) -> LinearMinctraccConf:  # TODO name this better ...
