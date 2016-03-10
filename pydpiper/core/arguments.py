@@ -394,12 +394,13 @@ def _mk_lsq6_parser():
     # is reflected on GitHub
     p.add_argument("--pride-of-models", dest="pride_of_models",
                    type=str, default=None,
-                   help="(registration_chain.py only!) Specify the top level directory of the \"pride\" of models. "
-                        "The idea is that you might want to use different initial models for "
-                        "the time points in your data. The directories in the top level should "
-                        "be named numerically indicating the time point for that model. E.g., "
-                        "there could be a directory \"3\" which contains the initial mode for "
-                        "time point 3, and one called \"10\" for time point 10. [Default = %(default)s]")
+                   help="(registration_chain.py only!) Specify a csv file that contains the mapping of "
+                        "all your initial models at different time points. The idea is that you might "
+                        "want to use different initial models for the time points in your data. "
+                        "The csv file should have one column called \"model_file\", and one column "
+                        "called \"time_point\". The time points can be given in either integer values "
+                        "or float values. Each model file should point to the file in standard space "
+                        "for that particular model.  [Default = %(default)s]")
     # TODO: do we need to implement this option? This was for Kieran Short, but the procedure
     # he will be using in the future most likely will not involve this option.
     # group.add_argument("--lsq6-alternate-data-prefix", dest="lsq6_alternate_prefix",

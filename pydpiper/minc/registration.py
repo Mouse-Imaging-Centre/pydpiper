@@ -2264,7 +2264,7 @@ def is_number(s):
     except ValueError:
         return False
 
-def get_pride_of_models_mapping(pride_top_level_dir: str,
+def get_pride_of_models_mapping(pride_csv: str,
                                 output_dir: str,
                                 pipeline_name: str):
     """
@@ -2277,23 +2277,32 @@ def get_pride_of_models_mapping(pride_top_level_dir: str,
     dictionary mapping from:
     time_point -> RegistrationTargets
     """
-    list_of_initial_model_dirs = os.listdir(pride_top_level_dir)
+    mapping_file = open(pride_csv, 'r')
+    mapping_file_reader = csv.reader(mapping_file)
+    headers = next(mapping_file_reader)
+    # there are two column names that need to be present in the csv
+    # file, and those are: "model_file" and "time_point"
+    if not "model_file" in headers or not "time_point" in headers:
+        raise ValueError("Error: the csv file that indicates the mapping "
+                         "between time points and model files (" +
+                         str(pride_csv) + ") does not contain (all) the "
+                         "required column names: model_file and time_point.")
+
+    model_file_index = headers.index("model_file")
+    time_point_index = headers.index("time_point")
+
     common_resolution = None
 
     pride_of_models_dict = {}
-    for init_model_dir in list_of_initial_model_dirs:
-        # in order to use the names of the initial model directories as
-        # timepoints, they need to be integers (floats would be okay too)
-        if not is_number(init_model_dir):
-            raise ValueError("Error: the directory names of the initial models "
-                             "that make up the pride of models are used to determine "
-                             "its timepoint. These directory names need to be either "
-                             "integers or floats. Please rename this directory: " +
-                             os.path.join(pride_top_level_dir, init_model_dir))
+    for row in mapping_file_reader:
+        # ensure that the timepoints are given in integers/floats
+        time_point = row[time_point_index]
+        if not is_number(time_point):
+            raise ValueError("Error: the specified time point is not an "
+                             "integer nor a float: " + str(time_point) +
+                             " In the following row:\n" + str(row))
 
-        files_in_dir = next(os.walk(os.path.join(pride_top_level_dir, init_model_dir)))[2]
-        commonprefix = os.path.commonprefix(files_in_dir)
-        model_in_standard_space = os.path.join(pride_top_level_dir, init_model_dir, commonprefix + ".mnc")
+        model_in_standard_space = row[model_file_index]
         if not common_resolution:
             common_resolution = get_resolution_from_file(model_in_standard_space)
         else:
@@ -2304,10 +2313,11 @@ def get_pride_of_models_mapping(pride_top_level_dir: str,
                                  str(get_resolution_from_file(model_in_standard_space)) + ") is different "
                                  "from the resolution we found so far: " + str(common_resolution))
 
-        pride_of_models_dict[float(init_model_dir)] = get_registration_targets_from_init_model(model_in_standard_space,
-                                                                                        output_dir,
-                                                                                        pipeline_name,
-                                                                                        init_model_dir)
+        pride_of_models_dict[float(time_point)] = get_registration_targets_from_init_model(init_model_standard_file=model_in_standard_space,
+                                                                                           output_dir=output_dir,
+                                                                                           pipeline_name=pipeline_name,
+                                                                                           timepoint=time_point)
+    mapping_file.close()
     return pride_of_models_dict
 
 
