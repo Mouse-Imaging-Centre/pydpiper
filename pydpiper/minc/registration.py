@@ -793,15 +793,17 @@ def parse_n(p, n):
             raise ParseError("Wrong number of values")
     return f
 
-def parse_minctracc_lin_protocol_file(filename : str, minctracc_conf=default_linear_minctracc_conf) \
+def parse_minctracc_lin_protocol_file(filename : str,
+                                      minctracc_conf=default_linear_minctracc_conf) \
         -> MultilevelMinctraccConf:
     with open(filename, 'r') as f:
-        return parse_minctracc_lin_protocol(csv.read(f), minctracc_conf)
+        return parse_minctracc_lin_protocol(csv.reader(f, delimiter=';'), minctracc_conf)
 
-def parse_minctracc_lin_protocol(f, minctracc_conf : LinearMinctraccConf = default_linear_minctracc_conf) \
+def parse_minctracc_lin_protocol(f,
+                                 base_minctracc_conf : LinearMinctraccConf = default_linear_minctracc_conf) \
         -> MultilevelMinctraccConf:
-    """Use the resulting list to `.replace` the default values.  Needs to return a full MinctraccConf
-    in order to encode blur and step information."""
+    """Use the resulting list of minctracc configurations to `.replace` the default values.
+    Needs to return a full MinctraccConf in order to encode blur and step information."""
 
     # parsers to use for each row of the protocol file
     parsers = {"blur"               : float,
@@ -814,6 +816,7 @@ def parse_minctracc_lin_protocol(f, minctracc_conf : LinearMinctraccConf = defau
                "w_translations"     : float,
                "w_scales"           : float,
                "w_shear"            : float}
+    # FIXME it's silly that our code handles triples of weights, but this parser only understands a single value
 
     # mapping from protocol file names to Python field names of the MinctraccConf fields
     #names = {"blur" : "blur_resolution",
@@ -845,25 +848,23 @@ def parse_minctracc_lin_protocol(f, minctracc_conf : LinearMinctraccConf = defau
 
     vs = list(d.values())
     l = len(vs[0])
-
-    # LinearMinctraccConf = NamedTuple("LinearMinctraccConf",
-    #                              [("simplex", float),
-    #                               ("transform_type", Optional[LinearTransType]),
-    #                               ("tolerance", float),
-    #                               ("w_rotations", R3),
-    #                               ("w_translations", R3),
-    #                               ("w_scales", R3),
-    #                               ("w_shear", R3)])
     
     # convert a mapping of options to _single_ values to a single-generation minctracc configuration object:
     def convert_single_gen(single_gen_params) -> LinearMinctraccConf:  # TODO name this better ...
+        def maybe_triple(value, key):
+            if key.startswith("w_"):
+                return (value,) * 3
+            else:
+                return value
         # TODO check for/catch IndexError ... a bit hard to use zip since some params may not be defined ...
-        linear_attrs = { k : v for k, v in single_gen_params.items() if k not in ('blur_resolution', 'step', 'gradient')}
+        linear_attrs = { k : maybe_triple(v, key=k)
+                         for k, v in single_gen_params.items()
+                         if k not in ('blur', 'step', 'gradient')}
 
-        linear_conf  =  default_lsq6_conf.replace(**linear_attrs)
+        linear_conf  =  base_minctracc_conf.replace(**linear_attrs)  # FIXME this is rather unsafe
         return MinctraccConf(blur_resolution=single_gen_params["blur"],
                              use_gradient=single_gen_params["gradient"],
-                             step_sizes=single_gen_params["step"],
+                             step_sizes=(single_gen_params["step"],) * 3,
                              use_masks=True, #FIXME
                              linear_conf=linear_conf,
                              nonlinear_conf=None)
@@ -908,7 +909,7 @@ def minctracc(source: MincAtom,
     if lin_conf is None and nlin_conf is None:
         raise ValueError("minctracc: no linear or nonlinear configuration specified")
 
-    if lin_conf is not None and lin_conf.transform_type not in LinearTransType.__members__:
+    if lin_conf is not None and lin_conf.transform_type not in LinearTransType.__members__.values():
         raise ValueError("minctracc: invalid transform type %s" % lin_conf.transform_type)
     # TODO: probably not needed since we're using an enum
     if transform_name_wo_ext:
@@ -920,7 +921,7 @@ def minctracc(source: MincAtom,
     # so we should explicitly test for "is not None" here.
     elif generation is not None:
         if lin_conf:
-            trans_type = lin_conf.transform_type
+            trans_type = lin_conf.transform_type.name
         else:
             trans_type = "nlin"
 
@@ -947,12 +948,14 @@ def minctracc(source: MincAtom,
         target_for_minctracc = s.defer(mincblur(target, conf.blur_resolution,
                                                 gradient=conf.use_gradient))
 
-    # TODO: FIXME: currently broken in the presence of None fields; should fall back to our defaults
-    # and/or minctracc's own defaults.
+    # NOTE: this is broken in the presence of unanticipated (vs., e.g., nlin_conf.objective) null fields;
+    # if we're not going to allow these, we should probably wrap this in a try/catch to give a better error
+    # and/or start with a 'default' linear/nonlinear/both minctracc conf as appropriate and `replace` all
+    # fields with the user-supplied ones.
     stage = CmdStage(cmd=['minctracc', '-clobber', '-debug', '-xcorr']  # TODO: remove hard-coded `xcorr`?
                          + (['-transformation', transform.path] if transform
                             else (transform_info if transform_info else ["-identity"]))
-                         + (['-' + lin_conf.transform_type]
+                         + (['-' + lin_conf.transform_type.name]
                             if lin_conf and lin_conf.transform_type else [])
                          + (['-use_simplex']
                             if nlin_conf and nlin_conf.use_simplex is not None else [])
@@ -1395,7 +1398,7 @@ def intrasubject_registrations(subj: Subject,
 # TODO: this is very static right now, but I just want to get things running
 
 _lin_conf_1 = LinearMinctraccConf(simplex=2.8,
-                                  transform_type="lsq12",
+                                  transform_type=LinearTransType.lsq12,
                                   tolerance=0.0001,
                                   w_translations=(0.4,0.4,0.4),
                                   w_rotations=(0.0174533,0.0174533,0.0174533),
@@ -1494,10 +1497,10 @@ def multilevel_pairwise_minctracc(imgs: List[MincAtom],
     # the name of the average file that is produced by this function:
     if not output_name_for_avg:
         all_same_transform_type = True
-        first_transform_type = confs[0].linear_conf.transform_type if confs[0].linear_conf else "nlin"
+        first_transform_type = confs[0].linear_conf.transform_type.name if confs[0].linear_conf else "nlin"
         alternate_name = "avg"
         for stage in confs:
-            current_transform_type = stage.linear_conf.transform_type if stage.linear_conf else "nlin"
+            current_transform_type = stage.linear_conf.transform_type.name if stage.linear_conf else "nlin"
             if current_transform_type != first_transform_type:
                 all_same_transform_type = False
             alternate_name += "_" + current_transform_type
@@ -1871,7 +1874,8 @@ def lsq6(imgs: List[MincAtom],
                      'gradients'       : [False, False, False, True, False],
                      'translations'    : [  0.4,   0.4,   0.4,  0.4,   0.4] }
         if conf.protocol_file is not None:
-            mt_conf = parse_minctracc_lin_protocol_file(conf.protocol_file, NotImplemented)
+            mt_conf = parse_minctracc_lin_protocol_file(filename=conf.protocol_file,
+                                                        minctracc_conf=default_lsq6_minctracc_conf)
         else:
             mt_conf = conf_from_defaults(defaults)
         xfms_to_target = [s.defer(multilevel_minctracc(source=img, target=target, conf=mt_conf,
@@ -1886,9 +1890,11 @@ def lsq6(imgs: List[MincAtom],
 
 
         if conf.protocol_file is not None:  # FIXME the proliferations of LSQ6Confs vs. MultilevelMinctraccConfs here is very confusing ...
-            mt_conf = parse_minctracc_lin_protocol_file(conf.protocol_file, NotImplemented)  # FIXME don't totally ignore confs here ?!
+            mt_conf = parse_minctracc_lin_protocol_file(conf.protocol_file,
+                                                        minctracc_conf=default_lsq6_minctracc_conf)
+                      # FIXME don't totally ignore confs here ?!
         else:
-            mt_conf = conf_from_defaults(defaults)
+            mt_conf = conf_from_defaults(defaults)  # print a warning?!
 
         xfms_to_target = [s.defer(multilevel_minctracc(source=img, target=target, conf=mt_conf))
                           for img in imgs]
