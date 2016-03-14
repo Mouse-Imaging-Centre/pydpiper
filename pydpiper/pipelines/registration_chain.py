@@ -372,7 +372,7 @@ def get_closest_model_from_pride_of_models(pride_of_models_dict,
         return pride_of_models_dict[sorted(pride_of_models_dict.keys())[index_on_the_right]]
     else:
         print("Using initial model of time point: " + str(sorted(pride_of_models_dict.keys())[index_on_the_right - 1]) +
-              " for file with actual time point: " + str(time_point_Float))
+              " for file with actual time point: " + str(time_point_float))
         return pride_of_models_dict[sorted(pride_of_models_dict.keys())[index_on_the_right - 1]]
 
 
