@@ -9,11 +9,10 @@ import inspect
 import re
 
 from configargparse import Namespace
-from typing import Any, cast, Dict, Generic, Iterable, List, Optional, Set, Tuple, TypeVar, Union
-
+from typing import Any, cast, Dict, Generic, Iterable, List, Optional, Set, Tuple, TypeVar, Union, Callable
 from pydpiper.core.files import FileAtom
 from pydpiper.core.stages import CmdStage, Result, Stages
-from pydpiper.core.util import pairs, AutoEnum, NamedTuple
+from pydpiper.core.util import pairs, AutoEnum, NamedTuple, raise_
 from pydpiper.minc.files import MincAtom, XfmAtom
 from pydpiper.minc.containers import XfmHandler
 
@@ -91,6 +90,7 @@ LinearMinctraccConf = NamedTuple("LinearMinctraccConf",
 # TODO writing a LinearMinctraccConf is annoying b/c of the nested structure,
 # so write linear_minctracc_conf : ... -> MinctraccConf
 
+# TODO this doesn't allow for the various optimization params or objective functions to be set ...
 NonlinearMinctraccConf = NamedTuple("NonlinearMinctraccConf",
                                     [("iterations", int),
                                      ("use_simplex", bool),
@@ -790,14 +790,144 @@ def parse_n(p, n):
             raise ParseError("Wrong number of values")
     return f
 
-def parse_minctracc_lin_protocol_file(filename : str,
-                                      minctracc_conf=default_linear_minctracc_conf) \
+def parse_minctracc_linear_protocol_file(filename : str,
+                                         minctracc_conf=default_linear_minctracc_conf) \
         -> MultilevelMinctraccConf:
     with open(filename, 'r') as f:
-        return parse_minctracc_lin_protocol(csv.reader(f, delimiter=';'), minctracc_conf)
+        return parse_minctracc_linear_protocol(csv.reader(f, delimiter=';'), minctracc_conf)
 
-def parse_minctracc_lin_protocol(f,
-                                 base_minctracc_conf : LinearMinctraccConf = default_linear_minctracc_conf) \
+def parse_minctracc_nonlinear_protocol_file(filename : str, minctracc_conf=default_nonlinear_minctracc_conf):
+    with open(filename, 'r') as f:
+        return parse_minctracc_nonlinear_protocol(csv.reader(f, delimiter=';'), minctracc_conf)
+
+def thrice_result(f):
+    def g(x):
+        y = f(x)
+        return (y, y, y)
+    return g
+
+
+def parse_minctracc_protocol(f, base_minctracc_conf, parsers, names,
+                             is_bad_key : Callable[[str], bool]):
+    params = list(parsers.keys())
+
+    # build a mapping from (Python, not file) field names to a list of values (one for each generation)
+    d = {}
+    for l in f:
+        k, *vs = l
+        if k not in params:
+            raise ParseError("Unrecognized parameter: %s" % k)
+        else:
+            k = names[k] if k in names else k
+            if k in d:
+                raise ParseError("Duplicate key: %s" % k)
+            else:
+                d[k] = [parsers[k](v) for v in vs]
+
+    # some error checking ...
+    if not all_equal(d.values(), by=len):
+        raise ParseError("Invalid minctracc configuration: "
+                         "all params must be given for the same number of generations.")
+    if len(d) == 0:
+        raise ParseError("Empty file ...")   # TODO should this really be an error?
+    for k in d:
+        if is_bad_key(k):
+            print("Warning: don't currently use '%s'..." % k)  # doesn't have to be same length -> can crash code below
+            del d[k]
+
+    vs = list(d.values())
+    l = len(vs[0])
+
+    def convert_single_gen(single_gen_params) -> NonlinearMinctraccConf:  # TODO name this better ...
+        # TODO check for/catch IndexError ... a bit hard to use zip since some params may not be defined ...
+        attrs = { k : v
+                  for k, v in single_gen_params.items()
+                  if k not in ('blur', 'step', 'gradient')}
+
+        conf  = base_minctracc_conf.replace(**attrs)  # FIXME this is rather unsafe
+        return MinctraccConf(blur_resolution=single_gen_params["blur"],
+                             use_gradient=single_gen_params["gradient"],
+                             step_sizes=(single_gen_params["step"],) * 3,
+                             use_masks=True, #FIXME
+                             linear_conf=conf,  # won't exactly work, and if-statements here would break abstraction
+                             nonlinear_conf=None)
+
+    return MultilevelMinctraccConf([convert_single_gen({ key : vs[j] for key, vs in d.items() }) for j in range(l)])
+
+
+
+# FIXME factor parse_minctracc_{nlin,linear}_protocol into a common procedure!
+def parse_minctracc_nonlinear_protocol(f,
+                                       base_minctracc_conf : NonlinearMinctraccConf = default_nonlinear_minctracc_conf)\
+        -> MultilevelMinctraccConf:
+
+    # parsers to use for each row of the protocol file
+    parsers = {"blur"               : float,
+               "step"               : float,  # use thrice_result here too?
+               "gradient"           : parse_bool,
+               "iterations"         : int,
+               "optimization"       : lambda o: True if o == "-use_simplex" \
+                                                     else raise_(NotImplementedError("optimization %s" % o)),
+               "simplex"            : float,
+               "w_rotations"        : thrice_result(float),  # just get deleted anyway ...
+               "w_translations"     : thrice_result(float),
+               "w_scales"           : thrice_result(float),
+               "w_shear"            : thrice_result(float),
+               "stiffness"          : float,
+               "weight"             : float,
+               "similarity"         : float}
+
+    # mapping from names in the config file to NonlinearMinctraccConf field names
+    names = { "optimization" : "use_simplex" }
+
+    params = list(parsers.keys())
+
+    # build a mapping from (Python, not file) field names to a list of values (one for each generation)
+    d = {}
+    for l in f:
+        k, *vs = l
+        if k not in params:
+            raise ParseError("Unrecognized parameter: %s" % k)
+        else:
+            k = names[k] if k in names else k
+            if k in d:
+                raise ParseError("Duplicate key: %s" % k)
+            else:
+                d[k] = [parsers[k](v) for v in vs]
+
+    # some error checking ...
+    if not all_equal(d.values(), by=len):
+        raise ParseError("Invalid minctracc configuration: "
+                         "all params must be given for the same number of generations.")
+    if len(d) == 0:
+        raise ParseError("Empty file ...")   # TODO should this really be an error?
+    for k in d:
+        if k in ["memory_required", "simplex"] or k.startswith("w_"):
+            print("Warning: don't currently use '%s'..." % k)  # doesn't have to be same length -> can crash code below
+            del d[k]
+
+    vs = list(d.values())
+    l = len(vs[0])
+
+    # convert a mapping of options to _single_ values to a single-generation minctracc configuration object:
+    def convert_single_gen(single_gen_params) -> NonlinearMinctraccConf:  # TODO name this better ...
+        # TODO check for/catch IndexError ... a bit hard to use zip since some params may not be defined ...
+        nonlinear_attrs = { k : v
+                            for k, v in single_gen_params.items()
+                            if k not in ('blur', 'step', 'gradient')}
+
+        nonlinear_conf  =  base_minctracc_conf.replace(**nonlinear_attrs)  # FIXME this is rather unsafe
+        return MinctraccConf(blur_resolution=single_gen_params["blur"],
+                             use_gradient=single_gen_params["gradient"],
+                             step_sizes=(single_gen_params["step"],) * 3,
+                             use_masks=True, #FIXME
+                             linear_conf=nonlinear_conf,
+                             nonlinear_conf=None)
+
+    return MultilevelMinctraccConf([convert_single_gen({ key : vs[j] for key, vs in d.items() }) for j in range(l)])
+
+def parse_minctracc_linear_protocol(f,
+                                    base_minctracc_conf : LinearMinctraccConf = default_linear_minctracc_conf) \
         -> MultilevelMinctraccConf:
     """Use the resulting list of minctracc configurations to `.replace` the default values.
     Needs to return a full MinctraccConf in order to encode blur and step information."""
@@ -848,6 +978,7 @@ def parse_minctracc_lin_protocol(f,
     
     # convert a mapping of options to _single_ values to a single-generation minctracc configuration object:
     def convert_single_gen(single_gen_params) -> LinearMinctraccConf:  # TODO name this better ...
+        # TODO use thrice_result as in nonlinear version to get rid of this ...
         def maybe_triple(value, key):
             if key.startswith("w_"):
                 return (value,) * 3
@@ -1566,16 +1697,22 @@ def multilevel_pairwise_minctracc(imgs: List[MincAtom],
 # TODO all this does is call multilevel_pairwise_minctracc and then return an average; fold into that procedure?
 # TODO eliminate/provide default val for resolutions, move resolutions into conf, finish conf ...
 def lsq12_pairwise(imgs: List[MincAtom],
-                   conf: MultilevelMinctraccConf,  # TODO: override transform_type field?
+                   #conf: MultilevelMinctraccConf,  # TODO: override transform_type field?
                    lsq12_conf: LSQ12Conf,
                    lsq12_dir: str,
                    like: MincAtom = None,
                    mincaverage = mincaverage) -> Result[WithAvgImgs[List[XfmHandler]]]:
+
+    if lsq12_conf.protocol:
+        minctracc_conf = parse_minctracc_linear_protocol_file(lsq12_conf.protocol)
+    else:
+        minctracc_conf = default_lsq12_multilevel_minctracc
+    # FIXME `replace` the resolution, etc.!!  Also print a warning?
     # conf.transform_type='-lsq12' # hack ... copy? or set external to lsq12 call ? might be better
     s = Stages()
-    avgs_and_xfms = s.defer(multilevel_pairwise_minctracc(imgs=imgs, conf=conf, like=like,
-                                                 output_dir_for_avg=lsq12_dir,
-                                                 max_pairs=lsq12_conf.max_pairs))
+    avgs_and_xfms = s.defer(multilevel_pairwise_minctracc(imgs=imgs, conf=minctracc_conf, like=like,
+                                                          output_dir_for_avg=lsq12_dir,
+                                                          max_pairs=lsq12_conf.max_pairs))
     return Result(stages=s, output=avgs_and_xfms)
 
 
@@ -1871,8 +2008,8 @@ def lsq6(imgs: List[MincAtom],
                      'gradients'       : [False, False, False, True, False],
                      'translations'    : [  0.4,   0.4,   0.4,  0.4,   0.4] }
         if conf.protocol_file is not None:
-            mt_conf = parse_minctracc_lin_protocol_file(filename=conf.protocol_file,
-                                                        minctracc_conf=default_lsq6_minctracc_conf)
+            mt_conf = parse_minctracc_linear_protocol_file(filename=conf.protocol_file,
+                                                           minctracc_conf=default_lsq6_minctracc_conf)
         else:
             mt_conf = conf_from_defaults(defaults)
         xfms_to_target = [s.defer(multilevel_minctracc(source=img, target=target, conf=mt_conf,
@@ -1887,8 +2024,8 @@ def lsq6(imgs: List[MincAtom],
 
 
         if conf.protocol_file is not None:  # FIXME the proliferations of LSQ6Confs vs. MultilevelMinctraccConfs here is very confusing ...
-            mt_conf = parse_minctracc_lin_protocol_file(conf.protocol_file,
-                                                        minctracc_conf=default_lsq6_minctracc_conf)
+            mt_conf = parse_minctracc_linear_protocol_file(conf.protocol_file,
+                                                           minctracc_conf=default_lsq6_minctracc_conf)
                       # FIXME don't totally ignore confs here ?!
         else:
             mt_conf = conf_from_defaults(defaults)  # print a warning?!
