@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
-
+import copy
 import csv
 import os
 import sys
 
 from configargparse import Namespace
+
+from pydpiper.core.util import NamedTuple
 from pydpiper.minc.files import MincAtom
 
-from pydpiper.minc.registration import concat_xfmhandlers, mincresample, RegistrationConf
+from pydpiper.minc.registration import concat_xfmhandlers, mincresample, RegistrationConf, lsq12_nlin_build_model
 from pydpiper.pipelines.MBM import mbm, mbm_parser, MBMConf
 from pydpiper.execution.application import execute
 from pydpiper.core.util import NamedTuple, collect
@@ -38,10 +40,17 @@ def two_level(options : TwoLevelConf):
                      # FIXME set options.output_dir to be current processed dir + + 1st_level + g_id
          for gid, files in groups.items()])
     #print(first_level_results)
+    # FIXME right now the same options set is being used for both levels, which is annoying
+    # FIXME the second-level lsq12 stages don't keep the prefix of the name of their *target*,
+    #       just the 'nlin-2' part, causing a collision
+    # TODO should there be a pride of models for this pipe as well ?
+    second_level_options = copy.deepcopy(options)
+    second_level_mbm = second_level_options.mbm
+    second_level_mbm.lsq6 = second_level_mbm.lsq6.replace(nuc=False, inormalize=False)
     second_level_results = s.defer(mbm(imgs=[r.avg_img for r in first_level_results],
-                                       options=options,
-                                       prefix=os.path.join(options.application.output_directory,
-                                                           options.application.pipeline_name + "_second_level")))
+                                             options=second_level_options,
+                                             prefix=os.path.join(options.application.output_directory,
+                                                                 options.application.pipeline_name + "_second_level")))
                          # TODO: options.first/second_level ???
 
 
