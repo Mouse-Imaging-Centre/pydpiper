@@ -185,10 +185,6 @@ def parse(parser: Parser, args: List[str]) -> Namespace:
     return main_ns
 
 
-def with_parser(p: Parser) -> Callable[[List[str]], Namespace]:
-    return lambda args: parse(p, args)
-
-
 def _mk_application_parser(p: ArgParser) -> ArgParser:
     """
     The arguments that all applications share:
