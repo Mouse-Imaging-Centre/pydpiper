@@ -125,7 +125,7 @@ def chain(options):
                              "(Which file is the 'first' input file?). Please use the --lsq6-target "
                              "flag to specify a target for the lsq6 stage, or use an initial model.")
         if options.lsq6.target_type == TargetType.pride_of_models:
-            pride_of_models_dict = get_pride_of_models_mapping(pride_top_level_dir=options.lsq6.target_file,
+            pride_of_models_dict = get_pride_of_models_mapping(pride_csv=options.lsq6.target_file,
                                                                output_dir=options.application.output_directory,
                                                                pipeline_name=options.application.pipeline_name)
             subj_id_to_subj_with_lsq6_xfm_dict = map_with_index_over_time_pt_dict_in_Subject(
