@@ -216,7 +216,8 @@ def _mk_application_parser(p: ArgParser) -> ArgParser:
     # with the pipeline name/date, we could create one identifying directory
     # and put these other directories inside
     g.add_argument("--output-dir", dest="output_directory",
-                   type=os.path.abspath, default='',
+                   type=str,
+                   default='',
                    help="Directory where output data and backups will be saved.")
     g.add_argument("--create-graph", dest="create_graph",
                    action="store_true", default=False,
