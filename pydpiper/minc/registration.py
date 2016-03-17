@@ -1650,7 +1650,7 @@ def multilevel_pairwise_minctracc(imgs: List[MincAtom],
         # being careful not to register the img against itself
         # FIXME: do something about the configuration, currently it all seems a bit broken...
         xfms = [s.defer(multilevel_minctracc(src_img, target_img,
-                                             conf=default_lsq12_multilevel_minctracc))
+                                             conf=conf))
                 for target_img in target_imgs if src_img != target_img]  # TODO src_img.name != ....name ??
 
         avg_xfm = s.defer(xfmaverage([xfm.xfm for xfm in xfms],
