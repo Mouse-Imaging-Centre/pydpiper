@@ -135,15 +135,21 @@ def atoms_from_same_subject(atoms: List[FileAtom]):
 # TODO should these atoms/modules be remade as distinct classes with public outf and stage fields (only)?
 # TODO output_dir (work_dir?) isn't used but could be useful; assert not(subdir and output_dir)?
 
-# FIXME mincblur has a slight weirdness that it returns a single file determined by the gradient parameter,
-# but the command-line tool actually creates both files if gradient=True.  As a result, there's a possibility that
-# two distinct mincblur stages may try to write to the same blur file, since that output is not tracked in the
-# mincblur stage running with -gradient.  Obvious solution: just return both outputs.
-# Maybe this is one cause of the empty/corrupted files occasionally encountered?
+# N.B.: mincblur has a slight weirdness in that it might create one or two
+# output files.  Due to our semi-manual managing of the filenames without any allocation/gensym, there's always
+# the risk that two different parts of a program may try to write to the same output file (manifest at the level
+# of output file checking in the Python code if we're honest about outputs, and as weird output file corruption if not).
+# In general this might be a problem, but we cross our fingers and hope that in most such cases the two commands
+# will be identical and so one will be optimized away.  If our `mincblur` procedure returned the path to _either_
+# an image or gradient file, however, it seems less likely that we'd be so fortunate.  As a result, mincblur currently
+# returns both files by default, but can be disabled as an optimization.  Better than this would be
+# lazily computing the gradient ...
+# We currently return a Namespace(img) or Namespace(img, gradient), but dynamically choosing which field to select
+# is tedious in Python ...
 def mincblur(img: MincAtom,
              fwhm: float,
-             gradient: bool = False,
-             subdir: str = 'tmp') -> Result[MincAtom]:
+             gradient: bool = True,
+             subdir: str = 'tmp') -> Result[Namespace]:  # (out_img=MincAtom, gradient=MincAtom)]:
     """
     >>> img = MincAtom(name='/images/img_1.mnc', pipeline_sub_dir='/scratch/some_pipeline_processed/')
     >>> img_blur = mincblur(img=img, fwhm=0.056)
@@ -152,20 +158,23 @@ def mincblur(img: MincAtom,
     >>> [i.render() for i in img_blur.stages]
     ['mincblur -clobber -no_apodize -fwhm 0.056 /images/img_1.mnc /scratch/some_pipeline_processed/img_1/tmp/img_1_fwhm0.056']
     """
-    suffix = "_dxyz" if gradient else "_blur"
-    outf = img.newname_with_suffix("_fwhm%s" % fwhm + suffix, subdir=subdir)
+    # suffix   = "_dxyz" if gradient else "_blur"
+    fwhm_str = "_fwhm%s" % fwhm
+    out_img      = img.newname_with_suffix(fwhm_str + "_blur", subdir=subdir)
+    out_gradient = img.newname_with_suffix(fwhm_str + "_dxyz", subdir=subdir)
     stage = CmdStage(
-        inputs=(img,), outputs=(outf,),
+        inputs=(img,), outputs=(out_img,) + ((out_gradient,) if gradient else ()),
         # drop last 9 chars from output filename since mincblur
-        # automatically adds "_blur.mnc/_dxyz.mnc" and Python
+        # automatically adds "_blur.mnc" (or "_dxyz.mnc") and Python
         # won't lift this length calculation automatically ...
-        cmd=shlex.split('mincblur -clobber -no_apodize -fwhm %s %s %s' % (fwhm, img.path, outf.path[:-9]))
+        cmd=shlex.split('mincblur -clobber -no_apodize -fwhm %s %s %s' % (fwhm, img.path, out_img.path[:-9]))
             + (['-gradient'] if gradient else []))
-    stage.set_log_file(os.path.join(outf.pipeline_sub_dir,
-                                    outf.output_sub_dir,
+    stage.set_log_file(os.path.join(out_img.pipeline_sub_dir,
+                                    out_img.output_sub_dir,
                                     "log",
-                                    "mincblur_" + outf.filename_wo_ext + ".log"))
-    return Result(stages=Stages((stage,)), output=outf)
+                                    "mincblur_" + out_img.filename_wo_ext + ".log"))
+    return Result(stages=Stages((stage,)),
+                  output=Namespace(img=out_img) if gradient else Namespace(img=out_img, gradient=out_gradient))
 
 
 def mincaverage(imgs: List[MincAtom],
@@ -675,8 +684,8 @@ def rotational_minctracc(source: MincAtom,
     w_translation_stepsize = resolution * conf.w_translations_factor
 
     # blur input files
-    blurred_src = s.defer(mincblur(source, blur_stepsize))
-    blurred_dest = s.defer(mincblur(target, blur_stepsize))
+    blurred_src = s.defer(mincblur(source, blur_stepsize)).img
+    blurred_dest = s.defer(mincblur(target, blur_stepsize)).img
 
     if not output_name_wo_ext:
         output_name_wo_ext = "%s_rotational_minctracc_to_%s" % (source.filename_wo_ext, target.filename_wo_ext)
@@ -984,10 +993,9 @@ def minctracc(source: MincAtom,
     source_for_minctracc = source
     target_for_minctracc = target
     if conf.blur_resolution is not None:
-        source_for_minctracc = s.defer(mincblur(source, conf.blur_resolution,
-                                                gradient=conf.use_gradient))
-        target_for_minctracc = s.defer(mincblur(target, conf.blur_resolution,
-                                                gradient=conf.use_gradient))
+        img_or_grad = lambda result: result.gradient if conf.use_gradient else result.img
+        source_for_minctracc = img_or_grad(s.defer(mincblur(source, conf.blur_resolution)))
+        target_for_minctracc = img_or_grad(s.defer(mincblur(target, conf.blur_resolution)))
 
     # NOTE: this is broken in the presence of unanticipated (vs., e.g., nlin_conf.objective) null fields;
     # if we're not going to allow these, we should probably wrap this in a try/catch to give a better error
@@ -1219,10 +1227,8 @@ def mincANTS(source: MincAtom,
     # TODO: similarity_inputs should be a set, but `MincAtom`s aren't hashable
     for sim_metric_conf in conf.sim_metric_confs:
         if conf.file_resolution is not None and sim_metric_conf.use_gradient_image:
-            src = s.defer(mincblur(source, fwhm=conf.file_resolution,
-                                   gradient=sim_metric_conf.use_gradient_image))
-            dest = s.defer(mincblur(target, fwhm=conf.file_resolution,
-                                    gradient=sim_metric_conf.use_gradient_image))
+            src = s.defer(mincblur(source, fwhm=conf.file_resolution)).gradient
+            dest = s.defer(mincblur(target, fwhm=conf.file_resolution)).gradient
         elif conf.file_resolution is None and sim_metric_conf.use_gradient_image:
             # the file resolution is not set, however we want to use the gradients
             # for this similarity metric...
