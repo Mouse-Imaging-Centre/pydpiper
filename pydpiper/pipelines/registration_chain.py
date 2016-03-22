@@ -135,8 +135,11 @@ def chain(options):
                                                                                         pride_of_models_dict, time_point),
                                                                resolution=options.registration.resolution,
                                                                lsq6_options=options.lsq6,
+                                                               lsq6_dir=None,  # never used since no average
+                                                               # (could call this "average_dir" with None -> no avg ?)
                                                                subject_matter=options.registration.subject_matter,
-                                                               create_qc_images=False))[0],
+                                                               create_qc_images=False,
+                                                               create_average=False))[0],
                                         pipeline_subject_info)  # type: Dict[str, Subject[XfmHandler]]
         else:
             # if we are not dealing with a pride of models, we can retrieve a fixed
