@@ -581,7 +581,7 @@ def _mk_nlin_parser(p: ArgParser):
     group = p.add_argument_group("Nonlinear registration options",
                                  "Options for performing a non-linear registration")
     group.add_argument("--registration-method", dest="reg_method",
-                       default="mincANTS", type=str,  # TODO should possible be a choices(...), not str
+                       default="mincANTS", choices=["mincANTS", "minctracc"],
                        help="Specify whether to use minctracc or mincANTS for non-linear registrations. "
                             "[Default = %(default)s]")
     group.add_argument("--nlin-protocol", dest="nlin_protocol",
