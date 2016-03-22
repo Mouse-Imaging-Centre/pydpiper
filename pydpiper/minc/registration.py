@@ -1868,10 +1868,12 @@ def to_lsq6_conf(lsq6_args : Namespace) -> LSQ6Conf:
 def lsq6(imgs: List[MincAtom],
          target: MincAtom,
          resolution: float,
-         #output_dir,
-         #pipeline_name,
+         lsq6_dir: str,
          conf: LSQ6Conf,
+         resample_subdir: str = "resampled",
+         resample_images: bool = False,
          post_alignment_xfm: XfmAtom = None,
+         propagate_masks: bool = True,
          post_alignment_target: MincAtom = None) -> Result[List[XfmHandler]]:
     """
     post_alignment_xfm -- this is a transformation you want to concatenate with the
@@ -1953,29 +1955,62 @@ def lsq6(imgs: List[MincAtom],
             mt_conf = parse_minctracc_linear_protocol_file(filename=conf.protocol_file,
                                                            transform_type=LinearTransType.lsq12,
                                                            minctracc_conf=default_lsq6_minctracc_conf)
-                      # FIXME don't totally ignore confs here ?!
         else:
-            mt_conf = conf_from_defaults(defaults)  # print a warning?!
+            mt_conf = conf_from_defaults(defaults)  # FIXME print a warning?!
 
-        xfms_to_target = [s.defer(multilevel_minctracc(source=img, target=target, conf=mt_conf))
+        xfms_to_target = [s.defer(multilevel_minctracc(source=img,
+                                                       target=target,
+                                                       conf=mt_conf))
                           for img in imgs]
     else:
         raise ValueError("bad lsq6 method: %s" % conf.lsq6_method)
 
-    final_xfmhs = xfms_to_target
     if post_alignment_xfm:
-        final_xfmhs = [XfmHandler(xfm=s.defer(xfmconcat([first_xfm.xfm,
-                                                         post_alignment_xfm],
-                                                         name=first_xfm.xfm.output_sub_dir + "_lsq6")),
+        composed_xfms = [s.defer(xfmconcat([xfm.xfm, post_alignment_xfm],
+                                           name=xfm.xfm.output_sub_dir + "_lsq6"))
+                         for xfm in xfms_to_target]
+        resampled_imgs = ([mincresample(img=native_img,
+                                        xfm=overall_xfm,
+                                        like=post_alignment_target,
+                                        new_name_wo_ext=native_img.filename_wo_ext + "_lsq6",
+                                        subdir=resample_subdir) for native_img, overall_xfm in zip(imgs, composed_xfms)]
+                          if resample_images else [None] * len(imgs))
+        final_xfmhs = [XfmHandler(xfm=overall_xfm,
                                   target=post_alignment_target,
-                                  source=img,
-                                  resampled=None)
-                       for img, first_xfm in zip(imgs, xfms_to_target)]
+                                  source=native_img,
+                                  # resample the input to the final lsq6 space
+                                  # we should go back to basics in terms of the file name that we create here.
+                                  # It should be fairly basic. Something along the lines of:
+                                  # {orig_file_base}_resampled_lsq6.mnc
+                                  # if we are still going to perform either non uniformity correction, or
+                                  # intensity normalization, the following file is a temp file:
+                                  resampled=resampled_img)
+                       for native_img, resampled_img, overall_xfm in zip(imgs, resampled_imgs, composed_xfms)]
+    else:
+        final_xfmhs = xfms_to_target
+        if resample_images:
+            for native_img, xfm in zip(imgs, final_xfmhs):  # is xfm.resampled even mutable ?!
+                xfm.resampled = s.defer(mincresample(img=native_img,
+                                                     xfm=xfm.xfm,
+                                                     like=xfm.target,
+                                                     new_name_wo_ext=native_img.filename_wo_ext + "_lsq6",
+                                                     subdir=resample_subdir))
 
-    ############################################################################
-    # TODO: resample input files ???
-    ############################################################################
+    # we've just performed a 6 parameter alignment between a bunch of input files
+    # and a target. The input files could have been the very initial input files to the
+    # pipeline, and have no masks associated with them. In that case, and if the target does
+    # have a mask, we should add masks to the resampled files now.
+    if propagate_masks and resample_images:
+        mask_to_add = post_alignment_target.mask if post_alignment_target else target.mask
+        for xfm in final_xfmhs:
+            if not xfm.resampled.mask:
+                xfm.resampled.mask = mask_to_add
 
+    # could have stuff for creating an average and/or QC images here, but seemingly we use this either
+    # as part of lsq6_nuc_inorm or in more unusual situations such as the registration chain where
+    # we first aggregate the results of multiple lsq6 calls and create a common montage, so haven't bothered ...
+
+    # TODO return average, etc.?
     return Result(stages=s, output=final_xfmhs)
 
 
@@ -2000,6 +2035,9 @@ def lsq6_nuc_inorm(imgs: List[MincAtom],
                    registration_targets: RegistrationTargets,
                    resolution: float,
                    lsq6_options: LSQ6Conf,
+                   lsq6_dir: str,
+                   create_qc_images: bool = True,
+                   create_average: bool = True,
                    subject_matter: Optional[str] = None):
     s = Stages()
 
@@ -2009,35 +2047,12 @@ def lsq6_nuc_inorm(imgs: List[MincAtom],
     source_imgs_to_lsq6_target_xfms = s.defer(lsq6(imgs=imgs, target=init_target,
                                                    resolution=resolution,
                                                    conf=lsq6_options,
+                                                   lsq6_dir=lsq6_dir,
+                                                   resample_images=not (lsq6_options.nuc or lsq6_options.inormalize),
                                                    post_alignment_xfm=registration_targets.xfm_to_standard,
                                                    post_alignment_target=registration_targets.registration_standard))
 
     xfms_to_final_target_space = [xfm_handler.xfm for xfm_handler in source_imgs_to_lsq6_target_xfms]
-
-    # resample the input to the final lsq6 space
-    # we should go back to basics in terms of the file name that we create here. It should
-    # be fairly basic. Something along the lines of:
-    # {orig_file_base}_resampled_lsq6.mnc
-    # if we are still going to perform either non uniformity correction, or
-    # intensity normalization, the following file is a temp file:
-    out_dir_for_lsq6_space = "tmp" if lsq6_options.nuc or lsq6_options.inormalize else "resampled"
-    imgs_in_lsq6_space = [s.defer(mincresample(
-        img=native_img,
-        xfm=xfm_to_lsq6,
-        like=registration_targets.registration_standard,
-        interpolation=Interpolation.sinc,
-        new_name_wo_ext=native_img.filename_wo_ext + "_lsq6",
-        subdir=out_dir_for_lsq6_space))
-                          for native_img, xfm_to_lsq6 in zip(imgs, xfms_to_final_target_space)]
-
-    # we've just performed a 6 parameter alignment between a bunch of input files
-    # and a target. The input files could have been the very initial input files to the
-    # pipeline, and have no masks associated with them. In that case, and if the target does
-    # have a mask, we should add masks to the resampled files now.
-    mask_to_add = registration_targets.registration_standard.mask
-    for resampled_input in imgs_in_lsq6_space:
-        if not resampled_input.mask:
-            resampled_input.mask = mask_to_add
 
     # resample the mask from the initial model to native space
     # we can use it for either the non uniformity correction or
@@ -2091,7 +2106,6 @@ def lsq6_nuc_inorm(imgs: List[MincAtom],
                                                  masks_in_native_space or [None] * len(input_imgs_for_inorm))])
 
     # the only thing left to check is whether we have to resample the NUC/inorm images to LSQ6 space:
-    final_resampled_lsq6_files = imgs_in_lsq6_space
     if lsq6_options.inormalize:
         # the final resampled files should be the normalized files resampled with the 
         # lsq6 transformation
@@ -2121,19 +2135,28 @@ def lsq6_nuc_inorm(imgs: List[MincAtom],
                                              xfms_to_final_target_space,
                                              nuc_filenames_wo_ext_lsq6)]
     else:
-        # in this case neither non uniformity correction was applied, nor intensity 
-        # normalization, so the initialization of the final_resampled_lsq6_files 
-        # variable is already correct
-        pass
+        # in this case neither non uniformity correction nor intensity normalization was applied,
+        # so we must have passed `resample_inputs=True` to the actual lsq6 calls above, and thus:
+        final_resampled_lsq6_files = [xfm.resampled for xfm in source_imgs_to_lsq6_target_xfms]
 
     # we've just performed a 6 parameter alignment between a bunch of input files
     # and a target. The input files could have been the very initial input files to the
     # pipeline, and have no masks associated with them. In that case, and if the target does
     # have a mask, we should add masks to the resampled files now.
+    # TODO potentially done twice if neither nuc nor inorm corrections applied since `lsq6` also does this
     mask_to_add = registration_targets.registration_standard.mask
     for resampled_input in final_resampled_lsq6_files:
         if not resampled_input.mask:
             resampled_input.mask = mask_to_add
+
+    if create_average:
+        s.defer(mincaverage(imgs=final_resampled_lsq6_files,
+                            output_dir=lsq6_dir))
+
+    if create_qc_images:
+        s.defer(create_quality_control_images(imgs=final_resampled_lsq6_files,
+                                              montage_dir="SOMETHING",  # FIXME
+                                              montage_output="LSQ6_montage"))
 
     # note that in the return, the registration target is given as "registration_standard".
     # the actual registration might have been between the input file and a potential
