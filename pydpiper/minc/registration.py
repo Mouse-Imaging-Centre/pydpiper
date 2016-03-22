@@ -1080,6 +1080,53 @@ mincANTS_default_conf = MincANTSConf(
     sim_metric_confs=[default_similarity_metric_conf,
                       default_similarity_metric_conf.replace(use_gradient_image=True)])  # type: MincANTSConf
 
+
+def get_default_multi_level_mincANTS(file_resolution: float) -> MultilevelMincANTSConf:
+    """
+    Create a multilevel mincANTS configuration based on the provided file resolution.
+    The iterations are:
+    100x100x100x0
+    100x100x100x20
+    100x100x100x100
+    """
+    conf1 = mincANTS_default_conf.replace(file_resolution=file_resolution,
+                                          iterations="100x100x100x0")
+    conf2 = mincANTS_default_conf.replace(file_resolution=file_resolution,
+                                          iterations="100x100x100x20")
+    conf3 = mincANTS_default_conf.replace(file_resolution=file_resolution,
+                                          iterations="100x100x100x100")
+    return MultilevelMincANTSConf([conf1,conf2,conf3])
+
+
+def get_nonlinear_configuration_from_options(nlin_protocol, reg_method, file_resolution):
+    """
+    :param nlin_protocol: path to the protocol on the system (can be None)
+    :param reg_method: the registration method (currently mincANTS or minctracc)
+    :param file_resolution: resolution at which registrations are performed
+    :return:  MultilevelMincANTSConf or MultilevelMinctraccConf
+    """
+
+    non_linear_configuration = None
+
+    # determine what configuration to use for the non linear registration
+    if nlin_protocol:
+        # actually parse it:
+        if reg_method == "mincANTS":
+            non_linear_configuration = parse_mincANTS_protocol_file(nlin_protocol, file_resolution)
+        if reg_method == "minctracc":
+            non_linear_configuration = parse_minctracc_nonlinear_protocol(nlin_protocol)
+    else:
+        # get one of the default configurations
+        if reg_method == "mincANTS":
+            non_linear_configuration = get_default_multi_level_mincANTS(file_resolution=file_resolution)
+        if reg_method == "minctracc":
+            #TODO: this. Still TODO.
+            raise ValueError("Error.. we do not have proper minctracc non linear defaults yet. ")
+
+    return non_linear_configuration
+
+
+
 def parse_many(parser, sep=','):
     def f(st):
         return tuple(parser(s) for s in st.split(sep))
@@ -1095,8 +1142,16 @@ def parse_nullable(parser):
 
 class ParseError(ValueError): pass
 
-def parse_mincANTS_protocol_file(f, mincANTS_conf=mincANTS_default_conf) -> MultilevelMincANTSConf:
-    """Use the resulting list to `.replace` the default values."""
+def parse_mincANTS_protocol_file(config_file,
+                                 file_resolution,
+                                 mincANTS_conf=mincANTS_default_conf) -> MultilevelMincANTSConf:
+    """
+    config_file -- path to file on the system that contains the mincANTS configuration
+
+    Use the resulting list to `.replace` the default values.
+    """
+    f_handle = open(config_file, 'r')
+    reader = csv.reader(f_handle, delimiter=";")
 
     # parsers to use for each row of the protocol file
     parsers = {"blur"               : parse_many(parse_nullable(float)),
@@ -1125,7 +1180,7 @@ def parse_mincANTS_protocol_file(f, mincANTS_conf=mincANTS_default_conf) -> Mult
 
     # build a mapping from (Python, not file) field names to a list of values (one for each generation)
     d = {}
-    for l in f:
+    for l in reader:
         k, *vs = l
         if k not in params:
             raise ParseError("Unrecognized parameter: %s" % k)
@@ -1144,6 +1199,9 @@ def parse_mincANTS_protocol_file(f, mincANTS_conf=mincANTS_default_conf) -> Mult
     if "blur" in d:
         print("Warning: no longer using `blur` even though it's specified in the protocol ...")
         # TODO should be a logger.warning, not a print
+        # TODO: why is this not being used anymore? It allows you to specify what you want
+        # TODO: to do with the similarity metrics. Not sure whether we should have hard coded
+        # TODO: defaults for this?
         del d["blur"]
     if "memory_required" in d:
         print("Warning: don't currently use the memory ...")  # doesn't have to be same length -> can crash code below
@@ -1153,7 +1211,7 @@ def parse_mincANTS_protocol_file(f, mincANTS_conf=mincANTS_default_conf) -> Mult
     l = len(vs[0])
 
     # convert a mapping of options to _single_ values to a single-generation mincANTS configuration object:
-    def convert_single_gen(single_gen_params) -> MincANTSConf:  # TODO name this better ...
+    def convert_single_gen(single_gen_params, file_resolution) -> MincANTSConf:  # TODO name this better ...
         # TODO check for/catch IndexError ... a bit hard to use zip since some params may not be defined ...
         sim_metric_names = {"use_gradient_image", "metric", "weight", "radius_or_bins"}
         # TODO duplication; e.g., parsers = sim_metric_parsers U <...>
@@ -1170,9 +1228,13 @@ def parse_mincANTS_protocol_file(f, mincANTS_conf=mincANTS_default_conf) -> Mult
             sim_metric_confs = []
 
         return mincANTS_default_conf.replace(sim_metric_confs=sim_metric_confs,
-                                             #resolution=NotImplemented, #ugh...don't know this yet
+                                             file_resolution=file_resolution,
                                              **other_attrs)
-    return MultilevelMincANTSConf([convert_single_gen({ key : vs[j] for key, vs in d.items() }) for j in range(l)])
+
+    full_configuration = MultilevelMincANTSConf([convert_single_gen({ key : vs[j] for key, vs in d.items() }, file_resolution) for j in range(l)])
+    f_handle.close()
+
+    return full_configuration
 
 def all_equal(xs, by=lambda x: x):
     return len(set((by(x) for x in xs))) == 1

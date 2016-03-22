@@ -71,16 +71,12 @@ def mbm(imgs : List[MincAtom], options : MBMConf, prefix : str, output_dir : str
                                          lsq6_options=options.mbm.lsq6))
 
     if options.mbm.nlin.nlin_protocol:
-        with open(options.mbm.nlin.nlin_protocol, 'r') as f:
-            reader = csv.reader(f, delimiter=";")  # TODO this should be automatic, not part of MBM, etc.
-            full_hierarchy = MultilevelMincANTSConf([c.replace(file_resolution=options.registration.resolution)
-                                                     for c in parse_mincANTS_protocol_file(reader).confs])
+        full_hierarchy = get_nonlinear_configuration_from_options(options.mbm.nlin.nlin_protocol,
+                                                                  options.mbm.nlin.reg_method,
+                                                                  resolution)
     else:
-        # FIXME just a placeholder ... supply a reasonable set of configurations here ...
-        conf1 = mincANTS_default_conf.replace(file_resolution=options.registration.resolution,
-                                              iterations="100x100x100x0")
-        conf2 = mincANTS_default_conf.replace(file_resolution=options.registration.resolution)
-        full_hierarchy = MultilevelMincANTSConf([conf1, conf2])
+        # TODO: this should be either mincANTS or minctracc based on the options specified...
+        full_hierarchy = get_default_multi_level_mincANTS(file_resolution=options.registration.resolution)
 
     lsq12_nlin_result = s.defer(lsq12_nlin_build_model(imgs=[xfm.resampled for xfm in lsq6_result],
                                                        resolution=resolution,

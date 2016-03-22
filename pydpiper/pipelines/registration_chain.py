@@ -16,7 +16,9 @@ from pydpiper.minc.registration import (Subject, Stages, mincANTS_NLIN_build_mod
                                         RegistrationConf, InputSpace, LSQ12Conf, lsq12_nlin_build_model, TargetType,
                                         MultilevelMincANTSConf, create_quality_control_images,
                                         check_MINC_files_have_equal_dimensions_and_resolution,
-                                        default_lsq12_multilevel_minctracc, get_pride_of_models_mapping)
+                                        default_lsq12_multilevel_minctracc, get_pride_of_models_mapping,
+                                        get_default_multi_level_mincANTS, parse_mincANTS_protocol_file,
+                                        parse_minctracc_nonlinear_protocol, get_nonlinear_configuration_from_options)
 from pydpiper.minc.files import MincAtom
 from pydpiper.execution.application import execute  # type: ignore
 from pydpiper.core.arguments import (application_parser,
@@ -26,7 +28,7 @@ from pydpiper.core.arguments import (application_parser,
                                      registration_parser,
                                      stats_parser,
                                      parse,
-                                     AnnotatedParser, BaseParser, CompoundParser, LSQ6Method)
+                                     AnnotatedParser, BaseParser, CompoundParser, LSQ6Method, nlin_parser)
 
 
 # TODO (general for all option records, not just for the registration chain):
@@ -213,18 +215,15 @@ def chain(options):
         for subject in s_id_to_intersubj_img_dict:
             print(subject + '\t' + s_id_to_intersubj_img_dict[subject].path)
 
-    # TODO: this is only here in order to have some default. As stated below, we still need
-    # to work on default protocols
-    conf1 = mincANTS_default_conf.replace(file_resolution=options.registration.resolution,
-                                          iterations="100x100x100x0")
-    conf2 = mincANTS_default_conf.replace(file_resolution=options.registration.resolution,
-                                          iterations="100x100x100x20")
-    full_hierarchy = MultilevelMincANTSConf([conf1, conf2])
+    # determine what configuration to use for the non linear registration
+    non_linear_configuration = get_nonlinear_configuration_from_options(options.nlin.nlin_protocol,
+                                                                        options.nlin.reg_method,
+                                                                        options.registration.resolution)
 
     if options.registration.input_space in [InputSpace.lsq6, InputSpace.native]:
         intersubj_xfms = s.defer(lsq12_nlin_build_model(imgs=list(s_id_to_intersubj_img_dict.values()),
                                                 lsq12_conf=options.lsq12,
-                                                nlin_conf=full_hierarchy,
+                                                nlin_conf=non_linear_configuration,
                                                 resolution=options.registration.resolution,
                                                 lsq12_dir=pipeline_lsq12_common_dir,
                                                 nlin_dir=pipeline_nlin_common_dir))
@@ -301,7 +300,7 @@ def chain(options):
                                     subj=subj,
                                     linear_conf=default_lsq12_multilevel_minctracc,
                                     nlin_conf=mincANTS_default_conf.replace(file_resolution=options.registration.resolution,
-                                                                  iterations="100x100x100x20")))
+                                                                  iterations="100x100x100x50")))
                    for s_id, subj in subj_id_to_Subjec_for_within_dict.items() }
 
     # create a montage image for each pair of time points
@@ -569,6 +568,7 @@ if __name__ == "__main__":
            # TODO: either switch back to automatically unpacking as part of `parse`
            # or write a helper to do \ns: C(**vars(ns))
            lsq12_parser, # should be MBM or build_model ...
+           nlin_parser,
            #AnnotatedParser(parser=BaseParser(addLSQ12ArgumentGroup), namespace='lsq12-inter-subj'),
            #addNLINArgumentGroup,
            stats_parser,
