@@ -137,7 +137,11 @@ def chain(options):
                                                                                         pride_of_models_dict, time_point),
                                                                resolution=options.registration.resolution,
                                                                lsq6_options=options.lsq6,
-                                                               subject_matter=options.registration.subject_matter))[0],
+                                                               lsq6_dir=None,  # never used since no average
+                                                               # (could call this "average_dir" with None -> no avg ?)
+                                                               subject_matter=options.registration.subject_matter,
+                                                               create_qc_images=False,
+                                                               create_average=False))[0],
                                         pipeline_subject_info)  # type: Dict[str, Subject[XfmHandler]]
         else:
             # if we are not dealing with a pride of models, we can retrieve a fixed
@@ -154,6 +158,7 @@ def chain(options):
                                                                   registration_targets=targets,
                                                                   resolution=options.registration.resolution,
                                                                   lsq6_options=options.lsq6,
+                                                                  create_qc_images=False,
                                                                   subject_matter=options.registration.subject_matter)
                                                    )[0],
                                          pipeline_subject_info)  # type: Dict[str, Subject[XfmHandler]]
@@ -166,6 +171,8 @@ def chain(options):
             for time_pt, subj_time_pt_xfm in subj.time_pt_dict.items():
                 filesToCreateImagesFrom.append(subj_time_pt_xfm.resampled)
 
+        # TODO it's strange that create_quality_control_images gets the montage directory twice
+        # TODO (in montages=output=montageLSQ6 and in montage_dir), suggesting a weirdness in create_q_c_images
         lsq6VerificationImages = s.defer(create_quality_control_images(filesToCreateImagesFrom,
                                                                        montage_output=montageLSQ6,
                                                                        montage_dir=pipeline_montage_dir,

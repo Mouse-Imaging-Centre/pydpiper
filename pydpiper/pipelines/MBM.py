@@ -44,8 +44,9 @@ def mbm(imgs : List[MincAtom], options : MBMConf, prefix : str, output_dir : str
     # TODO this is tedious and annoyingly similar to the registration chain ...
 
     #processed_dir = os.path.join(output_dir, pipeline_name + "_processed")
+    lsq6_dir  = os.path.join(output_dir, prefix + "_lsq6")
     lsq12_dir = os.path.join(output_dir, prefix + "_lsq12")
-    nlin_dir = os.path.join(output_dir, prefix + "_nlin")
+    nlin_dir  = os.path.join(output_dir, prefix + "_nlin")
 
     s = Stages()
 
@@ -68,6 +69,7 @@ def mbm(imgs : List[MincAtom], options : MBMConf, prefix : str, output_dir : str
     lsq6_result = s.defer(lsq6_nuc_inorm(imgs=imgs,
                                          resolution=resolution,
                                          registration_targets=targets,
+                                         lsq6_dir=lsq6_dir,
                                          lsq6_options=options.mbm.lsq6))
 
     if options.mbm.nlin.nlin_protocol:

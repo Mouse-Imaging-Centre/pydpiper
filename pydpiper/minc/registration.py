@@ -135,15 +135,21 @@ def atoms_from_same_subject(atoms: List[FileAtom]):
 # TODO should these atoms/modules be remade as distinct classes with public outf and stage fields (only)?
 # TODO output_dir (work_dir?) isn't used but could be useful; assert not(subdir and output_dir)?
 
-# FIXME mincblur has a slight weirdness that it returns a single file determined by the gradient parameter,
-# but the command-line tool actually creates both files if gradient=True.  As a result, there's a possibility that
-# two distinct mincblur stages may try to write to the same blur file, since that output is not tracked in the
-# mincblur stage running with -gradient.  Obvious solution: just return both outputs.
-# Maybe this is one cause of the empty/corrupted files occasionally encountered?
+# N.B.: mincblur has a slight weirdness in that it might create one or two
+# output files.  Due to our semi-manual managing of the filenames without any allocation/gensym, there's always
+# the risk that two different parts of a program may try to write to the same output file (manifest at the level
+# of output file checking in the Python code if we're honest about outputs, and as weird output file corruption if not).
+# In general this might be a problem, but we cross our fingers and hope that in most such cases the two commands
+# will be identical and so one will be optimized away.  If our `mincblur` procedure returned the path to _either_
+# an image or gradient file, however, it seems less likely that we'd be so fortunate.  As a result, mincblur currently
+# returns both files by default, but can be disabled as an optimization.  Better than this would be
+# lazily computing the gradient ...
+# We currently return a Namespace(img) or Namespace(img, gradient), but dynamically choosing which field to select
+# is tedious in Python ...
 def mincblur(img: MincAtom,
              fwhm: float,
-             gradient: bool = False,
-             subdir: str = 'tmp') -> Result[MincAtom]:
+             gradient: bool = True,
+             subdir: str = 'tmp') -> Result[Namespace]:  # (out_img=MincAtom, gradient=MincAtom)]:
     """
     >>> img = MincAtom(name='/images/img_1.mnc', pipeline_sub_dir='/scratch/some_pipeline_processed/')
     >>> img_blur = mincblur(img=img, fwhm=0.056)
@@ -152,20 +158,23 @@ def mincblur(img: MincAtom,
     >>> [i.render() for i in img_blur.stages]
     ['mincblur -clobber -no_apodize -fwhm 0.056 /images/img_1.mnc /scratch/some_pipeline_processed/img_1/tmp/img_1_fwhm0.056']
     """
-    suffix = "_dxyz" if gradient else "_blur"
-    outf = img.newname_with_suffix("_fwhm%s" % fwhm + suffix, subdir=subdir)
+    # suffix   = "_dxyz" if gradient else "_blur"
+    fwhm_str = "_fwhm%s" % fwhm
+    out_img      = img.newname_with_suffix(fwhm_str + "_blur", subdir=subdir)
+    out_gradient = img.newname_with_suffix(fwhm_str + "_dxyz", subdir=subdir)
     stage = CmdStage(
-        inputs=(img,), outputs=(outf,),
+        inputs=(img,), outputs=(out_img,) + ((out_gradient,) if gradient else ()),
         # drop last 9 chars from output filename since mincblur
-        # automatically adds "_blur.mnc/_dxyz.mnc" and Python
+        # automatically adds "_blur.mnc" (or "_dxyz.mnc") and Python
         # won't lift this length calculation automatically ...
-        cmd=shlex.split('mincblur -clobber -no_apodize -fwhm %s %s %s' % (fwhm, img.path, outf.path[:-9]))
+        cmd=shlex.split('mincblur -clobber -no_apodize -fwhm %s %s %s' % (fwhm, img.path, out_img.path[:-9]))
             + (['-gradient'] if gradient else []))
-    stage.set_log_file(os.path.join(outf.pipeline_sub_dir,
-                                    outf.output_sub_dir,
+    stage.set_log_file(os.path.join(out_img.pipeline_sub_dir,
+                                    out_img.output_sub_dir,
                                     "log",
-                                    "mincblur_" + outf.filename_wo_ext + ".log"))
-    return Result(stages=Stages((stage,)), output=outf)
+                                    "mincblur_" + out_img.filename_wo_ext + ".log"))
+    return Result(stages=Stages((stage,)),
+                  output=Namespace(img=out_img, gradient=out_gradient) if gradient else Namespace(img=out_img))
 
 
 def mincaverage(imgs: List[MincAtom],
@@ -212,7 +221,8 @@ def mincaverage(imgs: List[MincAtom],
                                 "mincaverage_" + avg.filename_wo_ext + ".log"))
     return Result(stages=Stages([s]), output=avg)
 
-
+# FIXME this doesn't implement the avg_file and other mincaverage stuff (other than copy_header ...)
+# ... maybe there's enough similarity to parametrize over these and maybe others (xfmavg?!)
 def pmincaverage(imgs: List[MincAtom],
                  name_wo_ext: str = "average",
                  output_dir: str = '.',
@@ -264,12 +274,13 @@ def mincresample_simple(img: MincAtom,
     stage = CmdStage(
         inputs=(xfm, like, img),
         outputs=(outf,),
-        cmd=['mincresample', '-clobber', '-2',
+        cmd=(['mincresample', '-clobber', '-2',
              '-transform %s' % xfm.path,
-             '-like %s' % like.path,
-             img.path, outf.path]
-            + (['-' + interpolation.name] if interpolation else [])
-            + list(extra_flags))
+             '-like %s' % like.path]
+             + (['-' + interpolation.name] if interpolation else [])
+             + list(extra_flags))
+             + [img.path, outf.path])
+
     stage.set_log_file(os.path.join(outf.pipeline_sub_dir,
                                     outf.output_sub_dir,
                                     "log",
@@ -675,8 +686,8 @@ def rotational_minctracc(source: MincAtom,
     w_translation_stepsize = resolution * conf.w_translations_factor
 
     # blur input files
-    blurred_src = s.defer(mincblur(source, blur_stepsize))
-    blurred_dest = s.defer(mincblur(target, blur_stepsize))
+    blurred_src = s.defer(mincblur(source, blur_stepsize)).img
+    blurred_dest = s.defer(mincblur(target, blur_stepsize)).img
 
     if not output_name_wo_ext:
         output_name_wo_ext = "%s_rotational_minctracc_to_%s" % (source.filename_wo_ext, target.filename_wo_ext)
@@ -984,10 +995,9 @@ def minctracc(source: MincAtom,
     source_for_minctracc = source
     target_for_minctracc = target
     if conf.blur_resolution is not None:
-        source_for_minctracc = s.defer(mincblur(source, conf.blur_resolution,
-                                                gradient=conf.use_gradient))
-        target_for_minctracc = s.defer(mincblur(target, conf.blur_resolution,
-                                                gradient=conf.use_gradient))
+        img_or_grad = lambda result: result.gradient if conf.use_gradient else result.img
+        source_for_minctracc = img_or_grad(s.defer(mincblur(source, conf.blur_resolution)))
+        target_for_minctracc = img_or_grad(s.defer(mincblur(target, conf.blur_resolution)))
 
     # NOTE: this is broken in the presence of unanticipated (vs., e.g., nlin_conf.objective) null fields;
     # if we're not going to allow these, we should probably wrap this in a try/catch to give a better error
@@ -1281,10 +1291,8 @@ def mincANTS(source: MincAtom,
     # TODO: similarity_inputs should be a set, but `MincAtom`s aren't hashable
     for sim_metric_conf in conf.sim_metric_confs:
         if conf.file_resolution is not None and sim_metric_conf.use_gradient_image:
-            src = s.defer(mincblur(source, fwhm=conf.file_resolution,
-                                   gradient=sim_metric_conf.use_gradient_image))
-            dest = s.defer(mincblur(target, fwhm=conf.file_resolution,
-                                    gradient=sim_metric_conf.use_gradient_image))
+            src = s.defer(mincblur(source, fwhm=conf.file_resolution)).gradient
+            dest = s.defer(mincblur(target, fwhm=conf.file_resolution)).gradient
         elif conf.file_resolution is None and sim_metric_conf.use_gradient_image:
             # the file resolution is not set, however we want to use the gradients
             # for this similarity metric...
@@ -1922,10 +1930,11 @@ def to_lsq6_conf(lsq6_args : Namespace) -> LSQ6Conf:
 def lsq6(imgs: List[MincAtom],
          target: MincAtom,
          resolution: float,
-         #output_dir,
-         #pipeline_name,
          conf: LSQ6Conf,
+         resample_subdir: str = "resampled",
+         resample_images: bool = False,
          post_alignment_xfm: XfmAtom = None,
+         propagate_masks: bool = True,
          post_alignment_target: MincAtom = None) -> Result[List[XfmHandler]]:
     """
     post_alignment_xfm -- this is a transformation you want to concatenate with the
@@ -2007,29 +2016,62 @@ def lsq6(imgs: List[MincAtom],
             mt_conf = parse_minctracc_linear_protocol_file(filename=conf.protocol_file,
                                                            transform_type=LinearTransType.lsq12,
                                                            minctracc_conf=default_lsq6_minctracc_conf)
-                      # FIXME don't totally ignore confs here ?!
         else:
-            mt_conf = conf_from_defaults(defaults)  # print a warning?!
+            mt_conf = conf_from_defaults(defaults)  # FIXME print a warning?!
 
-        xfms_to_target = [s.defer(multilevel_minctracc(source=img, target=target, conf=mt_conf))
+        xfms_to_target = [s.defer(multilevel_minctracc(source=img,
+                                                       target=target,
+                                                       conf=mt_conf))
                           for img in imgs]
     else:
         raise ValueError("bad lsq6 method: %s" % conf.lsq6_method)
 
-    final_xfmhs = xfms_to_target
     if post_alignment_xfm:
-        final_xfmhs = [XfmHandler(xfm=s.defer(xfmconcat([first_xfm.xfm,
-                                                         post_alignment_xfm],
-                                                         name=first_xfm.xfm.output_sub_dir + "_lsq6")),
+        composed_xfms = [s.defer(xfmconcat([xfm.xfm, post_alignment_xfm],
+                                           name=xfm.xfm.output_sub_dir + "_lsq6"))
+                         for xfm in xfms_to_target]
+        resampled_imgs = ([mincresample(img=native_img,
+                                        xfm=overall_xfm,
+                                        like=post_alignment_target,
+                                        new_name_wo_ext=native_img.filename_wo_ext + "_lsq6",
+                                        subdir=resample_subdir) for native_img, overall_xfm in zip(imgs, composed_xfms)]
+                          if resample_images else [None] * len(imgs))
+        final_xfmhs = [XfmHandler(xfm=overall_xfm,
                                   target=post_alignment_target,
-                                  source=img,
-                                  resampled=None)
-                       for img, first_xfm in zip(imgs, xfms_to_target)]
+                                  source=native_img,
+                                  # resample the input to the final lsq6 space
+                                  # we should go back to basics in terms of the file name that we create here.
+                                  # It should be fairly basic. Something along the lines of:
+                                  # {orig_file_base}_resampled_lsq6.mnc
+                                  # if we are still going to perform either non uniformity correction, or
+                                  # intensity normalization, the following file is a temp file:
+                                  resampled=resampled_img)
+                       for native_img, resampled_img, overall_xfm in zip(imgs, resampled_imgs, composed_xfms)]
+    else:
+        final_xfmhs = xfms_to_target
+        if resample_images:
+            for native_img, xfm in zip(imgs, final_xfmhs):  # is xfm.resampled even mutable ?!
+                xfm.resampled = s.defer(mincresample(img=native_img,
+                                                     xfm=xfm.xfm,
+                                                     like=xfm.target,
+                                                     new_name_wo_ext=native_img.filename_wo_ext + "_lsq6",
+                                                     subdir=resample_subdir))
 
-    ############################################################################
-    # TODO: resample input files ???
-    ############################################################################
+    # we've just performed a 6 parameter alignment between a bunch of input files
+    # and a target. The input files could have been the very initial input files to the
+    # pipeline, and have no masks associated with them. In that case, and if the target does
+    # have a mask, we should add masks to the resampled files now.
+    if propagate_masks and resample_images:
+        mask_to_add = post_alignment_target.mask if post_alignment_target else target.mask
+        for xfm in final_xfmhs:
+            if not xfm.resampled.mask:
+                xfm.resampled.mask = mask_to_add
 
+    # could have stuff for creating an average and/or QC images here, but seemingly we use this either
+    # as part of lsq6_nuc_inorm or in more unusual situations such as the registration chain where
+    # we first aggregate the results of multiple lsq6 calls and create a common montage, so haven't bothered ...
+
+    # TODO return average, etc.?
     return Result(stages=s, output=final_xfmhs)
 
 
@@ -2054,6 +2096,9 @@ def lsq6_nuc_inorm(imgs: List[MincAtom],
                    registration_targets: RegistrationTargets,
                    resolution: float,
                    lsq6_options: LSQ6Conf,
+                   lsq6_dir: str,
+                   create_qc_images: bool = True,
+                   create_average: bool = True,
                    subject_matter: Optional[str] = None):
     s = Stages()
 
@@ -2063,35 +2108,11 @@ def lsq6_nuc_inorm(imgs: List[MincAtom],
     source_imgs_to_lsq6_target_xfms = s.defer(lsq6(imgs=imgs, target=init_target,
                                                    resolution=resolution,
                                                    conf=lsq6_options,
+                                                   resample_images=not (lsq6_options.nuc or lsq6_options.inormalize),
                                                    post_alignment_xfm=registration_targets.xfm_to_standard,
                                                    post_alignment_target=registration_targets.registration_standard))
 
     xfms_to_final_target_space = [xfm_handler.xfm for xfm_handler in source_imgs_to_lsq6_target_xfms]
-
-    # resample the input to the final lsq6 space
-    # we should go back to basics in terms of the file name that we create here. It should
-    # be fairly basic. Something along the lines of:
-    # {orig_file_base}_resampled_lsq6.mnc
-    # if we are still going to perform either non uniformity correction, or
-    # intensity normalization, the following file is a temp file:
-    out_dir_for_lsq6_space = "tmp" if lsq6_options.nuc or lsq6_options.inormalize else "resampled"
-    imgs_in_lsq6_space = [s.defer(mincresample(
-        img=native_img,
-        xfm=xfm_to_lsq6,
-        like=registration_targets.registration_standard,
-        interpolation=Interpolation.sinc,
-        new_name_wo_ext=native_img.filename_wo_ext + "_lsq6",
-        subdir=out_dir_for_lsq6_space))
-                          for native_img, xfm_to_lsq6 in zip(imgs, xfms_to_final_target_space)]
-
-    # we've just performed a 6 parameter alignment between a bunch of input files
-    # and a target. The input files could have been the very initial input files to the
-    # pipeline, and have no masks associated with them. In that case, and if the target does
-    # have a mask, we should add masks to the resampled files now.
-    mask_to_add = registration_targets.registration_standard.mask
-    for resampled_input in imgs_in_lsq6_space:
-        if not resampled_input.mask:
-            resampled_input.mask = mask_to_add
 
     # resample the mask from the initial model to native space
     # we can use it for either the non uniformity correction or
@@ -2145,7 +2166,6 @@ def lsq6_nuc_inorm(imgs: List[MincAtom],
                                                  masks_in_native_space or [None] * len(input_imgs_for_inorm))])
 
     # the only thing left to check is whether we have to resample the NUC/inorm images to LSQ6 space:
-    final_resampled_lsq6_files = imgs_in_lsq6_space
     if lsq6_options.inormalize:
         # the final resampled files should be the normalized files resampled with the 
         # lsq6 transformation
@@ -2175,19 +2195,28 @@ def lsq6_nuc_inorm(imgs: List[MincAtom],
                                              xfms_to_final_target_space,
                                              nuc_filenames_wo_ext_lsq6)]
     else:
-        # in this case neither non uniformity correction was applied, nor intensity 
-        # normalization, so the initialization of the final_resampled_lsq6_files 
-        # variable is already correct
-        pass
+        # in this case neither non uniformity correction nor intensity normalization was applied,
+        # so we must have passed `resample_inputs=True` to the actual lsq6 calls above, and thus:
+        final_resampled_lsq6_files = [xfm.resampled for xfm in source_imgs_to_lsq6_target_xfms]
 
     # we've just performed a 6 parameter alignment between a bunch of input files
     # and a target. The input files could have been the very initial input files to the
     # pipeline, and have no masks associated with them. In that case, and if the target does
     # have a mask, we should add masks to the resampled files now.
+    # TODO potentially done twice if neither nuc nor inorm corrections applied since `lsq6` also does this
     mask_to_add = registration_targets.registration_standard.mask
     for resampled_input in final_resampled_lsq6_files:
         if not resampled_input.mask:
             resampled_input.mask = mask_to_add
+
+    if create_average:
+        s.defer(mincaverage(imgs=final_resampled_lsq6_files,
+                            output_dir=lsq6_dir))
+
+    if create_qc_images:
+        s.defer(create_quality_control_images(imgs=final_resampled_lsq6_files,
+                                              montage_dir="SOMETHING",  # FIXME
+                                              montage_output="LSQ6_montage"))
 
     # note that in the return, the registration target is given as "registration_standard".
     # the actual registration might have been between the input file and a potential
@@ -2300,7 +2329,7 @@ def verify_correct_lsq6_target_options(init_model: str,
     # the registration_chain.py is the only program that works with the
     # pride_of_models. It is a little cleaner (I think?) to only show this
     # option when the main calling program is actually the registration_chain.py.
-    # So let's find out! The stack is first in last out, so we need to last element:
+    # So let's find out! The stack is first in last out, so we need the last element:
     calling_program = inspect.stack()[-1][1]
 
     # check how many options have been specified that can be used as the initial target
@@ -2508,7 +2537,7 @@ def create_quality_control_images(imgs: List[MincAtom],
         individualImages.append(img_verification)
 
 
-        # we should add a label to each of the individual images
+        # add a label to each of the individual images
         # so it will be easier for the user to identify what
         # which images potentially fail
         img_verification_convert = img.newname_with_suffix("_QC_image_labeled",
@@ -2519,6 +2548,9 @@ def create_quality_control_images(imgs: List[MincAtom],
         # these, but we do want them to finish as soon as possible
         # (Note that this may lead to large memory consumption by individual executors,
         # particularly for large pipelines, and seems unlikely to work at all on the HPF)
+        # -- perhaps we could instead return the montage stage (or, if no montage is to be created,
+        # an empty stage) from this whole procedure and add it as in input (or better, a non-input dependency,
+        # which isn't currently supported) to succeeding stages as desired?
         convert_stage = CmdStage(
             inputs=(img_verification,),
             outputs=(img_verification_convert,),
