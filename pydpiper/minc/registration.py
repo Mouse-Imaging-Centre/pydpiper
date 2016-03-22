@@ -174,7 +174,7 @@ def mincblur(img: MincAtom,
                                     "log",
                                     "mincblur_" + out_img.filename_wo_ext + ".log"))
     return Result(stages=Stages((stage,)),
-                  output=Namespace(img=out_img) if gradient else Namespace(img=out_img, gradient=out_gradient))
+                  output=Namespace(img=out_img, gradient=out_gradient) if gradient else Namespace(img=out_img))
 
 
 def mincaverage(imgs: List[MincAtom],
@@ -221,7 +221,8 @@ def mincaverage(imgs: List[MincAtom],
                                 "mincaverage_" + avg.filename_wo_ext + ".log"))
     return Result(stages=Stages([s]), output=avg)
 
-
+# FIXME this doesn't implement the avg_file and other mincaverage stuff (other than copy_header ...)
+# ... maybe there's enough similarity to parametrize over these and maybe others (xfmavg?!)
 def pmincaverage(imgs: List[MincAtom],
                  name_wo_ext: str = "average",
                  output_dir: str = '.',
@@ -273,12 +274,13 @@ def mincresample_simple(img: MincAtom,
     stage = CmdStage(
         inputs=(xfm, like, img),
         outputs=(outf,),
-        cmd=['mincresample', '-clobber', '-2',
+        cmd=(['mincresample', '-clobber', '-2',
              '-transform %s' % xfm.path,
-             '-like %s' % like.path,
-             img.path, outf.path]
-            + (['-' + interpolation.name] if interpolation else [])
-            + list(extra_flags))
+             '-like %s' % like.path]
+             + (['-' + interpolation.name] if interpolation else [])
+             + list(extra_flags))
+             + [img.path, outf.path])
+
     stage.set_log_file(os.path.join(outf.pipeline_sub_dir,
                                     outf.output_sub_dir,
                                     "log",
@@ -2244,7 +2246,7 @@ def verify_correct_lsq6_target_options(init_model: str,
     # the registration_chain.py is the only program that works with the
     # pride_of_models. It is a little cleaner (I think?) to only show this
     # option when the main calling program is actually the registration_chain.py.
-    # So let's find out! The stack is first in last out, so we need to last element:
+    # So let's find out! The stack is first in last out, so we need the last element:
     calling_program = inspect.stack()[-1][1]
 
     # check how many options have been specified that can be used as the initial target
@@ -2452,7 +2454,7 @@ def create_quality_control_images(imgs: List[MincAtom],
         individualImages.append(img_verification)
 
 
-        # we should add a label to each of the individual images
+        # add a label to each of the individual images
         # so it will be easier for the user to identify what
         # which images potentially fail
         img_verification_convert = img.newname_with_suffix("_QC_image_labeled",
@@ -2463,6 +2465,9 @@ def create_quality_control_images(imgs: List[MincAtom],
         # these, but we do want them to finish as soon as possible
         # (Note that this may lead to large memory consumption by individual executors,
         # particularly for large pipelines, and seems unlikely to work at all on the HPF)
+        # -- perhaps we could instead return the montage stage (or, if no montage is to be created,
+        # an empty stage) from this whole procedure and add it as in input (or better, a non-input dependency,
+        # which isn't currently supported) to succeeding stages as desired?
         convert_stage = CmdStage(
             inputs=(img_verification,),
             outputs=(img_verification_convert,),
