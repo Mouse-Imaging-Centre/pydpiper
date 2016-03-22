@@ -38,6 +38,7 @@ def lsq6_pipeline(options):
     pipeline_name = options.application.pipeline_name
 
     # TODO this is tedious and annoyingly similar to the registration chain and MBM ...
+    lsq6_dir      = os.path.join(output_dir, pipeline_name + "_lsq6")
     processed_dir = os.path.join(output_dir, pipeline_name + "_processed")
 
     imgs = [MincAtom(name, pipeline_sub_dir=processed_dir) for name in options.application.files]
@@ -63,6 +64,7 @@ def lsq6_pipeline(options):
     lsq6_result = s.defer(lsq6_nuc_inorm(imgs=imgs,
                                          resolution=resolution,
                                          registration_targets=targets,
+                                         lsq6_dir=lsq6_dir,
                                          lsq6_options=options.lsq6))
 
     return Result(stages=s, output=lsq6_result)
