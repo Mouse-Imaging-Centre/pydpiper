@@ -303,6 +303,9 @@ def chain(options):
                 print(time_pt, " ", subj_img.path)
             print("\n")
 
+    # dictionary that maps subject IDs to a list containing:
+    # ( [(time_pt_n, time_pt_n+1, XfmHandler_from_n_to_n+1), ..., (,,,)],
+    #   index_of_common_time_pt)
     chain_xfms = { s_id : s.defer(intrasubject_registrations(
                                     subj=subj,
                                     linear_conf=default_lsq12_multilevel_minctracc,
@@ -312,35 +315,58 @@ def chain(options):
 
     # create a montage image for each pair of time points
     for s_id, output_from_intra in chain_xfms.items():
-        for time_pt, transform in output_from_intra[0]:
-            montage_chain = pipeline_montage_dir + "/quality_control_chain_ID_" + s_id + "_timepoint_" + str(time_pt) + ".png"
+        for time_pt_n, time_pt_n_plus_1, transform in output_from_intra[0]:
+            montage_chain = pipeline_montage_dir + "/quality_control_chain_ID_" + s_id + \
+                            "_timepoint_" + str(time_pt_n) + "_to_" + str(time_pt_n_plus_1) + ".png"
             chain_images = [transform.resampled, transform.target]
             chain_verification_images = s.defer(create_quality_control_images(chain_images,
                                                                               montage_output=montage_chain,
                                                                               montage_dir=pipeline_montage_dir,
-                                                                              message="the alignment between ID " + s_id + " time point " + str(time_pt) + " and its target"))
+                                                                              message="the alignment between ID " + s_id + " time point " +
+                                                                                      str(time_pt_n) + " and " + str(time_pt_n_plus_1)))
 
     if options.application.verbose:
         print("\n\nTransformations gotten from the intrasubject registrations:")
         for s_id, output_from_intra in chain_xfms.items():
             print("ID: ", s_id)
-            for time_pt, transform in output_from_intra[0]:
-                print("Time point: ", time_pt, " trans: ", transform.xfm.path)
+            for time_pt_n, time_pt_n_plus_1, transform in output_from_intra[0]:
+                print("Time point: ", time_pt_n, " to ", time_pt_n_plus_1, " trans: ", transform.xfm.path)
             print("\n")
 
-    # create transformation from each subject to the final common time point average
-    final_non_rigid_xfms = s.defer(final_transforms(subj_id_to_Subjec_for_within_dict,
-                                                    intersubj_img_to_xfm_to_common_avg_dict,
-                                                    chain_xfms))
+    ## stats
+    #
+    # The statistic files we want to create are the following:
+    # 1) subject <----- subject_common_time_point                              (resampled to common average)
+    # 2) subject <----- subject_common_time_point <- common_time_point_average (incorporates inter subject differences)
+    # 3) subject_time_point_n <----- subject_time_point_n+1                    (resampled to common average)
 
+    # create transformation from each subject to the final common time point average,
+    # and from each subject to the subject's common time point
+    (non_rigid_xfms_to_common_avg, non_rigid_xfms_to_common_subj) = s.defer(get_chain_transforms_for_stats(subj_id_to_Subjec_for_within_dict,
+                                                                            intersubj_img_to_xfm_to_common_avg_dict,
+                                                                            chain_xfms))
 
-    subject_determinants = map_over_time_pt_dict_in_Subject(
+    # Ad 1) provide transformations from the subject's common time point to each subject
+    #       These are temporary, because they still need to be resampled into the
+    #       average common time point space
+    determinants_from_subject_common_to_subject = map_over_time_pt_dict_in_Subject(
         lambda xfm: s.defer(determinants_at_fwhms(xfm=s.defer(invert_xfmhandler(xfm)),
                                                   inv_xfm=xfm,
                                                   blur_fwhms=options.stats.stats_kernels)),
-        final_non_rigid_xfms)
+        non_rigid_xfms_to_common_subj)
+    # TODO: these still need to be resampled into the average common time point space
+
+    # Ad 2) provide transformations from the common avg to each subject. That's the
+    #       inverse of what was provided by get_chain_transforms_for_stats()
+    determinants_from_common_avg_to_subject = map_over_time_pt_dict_in_Subject(
+        lambda xfm: s.defer(determinants_at_fwhms(xfm=s.defer(invert_xfmhandler(xfm)),
+                                                  inv_xfm=xfm,
+                                                  blur_fwhms=options.stats.stats_kernels)),
+        non_rigid_xfms_to_common_avg)
     
-    return Result(stages=s, output=(final_non_rigid_xfms, subject_determinants))
+    return Result(stages=s, output=(non_rigid_xfms_to_common_avg,
+                                    determinants_from_common_avg_to_subject,
+                                    determinants_from_subject_common_to_subject))
                  
 K = TypeVar('K')
 T = TypeVar('T')
@@ -521,48 +547,113 @@ def parse_csv(rows : Iterator[Row], common_time_pt : int) -> Dict[str, Subject[F
     return subject_info
 
 
-def final_transforms(pipeline_subject_info, intersubj_xfms_dict, chain_xfms_dict):
+def get_chain_transforms_for_stats(pipeline_subject_info, intersubj_xfms_dict, chain_xfms_dict):
     """
+    pipeline_subject_info
+
+    intersubj_xfms_dict
+
+    chain_xfms_dict -- {subject_ID : ( [ (time_point_n, time_point_n+1, XfmHandler(time_point -> time_point + 1)),
+                                         ..., (,,,) ],
+                                       index_of_common_time_point) }
+
+
     This function takes a subject mapping (with timepoints to MincAtoms) and returns a
     subject mapping of timepoints to `XfmHandler`s. Those transformations for
     each subject will contain the non-rigid transformation to the common time point average
     
-    chain_xfms_dict maps subject_ids to a tuple containing a list of tuples (time_point, transformation) 
+    chain_xfms_dict maps subject_ids to a tuple containing a list of tuples
+    (time_point_n, time_point_n+1, transformation)
     and the index to the common time point in that list
     """
+
     s = Stages()
-    new_d = {}
+    dict_transforms_to_common_avg = {}
+    dict_transforms_to_subject_common_tp = {}
+    dict_transforms_from_common_tp_to_common_avg = {}
     for s_id, subj in pipeline_subject_info.items():
-        # this time point dictionary will hold a mapping
-        # of time points to transformations to the final
-        # common average (and it will have the inter_sub_time_pt)
-        new_time_pt_dict = {}
-        # the transformation for the common time point is easy:
-        new_time_pt_dict[subj.intersubject_registration_time_pt] = \
-            intersubj_xfms_dict[subj.intersubject_registration_image]        
+        # dictionary: {time_pt : XfmHandler_time_pt_to_final_common_avg}
+        trans_to_final_common_avg_dict = {}
+        # dictionary: {time_pt : XfmHandler_time_pt_to_subject_common_time_pt}
+        trans_to_subject_common_time_pt = {}
+
+
+
+        ##############################################################
+        #                -------------
+        #  time_1   ... | time_common | ...   time_n
+        #                -------------
+        #
+        # the transformation for the common time point is easy,
+        # intersubj_xfms_dict[subj.intersubject_registration_image]
+        # returns the XfmHandler from the subject common time point
+        # to the common time point average
+        trans_to_final_common_avg_dict[subj.intersubject_registration_time_pt] = \
+            intersubj_xfms_dict[subj.intersubject_registration_image]
+        # there is no transform from the common time point to the common time
+        # point. Technically it is the identity transformation, but there is
+        # no use in generating a stats file from the identity transformation,
+        # so we simply won't generate anything
+
         chain_transforms, index_of_common_time_pt = chain_xfms_dict[s_id]
-        
+
         # will hold the XfmHandler from current to average of common time pt
-        current_xfm_to_common = intersubj_xfms_dict[subj.intersubject_registration_image]
+        current_xfm_to_common_avg = intersubj_xfms_dict[subj.intersubject_registration_image]
+        # and the XfmHandler from current to the subject common time point
+        # starts out as None (technically the identiy transformation)
+        current_xfm_to_common_subject = None
+
         # we start at the common time point and are going forward at this point
         # so we will assign the concatenated transform to the target of each 
-        # transform we are adding 
-        for time_pt, transform in chain_transforms[index_of_common_time_pt:]:
-            current_xfm_to_common = s.defer(concat_xfmhandlers([s.defer(invert_xfmhandler(transform)), current_xfm_to_common],
-                                                               name="id_%s_pt_%s_to_common" % (s_id, time_pt)))
-            new_time_pt_dict[time_pt] = current_xfm_to_common
+        # transform we are adding (which is why we take the inverse)
+        #
+        #                       - - - - - - - - >
+        #  time_1   ...   time_common   ...   time_n
+        #
+        #
+        for time_pt_n, time_pt_n_plus_1, transform in chain_transforms[index_of_common_time_pt:]:
+            current_xfm_to_common_avg = s.defer(concat_xfmhandlers([s.defer(invert_xfmhandler(transform)), current_xfm_to_common_avg],
+                                                               name="id_%s_pt_%s_to_common_avg" % (s_id, time_pt_n)))
+            # we are moving away from the common time point. That means that the transformation
+            # we are adding here is the inverse of n -> n+1, and should be added to time point n+1
+            trans_to_final_common_avg_dict[time_pt_n_plus_1] = current_xfm_to_common_avg
+
+            if current_xfm_to_common_subject == None:
+                current_xfm_to_common_subject = s.defer(invert_xfmhandler(transform))
+            else:
+                current_xfm_to_common_subject = s.defer(concat_xfmhandlers([s.defer(invert_xfmhandler(transform)), current_xfm_to_common_subject],
+                                                               name="id_%s_pt_%s_to_common_subject" % (s_id, time_pt_n)))
+            trans_to_subject_common_time_pt[time_pt_n_plus_1] = current_xfm_to_common_subject
+
         # we need to do something similar moving backwards: make sure to reset
-        # the current_xfm_to_common here!
-        current_xfm_to_common = intersubj_xfms_dict[subj.intersubject_registration_image]
-        for time_pt, transform in chain_transforms[index_of_common_time_pt-1::-1]:
-            current_xfm_to_common = s.defer(concat_xfmhandlers([transform, current_xfm_to_common],
-                                                               name="id_%s_pt_%s_to_common" % (s_id, time_pt)))
-            new_time_pt_dict[time_pt] = current_xfm_to_common
-        
-        new_subj = Subject(intersubject_registration_time_pt = subj.intersubject_registration_time_pt,
-                           time_pt_dict = new_time_pt_dict)
-        new_d[s_id] = new_subj
-    return Result(stages=s, output=new_d)
+        # the current_xfm_to_common_avg here!
+        #
+        #    < - - - - - - - -
+        #  time_1   ...   time_common   ...   time_n
+        #
+        #
+        current_xfm_to_common_avg = intersubj_xfms_dict[subj.intersubject_registration_image]
+        current_xfm_to_common_subject = None
+        for time_pt_n, time_pt_n_plus_1, transform in chain_transforms[index_of_common_time_pt-1::-1]:
+            current_xfm_to_common_avg = s.defer(concat_xfmhandlers([transform, current_xfm_to_common_avg],
+                                                               name="id_%s_pt_%s_to_common_avg" % (s_id, time_pt_n)))
+            trans_to_final_common_avg_dict[time_pt_n] = current_xfm_to_common_avg
+
+            if current_xfm_to_common_subject == None:
+                current_xfm_to_common_subject = transform
+            else:
+                current_xfm_to_common_subject = s.defer(concat_xfmhandlers([transform, current_xfm_to_common_subject],
+                                                               name="id_%s_pt_%s_to_common_subject" % (s_id, time_pt_n)))
+            trans_to_subject_common_time_pt[time_pt_n] = current_xfm_to_common_subject
+
+        new_subj_to_common_avg = Subject(intersubject_registration_time_pt = subj.intersubject_registration_time_pt,
+                           time_pt_dict = trans_to_final_common_avg_dict)
+        dict_transforms_to_common_avg[s_id] = new_subj_to_common_avg
+
+        new_subj_to_common_subj = Subject(intersubject_registration_time_pt = subj.intersubject_registration_time_pt,
+                          time_pt_dict = trans_to_subject_common_time_pt)
+        dict_transforms_to_subject_common_tp[s_id] = new_subj_to_common_subj
+    return Result(stages=s, output=(dict_transforms_to_common_avg, dict_transforms_to_subject_common_tp))
 
 
 if __name__ == "__main__":
