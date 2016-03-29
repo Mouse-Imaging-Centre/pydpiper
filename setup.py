@@ -21,11 +21,11 @@ setup(name='pydpiper',
         'Pyro4',
         'pytest',
         'typing',
-        'pydot2'
+        'pydot_ng'
       ],
       platforms="any",
       packages=['pydpiper', 'pydpiper.core', 'pydpiper.minc', 'pydpiper.execution', 'pydpiper.pipelines'],
-      data_files=[('config', ['config/MICe.cfg','config/MICe_dev.cfg','config/SciNet.cfg','config/SciNet_debug.cfg'])],
+      data_files=[('config', ['config/CCM_HPF.cfg', 'config/MICe.cfg','config/MICe_dev.cfg','config/SciNet.cfg','config/SciNet_debug.cfg'])],
       scripts=['pydpiper/execution/pipeline_executor.py', 
                'pydpiper/execution/check_pipeline_status.py',
                'pydpiper/pipelines/LSQ12.py', 
@@ -35,4 +35,3 @@ setup(name='pydpiper',
                'pydpiper/pipelines/twolevel_model_building.py'],
       #tests_require=['pytest']
       )
-

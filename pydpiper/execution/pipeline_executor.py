@@ -1,16 +1,15 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
-from __future__ import print_function
 import time
 import sys
 import os
-from configargparse import ArgParser  # type: ignore
+from configargparse import ArgParser, Namespace  # type: ignore
 from datetime import datetime
 from multiprocessing import Process, Pool # type: ignore
 import subprocess
 import shlex
 import pydpiper.execution.queueing as q
-#import atoms_and_modules.registration_functions as rf
+import math as m
 import logging
 import socket
 import signal
@@ -18,92 +17,29 @@ import threading
 import Pyro4       # type: ignore
 from typing import Any
 
+from pyminc.volumes.volumes import mincException
+
+
 Pyro4.config.SERVERTYPE = "multiplex"
 
 
+class SubmitError(ValueError): pass
+
+for boring_exception, name in [(mincException, "mincException"), (SubmitError, "SubmitError")]:
+    Pyro4.util.SerializerBase.register_dict_to_class(name, lambda _classname, dict: boring_exception)
+    Pyro4.util.SerializerBase.register_class_to_dict(boring_exception, lambda obj: { "__class__" : name })
+
+
 #TODO add these to executorArgumentGroup as options, pass into pipelineExecutor
-WAIT_TIMEOUT = 5.0
-HEARTBEAT_INTERVAL = 10.0
-#SHUTDOWN_TIME = WAIT_TIMEOUT + LATENCY_TOLERANCE
+EXECUTOR_MAIN_LOOP_INTERVAL = 10.0
+HEARTBEAT_INTERVAL = EXECUTOR_MAIN_LOOP_INTERVAL  # Logically necessary since the two threads have been merged
+#SHUTDOWN_TIME = EXECUTOR_MAIN_LOOP_INTERVAL + LATENCY_TOLERANCE
 
 logger = logging # type: Any
 #logger = logging.getLogger(__name__)
 
 sys.excepthook = Pyro4.util.excepthook  # type: ignore
 
-def addExecutorArgumentGroup(parser):
-    group = parser.add_argument_group("Executor options",
-                        "Options controlling how and where the code is run.")
-    group.add_argument("--uri-file", dest="urifile",
-                       type=str, default=None,
-                       help="Location for uri file if NameServer is not used. If not specified, default is current working directory.")
-    group.add_argument("--use-ns", dest="use_ns",
-                       action="store_true", default=False,
-                       help="Use the Pyro NameServer to store object locations. Currently a Pyro nameserver must be started separately for this to work.")
-    group.add_argument("--latency-tolerance", dest="latency_tolerance",
-                       type=float, default=15.0,
-                       help="Allowed grace period by which an executor may miss a heartbeat tick before being considered failed [Default = %(default)s.")
-    group.add_argument("--num-executors", dest="num_exec", 
-                       type=int, default=None, 
-                       help="Number of independent executors to launch. [Default = %(default)s. Code will not run without an explicit number specified.]")
-    group.add_argument("--max-failed-executors", dest="max_failed_executors",
-                      type=int, default=2,
-                      help="Maximum number of failed executors before we stop relaunching. [Default = %(default)s]")
-    # TODO add corresponding --monitor-heartbeats
-    group.add_argument("--no-monitor-heartbeats", dest="monitor_heartbeats",
-                      action="store_false", default=True,
-                      help="Don't assume executors have died if they don't check in with the server (NOTE: this can hang your pipeline if an executor crashes).")
-    group.add_argument("--time", dest="time", 
-                       type=str, default=None,
-                       help="Wall time to request for each server/executor in the format hh:mm:ss. Required only if --queue-type=pbs. Current default on PBS is 48:00:00.")
-    group.add_argument("--proc", dest="proc", 
-                       type=int, default=1,
-                       help="Number of processes per executor. Also sets max value for processor use per executor. [Default = %(default)s]")
-    group.add_argument("--mem", dest="mem", 
-                       type=float, default=6,
-                       help="Total amount of requested memory (in GB) for all processes the executor runs. [Default = %(default)s].")
-    group.add_argument("--pe", dest="pe",
-                       type=str, default=None,
-                       help="Name of the SGE pe, if any. [Default = %(default)s]")
-    group.add_argument("--greedy", dest="greedy",
-                       action="store_true", default=False,
-                       help="Request the full amount of RAM specified by --mem rather than the (lesser) amount needed by runnable jobs.  Always use this if your executor is assigned a full node.") #TODO mutually exclusive --non-greedy
-    group.add_argument("--ppn", dest="ppn", 
-                       type=int, default=8,
-                       help="Number of processes per node. Used when --queue-type=pbs. [Default = %(default)s].")
-    group.add_argument("--queue-name", dest="queue_name", type=str, default=None,
-                       help="Name of the queue, e.g., all.q (MICe) or batch (SciNet)")
-    group.add_argument("--queue-type", dest="queue_type", type=str, default=None,
-                       help="""Queue type to submit jobs, i.e., "sge" or "pbs".  [Default = %(default)s]""")
-    group.add_argument("--queue", dest="queue", 
-                       type=str, default=None,
-                       help="[DEPRECATED; use --queue-type instead.]  Use specified queueing system to submit jobs. Default is None.")              
-    group.add_argument("--sge-queue-opts", dest="sge_queue_opts", 
-                       type=str, default=None,
-                       help="[DEPRECATED; use --queue-name instead.]  For --queue=sge, allows you to specify different queues. [Default = %(default)s]")
-    group.add_argument("--queue-opts", dest="queue_opts",
-                       type=str, default="",
-                       help="A string of extra arguments/flags to pass to qsub. [Default = '%(default)s']")
-    group.add_argument("--executor-start-delay", dest="executor_start_delay", type=int, default=180,
-                       help="Seconds before starting remote executors when running the server on the grid")
-    group.add_argument("--time-to-seppuku", dest="time_to_seppuku", 
-                       type=int, default=1,
-                       help="The number of minutes an executor is allowed to continuously sleep, i.e. wait for an available job, while active on a compute node/farm before it kills itself due to resource hogging. [Default = %(default)s]")
-    group.add_argument("--time-to-accept-jobs", dest="time_to_accept_jobs", 
-                       type=int,
-                       help="The number of minutes after which an executor will not accept new jobs anymore. This can be useful when running executors on a batch system where other (competing) jobs run for a limited amount of time. The executors can behave in a similar way by giving them a rough end time. [Default = %(default)s]")
-    group.add_argument('--local', dest="local", action='store_true', default=False, help="Don't submit anything to any specified queueing system but instead run as a server/executor")
-    group.add_argument("--config-file", type=str, metavar='config_file', is_config_file=True,
-                       required=False, help='Config file location')
-    group.add_argument("--prologue-file", type=str, metavar='file',
-                       help="Location of a shell script to inline into PBS submit script to set paths, load modules, etc.")
-    group.add_argument("--min-walltime", dest="min_walltime", type=int, default = 0,
-            help="Min walltime (s) allowed by the queuing system [Default = %(default)s]")
-    group.add_argument("--max-walltime", dest="max_walltime", type=int, default = None,
-            help="Max walltime (s) allowed for jobs on the queuing system, or infinite if None [Default = %(default)s]")
-    group.add_argument("--default-job-mem", dest="default_job_mem",
-                       type=float, default = 1.75,
-                       help="Memory (in GB) to allocate to jobs which don't make a request. [Default=%(default)s]")
 
 def ensure_exec_specified(numExec):
     if numExec < 1:
@@ -161,30 +97,42 @@ def launchExecutor(executor):
         # run the daemon, not the executor mainLoop, in a new thread
         # so that mainLoop exceptions (e.g., if we lose contact with the server)
         # cause us to shutdown (as Python makes it tedious to re-throw to calling thread)
-        t = threading.Thread(target=daemon.requestLoop)
+        def with_exception_logging(f, thread_description, crash_hook=None):
+            def _f(*args, **kwargs):
+                try:
+                    return f(*args, **kwargs)
+                except Exception:
+                    logger.exception("Crash in '%s' thread!  Details: " % thread_description)
+                    crash_hook() if crash_hook else ()
+                    raise
+            return _f
+        t = threading.Thread(target=with_exception_logging(daemon.requestLoop, "Pyro daemon"))
         t.daemon = True
         t.start()
-        h = threading.Thread(target=executor.heartbeat)
-        h.daemon = True
-        h.start()
+        #h = threading.Thread(target=with_exception_logging(executor.heartbeat, "heartbeat",
+        #                                                   crash_hook=lambda : setattr(executor,  # Python is 'funny'
+        #                                                                               "heartbeat_thread_crashed",
+        #                                                                               True)))
+        #h.daemon = True
+        #h.start()
         executor.mainLoop()
     except KeyboardInterrupt:
         logger.exception("Caught keyboard interrupt. Shutting down executor...")
         executor.generalShutdownCall()
         #daemon.shutdown()
-        sys.exit(0)
+        sys.exit(1)
     except Exception:
         logger.exception("Error during executor loop. Shutting down executor...")
         executor.generalShutdownCall()
         #daemon.shutdown()
-        sys.exit(0)
+        sys.exit(1)
     else:
         executor.completeAndExitChildren()
         logger.info("Executor shutting down.")
         daemon.shutdown()
         t.join()
 
-def runStage(serverURI, clientURI, i):
+def runStage(serverURI, clientURI, i, cmd_wrapper):
     ## Proc needs its own proxy as it's independent of executor
     p = Pyro4.core.Proxy(serverURI)
     client = Pyro4.core.Proxy(clientURI)
@@ -196,13 +144,13 @@ def runStage(serverURI, clientURI, i):
         p.setStageStarted(i, clientURI)
         try:
             # get stage information
-            command_to_run  = str(p.getStageCommand(i))
+            command_to_run  = ((cmd_wrapper + ' ') if cmd_wrapper else '') + str(p.getStageCommand(i))
             logger.info(command_to_run)
             command_logfile = p.getStageLogfile(i)
             
             # log file for the stage
-            of = open(os.path.join(command_logfile), 'a')
-            of.write("Stage " + str(i) + " running on " + socket.gethostname() + " at " + datetime.isoformat(datetime.now(), " ") + ":\n")
+            of = open(command_logfile, 'a')
+            of.write("Stage " + str(i) + " running on " + socket.gethostname() + " (" + clientURI + ") at " + datetime.isoformat(datetime.now(), " ") + ":\n")
             of.write(command_to_run + "\n")
             of.flush()
             
@@ -226,25 +174,21 @@ def runStage(serverURI, clientURI, i):
         logger.exception("Error communicating to server in runStage. " 
                         "Error raised to calling thread in launchExecutor. ")
         raise     
-        
 
-        """
-        This class is used for the actual commands that are run by the 
-        executor. A child process is defined as a process that was 
-        initiated by the executor
-        """
+
 class ChildProcess(object):
+    """Used by the executor to store runtime information about the child processes it initiates to run commands."""
     def __init__(self, stage, result, mem, procs):
         self.stage = stage
         self.result = result
         self.mem = mem
-        self.procs = procs 
+        self.procs = procs
 
 class InsufficientResources(Exception):
     pass
 
 class pipelineExecutor(object):
-    def __init__(self, options, memNeeded = None):
+    def __init__(self, options, uri_file, memNeeded = None):
         # better: self.options = options ... ?
         # TODO the additional argument `mem` represents the
         # server's estimate of the amount of memory
@@ -260,13 +204,15 @@ class pipelineExecutor(object):
         self.procs = options.proc
         self.ppn = options.ppn
         self.pe  = options.pe
+        self.mem_request_attribute = options.mem_request_attribute
         self.queue_type = options.queue_type
         self.queue_name = options.queue_name
         self.queue_opts = options.queue_opts
+        self.executor_wrapper = options.executor_wrapper
         self.ns = options.use_ns
         self.uri_file = options.urifile
         if self.uri_file is None:
-            self.uri_file = os.path.abspath(os.path.join(os.curdir, options.pipeline_name + "_uri"))
+            self.uri_file = os.path.abspath(os.path.join(os.curdir, uri_file))
         # the next variable is used to keep track of how long the
         # executor has been continuously idle/sleeping for. Measured
         # in seconds
@@ -290,7 +236,6 @@ class pipelineExecutor(object):
         self.serverURI = None
         self.current_running_job_pids = []
         self.registered_with_server = False
-        self.heartbeat_thread_crashed = False
         # we associate an event with each executor which is set when jobs complete.
         # in the future it might also be set by the server, and we might have more
         # than one event (for reclaiming, server messages, ...)
@@ -298,10 +243,12 @@ class pipelineExecutor(object):
         
     def registeredWithServer(self):
         self.registered_with_server = True
-        
+
+    #@Pyro4.oneway
     def addPIDtoRunningList(self, pid):
         self.current_running_job_pids.append(pid)
-    
+
+    #@Pyro4.oneway
     def removePIDfromRunningList(self, pid):
         self.current_running_job_pids.remove(pid)
 
@@ -359,59 +306,97 @@ class pipelineExecutor(object):
             self.registered_with_server = False
             logger.info("Now going to call unregisterClient on the server (executor: %s)", self.clientURI)
             self.pyro_proxy_for_server.unregisterClient(self.clientURI)
-        
-    def submitToQueue(self, programName=None):
-        """Submits to sge queueing system using qsub""" 
-        if self.queue_type == "sge":
-            strprocs = str(self.procs)
-            strmem = "vf=%sG" % float(self.mem)
-            jobname = ""
-            if programName is not None:
-                executablePath = os.path.abspath(programName)
-                jobname = os.path.basename(executablePath) + "-" 
-            now = datetime.now().strftime("%Y-%m-%d-at-%H-%M-%S-%f")
-            ident = "pipeline-executor-" + now
-            jobname += ident
-            queue_opts = ['-V', '-cwd', '-j', 'yes',
-                          '-N', jobname,
-                          '-l', strmem,
-                          '-o', os.path.join(os.getcwd(),
-                                             ident + '-eo.log')] \
-                          + (['-q', self.queue_name]
-                             if self.queue_name else []) \
-                          + (['-pe', self.pe, strprocs]
-                             if self.pe else []) \
-                          + shlex.split(self.queue_opts)
-            qsub_cmd = ['qsub'] + queue_opts
-            cmd  = ["pipeline_executor.py", "--local"]
-            cmd += ['--uri-file', self.uri_file]
-            # Only one exec is launched at a time in this manner, so:
-            cmd += ["--num-executors", str(1)]
-            # pass most args to the executor
-            cmd += q.remove_flags(['--num-exec', '--mem'], sys.argv[1:])
-            cmd += ['--mem', str(self.mem)]
-            script = "#!/usr/bin/env bash\n%s\n" % ' '.join(cmd)
-            # FIXME huge hack -- shouldn't we just iterate over options,
-            # possibly checking for membership in the executor option group?
-            # The problem is that we can't easily check if an option is
-            # available from a parser (but what about calling get_defaults and
-            # looking at exceptions?).  However, one possibility is to
-            # create a list of tuples consisting of the data with which to 
-            # call parser.add_arguments and use this to check.
-            # NOTE there's a problem with argparse's prefix matching which
-            # also affects removal of --num-executors
-            env = os.environ.copy()
-            env['PYRO_LOGFILE'] = os.path.join(os.getcwd(), ident + ".log")
-            p = subprocess.Popen(qsub_cmd, stdin=subprocess.PIPE, shell=False, env=env)
-            p.communicate(script.encode('ascii'))
+
+    def submitToQueue(self, number):
+        """Submits to queueing system using qsub"""
+        if self.queue_type not in ['sge', 'pbs']:
+            msg = ("Specified queueing system is: %s" % (self.queue_type) + 
+                   "Only `queue_type`s 'sge', 'pbs', and None currently support launching executors." + 
+                   "Exiting...")
+            logger.warning(msg)
+            sys.exit(msg)
         else:
-            logger.info("Specified queueing system is: %s" % (self.queue_type))
-            logger.info("Only queue_type=sge or queue_type=None currently supports pipeline launching own executors.")
-            logger.info("Exiting...")
-            sys.exit()
+            now = datetime.now().strftime("%Y-%m-%d-at-%H-%M-%S")
+            ident = "pipeline-executor-" + now
+            #jobname = ((os.path.basename(program_name) + '-') if program_name is not None else "") + ident
+            jobname = ident
+            # do we really need the program name here?
+            env = os.environ.copy()
+            cmd = ((self.executor_wrapper.split() if self.executor_wrapper else [])
+                  + (["pipeline_executor.py", "--local",
+                       '--uri-file', self.uri_file,
+                       # Only one exec is launched at a time in this manner, so:
+                       "--num-executors", str(1), '--mem', str(self.mem)]
+                     + q.remove_flags(['--num-exec', '--mem'], sys.argv[1:])))
+
+            os.system("mkdir -p logs")    # FIXME: this really doesn't belong here
+            if self.queue_type == "sge":
+                strprocs = str(self.procs)
+                strmem = "%s=%sG" % (self.mem_request_attribute, float(self.mem))
+                queue_opts = (['-V', '-j', 'yes', '-cwd', '-t', '1-%d' % number,
+                              '-N', jobname,
+                              '-l', strmem,
+                              '-o', "logs/%s-$JOB_ID-$TASK_ID-eo.log" % jobname]
+                              + (['-q', self.queue_name]
+                                if self.queue_name else [])
+                              + (['-pe', self.pe, strprocs]
+                                if self.pe else [])
+                              + shlex.split(self.queue_opts))
+                qsub_cmd = ['qsub'] + queue_opts
+
+                header = '\n'.join(["#!/usr/bin/env bash",
+                                    # why `csh`?  It seems that `qsub` doesn't allow one to
+                                    # pass args to the shell specified with `-S`, so we can't pass --noprofile
+                                    # (or --norc) to bash.  As a result, /etc, ~/.bashrc, etc.,
+                                    # are read again by the executors, which is unlikely to be intended.
+                                    # Since no-one uses csh, this is less likely to be a problem.
+                                    # (This was implicitly happening before the `#$ -S ...` line was added
+                                    # and none of our many users complained...)
+                                    "#$ -S /bin/csh",
+                                    "setenv PYRO_LOGFILE logs/%s-${JOB_ID}-${SGE_TASK_ID}.log" % ident])
+                # FIXME huge hack -- shouldn't we just iterate over options,
+                # possibly checking for membership in the executor option group?
+                # The problem is that we can't easily check if an option is
+                # available from a parser (but what about calling get_defaults and
+                # looking at exceptions?).  However, one possibility is to
+                # create a list of tuples consisting of the data with which to
+                # call parser.add_arguments and use this to check.
+                # NOTE there's a problem with argparse's prefix matching which
+                # also affects removal of --num-executors
+
+            elif self.queue_type == 'pbs':
+                if self.ppn > 1:
+                    logger.warning("ppn of %d currently ignored in this configuration" % self.ppn)
+                if "PBS_O_WORKDIR" in env:
+                    del env["PBS_O_WORKDIR"]  # because on CCM, this is set to /home/user on qlogin nodes ...
+                    del env["PBS_JOBID"]
+                header = '\n'.join(["#!/usr/bin/env bash",
+                                    "#PBS -N %s" % jobname,
+                                    "#PBS -l nodes=1:ppn=1",
+                                    # CCM is strict, and doesn't like float values:
+                                    "#PBS -l %s=%dg\n" % (self.mem_request_attribute, m.ceil(self.mem)),
+                                    # FIXME add walltime stuff here if specified (and check <= max_walltime ??)
+                                    "df /dev/shm >&2",  # FIXME: remove
+                                    "cd $PBS_O_WORKDIR",
+                                    "export PYRO_LOGFILE=logs/%s-${PBS_JOBID}.log" % ident])
+                qsub_cmd = (['qsub', '-V', '-t', '1-%d' % number,
+                             '-o', "logs/%s-$PBS_JOBID-o.log" % ident,
+                             '-e', "logs/%s-$PBS_JOBID-e.log" % ident,
+                             '-Wumask=0137']
+                             + (['-q', self.queue_name] if self.queue_name else []))
+
+            script = header + '\n' + ' '.join(cmd) + '\n'
+            #print(script)
+            # TODO change to use subprocess.run(qsub_cmd, input=...) (Python >= 3.5)
+            p = subprocess.Popen(qsub_cmd, stdin=subprocess.PIPE, shell=False, env=env)
+            _out_data, _err_data = p.communicate(script.encode('ascii'))
+            #print(out_data)
+            #print(err_data, file=sys.stderr)
+            if p.returncode != 0:
+                raise SubmitError({ 'return' : p.returncode, 'failed_command' : qsub_cmd })
 
     def canRun(self, stageMem, stageProcs, runningMem, runningProcs):
-        """Calculates if stage is runnable based on memory and processor availibility"""
+        """Calculates if stage is runnable based on memory and processor availability"""
         return stageMem <= self.mem - runningMem and stageProcs <= self.procs - runningProcs
     def is_seppuku_time(self):
         # Is it time to perform seppuku: has the
@@ -443,6 +428,7 @@ class pipelineExecutor(object):
                 self.runningProcs -= child.procs
                 self.runningChildren.remove(child)
 
+    #@Pyro4.oneway
     def notifyStageTerminated(self, i, returncode=None):
         #try:
             if returncode == 0:
@@ -463,28 +449,25 @@ class pipelineExecutor(object):
         return self.runningMem == 0 and self.runningProcs == 0 and self.prev_time
 
     def heartbeat(self):
-        try:
-            tick = 0
-            while self.registered_with_server:
-                logger.debug("Heartbeat %d...", tick)
-                tick += 1
-                self.pyro_proxy_for_server.updateClientTimestamp(self.clientURI, tick)
-                time.sleep(HEARTBEAT_INTERVAL)
-        except:
-            logger.exception("Heartbeat thread crashed: ")
+        tick = 0
+        while self.registered_with_server:
+            logger.debug("Sending heartbeat %d...", tick)
+            tick += 1
+            self.pyro_proxy_for_server.updateClientTimestamp(self.clientURI, tick)
+            logger.debug("...finished")
+            time.sleep(HEARTBEAT_INTERVAL)
             # this will take down the executor to avoid the case
             # where an executor wastes time processing jobs which the server
             # considers lost; there might be a better way to do this
             # (re-register/restart heartbeat and notify server of existing
             # jobs? quite complicated ...), and it could be done
             # 'atomically' using an event for better guarantees ...
-            self.heartbeat_thread_crashed = True
 
     # use an event set/timeout system to run the executor mainLoop -
     # we might want to pass some extra information in addition to waking the system
     def mainLoop(self):
         while self.mainFn():
-            self.e.wait(WAIT_TIMEOUT)
+            self.e.wait(EXECUTOR_MAIN_LOOP_INTERVAL)
             self.e.clear()
         logger.debug("Main loop finished")
 
@@ -492,7 +475,7 @@ class pipelineExecutor(object):
         """Try to get a job from the server (if appropriate) and update
         internal state accordingly.  Return True if it should be called
         again (i.e., there is more to do before shutting down),
-        otherwise False."""
+        otherwise False (contract: but never False if there are still running jobs)."""
 
         self.prev_time = self.current_time
         self.current_time = time.time()
@@ -506,13 +489,17 @@ class pipelineExecutor(object):
         # to other servers)
         self.free_resources()
 
-        if self.heartbeat_thread_crashed:
-            logger.debug("Heartbeat thread crashed; quitting")
-            return False
+        logger.debug("Updating timestamp...")
+        self.pyro_proxy_for_server.updateClientTimestamp(self.clientURI, tick=42)  # FIXME (42)
+        logger.debug("Done")
+        #if self.heartbeat_thread_crashed:
+        #    logger.debug("Heartbeat thread crashed; quitting")
+        #    return False
 
         if self.idle():
             self.idle_time += self.current_time - self.prev_time
-            logger.debug("Current idle time: %d, and total seconds allowed: %d", self.idle_time, self.time_to_seppuku * 60)
+            logger.debug("Current idle time: %d, and total seconds allowed: %d",
+                         self.idle_time, self.time_to_seppuku * 60)
 
         if self.is_seppuku_time():
             logger.warn("Exceeded allowed idle time... Seppuku!")
@@ -522,8 +509,9 @@ class pipelineExecutor(object):
         # anymore. If that is the case, we can leave this main loop
         # and just wait until current running jobs (children) have finished
         if self.is_time_to_drain():
-            logger.info("Time expired for accepting new jobs...leaving main loop.")
-            return False
+            logger.info("Time expired for accepting new jobs")  #...leaving main loop.")
+            #return False
+            return True
 
         # TODO we get only one stage per loop iteration, so we have to wait for
         # another event/timeout to get another.  In general we might want 
@@ -559,7 +547,7 @@ class pipelineExecutor(object):
             # this correctly, that binds the function to a class instance). There is
             # a way to make a bound function picklable, but this seems cumbersome. So instead
             # runStage is now a standalone function.
-            result = self.pool.apply_async(runStage, (self.serverURI, self.clientURI, i))
+            result = self.pool.apply_async(runStage, (self.serverURI, self.clientURI, i, options.cmd_wrapper))
 
             self.runningChildren.append(ChildProcess(i, result, stageMem, stageProcs))
             logger.debug("Added stage %i to the running pool.", i)
@@ -585,22 +573,21 @@ if __name__ == "__main__":
         files = []
     parser = ArgParser(default_config_files=files)    
 
-    #rf.addGenRegArgumentGroup(parser) # just to get --pipeline-name
-    addExecutorArgumentGroup(parser)
+    from pydpiper.core.arguments import _mk_execution_parser
+    _mk_execution_parser(parser)
 
     # using parse_known_args instead of parse_args is a hack since we
-    # currently send ALL arguments from the main program to the executor
-    # on PBS queues (FIXME not yet true on SGE queues, but this is
-    # not the best solution anyway).
+    # currently send ALL arguments from the main program to the executor.
     # Alternately, we could keep a copy of the executor parser around
     # when constructing the executor shell command
-    options = parser.parse_known_args()[0]
+    options, _ = parser.parse_known_args()
 
     #Check to make sure some executors have been specified. 
     ensure_exec_specified(options.num_exec)
 
     def local_launch(options):
-        pe = pipelineExecutor(options)
+        pe = pipelineExecutor(options=options, uri_file=options.urifile)  #, pipeline_name=options.pipeline_name)
+        # FIXME - I doubt missing the other options even works, otherwise we could change the executor interface!!
         # executors don't use any shared-memory constructs, so OK to copy
         ps = [Process(target=launchExecutor, args=(pe,))
               for _ in range(options.num_exec)]
@@ -611,14 +598,14 @@ if __name__ == "__main__":
 
     if options.local:
         local_launch(options)
-    elif options.queue_type == "pbs":
+    elif options.submit_server:
         roq = q.runOnQueueingSystem(options, sysArgs=sys.argv)
         for i in range(options.num_exec):
             roq.createAndSubmitExecutorJobFile(i, after=None,
-                            time=q.timestr_to_secs(options.time))
-    elif options.queue_type == "sge":
+                                               time=q.timestr_to_secs(options.time))
+    elif options.queue_type is not None:
         for i in range(options.num_exec):
-            pe = pipelineExecutor(options)
+            pe = pipelineExecutor(options=options)   #, pipeline_name=pipeline_name)
             pe.submitToQueue()
     else:
         local_launch(options)

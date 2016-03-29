@@ -5,31 +5,32 @@ from datetime import datetime
 from os.path import isdir, basename
 from os import mkdir
 import os
-import re
 import subprocess
 
-# FIXME
-SERVER_START_TIME = 180
-
-# FIXME huge hack
+# FIXME huge hack around not being able to pretty-print
+# flags back out of a parsed representation
 # fix: form the parser from an iterable data structure of args
 # and consult this
-# TODO has terrible time complexity
+# TODO has terrible performance/complexity
 def remove_flags(flags, args):
-    args = args[:] # copy for politeness
-    for ix, arg in enumerate(args):
+    new_args = args[:] # copy for politeness
+    for ix, arg in reversed(list(enumerate(new_args))):
         for flag in flags:
-            if re.search(flag, arg):
+            if flag in arg: #re.search(flag, arg):
                 # matches? (argparse uses prefix matching...try to catch -
                 # ideally we'd actually consult a table of legal arguments)
-                if re.search('=', arg):
+                if '=' in arg:
                     # sys.argv has form [..., '--num-executors=3', ...]
-                    args.pop(ix)
+                    new_args.pop(ix)
+                elif len(new_args) - 1 == ix or new_args[ix+1][0] == '-':  # FIXME TOTAL HACK
+                    # sys.argv has form [..., '--boolean-flag'] ( + [optionally] ['--other-flag', ...])
+                # ... hopefully another flag, not a negative number ...
+                    new_args.pop(ix)
                 else:
                     # sys.argv has form [..., '--num-executors', '3', ...]
-                    args.pop(ix)
-                    args.pop(ix)
-    return args
+                    new_args.pop(ix)
+                    new_args.pop(ix)
+    return new_args
 
 def timestr_to_secs(ts):
     # TODO replace with a library function
@@ -53,7 +54,8 @@ class runOnQueueingSystem():
         self.procs = options.proc
         self.ppn = options.ppn
         self.queue_name = options.queue_name or options.queue
-        self.queue_type = options.queue or options.queue_type
+        self.queue_type = options.queue_type
+        self.executor_start_delay = options.executor_start_delay
         # TODO use self.time to compute better time_to_accept_jobs?
         self.time_to_accept_jobs = options.time_to_accept_jobs
         self.arguments = sysArgs #sys.argv in calling program
@@ -158,7 +160,8 @@ class runOnQueueingSystem():
             self.jobFile.write(self.buildMainCommand())
             self.jobFile.write(" &\n\n")
         if launchExecs:
-            self.jobFile.write("sleep %s\n" % SERVER_START_TIME)
+            self.jobFile.write("sleep %s\n" %
+                               self.executor_start_delay)
             cmd = "pipeline_executor.py --local --num-executors=1 "
             cmd += ' '.join(remove_flags(['--num-exec'], self.arguments[1:]))
             cmd += ' &\n\n'
@@ -177,7 +180,7 @@ class runOnQueueingSystem():
             cmd += ['-Wdepend=after:' + after]
         if afterany is not None:
             cmd += ['-Wdepend=afterany:' + afterany]
-        cmd += [self.jobFileName]
+        cmd += ['-Wumask=0137', self.jobFileName]
         out = subprocess.check_output(cmd)
         jobId = out.strip()
         print(' '.join(cmd))

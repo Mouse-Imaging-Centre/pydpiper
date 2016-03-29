@@ -11,7 +11,7 @@ from pydpiper.core.arguments import (CompoundParser, AnnotatedParser, applicatio
                                      registration_parser, execution_parser, parse)
 from pydpiper.execution.pipeline import Pipeline, pipelineDaemon
 from pydpiper.execution.queueing import runOnQueueingSystem
-from pydpiper.execution.pipeline_executor import addExecutorArgumentGroup, ensure_exec_specified
+from pydpiper.execution.pipeline_executor import ensure_exec_specified
 from pydpiper.core.util import output_directories
 from pydpiper.core.conversion import convertCmdStage
 
@@ -121,7 +121,7 @@ def mk_application(parsers: List[AnnotatedParser], pipeline: Callable[[Any], Res
 
 
 def backend(options):
-    return normal_execute if options.execution.local else execution_backends[options.execution.queue_type]
+    return grid_only_execute if options.execution.submit_server else normal_execute
 
 # TODO: should create_directories be added as a method to Pipeline?
 def create_directories(stages):
@@ -150,14 +150,13 @@ def normal_execute(pipeline, options):
     logger.info("Server has stopped.  Quitting...")
 
 def grid_only_execute(pipeline, options):
-    #    if pbs_submit:
+    if options.execution.queue_type is not 'pbs':
+        raise ValueError("currently we only support submitting the server to PBS/Torque systems")
     roq = runOnQueueingSystem(options, sys.argv)
     roq.createAndSubmitPbsScripts()
     # TODO: make the local server create the directories (first time only) OR create them before submitting OR submit a separate stage?
     # NOTE we can't add a stage to the pipeline at this point since the pipeline doesn't support any sort of incremental recomputation ...
     logger.info("Finished submitting PBS job scripts...quitting")
-
-execution_backends = { None : normal_execute, 'sge' : normal_execute, 'pbs' : grid_only_execute }
 
 def reconstruct_command(options):
     # TODO: also write down the environment, contents of config files
