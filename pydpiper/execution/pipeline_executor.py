@@ -205,6 +205,7 @@ class pipelineExecutor(object):
         self.ppn = options.ppn
         self.pe  = options.pe
         self.mem_request_attribute = options.mem_request_attribute
+        self.time = options.time
         self.queue_type = options.queue_type
         self.queue_name = options.queue_name
         self.queue_opts = options.queue_opts
@@ -374,6 +375,7 @@ class pipelineExecutor(object):
                                     "#PBS -N %s" % jobname,
                                     "#PBS -l nodes=1:ppn=1",
                                     # CCM is strict, and doesn't like float values:
+                                    "#PBS -l walltime:%s" % (self.time),
                                     "#PBS -l %s=%dg\n" % (self.mem_request_attribute, m.ceil(self.mem)),
                                     # FIXME add walltime stuff here if specified (and check <= max_walltime ??)
                                     "df /dev/shm >&2",  # FIXME: remove

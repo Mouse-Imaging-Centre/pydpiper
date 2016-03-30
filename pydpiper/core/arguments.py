@@ -270,9 +270,9 @@ def _mk_execution_parser(p: ArgParser) -> ArgParser:
     group.add_argument("--no-monitor-heartbeats", dest="monitor_heartbeats",
                        action="store_false",
                        help="Don't assume executors have died if they don't check in with the server (NOTE: this can hang your pipeline if an executor crashes).")
-    group.add_argument("--time", dest="time",
-                       type=str, default=None,
-                       help="Wall time to request for each server/executor in the format hh:mm:ss. Required only if --queue-type=pbs. Current default on PBS is 48:00:00.")
+    group.add_argument("--time", dest="time", 
+                       type=str, default="23:59:59",
+                       help="Wall time to request for each server/executor in the format hh:mm:ss. Required only if --queue-type=pbs. Current default on PBS is %(default)s.")
     group.add_argument("--proc", dest="proc",
                        type=int, default=1,
                        help="Number of processes per executor. Also sets max value for processor use per executor. [Default = %(default)s]")
