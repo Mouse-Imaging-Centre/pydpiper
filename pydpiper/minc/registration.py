@@ -1472,15 +1472,17 @@ class Subject(Generic[V]):
 def intrasubject_registrations(subj: Subject,
                                linear_conf: MinctraccConf,
                                nlin_conf: MincANTSConf) \
-        -> Result[Tuple[List[Tuple[int, XfmHandler]], int]]:
+        -> Result[Tuple[List[Tuple[int, int, XfmHandler]], int]]:
     """
     
     subj -- Subject (has a intersubject_registration_time_pt and a time_pt_dict 
             that maps timepoints to individual subjects
-    
-    Returns a dictionary mapping a time point to a transformation
-    {time_pt_1 : transform_from_1_to_2, ..., time_pt_n-1 : transform_from_n-1_to_n};
-    note this is one element smaller than the number of time points.
+
+    Return:
+    ([ (source_time_pt, target_time_pt, XfmHandler),
+       (...,...,...),(...,...,...)],
+     index_of_common_time_pt)
+     note this is one element smaller than the number of time points.
     """
     # TODO: somehow the output of this function should provide us with
     # easy access from a MincAtom to an XfmHandler from time_pt N to N+1 
@@ -1494,6 +1496,7 @@ def intrasubject_registrations(subj: Subject,
     index_of_common_time_pt = timepts_indices.index(subj.intersubject_registration_time_pt)  # type: int
 
     time_pt_to_xfms = [(timepts_indices[source_index],
+                        timepts_indices[source_index + 1],
                         s.defer(LSQ12_mincANTS_nlin(source=src[1],
                                                     target=dest[1],
                                                     linear_conf=linear_conf,

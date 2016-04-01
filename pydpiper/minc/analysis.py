@@ -40,34 +40,86 @@ def minc_displacement(xfm : XfmHandler) -> Result[MincAtom]:
 
 def mincblob(op : str, grid : MincAtom, subdir : str = "tmp") -> Result[MincAtom]:
     """
-    Low-level mincblob wrapper -- use `determinant` instead to actually compute a determinant ...
+    Low-level mincblob wrapper with the one exception being the determinant option. By
+    default the inner clockwork of mincblob subtracts 1 from all determinant values that
+    are being calculated. As such, 1 needs to be added to the result of the mincblob call.
+    We will do that here, because it makes most sense here.
     >>> stages = mincblob('determinant', MincAtom("/images/img_1.mnc", pipeline_sub_dir="/tmp")).stages
     >>> [s.render() for s in stages]
     ['mincblob -clobber -determinant /images/img_1.mnc /tmp/img_1/img_1_determinant.mnc']
     """
-    # FIXME could automatically add 1 here for determinant; what about others?
     if op not in ["determinant", "trace", "translation", "magnitude"]:
         raise ValueError('mincblob: invalid operation %s' % op)
-    out_grid = grid.newname_with_suffix('_' + op, subdir=subdir)
-    s = CmdStage(inputs=(grid,), outputs=(out_grid,),
-                 cmd=['mincblob', '-clobber', '-' + op, grid.path, out_grid.path])
-    s.set_log_file(os.path.join(out_grid.pipeline_sub_dir,
-                                out_grid.output_sub_dir,
+
+    # if we are calculating the determinant, the first file produced is a temp file:
+    if op == "determinant":
+        out_file = grid.newname_with_suffix("_temp_det", subdir=subdir)
+    else:
+        out_file = grid.newname_with_suffix('_' + op, subdir=subdir)
+
+    stage = CmdStage(inputs=(grid,), outputs=(out_file,),
+                 cmd=['mincblob', '-clobber', '-' + op, grid.path, out_file.path])
+    stage.set_log_file(os.path.join(out_file.pipeline_sub_dir,
+                                out_file.output_sub_dir,
                                 "log",
-                                "mincblob_" + out_grid.filename_wo_ext + ".log"))
-    return Result(stages=Stages([s]), output=out_grid)
+                                "mincblob_" + out_file.filename_wo_ext + ".log"))
+
+    s = Stages([stage])
+    # now create the proper determinant if that's what was asked for
+    if op == "determinant":
+        result_file = s.defer(mincmath(op='add',
+                                       const=1,
+                                       vols=[out_file],
+                                       subdir=subdir,
+                                       new_name=grid.filename_wo_ext + "_determinant"))
+    else:
+        result_file = out_file
+
+    return Result(stages=s, output=result_file)
     #TODO add a 'before' to newname_with, e.g., before="grid" -> disp._grid.mnc
 
-def det_and_log_det(displacement_grid : MincAtom, fwhm : Optional[float]) -> Result[Tuple[MincAtom, MincAtom]]:
+def det_and_log_det(displacement_grid : MincAtom,
+                    fwhm : Optional[float],
+                    annotation: str = "") -> Result[Tuple[MincAtom, MincAtom]]:
+    """
+    When this function is called, you might (or should) know what kind of
+    deformation grid is passed along. This allows you to provide a proper
+    annotation for the produced log determinant file. For instance "absolute"
+    or "relative" for transformations that include an affine linear part, or
+    that have the linear part taken out respectively.
+    """
     s = Stages()
     # TODO: naming doesn't correspond with the (automagic) file naming: d-1 <=> det(f), det <=> det+1(f)
     det = s.defer(determinant(s.defer(smooth_vector(source=displacement_grid, fwhm=fwhm))
                               if fwhm else displacement_grid))
-    log_det = s.defer(mincmath(op='log', vols=[det], subdir="stats-volumes"))
+
+    output_filename_wo_ext = displacement_grid.filename_wo_ext + "_log_determinant" + annotation
+    if fwhm:
+        output_filename_wo_ext += "_fwhm" + str(fwhm)
+    log_det = s.defer(mincmath(op='log',
+                               vols=[det],
+                               subdir="stats-volumes",
+                               new_name=output_filename_wo_ext))
     return Result(stages=s, output=(det, log_det))
 
 def nlin_part(xfm : XfmHandler, inv_xfm : Optional[XfmHandler] = None) -> Result[XfmHandler]:
-    """Compute the nonlinear part of a transform as follows:
+    """
+    *** = non linear deformations
+    --- = linear (affine) deformations
+
+    Input:
+    xfm     :     ******------>
+    inv_xfm :    <******------ (optional)
+
+    Calculated:
+    inv_lin_xfm :      <------
+
+    Returned:
+    concat :      ******------> +
+                       <------
+    equals :      ******>
+
+    Compute the nonlinear part of a transform as follows:
     go forwards across xfm and then backwards across the linear part
     of the inverse xfm (by first calculating the inverse or using the one supplied) 
     Finally, use minc_displacement to compute the resulting gridfile of the purely 
@@ -75,7 +127,8 @@ def nlin_part(xfm : XfmHandler, inv_xfm : Optional[XfmHandler] = None) -> Result
 
     The optional inv_xfm (which must be the inverse!) is an optimization -
     we don't go looking for an inverse by filename munging and don't programmatically
-    keep a log of operations applied, so any preexisting inverse must be supplied explicitly."""
+    keep a log of operations applied, so any preexisting inverse must be supplied explicitly.
+    """
     s = Stages()
     inv_xfm = inv_xfm or s.defer(invert_xfmhandler(xfm))
     inv_lin_part = s.defer(lin_from_nlin(inv_xfm)) 
@@ -83,7 +136,15 @@ def nlin_part(xfm : XfmHandler, inv_xfm : Optional[XfmHandler] = None) -> Result
     return Result(stages=s, output=xfm)
 
 def nlin_displacement(xfm : XfmHandler, inv_xfm : Optional[XfmHandler] = None) -> Result[MincAtom]:
-    # "minc_displacement <=< nlin_part"
+    """
+    See: nlin_part().
+
+    This returns the nonlinear part of the input
+    transformation (xfm) in the form of a grid file (vector field).
+    All transformations are encapsulated in this field (linear parts
+    that are normally specified in the .xfm file are placed in the
+    vector field)
+    """
     
     s = Stages()
     return Result(stages=s,
@@ -96,6 +157,16 @@ def determinants_at_fwhms(xfm        : XfmHandler,
                        -> Result[Tuple[List[Tuple[float, Tuple[MincAtom, MincAtom]]],  \
                                        List[Tuple[float, Tuple[MincAtom, MincAtom]]]]]:
     """
+    The most common way to use this function is by providing
+    it with transformations that go from the final average
+    to an individual. I.e.:
+
+    *** = non linear deformations
+    --- = linear (affine) deformations
+
+    xfm     = final-nlin  ******------> individual_input
+    inv_xfm = final-nlin <******------  individual_input
+
     Takes a transformation (xfm) containing
     both lsq12 (scaling and shearing, the 6-parameter
     rotations/translations should not be part of this) and
@@ -118,11 +189,12 @@ def determinants_at_fwhms(xfm        : XfmHandler,
    
     fwhms = [float(x) for x in blur_fwhms.split(',')]
 
-    nlin_dets = [(fwhm, s.defer(det_and_log_det(displacement_grid=nlin_disp, fwhm=fwhm))) for fwhm in fwhms + [None]]
-    full_dets = [(fwhm, s.defer(det_and_log_det(displacement_grid=full_disp, fwhm=fwhm))) for fwhm in fwhms + [None]]
-    # won't work when additional xfm is specified for nlin_dets:
-    #(nlin_dets, full_dets) = [[(fwhm, s.defer(det_and_log_det(disp, fwhm))) for fwhm in blur_fwhms]
-    #                          for disp in (nlin_disp, full_disp)]
+    nlin_dets = [(fwhm, s.defer(det_and_log_det(displacement_grid=nlin_disp,
+                                                fwhm=fwhm,
+                                                annotation="_relative"))) for fwhm in fwhms + [None]]
+    full_dets = [(fwhm, s.defer(det_and_log_det(displacement_grid=full_disp,
+                                                fwhm=fwhm,
+                                                annotation="_absolute"))) for fwhm in fwhms + [None]]
 
     #could return a different isomorphic presentation of this big structure...
     return Result(stages=s, output=(nlin_dets, full_dets))
@@ -157,9 +229,13 @@ def mincmath(op       : str,
     return Result(stages=Stages([s]), output=outf)
 
 def determinant(displacement_grid : MincAtom) -> Result[MincAtom]:
+    """
+    Takes a displacement field (deformation grid, vector field, those are
+    all the same thing) and calculates the proper determinant (mincblob()
+    takes care of adding 1 to the silly output of running mincblob directly)
+    """
     s = Stages()
-    det_m_1 = s.defer(mincblob(op='determinant', grid=displacement_grid))
-    det = s.defer(mincmath(op='add', const=1, vols=[det_m_1], subdir="stats-volumes"))
+    det = s.defer(mincblob(op='determinant', grid=displacement_grid))
     return Result(stages=s, output=det)
 
 def smooth_vector(source : MincAtom, fwhm : float) -> Result[MincAtom]:
