@@ -135,10 +135,9 @@ def create_directories(stages):
             os.makedirs(d, exist_ok=True)
 
 # The old AbstractApplication class has been removed due to its non-obvious API.  In its place,
-# we currently provide an `execute` function and some helper functions for command-line parsing.
-# In the future, we could also provide higher-order functions which invert control again, although
-# with a clearer interface than AbstractApplication.  This would be nice since the user wouldn't have
-# to remember to add the executor option group themselves, for example, but would have to be done tastefully.
+# we currently provide an `execute` function and some helper functions for command-line parsing, as well
+# as a `mk_application` function which inverts control again, although with a clearer interface (hopefully)
+# than AbstractApplication.
 
 def normal_execute(pipeline, options):
     # FIXME this is a trivial function; inline pipelineDaemon here
