@@ -1405,6 +1405,38 @@ def mincANTS_NLIN_build_model(imgs: List[MincAtom],
 # The Subject class moved here since `intrasubject_registrations` was also here.
 
 
+def lsq12_nlin(source: MincAtom,
+               target: MincAtom,
+               linear_conf: MinctraccConf,
+               nlin_conf: Union[MinctraccConf, MincANTSConf]):
+    # TODO combine this with LSQ12_mincANTS_nlin OR write a wrapping LSQ12_NLIN function; write documentation ...
+    s = Stages()
+
+    if isinstance(nlin_conf, MincANTSConf):
+        registration = mincANTS
+    elif isinstance(nlin_conf, MinctraccConf):
+        registration = minctracc
+    else:
+        raise ValueError("What sort of conf is this?!")
+
+    lsq12_transform_handler = s.defer(multilevel_minctracc(source,
+                                                           target,
+                                                           conf=linear_conf,
+                                                           resample_input=True))
+
+    nlin_transform_handler = s.defer(registration(source=lsq12_transform_handler.resampled,
+                                                  target=target,
+                                                  conf=nlin_conf,
+                                                  resample_source=True))
+
+    full_transform = s.defer(concat_xfmhandlers([lsq12_transform_handler,
+                                                 nlin_transform_handler],
+                                                name=source.filename_wo_ext + "_to_" +
+                                                target.filename_wo_ext + "_lsq12_mincANTS_nlin"))
+
+    return Result(stages=s, output=full_transform)
+
+# TODO obsolete...remove uses and definition?
 def LSQ12_mincANTS_nlin(source: MincAtom,
                         target: MincAtom,
                         linear_conf: MinctraccConf,
