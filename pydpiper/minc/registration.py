@@ -1116,22 +1116,26 @@ def get_nonlinear_configuration_from_options(nlin_protocol, reg_method, file_res
     :return:  MultilevelMincANTSConf or MultilevelMinctraccConf
     """
 
-    non_linear_configuration = None
+    # TODO maybe just take the whole nlin_conf as a param to save typing at the call site?
 
     # determine what configuration to use for the non linear registration
     if nlin_protocol:
         # actually parse it:
         if reg_method == "mincANTS":
             non_linear_configuration = parse_mincANTS_protocol_file(nlin_protocol, file_resolution)
-        if reg_method == "minctracc":
+        elif reg_method == "minctracc":
             non_linear_configuration = parse_minctracc_nonlinear_protocol(nlin_protocol)
+        else:
+            raise ValueError("?!")
     else:
         # get one of the default configurations
         if reg_method == "mincANTS":
             non_linear_configuration = get_default_multi_level_mincANTS(file_resolution=file_resolution)
-        if reg_method == "minctracc":
+        elif reg_method == "minctracc":
             #TODO: this. Still TODO.
             raise ValueError("Error.. we do not have proper minctracc non linear defaults yet. ")
+        else:
+            raise ValueError("?!")
 
     return non_linear_configuration
 
