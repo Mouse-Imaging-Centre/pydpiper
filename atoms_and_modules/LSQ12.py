@@ -245,7 +245,7 @@ class FullLSQ12(object):
         """ mincAverage all resampled brains and put in lsq12Directory""" 
         self.lsq12Avg = abspath(self.lsq12Dir) + "/" + basename(self.lsq12Dir) + "-pairs.mnc" 
         self.lsq12AvgFH = RegistrationPipeFH(self.lsq12Avg, basedir=self.lsq12Dir)
-        avg = ma.average(inputs, queue_type=self.queue_type,
+        avg = ma.average(self.inputs, queue_type=self.queue_type,
                          outputAvg=self.lsq12AvgFH,
                          output=self.lsq12Avg,
                          defaultDir=self.lsq12Dir)
