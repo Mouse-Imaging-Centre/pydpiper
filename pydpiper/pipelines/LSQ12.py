@@ -7,7 +7,8 @@ from pydpiper.core.arguments import (AnnotatedParser, execution_parser, lsq6_par
 from pydpiper.execution.application import execute
 from pydpiper.minc.registration import (lsq12_pairwise, LSQ12Conf,
                                         default_lsq12_multilevel_minctracc,
-                                        parse_minctracc_nonlinear_protocol_file)
+                                        parse_minctracc_nonlinear_protocol_file, get_resolution_from_file,
+                                        registration_targets)
 from pydpiper.minc.files import MincAtom
 
 
@@ -22,6 +23,9 @@ def LSQ12_pipeline(options):
     processed_dir = os.path.join(output_dir, pipeline_name + "_processed")
     lsq12_dir     = os.path.join(output_dir, pipeline_name + "_lsq12")
 
+    resolution = (options.registration.resolution  # TODO does using the finest resolution here make sense?
+                  or min([get_resolution_from_file(f) for f in options.application.files]))
+
     imgs = [MincAtom(f, pipeline_sub_dir=processed_dir) for f in options.application.files]
 
     # determine LSQ12 settings by overriding defaults with
@@ -29,7 +33,7 @@ def LSQ12_pipeline(options):
     # could add a hook to print a message announcing completion, output files,
     # add more stages here to make a CSV
 
-    return lsq12_pairwise(imgs, lsq12_conf=options.lsq12, lsq12_dir=lsq12_dir)
+    return lsq12_pairwise(imgs, lsq12_conf=options.lsq12, lsq12_dir=lsq12_dir, resolution=resolution)
 
 def main(args):
     # this is probably too much heavy machinery since the options aren't tree-shaped; could just use previous style
@@ -41,7 +45,7 @@ def main(args):
            lsq12_parser])
 
     # TODO could abstract and then parametrize by prefix/ns ??
-    options = parse(p, sys.argv[1:])
+    options = parse(p, args[1:])
     stages = LSQ12_pipeline(options).stages
     execute(stages, options)
 
