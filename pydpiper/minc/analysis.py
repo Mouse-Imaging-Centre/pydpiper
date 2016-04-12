@@ -250,3 +250,17 @@ def smooth_vector(source : MincAtom, fwhm : float) -> Result[MincAtom]:
     return Result(stages=Stages([stage]), output=outf)
 
 StatsConf = NamedTuple("StatsConf", [('stats_kernels', str)])
+
+
+def voxel_vote(label_files : List[MincAtom]):
+
+    if len(label_files) < 2:
+        raise ValueError("currently need at least 2 files to average")
+
+    out = MincAtom(name="voted_TODO.mnc")
+
+    s = CmdStage(cmd=["voxel_vote"] + [l.path for l in label_files] + [out.path],
+                 inputs=label_files,
+                 outputs=(out.path,))
+
+    return Result(stages=Stages([s]), output=out)

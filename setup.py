@@ -21,7 +21,8 @@ setup(name='pydpiper',
         'Pyro4',
         'pytest',
         'typing',
-        'pydot_ng'
+        'pydot_ng',
+        'pandas'
       ],
       platforms="any",
       packages=['pydpiper', 'pydpiper.core', 'pydpiper.minc', 'pydpiper.execution', 'pydpiper.pipelines'],
@@ -31,6 +32,7 @@ setup(name='pydpiper',
                'pydpiper/pipelines/LSQ12.py', 
                'pydpiper/pipelines/LSQ6.py',
                'pydpiper/pipelines/MBM.py',
+               'pydpiper/pipelines/MAGeT.py',
                'pydpiper/pipelines/registration_chain.py',
                'pydpiper/pipelines/twolevel_model_building.py'],
       #tests_require=['pytest']

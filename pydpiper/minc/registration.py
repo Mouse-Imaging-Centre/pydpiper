@@ -249,6 +249,7 @@ def mincresample_simple(img: MincAtom,
                         like: MincAtom,
                         extra_flags: Tuple[str] = (),
                         interpolation: Optional[Interpolation] = None,
+                        invert: bool = False,
                         new_name_wo_ext: str = None,
                         subdir: str = None) -> Result[MincAtom]:
     """
@@ -278,6 +279,7 @@ def mincresample_simple(img: MincAtom,
              '-transform %s' % xfm.path,
              '-like %s' % like.path]
              + (['-' + interpolation.name] if interpolation else [])
+             + (['-invert'] if invert else [])
              + list(extra_flags))
              + [img.path, outf.path])
 
@@ -293,6 +295,7 @@ def mincresample(img: MincAtom,
                  xfm: XfmAtom,
                  like: MincAtom,
                  extra_flags: Tuple[str] = (),
+                 invert: bool = False,
                  interpolation: Interpolation = None,
                  new_name_wo_ext: str = None,
                  subdir: str = None) -> Result[MincAtom]:
@@ -333,11 +336,13 @@ def mincresample(img: MincAtom,
     new_img.mask = s.defer(mincresample_simple(img=img.mask, xfm=xfm, like=like,
                                                extra_flags=extra_flags,
                                                interpolation=Interpolation.nearest_neighbour,
+                                               invert=invert,
                                                new_name_wo_ext=new_name_wo_ext + "_mask",
                                                subdir=subdir)) if img.mask is not None else None
     new_img.labels = s.defer(mincresample_simple(img=img.labels, xfm=xfm, like=like,
                                                  extra_flags=label_extra_flags,
                                                  interpolation=Interpolation.nearest_neighbour,
+                                                 invert=invert,
                                                  new_name_wo_ext=new_name_wo_ext + "_labels",
                                                  subdir=subdir)) if img.labels is not None else None
 
@@ -834,13 +839,16 @@ def parse_minctracc_protocol(f, base_minctracc_conf, parsers, names,
     for l in f:
         k, *vs = l
         if k not in params:
-            raise ParseError("Unrecognized parameter: %s" % k)
+            if is_ignored_key(k):
+                print("Warning: key '%s' not used" % k)
+            else:
+                raise ParseError("Unrecognized parameter: %s" % k)
         else:
             new_k = names[k] if k in names else k
             if new_k in d:
                 raise ParseError("Duplicate key: %s/%s" % (k, new_k))
             else:
-                d[new_k] = [parsers[new_k](v) for v in vs]
+                d[new_k] = [parsers[k](v) for v in vs]
 
     # some error checking ...
     if not all_equal(d.values(), by=len):
@@ -848,7 +856,7 @@ def parse_minctracc_protocol(f, base_minctracc_conf, parsers, names,
                          "all params must be given for the same number of generations.")
     if len(d) == 0:
         raise ParseError("Empty file ...")   # TODO should this really be an error?
-    for k in d:
+    for k in d.copy():  # otherwise d changes size during iteration ...
         if is_ignored_key(k):
             print("Warning: don't currently use '%s'..." % k)  # doesn't have to be same length -> can crash code below
             del d[k]
@@ -916,11 +924,11 @@ def parse_minctracc_linear_protocol(f, transform_type : LinearTransType,
                "w_scales"           : thrice_result(float),
                "w_shear"            : thrice_result(float)}
 
-    is_ignored_key = lambda k: k == "memory_required"
+    is_ignored_key = lambda k: k in ("memory_required", "iterations", "optimization")
 
     return parse_minctracc_protocol(f=f, names={}, parsers=parsers, is_ignored_key=is_ignored_key,
                                     modify=lambda b, c: b.replace(linear_conf=c),
-                                    base_minctracc_conf=base_minctracc_conf(transform_type))
+                                    base_minctracc_conf=base_minctracc_conf)
 
 
 # TODO: add memory estimation hook
@@ -1108,7 +1116,29 @@ def get_default_multi_level_mincANTS(file_resolution: float) -> MultilevelMincAN
     return MultilevelMincANTSConf([conf1,conf2,conf3])
 
 
-def get_nonlinear_configuration_from_options(nlin_protocol, reg_method, file_resolution):
+def get_linear_configuration_from_options(conf, transform_type : LinearTransType, file_resolution : float) \
+        -> MultilevelMinctraccConf:
+
+    if conf.protocol:
+        minctracc_conf = parse_minctracc_linear_protocol_file(
+                           filename=conf.protocol,
+                           transform_type=transform_type,
+                           # we could allow overriding the default_linear_minctracc_conf even further up the call chain
+                           minctracc_conf=default_linear_minctracc_conf(transform_type)
+                                          # FIXME replace anything here based on file_resolution?
+                                          # minctracc config uses factors, so should be OK.
+                         )
+    else:
+        #minctracc_conf = default_lsq12_multilevel_minctracc.replace(...)
+        # FIXME `replace` the resolution (<-> step factors, etc.), transform_type, etc.!!  Also print a warning?
+        raise NotImplementedError("You need to supply a protocol at the moment.  Sorry!")
+
+    return minctracc_conf
+
+
+def get_nonlinear_configuration_from_options(nlin_protocol : Union[MincANTSConf, MinctraccConf],
+                                             reg_method : str,
+                                             file_resolution : float):
     """
     :param nlin_protocol: path to the protocol on the system (can be None)
     :param reg_method: the registration method (currently mincANTS or minctracc)
@@ -1124,7 +1154,7 @@ def get_nonlinear_configuration_from_options(nlin_protocol, reg_method, file_res
         if reg_method == "mincANTS":
             non_linear_configuration = parse_mincANTS_protocol_file(nlin_protocol, file_resolution)
         elif reg_method == "minctracc":
-            non_linear_configuration = parse_minctracc_nonlinear_protocol(nlin_protocol)
+            non_linear_configuration = parse_minctracc_nonlinear_protocol_file(nlin_protocol)
         else:
             raise ValueError("?!")
     else:
@@ -1407,22 +1437,22 @@ def mincANTS_NLIN_build_model(imgs: List[MincAtom],
 
 def lsq12_nlin(source: MincAtom,
                target: MincAtom,
-               linear_conf: MinctraccConf,
-               nlin_conf: Union[MinctraccConf, MincANTSConf]):
+               lsq12_conf: MinctraccConf,
+               nlin_conf: Union[MultilevelMinctraccConf, MincANTSConf]):
     # TODO combine this with LSQ12_mincANTS_nlin OR write a wrapping LSQ12_NLIN function; write documentation ...
     s = Stages()
 
     if isinstance(nlin_conf, MincANTSConf):
         registration = mincANTS
-    elif isinstance(nlin_conf, MinctraccConf):
-        registration = minctracc
+    elif isinstance(nlin_conf, MultilevelMinctraccConf):
+        registration = multilevel_minctracc
     else:
         raise ValueError("What sort of conf is this?!")
 
     lsq12_transform_handler = s.defer(multilevel_minctracc(source,
                                                            target,
-                                                           conf=linear_conf,
-                                                           resample_input=True))
+                                                           conf=lsq12_conf,
+                                                           resample_source=True))
 
     nlin_transform_handler = s.defer(registration(source=lsq12_transform_handler.resampled,
                                                   target=target,
@@ -1455,7 +1485,7 @@ def LSQ12_mincANTS_nlin(source: MincAtom,
     lsq12_transform_handler = s.defer(multilevel_minctracc(source,
                                                            target,
                                                            conf=linear_conf,
-                                                           resample_input=True))
+                                                           resample_source=True))
 
     nlin_transform_handler = s.defer(mincANTS(source=lsq12_transform_handler.resampled,
                                               target=target,
@@ -1584,7 +1614,7 @@ def multilevel_minctracc(source: MincAtom,
                          conf: MultilevelMinctraccConf,
                          transform: Optional[XfmAtom] = None,
                          transform_info: Optional[List[str]] = None,
-                         resample_input: bool = False) -> Result[XfmHandler]:
+                         resample_source: bool = False) -> Result[XfmHandler]:
     if len(conf.confs) == 0:  # not a "registration" at all; also, src_blur/target_blur will be undefined ...
         raise ValueError("No configurations supplied")
     s = Stages()
@@ -1594,10 +1624,10 @@ def multilevel_minctracc(source: MincAtom,
                                               transform=transform,
                                               transform_info=transform_info if idx == 0 else None,
                                               generation=idx,
-                                              resample_source=resample_input))
+                                              resample_source=resample_source))
         transform = transform_handler.xfm
         # why potentially throw away the resampled image?
-        last_resampled = transform_handler.resampled if resample_input else None
+        last_resampled = transform_handler.resampled if resample_source else None
     return Result(stages=s,
                   output=XfmHandler(xfm=transform,
                                     source=source,
@@ -1625,6 +1655,7 @@ def multilevel_pairwise_minctracc(imgs: List[MincAtom],
                                   # suggesting that the pairwise conf being a list of confs is inappropriate
                                   like: MincAtom = None,
                                   output_dir_for_avg: str = ".",
+                                  mincaverage=mincaverage,
                                   output_name_for_avg: str = None) -> Result[WithAvgImgs[List[XfmHandler]]]:
     """Pairwise registration of all images.
     max_pairs - number of images to register each image against. (Currently we might register against one fewer.)
@@ -1719,6 +1750,7 @@ def multilevel_pairwise_minctracc(imgs: List[MincAtom],
 # TODO all this does is call multilevel_pairwise_minctracc and then return an average; fold into that procedure?
 # TODO eliminate/provide default val for resolutions, move resolutions into conf, finish conf ...
 def lsq12_pairwise(imgs: List[MincAtom],
+                   resolution: float,
                    #conf: MultilevelMinctraccConf,  # TODO: override transform_type field?
                    # FIXME the multilevel minctracc conf should still be programatically settable, but
                    # what to do if both it and a protocol file are supplied?
@@ -1727,17 +1759,22 @@ def lsq12_pairwise(imgs: List[MincAtom],
                    like: MincAtom = None,
                    mincaverage = mincaverage) -> Result[WithAvgImgs[List[XfmHandler]]]:
 
+    minctracc_conf = get_linear_configuration_from_options(conf=lsq12_conf,
+                                                           transform_type=LinearTransType.lsq12,
+                                                           file_resolution=resolution)
+
     #if conf and lsq12_conf.protocol: "???"
-    if lsq12_conf.protocol:
-        minctracc_conf = parse_minctracc_linear_protocol_file(filename=lsq12_conf.protocol,
-                                                              transform_type=LinearTransType.lsq12)
-    else:
-        minctracc_conf = default_lsq12_multilevel_minctracc
-    # FIXME `replace` the resolution, etc.!!  Also print a warning?
+    #if lsq12_conf.protocol:
+    #    minctracc_conf = parse_minctracc_linear_protocol_file(filename=lsq12_conf.protocol,
+    #                                                          transform_type=LinearTransType.lsq12)
+    #else:
+    #    #minctracc_conf = default_lsq12_multilevel_minctracc
+    #    raise NotImplementedError("You need to supply an lsq12 configuration at the moment.  Sorry!")
+    #    # FIXME `replace` the resolution, etc.!!  Also print a warning?
     # conf.transform_type='-lsq12' # hack ... copy? or set external to lsq12 call ? might be better
     s = Stages()
     avgs_and_xfms = s.defer(multilevel_pairwise_minctracc(imgs=imgs, conf=minctracc_conf, like=like,
-                                                          output_dir_for_avg=lsq12_dir,
+                                                          output_dir_for_avg=lsq12_dir, mincaverage=mincaverage,
                                                           max_pairs=lsq12_conf.max_pairs))
     return Result(stages=s, output=avgs_and_xfms)
 
@@ -1779,6 +1816,7 @@ def lsq12_nlin_build_model(imgs       : List[MincAtom],
     # TODO: make sure that we pass on a correct configuration for lsq12_pairwise
     # it should be able to get this passed in....
     lsq12_result = s.defer(lsq12_pairwise(imgs=imgs, like=None,
+                                          resolution=resolution,
                                           lsq12_conf=lsq12_conf,
                                           lsq12_dir=lsq12_dir))
 
@@ -2167,7 +2205,7 @@ def lsq6_nuc_inorm(imgs: List[MincAtom],
                                                       xfm=xfm_to_lsq6,
                                                       like=native_img,
                                                       interpolation=Interpolation.nearest_neighbour,
-                                                      extra_flags=('-invert',)))
+                                                      invert=True))
                                  for native_img, xfm_to_lsq6 in zip(imgs, xfms_to_final_target_space)]
 
     # NUC
@@ -2235,7 +2273,7 @@ def lsq6_nuc_inorm(imgs: List[MincAtom],
                                              nuc_filenames_wo_ext_lsq6)]
     else:
         # in this case neither non uniformity correction nor intensity normalization was applied,
-        # so we must have passed `resample_inputs=True` to the actual lsq6 calls above, and thus:
+        # so we must have passed `resample_source=True` to the actual lsq6 calls above, and thus:
         final_resampled_lsq6_files = [xfm.resampled for xfm in source_imgs_to_lsq6_target_xfms]
 
     # we've just performed a 6 parameter alignment between a bunch of input files
