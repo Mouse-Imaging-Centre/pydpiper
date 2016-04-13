@@ -1,3 +1,21 @@
+New in Version 1.17
+===================
+* many changes supporting operation on the Sick Kids CCM grid (and other PBS/Torque 'capability'
+  systems) - mostly slowly implementing a HPC queue submission library inside Pydpiper ...
+* fixed a bug where only --lsq12-max-pairs images were used to generate the lsq12 average;
+  doesn't seem to have made much difference
+* runnable-time hooks are now cached
+* very hackish memory estimates for pmincaverage (for these to agree with SGE's estimates,
+  probably need minc-stuffs 0.1.14 or later)
+* fewer executors are launched in some situations when more aren't needed
+* qsub return codes are checked
+* job arrays are used to submit executors to avoid choking the grid engine and to reduce
+  vmem usage of the server when submitting; query these with "qsub -t <jid>[]"
+* Pyro knows how to serialize more exceptions
+* removed the executor heartbeat thread; may be restored in future
+* use subprocess32 instead of subprocess for (hopefully) improved correctness
+
+
 New in Version 1.15
 ===================
 * some of the python dependencies are now installed automatically (from PyPI): 

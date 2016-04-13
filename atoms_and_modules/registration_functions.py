@@ -3,7 +3,7 @@
 from __future__ import print_function
 import atoms_and_modules.registration_file_handling as rfh
 import pydpiper.file_handling as fh
-from os.path import abspath, exists, dirname, splitext, isfile, basename
+from os.path import abspath, exists, dirname, splitext, isfile, basename, split
 from os import curdir, walk
 from datetime import date
 import subprocess
@@ -152,7 +152,7 @@ def initializeInputFiles(args, mainDirectory, maskDir=None):
         logger.info("No mask directory specified as command line option. No masks included during RegistrationPipeFH initialization.")
     return inputs
 
-def setupTwoLevelDirectories(csvFile, outputDir, pipeName, module):
+def setupTwoLevelDirectories(csvFile, outputDir, pipeName, module, use_dir_names):
     """Creates outputDir/pipelineName_firstlevel for twolevel_registration
        Within first level directory, creates _lsq6/12/nlin/processed for each subject,
        based on the name of the first file in the csv
@@ -166,7 +166,10 @@ def setupTwoLevelDirectories(csvFile, outputDir, pipeName, module):
     subjectDirs = {} # One StandardMBMDirectories for each subject
     index = 0
     for subj in subjectList:
-        base = splitext(basename(subj[0]))[0]
+        if use_dir_names:
+            base = split(dirname(subj[0]))[1]
+        else:
+            base = splitext(basename(subj[0]))[0]
         dirs = setupDirectories(firstLevelDir, base, module)
         subjectDirs[index] = dirs
         index += 1    

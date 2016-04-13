@@ -97,7 +97,7 @@ class mincANTS(CmdStage):
         self.colour = "red"
         # defer calculation of memory use until the actual file to be used
         # is available (since the input file may be, e.g., much larger)
-        self.runnable_hooks.append(
+        self.add_runnable_hook(
             lambda : self.setMemory(inSource, memoryCoeffs))
         
     def setMemory(self, inSource, memoryCoeffs):
@@ -263,7 +263,7 @@ class minctracc(CmdStage):
         if memory is not None:
             self.mem = memory
         else:
-            self.runnable_hooks.append(
+            self.add_runnable_hook(
                 lambda : self.setMemory(self.source, minctracc_default_mem_cfg))
 
     def setMemory(self, source, cfg):
@@ -423,7 +423,7 @@ class blur(CmdStage):
             # must do this now due to inFile mutation (ugh)
             # otherwise we'll get filename of a future file
             vol = inFile.getLastBasevol()
-        self.runnable_hooks.append(
+        self.add_runnable_hook(
             lambda : self.setMemory(vol, mincblur_mem_cfg))
 
     def setMemory(self, volname, mem_cfg):
@@ -826,7 +826,7 @@ class mincAverage(CmdStage):
         self.cmd += ["mincaverage",
                      "-clobber", "-normalize", 
                      "-sdfile", self.sd, 
-                     "-max_buffer_size_in_kb", str(409620)] +  additionalFlags
+                     "-max_buffer_size_in_kb", str(409620)] + additionalFlags
                  
     def finalizeCommand(self):
         for i in range(len(self.filesToAvg)):
@@ -841,10 +841,16 @@ class mincAverage(CmdStage):
         return(outputFile)
 
 class pMincAverage(mincAverage):
+    def setMemory(self):
+        memory_per_voxel = 17.0/(1064 * 13158000.0)
+        voxels_per_file  = reduce(mul, volumeFromFile(self.inputFiles[0]).getSizes())
+        self.setMem(0.5 + len(self.inputFiles) * memory_per_voxel * voxels_per_file)  # GB
     def addDefaults(self, copyHeaderInfo=False):
         self.inputFiles.extend(self.filesToAvg)
         self.outputFiles += [self.output]
         self.cmd += ["pmincaverage", "--clobber"]
+        self.add_runnable_hook(lambda : self.setMemory())
+        #FIXME values are a quick hack - assumed linear in files, voxels and chose constants from Foster data
     #def finalizeCommand(self):
     #    self.cmd.extend(self.filesToAvg)
     #    self.cmd.append(self.output)
@@ -863,6 +869,7 @@ def average(inputArray,
         stage = pMincAverage
     else:
         stage = mincAverage
+    stage = pMincAverage  # FIXME
     return stage(inputArray, outputAvg=outputAvg, output=output,
                  logFile=logFile, defaultDir=defaultDir,
                  copyHeaderInfo=copyHeaderInfo)
