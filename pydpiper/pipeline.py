@@ -11,7 +11,7 @@ import time
 import re
 import resource
 from datetime import datetime
-from subprocess32 import call, check_output
+import subprocess32 as subprocess
 from shlex import split
 from multiprocessing import Process, Event
 from configargparse import Namespace
@@ -165,7 +165,7 @@ class CmdStage(PipelineStage):
         of.flush()
 
         args = split(repr(self))
-        returncode = call(args, stdout=of, stderr=of, shell=False)
+        returncode = subprocess.call(args, stdout=of, stderr=of, shell=False)
         of.close()
         return(returncode)
 
@@ -989,7 +989,7 @@ def launchServer(pipeline, options):
 
         try:
             jid    = os.environ["PBS_JOBID"]
-            output = check_output(['qstat', '-f', jid])
+            output = subprocess.check_output(['qstat', '-f', jid], stderr=subprocess.STDOUT)
 
             time_left = int(re.search('Walltime.Remaining = (\d*)', output).group(1))
             logger.debug("Time remaining: %d s" % time_left)

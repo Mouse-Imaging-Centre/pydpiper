@@ -398,7 +398,7 @@ class pipelineExecutor(object):
     def submitToQueue(self, number, program_name=None):
         """Submits to queueing system using qsub"""
         if self.queue_type not in ['sge', 'pbs']:
-            msg = ("Specified queueing system is: %s" % (self.queue_type) + 
+            msg = (("Specified queueing system is: %s.  " % self.queue_type) +
                    "Only `queue_type`s 'sge', 'pbs', and None currently support launching executors." + 
                    "Exiting...")
             logger.warn(msg)
