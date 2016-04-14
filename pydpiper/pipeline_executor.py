@@ -685,8 +685,8 @@ if __name__ == "__main__":
             roq.createAndSubmitExecutorJobFile(i, after=None,
                             time=q.timestr_to_secs(options.time))
     elif options.queue_type is not None:
-        for i in range(options.num_exec):
-            pe = pipelineExecutor(options)
-            pe.submitToQueue()
+        #for i in range(options.num_exec):
+        pe = pipelineExecutor(options)
+        pe.submitToQueue(i)
     else:
         local_launch(options)
