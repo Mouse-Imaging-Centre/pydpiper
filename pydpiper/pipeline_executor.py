@@ -324,6 +324,7 @@ class pipelineExecutor(object):
         self.current_running_job_pids = []
         self.registered_with_server = False
         self.heartbeat_thread_crashed = False
+        self.cmd_wrapper = options.cmd_wrapper
         # we associate an event with each executor which is set when jobs complete.
         # in the future it might also be set by the server, and we might have more
         # than one event (for reclaiming, server messages, ...)
@@ -629,7 +630,7 @@ class pipelineExecutor(object):
             # this correctly, that binds the function to a class instance). There is
             # a way to make a bound function picklable, but this seems cumbersome. So instead
             # runStage is now a standalone function.
-            result = self.pool.apply_async(runStage, (self.serverURI, self.clientURI, i, options.cmd_wrapper))
+            result = self.pool.apply_async(runStage, (self.serverURI, self.clientURI, i, self.cmd_wrapper))
 
             self.runningChildren.append(ChildProcess(i, result, stageMem, stageProcs))
             logger.debug("Added stage %i to the running pool.", i)

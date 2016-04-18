@@ -881,7 +881,8 @@ def launchPipelineExecutors(options, mem_needed, number, program_name=None):
     if options.local or not options.queue_type:
         for _ in xrange(number):
             e = pe.pipelineExecutor(options, mem_needed)
-            pe.launchExecutor(e)
+            p = Process(target=pe.launchExecutor, args=(e,))
+            p.start()  # won't this leak processes ?!
     else:
         pipelineExecutor = pe.pipelineExecutor(options, mem_needed)
         pipelineExecutor.submitToQueue(number=number, program_name=program_name)
