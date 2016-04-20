@@ -5,7 +5,7 @@ from setuptools import setup
 from setuptools.command.test import test as TestCommand
 
 setup(name='pydpiper',
-      version='2.0a1',
+      version='2.0a2',
       license='Modified BSD',
       description='Python code for flexible pipeline control',
       long_description = 'Python code for flexible pipeline control', 
