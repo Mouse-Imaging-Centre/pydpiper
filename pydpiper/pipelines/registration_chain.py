@@ -18,7 +18,8 @@ from pydpiper.minc.registration import (Subject, Stages, mincANTS_NLIN_build_mod
                                         check_MINC_files_have_equal_dimensions_and_resolution,
                                         default_lsq12_multilevel_minctracc, get_pride_of_models_mapping,
                                         get_default_multi_level_mincANTS, parse_mincANTS_protocol_file,
-                                        parse_minctracc_nonlinear_protocol, get_nonlinear_configuration_from_options)
+                                        parse_minctracc_nonlinear_protocol, get_nonlinear_configuration_from_options,
+                                        mincresample)
 from pydpiper.minc.files import MincAtom
 from pydpiper.execution.application import execute  # type: ignore
 from pydpiper.core.arguments import (application_parser,
@@ -251,6 +252,14 @@ def chain(options):
 
     intersubj_img_to_xfm_to_common_avg_dict = { xfm.source : xfm for xfm in intersubj_xfms.output }
 
+    # create one more convenience data structure: a mapping from subject_ID to the xfm_handler
+    # that contains the transformation from the subject at the common time point to the
+    # common time point average.
+    subj_ID_to_xfm_handler_to_common_avg = {}
+    for s_id, subj_at_common_tp in s_id_to_intersubj_img_dict.items():
+        subj_ID_to_xfm_handler_to_common_avg[s_id] = intersubj_img_to_xfm_to_common_avg_dict[subj_at_common_tp]
+
+
     # create verification images to show the inter-subject  alignment
     montage_inter_subject = pipeline_montage_dir + "/quality_control_montage_inter_subject_registration.png"
     avg_and_inter_subject_images = []
@@ -354,7 +363,53 @@ def chain(options):
                                                   inv_xfm=xfm,
                                                   blur_fwhms=options.stats.stats_kernels)),
         non_rigid_xfms_to_common_subj)
-    # TODO: these still need to be resampled into the average common time point space
+    # the content of determinants_from_subject_common_to_subject is:
+    #
+    # {subject_ID : Subject(inter_subject_time_pt, time_pt_dict)
+    #
+    # where time_pt_dict contains:
+    #
+    # {time_point : Tuple(List[Tuple(float, Tuple(MincAtom, MincAtom))],
+    #                     List[Tuple(float, Tuple(MincAtom, MincAtom))])
+    #
+    # And to be a bit more verbose:
+    #
+    # {time_point : Tuple(relative_stat_files,
+    #                     absolute_stat_files)
+    #
+    # where either the relative_stat_files or the absolute_stat_files look like:
+    #
+    # [blur_kernel_1, (determinant_file_1, log_of_determinant_file_1),
+    #  ...,
+    #  blur_kernel_n, (determinant_file_n, log_of_determinant_file_n)]
+    #
+    # Now the only thing we really want to do, is to resample the actual log
+    # determinants that were generated into the space of the common average.
+    # To make that a little easier, I'll create a mapping that will contain:
+    #
+    # {subject_ID: Subject(intersubject_timepoint, {time_pt_1: [stat_file_1, ..., stat_file_n],
+    #                                               ...,
+    #                                               time_pt_n: [stat_file_1, ..., stat_file_n]}
+    # }
+    for s_id, subject_with_determinants in determinants_from_subject_common_to_subject.items():
+        transform_from_common_subj_to_common_avg = subj_ID_to_xfm_handler_to_common_avg[s_id].xfm
+        for time_pt, determinant_info in subject_with_determinants.time_pt_dict.items():
+            # determinant_info is a tuple (two entries, one for relative and one for absolute Jacobians)
+            for stats_kind in determinant_info:
+                # this is a list with an entry for each level of blur. A single entry has the form:
+                # Tuple(float=blurring_kernel, Tuple(MincAtom=Jacoabian, MincAtom=log_of_Jacobian))
+                # for each entry, we want to resample the log of the Jacobian, which is the second
+                # element of the inner Tuple, which resides in the second element of the outer Tuple
+                for blur_tuple in stats_kind:
+                    log_det_file_to_resample = blur_tuple[1][1]
+                    new_name_wo_ext = log_det_file_to_resample.filename_wo_ext + "_resampled_to_common"
+                    s.defer(mincresample(img=log_det_file_to_resample,
+                                         xfm=transform_from_common_subj_to_common_avg,
+                                         like=log_det_file_to_resample,
+                                         new_name_wo_ext=new_name_wo_ext,
+                                         subdir="stats-volumes"))
+
+
 
     # Ad 2) provide transformations from the common avg to each subject. That's the
     #       inverse of what was provided by get_chain_transforms_for_stats()
