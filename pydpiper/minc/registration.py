@@ -2218,8 +2218,8 @@ def lsq6_nuc_inorm(imgs: List[MincAtom],
 
     if create_qc_images:
         s.defer(create_quality_control_images(imgs=final_resampled_lsq6_files,
-                                              montage_dir="SOMETHING",  # FIXME
-                                              montage_output="LSQ6_montage"))
+                                              #montage_dir=lsq6_dir,  # FIXME
+                                              montage_output=os.path.join(lsq6_dir, "LSQ6_montage")))
 
     # note that in the return, the registration target is given as "registration_standard".
     # the actual registration might have been between the input file and a potential
@@ -2601,7 +2601,7 @@ def create_quality_control_images(imgs: List[MincAtom],
         message_to_print = "\n* * * * * * *\nPlease consider the following verification "
         message_to_print += "image, showing "
         message_to_print += "%s. " % message
-        message_to_print += "\n%s\n" % (montage_output)
+        message_to_print += "\n%s\n" % montage_output
         message_to_print += "* * * * * * *\n"
         # the hook needs a return. Given that "print" does not return
         # anything, we need to encapsulate the print statement in a

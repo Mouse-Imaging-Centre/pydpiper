@@ -282,6 +282,9 @@ def _mk_execution_parser(p: ArgParser) -> ArgParser:
     group.add_argument("--pe", dest="pe",
                        type=str, default=None,
                        help="Name of the SGE pe, if any. [Default = %(default)s]")
+    group.add_argument("--mem-request-attribute", dest="mem_request_attribute",
+                       type=str, default="vf",
+                       help="Name of the resource attribute to request for managing memory limits. [Default = %(default)s]")
     group.add_argument("--greedy", dest="greedy",
                        action="store_true",
                        help="Request the full amount of RAM specified by --mem rather than the (lesser) amount needed by runnable jobs.  Always use this if your executor is assigned a full node.")
@@ -297,6 +300,10 @@ def _mk_execution_parser(p: ArgParser) -> ArgParser:
                        help="A string of extra arguments/flags to pass to qsub. [Default = %(default)s]")
     group.add_argument("--executor-start-delay", dest="executor_start_delay", type=int, default=180,
                        help="Seconds before starting remote executors when running the server on the grid")
+    group.add_argument("--submit-server", dest="submit_server", action="store_true",
+                       help="Submit the server to the grid.  Currently works only with PBS/Torque systems.")
+    group.add_argument("--no-submit-server", dest="submit_server", action="store_false",
+                       help="Opposite of --submit-server. [default]")
     group.add_argument("--time-to-seppuku", dest="time_to_seppuku",
                        type=int, default=1,
                        help="The number of minutes an executor is allowed to continuously sleep, i.e. wait for an available job, while active on a compute node/farm before it kills itself due to resource hogging. [Default = %(default)s]")
@@ -316,6 +323,12 @@ def _mk_execution_parser(p: ArgParser) -> ArgParser:
     group.add_argument("--default-job-mem", dest="default_job_mem",
                        type=float, default=1.75,
                        help="Memory (in GB) to allocate to jobs which don't make a request. [Default=%(default)s]")
+    group.add_argument("--cmd-wrapper", dest="cmd_wrapper",
+                       type=str, default="",
+                       help="Wrapper inside of which to run the command, e.g., '/usr/bin/time -v'. [Default='%(default)s']")
+    group.add_argument("--executor_wrapper", dest="executor_wrapper",
+                       type=str, default="",
+                       help="Command inside of which to run the executor. [Default='%(default)s']")
     return p
 
 
