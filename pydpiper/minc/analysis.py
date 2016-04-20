@@ -29,7 +29,7 @@ def lin_from_nlin(xfm : XfmHandler) -> Result[XfmHandler]:
 def minc_displacement(xfm : XfmHandler) -> Result[MincAtom]:
     # TODO: add dir argument
     # TODO: this coercion is lame
-    output_grid = xfmToMinc(xfm.xfm.newname_with_suffix("_displacement", ext='.mnc', subdir="tmp"))
+    output_grid = xfmToMinc(xfm.xfm.newname_with_suffix("_displ", ext='.mnc', subdir="tmp"))
     stage = CmdStage(inputs=(xfm.source, xfm.xfm), outputs=(output_grid,),
                      cmd=['minc_displacement', '-clobber', xfm.source.path, xfm.xfm.path, output_grid.path])
     stage.set_log_file(os.path.join(output_grid.pipeline_sub_dir,
@@ -71,7 +71,7 @@ def mincblob(op : str, grid : MincAtom, subdir : str = "tmp") -> Result[MincAtom
                                        const=1,
                                        vols=[out_file],
                                        subdir=subdir,
-                                       new_name=grid.filename_wo_ext + "_determinant"))
+                                       new_name=grid.filename_wo_ext + "_det"))
     else:
         result_file = out_file
 
@@ -93,7 +93,7 @@ def det_and_log_det(displacement_grid : MincAtom,
     det = s.defer(determinant(s.defer(smooth_vector(source=displacement_grid, fwhm=fwhm))
                               if fwhm else displacement_grid))
 
-    output_filename_wo_ext = displacement_grid.filename_wo_ext + "_log_determinant" + annotation
+    output_filename_wo_ext = displacement_grid.filename_wo_ext + "_log_det" + annotation
     if fwhm:
         output_filename_wo_ext += "_fwhm" + str(fwhm)
     log_det = s.defer(mincmath(op='log',
@@ -191,10 +191,10 @@ def determinants_at_fwhms(xfm        : XfmHandler,
 
     nlin_dets = [(fwhm, s.defer(det_and_log_det(displacement_grid=nlin_disp,
                                                 fwhm=fwhm,
-                                                annotation="_relative"))) for fwhm in fwhms + [None]]
+                                                annotation="_rel"))) for fwhm in fwhms + [None]]
     full_dets = [(fwhm, s.defer(det_and_log_det(displacement_grid=full_disp,
                                                 fwhm=fwhm,
-                                                annotation="_absolute"))) for fwhm in fwhms + [None]]
+                                                annotation="_abs"))) for fwhm in fwhms + [None]]
 
     #could return a different isomorphic presentation of this big structure...
     return Result(stages=s, output=(nlin_dets, full_dets))
