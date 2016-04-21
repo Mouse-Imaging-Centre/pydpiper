@@ -159,7 +159,9 @@ def chain(options):
                                                                   registration_targets=targets,
                                                                   resolution=options.registration.resolution,
                                                                   lsq6_options=options.lsq6,
+                                                                  lsq6_dir=None, # no average will be create, is just one file...
                                                                   create_qc_images=False,
+                                                                  create_average=False,
                                                                   subject_matter=options.registration.subject_matter)
                                                    )[0],
                                          pipeline_subject_info)  # type: Dict[str, Subject[XfmHandler]]
