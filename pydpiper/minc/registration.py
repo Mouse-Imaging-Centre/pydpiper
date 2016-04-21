@@ -331,6 +331,7 @@ def mincresample(img: MincAtom,
 
     new_img = s.defer(mincresample_simple(img=img, xfm=xfm, like=like,
                                           extra_flags=extra_flags,
+                                          invert=invert,
                                           new_name_wo_ext=new_name_wo_ext,
                                           subdir=subdir))
     new_img.mask = s.defer(mincresample_simple(img=img.mask, xfm=xfm, like=like,
