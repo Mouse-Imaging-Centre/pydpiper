@@ -254,8 +254,8 @@ StatsConf = NamedTuple("StatsConf", [('stats_kernels', str)])
 
 def voxel_vote(label_files : List[MincAtom]):
 
-    if len(label_files) < 2:
-        raise ValueError("currently need at least 2 files to average")
+    if len(label_files) == 0:
+        raise ValueError("can't vote with 0 files")
 
     out = MincAtom(name="voted_TODO.mnc")
 
