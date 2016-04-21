@@ -670,7 +670,7 @@ def get_chain_transforms_for_stats(pipeline_subject_info, intersubj_xfms_dict, c
         #
         for time_pt_n, time_pt_n_plus_1, transform in chain_transforms[index_of_common_time_pt:]:
             current_xfm_to_common_avg = s.defer(concat_xfmhandlers([s.defer(invert_xfmhandler(transform)), current_xfm_to_common_avg],
-                                                               name="id_%s_pt_%s_to_common_avg" % (s_id, time_pt_n)))
+                                                               name="id_%s_pt_%s_to_common_avg" % (s_id, time_pt_n_plus_1)))
             # we are moving away from the common time point. That means that the transformation
             # we are adding here is the inverse of n -> n+1, and should be added to time point n+1
             trans_to_final_common_avg_dict[time_pt_n_plus_1] = current_xfm_to_common_avg
@@ -679,7 +679,7 @@ def get_chain_transforms_for_stats(pipeline_subject_info, intersubj_xfms_dict, c
                 current_xfm_to_common_subject = s.defer(invert_xfmhandler(transform))
             else:
                 current_xfm_to_common_subject = s.defer(concat_xfmhandlers([s.defer(invert_xfmhandler(transform)), current_xfm_to_common_subject],
-                                                               name="id_%s_pt_%s_to_common_subject" % (s_id, time_pt_n)))
+                                                               name="id_%s_pt_%s_to_common_subject" % (s_id, time_pt_n_plus_1)))
             trans_to_subject_common_time_pt[time_pt_n_plus_1] = current_xfm_to_common_subject
 
         # we need to do something similar moving backwards: make sure to reset
@@ -691,17 +691,23 @@ def get_chain_transforms_for_stats(pipeline_subject_info, intersubj_xfms_dict, c
         #
         current_xfm_to_common_avg = intersubj_xfms_dict[subj.intersubject_registration_image]
         current_xfm_to_common_subject = None
-        for time_pt_n, time_pt_n_plus_1, transform in chain_transforms[index_of_common_time_pt-1::-1]:
-            current_xfm_to_common_avg = s.defer(concat_xfmhandlers([transform, current_xfm_to_common_avg],
-                                                               name="id_%s_pt_%s_to_common_avg" % (s_id, time_pt_n)))
-            trans_to_final_common_avg_dict[time_pt_n] = current_xfm_to_common_avg
+        # we have to be careful here... if the index_of_common_time_pt is 0 (i.e. all images are
+        # registered towards the first file in the time line, the following command will call:
+        # .... chain_transforms[-1::-1] and that in turn will start at the end of the list
+        # because -1 wraps around. To prevent this case, we ensure that the index_of_common_time_pt
+        # is greater than 0
+        if index_of_common_time_pt > 0:
+            for time_pt_n, time_pt_n_plus_1, transform in chain_transforms[index_of_common_time_pt-1::-1]:
+                current_xfm_to_common_avg = s.defer(concat_xfmhandlers([transform, current_xfm_to_common_avg],
+                                                                   name="id_%s_pt_%s_to_common_avg" % (s_id, time_pt_n)))
+                trans_to_final_common_avg_dict[time_pt_n] = current_xfm_to_common_avg
 
-            if current_xfm_to_common_subject == None:
-                current_xfm_to_common_subject = transform
-            else:
-                current_xfm_to_common_subject = s.defer(concat_xfmhandlers([transform, current_xfm_to_common_subject],
-                                                               name="id_%s_pt_%s_to_common_subject" % (s_id, time_pt_n)))
-            trans_to_subject_common_time_pt[time_pt_n] = current_xfm_to_common_subject
+                if current_xfm_to_common_subject == None:
+                    current_xfm_to_common_subject = transform
+                else:
+                    current_xfm_to_common_subject = s.defer(concat_xfmhandlers([transform, current_xfm_to_common_subject],
+                                                                   name="id_%s_pt_%s_to_common_subject" % (s_id, time_pt_n)))
+                trans_to_subject_common_time_pt[time_pt_n] = current_xfm_to_common_subject
 
         new_subj_to_common_avg = Subject(intersubject_registration_time_pt = subj.intersubject_registration_time_pt,
                            time_pt_dict = trans_to_final_common_avg_dict)
