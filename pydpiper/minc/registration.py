@@ -466,6 +466,42 @@ def nu_estimate(src: MincAtom,
                                   "nu_estimate_" + out.filename_wo_ext + ".log"))
     return Result(stages=Stages([cmd]), output=out)
 
+def mincmath(op       : str,
+             vols     : List[MincAtom],
+             const    : Optional[float]    = None,
+             new_name : Optional[str]      = None,
+             subdir   : str                = "tmp",
+             out_atom : Optional[MincAtom] = None) -> Result[MincAtom]:
+    """
+    Low-level/stupid interface to mincmath
+
+    out_atom has the highest precedence in terms of the
+    resulting MincAtom
+    """
+    _const = str(const) if const is not None else ""  # type: Optional[str]
+
+    if not out_atom:
+        if new_name:
+            name = new_name
+        elif len(vols) == 1:
+            name = vols[0].filename_wo_ext + "_" + op + (("_" + _const) if _const else "")
+        else:
+            name = (op + '_' + ((_const + '_') if _const else '') +
+                 '_'.join([vol.filename_wo_ext for vol in vols]))
+        outf = vols[0].newname(name=name, subdir=subdir)
+    else:
+        outf = out_atom
+
+
+    s = CmdStage(inputs=tuple(vols), outputs=(outf,),
+                 cmd=(['mincmath', '-clobber', '-2']
+                   + (['-const', _const] if _const else [])
+                   + ['-' + op] + [v.path for v in vols] + [outf.path]))
+    s.set_log_file(os.path.join(outf.pipeline_sub_dir,
+                                outf.output_sub_dir,
+                                "log",
+                                "mincmath_" + outf.filename_wo_ext + ".log"))
+    return Result(stages=Stages([s]), output=outf)
 
 def nu_evaluate(img: MincAtom,
                 field: FileAtom,
