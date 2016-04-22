@@ -189,15 +189,38 @@ def mincaverage(imgs: List[MincAtom],
     information. Use the copy_header_from_first_input argument for this, and it
     will add the -copy_header flag to mincaverage.
     """
+    s = Stages()
+
     if len(imgs) == 0:
         raise ValueError("`mincaverage` arg `imgs` is empty (can't average zero files)")
-    # TODO: propagate masks/labels??
 
     # the output_dir basically gives us the equivalent of the pipeline_sub_dir for
     # regular input files to a pipeline, so use that here
     avg = avg_file or MincAtom(name=os.path.join(output_dir, '%s.mnc' % name_wo_ext),
                                orig_name=None,
                                pipeline_sub_dir=output_dir)
+
+    # if all input files have masks associated with them, add the combined mask to
+    # the average:
+    all_inputs_have_masks = True;
+    for img_inst in imgs:
+        if not img_inst.mask:
+            all_inputs_have_masks = False
+
+    if all_inputs_have_masks:
+        combined_mask =  MincAtom(name=os.path.join(avg_file.dir, '%s_mask.mnc' % avg_file.filename_wo_ext),
+                                  orig_name=None,
+                                  pipeline_sub_dir=avg_file.pipeline_sub_dir) if avg_file else \
+                         MincAtom(name=os.path.join(output_dir, '%s_mask.mnc' % name_wo_ext),
+                                  orig_name=None,
+                                  pipeline_sub_dir=output_dir)
+        s.defer(mincmath(op='max',
+                       vols=[img_inst.mask for img_inst in imgs],
+                       out_atom=combined_mask))
+        avg.mask = combined_mask
+
+
+
     # if the average was provided as a MincAtom there is probably a output_sub_dir
     # set. However, this is something we only really use for input files. All averages
     # and related files to directly into the _lsq6, _lsq12 and _nlin directories. That's
@@ -209,17 +232,18 @@ def mincaverage(imgs: List[MincAtom],
                       orig_name=None,
                       pipeline_sub_dir=output_dir)
     additional_flags = ["-copy_header"] if copy_header_from_first_input else []  # type: List[str]
-    s = CmdStage(inputs=tuple(imgs), outputs=(avg, sdfile),
-                 cmd=['mincaverage', '-clobber', '-normalize',
-                      '-max_buffer_size_in_kb', '409620'] + additional_flags +
-                     ['-sdfile', sdfile.path] +
-                     sorted([img.path for img in imgs]) +
-                     [avg.path])
-    s.set_log_file(os.path.join(avg.pipeline_sub_dir,
+    avg_cmd = CmdStage(inputs=tuple(imgs), outputs=(avg, sdfile),
+                       cmd=['mincaverage', '-clobber', '-normalize',
+                            '-max_buffer_size_in_kb', '409620'] + additional_flags +
+                       ['-sdfile', sdfile.path] +
+                       sorted([img.path for img in imgs]) +
+                       [avg.path])
+    avg_cmd.set_log_file(os.path.join(avg.pipeline_sub_dir,
                                 avg.output_sub_dir,
                                 "log",
                                 "mincaverage_" + avg.filename_wo_ext + ".log"))
-    return Result(stages=Stages([s]), output=avg)
+    s.add(avg_cmd)
+    return Result(stages=s, output=avg)
 
 # FIXME this doesn't implement the avg_file and other mincaverage stuff (other than copy_header ...)
 # ... maybe there's enough similarity to parametrize over these and maybe others (xfmavg?!)
