@@ -456,7 +456,7 @@ class pipelineExecutor(object):
                                     "#PBS -N %s" % jobname,
                                     "#PBS -l nodes=1:ppn=1",
                                     # CCM is strict, and doesn't like float values:
-                                    "#PBS -l walltime:%s" % (self.time),
+                                    "#PBS -l walltime=%s" % self.time,
                                     "#PBS -l %s=%dg\n" % (self.mem_request_attribute, m.ceil(self.mem)),
                                     # FIXME add walltime stuff here if specified (and check <= max_walltime ??)
                                     "df /dev/shm >&2",  # FIXME: remove

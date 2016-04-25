@@ -1,6 +1,10 @@
 `pydpiper` is a set of Python modules that offers programmatic control over pipelines. 
 
-It is very much under active development. 
+It is very much under active development. The paper describing the framework can be found here:
+
+http://www.ncbi.nlm.nih.gov/pubmed/25126069
+
+We kindly ask you to reference this paper when using the code.
 
 Classes for building and controling the pipeline can be found in `pydpiper/pipeline.py`.
 The location of the pipeline directory must be in the user's `$PYTHONPATH`. 
