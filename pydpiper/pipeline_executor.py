@@ -159,6 +159,7 @@ def launchExecutor(executor):
             raise
 
     p = Pyro4.Proxy(serverURI)
+    p._pyroTimeout = 30  # TODO: magic number
     # Register the executor with the pipeline
     # the following command only works if the server is alive. Currently if that's
     # not the case, the executor will die which is okay, but this should be
