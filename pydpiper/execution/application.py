@@ -168,5 +168,6 @@ def reconstruct_command(options):
     pf.write("# Command version is: " + PYDPIPER_VERSION + "\n")
     pf.write("# Command was: \n")
     pf.write(reconstruct + '\n')
+    pf.write("# options were: \n# %s" % options)
     pf.close()
  
