@@ -550,9 +550,20 @@ class pipelineExecutor(object):
     # use an event set/timeout system to run the executor mainLoop -
     # we might want to pass some extra information in addition to waking the system
     def mainLoop(self):
-        while self.mainFn():
-            self.e.wait(EXECUTOR_MAIN_LOOP_INTERVAL)
-            self.e.clear()
+
+        while True:
+            try:
+                res = self.mainFn()
+            except Pyro4.errors.TimeoutError:
+                logger.exception("Blargh ... Pyro call timed out")
+                continue
+            else:
+                if res:
+                    self.e.wait(EXECUTOR_MAIN_LOOP_INTERVAL)
+                    self.e.clear()
+                else:
+                    break
+
         logger.debug("Main loop finished")
 
     def mainFn(self):
