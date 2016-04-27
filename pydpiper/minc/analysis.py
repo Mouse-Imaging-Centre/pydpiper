@@ -2,7 +2,7 @@ from pydpiper.core.stages import Stages, CmdStage, Result
 from pydpiper.core.util   import NamedTuple
 from pydpiper.minc.files  import MincAtom, xfmToMinc
 from pydpiper.minc.containers import XfmHandler
-from pydpiper.minc.registration import concat_xfmhandlers, invert_xfmhandler
+from pydpiper.minc.registration import concat_xfmhandlers, invert_xfmhandler, mincmath
 
 from typing import List, Optional, Tuple
 
@@ -198,35 +198,6 @@ def determinants_at_fwhms(xfm        : XfmHandler,
 
     #could return a different isomorphic presentation of this big structure...
     return Result(stages=s, output=(nlin_dets, full_dets))
-    
-def mincmath(op       : str,
-             vols     : List[MincAtom],
-             const    : Optional[float] = None,
-             new_name : Optional[str]   = None,
-             subdir   : str             = "tmp") -> Result[MincAtom]:
-    """
-    Low-level/stupid interface to mincmath
-    """
-    _const = str(const) if const is not None else ""  # type: Optional[str]
-
-    if new_name:
-        name = new_name
-    elif len(vols) == 1:
-        name = vols[0].filename_wo_ext + "_" + op + (("_" + _const) if _const else "")
-    else:
-        name = (op + '_' + ((_const + '_') if _const else '') +
-             '_'.join([vol.filename_wo_ext for vol in vols]))
-
-    outf = vols[0].newname(name=name, subdir=subdir)
-    s = CmdStage(inputs=tuple(vols), outputs=(outf,),
-                 cmd=(['mincmath', '-clobber', '-2']
-                   + (['-const', _const] if _const else [])
-                   + ['-' + op] + [v.path for v in vols] + [outf.path]))
-    s.set_log_file(os.path.join(outf.pipeline_sub_dir,
-                                outf.output_sub_dir,
-                                "log",
-                                "mincmath_" + outf.filename_wo_ext + ".log"))
-    return Result(stages=Stages([s]), output=outf)
 
 def determinant(displacement_grid : MincAtom) -> Result[MincAtom]:
     """

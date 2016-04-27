@@ -12,11 +12,12 @@ from pydpiper.core.arguments        import (lsq6_parser, lsq12_parser, nlin_pars
                                             CompoundParser, AnnotatedParser, BaseParser)
 from pydpiper.core.stages import Stages
 from pydpiper.execution.application import mk_application
-from pydpiper.minc.analysis import voxel_vote, mincmath
+from pydpiper.minc.analysis import voxel_vote
 from pydpiper.minc.files            import MincAtom
 from pydpiper.minc.registration     import (check_MINC_input_files, lsq12_nlin,
                                             get_nonlinear_configuration_from_options,
-                                            get_linear_configuration_from_options, LinearTransType, mincresample)
+                                            get_linear_configuration_from_options, LinearTransType,
+                                            mincresample, mincmath)
 
 
 def find_by(f, xs, on_empty=None):  # TODO move to util
