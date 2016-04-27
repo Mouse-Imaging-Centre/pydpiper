@@ -12,7 +12,7 @@ setup(name='pydpiper',
       url='https://github.com/Mouse-Imaging-Centre/pydpiper',
       platforms="any",
       install_requires=[
-        'ConfigArgParse',
+        'ConfigArgParse>0.10.0',
         'networkx',
         #'pygraphviz',
         'Pyro4',
