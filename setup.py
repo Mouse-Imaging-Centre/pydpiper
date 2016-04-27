@@ -13,7 +13,7 @@ setup(name='pydpiper',
       maintainer_email='matthijs@mouseimaging.ca',
       url='https://github.com/Mouse-Imaging-Centre/pydpiper',
       install_requires=[
-        'ConfigArgParse',
+        'ConfigArgParse>0.10.0',
         'networkx',
         #'pygraphviz',
         'ordered-set',
