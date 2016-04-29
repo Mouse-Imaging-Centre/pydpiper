@@ -24,11 +24,10 @@ TwoLevelConf = NamedTuple("TwoLevelConf", [("first_level_conf", MBMConf),
 
 def two_level(options : TwoLevelConf):
     s = Stages()
-    #if len(options.application.files) != 1:
-    #    raise ValueError("Must supply exactly one input file; got: %s..." % options.application.files)
+
     if len(options.application.files) != 0:
         warnings.warn("Got extra arguments: '%s'" % options.application.files)
-    with open(options.application.files[0], 'r') as f:
+    with open(options.twolevel.csv_file, 'r') as f:
         groups = collect(parse_csv(f))
     first_level_results = (
         [s.defer(mbm(imgs=[MincAtom(f, pipeline_sub_dir=os.path.join(options.application.output_directory,
@@ -76,7 +75,8 @@ def parse_csv(f):
         yield row["group"], row["file"]   # somewhat immoral -- should collect operate on the row object directly?
 
 def _mk_twolevel_parser(p):
-    p.add_argument("--csv-file")
+    p.add_argument("--csv-file", dest="csv_file", type=str, required=True,
+                   help="CSV file containing at least columns 'group' and 'file")
     return p
 
 _twolevel_parser = BaseParser(_mk_twolevel_parser(ArgParser(add_help=False)), group_name='twolevel')
