@@ -3,9 +3,9 @@ import copy
 import csv
 import os
 import sys
+import warnings
 
-from configargparse import Namespace
-
+from configargparse import Namespace, ArgParser
 from pydpiper.core.util import NamedTuple
 from pydpiper.minc.files import MincAtom
 
@@ -15,7 +15,7 @@ from pydpiper.execution.application import execute
 from pydpiper.core.util import NamedTuple, collect
 from pydpiper.core.stages import Stages, Result
 from pydpiper.core.arguments import (AnnotatedParser, CompoundParser, application_parser, stats_parser,
-                                     execution_parser, registration_parser, parse)
+                                     execution_parser, registration_parser, parse, BaseParser)
 
 
 TwoLevelConf = NamedTuple("TwoLevelConf", [("first_level_conf", MBMConf),
@@ -24,8 +24,10 @@ TwoLevelConf = NamedTuple("TwoLevelConf", [("first_level_conf", MBMConf),
 
 def two_level(options : TwoLevelConf):
     s = Stages()
-    if len(options.application.files) != 1:
-        raise ValueError("Must supply exactly one input file; got: %s..." % options.application.files)
+    #if len(options.application.files) != 1:
+    #    raise ValueError("Must supply exactly one input file; got: %s..." % options.application.files)
+    if len(options.application.files) != 0:
+        warnings.warn("Got extra arguments: '%s'" % options.application.files)
     with open(options.application.files[0], 'r') as f:
         groups = collect(parse_csv(f))
     first_level_results = (
@@ -73,11 +75,19 @@ def parse_csv(f):
     for row in csv.DictReader(f):
         yield row["group"], row["file"]   # somewhat immoral -- should collect operate on the row object directly?
 
+def _mk_twolevel_parser(p):
+    p.add_argument("--csv-file")
+    return p
+
+_twolevel_parser = BaseParser(_mk_twolevel_parser(ArgParser(add_help=False)), group_name='twolevel')
+twolevel_parser = AnnotatedParser(parser=_twolevel_parser, namespace="nlin")
+
 def main(args):
     p = CompoundParser(
           [execution_parser,
            application_parser,
            registration_parser,
+           twolevel_parser,
            AnnotatedParser(parser=mbm_parser, namespace="mbm"),   # TODO use this before 1st-/2nd-level args
            #AnnotatedParser(parser=mbm_parser, namespace="first_level", prefix="first-level"),
            #AnnotatedParser(parser=mbm_parser, namespace="second_level", prefix="second-level"),

@@ -27,8 +27,8 @@ def imgs():
 
 class TestMincblur():
     def test_output_naming(self, img, img_blur_56um_result):
-        assert img_blur_56um_result.output.path == '/scratch/img_1/tmp/img_1_fwhm0.056_blur.mnc'
+        assert img_blur_56um_result.output.img.path == '/scratch/img_1/tmp/img_1_fwhm0.056_blur.mnc'
     def test_stage_creation(self, img, img_blur_56um_result):
         assert ([s.render() for s in list(img_blur_56um_result.stages)]
-             == ['mincblur -clobber -no_apodize -fwhm 0.056 /images/img_1.mnc /scratch/img_1/tmp/img_1_fwhm0.056'])
+             == ['mincblur -clobber -no_apodize -fwhm 0.056 /images/img_1.mnc /scratch/img_1/tmp/img_1_fwhm0.056 -gradient'])
 

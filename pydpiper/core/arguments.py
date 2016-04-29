@@ -92,7 +92,8 @@ class CompoundParser(Parser):
 # what if you have two twolevel models within a pipeline and want to set the second-level LSQ12 on both
 # via --second-level-lsq12-max-pairs?  Within one twolevel pipeline, you can do this easily.
 # I guess you could add a lsq12 parser in the code calling the two pipelines and use it as a default,
-# but this wouldn't happen automagically.
+# but this wouldn't happen automagically.  You'd also have a problem with knowing which fields were user-specified
+# and which were defaults, although configargparse's `print_values` should help with that.
 
 # TODO tighten up the type somehow by adding type variables to a Parser ...?
 # know problems with this setup:
@@ -238,7 +239,7 @@ def _mk_application_parser(p: ArgParser) -> ArgParser:
     g.add_argument("--no-verbose", dest="verbose",
                    action="store_false",
                    help="Opposite of --verbose [default]")
-    g.add_argument("files", type=str, nargs='*', metavar='file',
+    g.add_argument("--files", type=str, nargs='*', metavar='file',
                    help='Files to process')
     return p
 
@@ -588,7 +589,7 @@ def to_lsq12_conf(lsq12_args : Namespace) -> LSQ12Conf:
     return LSQ12Conf(**lsq12_args.__dict__)
 
 _lsq12_parser = BaseParser(_mk_lsq12_parser(), "LSQ12")
-lsq12_parser = AnnotatedParser(parser=_lsq12_parser, namespace="lsq12", cast=to_lsq12_conf)
+lsq12_parser = AnnotatedParser(parser=_lsq12_parser, namespace="lsq12") #, cast=to_lsq12_conf)
 
 def _mk_nlin_parser(p: ArgParser):
     group = p.add_argument_group("Nonlinear registration options",
