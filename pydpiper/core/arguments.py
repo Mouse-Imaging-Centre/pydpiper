@@ -447,7 +447,7 @@ def _mk_lsq6_parser():
                         "By default we use /dev/shm/, because this program involves a lot of I/O, and "
                         "this is probably one of the fastest way to provide this. [Default = %(default)s]")
     p.add_argument("--lsq6-large-rotations-parameters", dest="rotation_params",
-                   type=str, default="10,4,10,8",
+                   type=str, default="5,4,10,8",
                    help="Settings for the large rotation alignment. factor=factor based on smallest file "
                         "resolution: 1) blur factor, 2) resample step size factor, 3) registration step size "
                         "factor, 4) w_translations factor  ***** if you are working with mouse brain data "
