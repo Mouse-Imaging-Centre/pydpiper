@@ -13,7 +13,8 @@ from pydpiper.minc.files        import MincAtom
 from pydpiper.minc.registration import (lsq6_nuc_inorm, lsq12_nlin_build_model, registration_targets,
                                         mincANTS_default_conf, MultilevelMincANTSConf, LSQ6Conf, LSQ12Conf,
                                         get_resolution_from_file, parse_mincANTS_protocol_file, concat_xfmhandlers,
-                                        get_default_multi_level_mincANTS, get_nonlinear_configuration_from_options)
+                                        get_default_multi_level_mincANTS, get_nonlinear_configuration_from_options,
+                                        invert_xfmhandler)
 from pydpiper.minc.analysis     import determinants_at_fwhms, StatsConf
 from pydpiper.core.arguments    import (lsq6_parser, lsq12_parser, nlin_parser, stats_parser, CompoundParser,
                                         AnnotatedParser, NLINConf)
@@ -73,7 +74,6 @@ def mbm(imgs : List[MincAtom], options : MBMConf, prefix : str, output_dir : str
                                          lsq6_dir=lsq6_dir,
                                          lsq6_options=options.mbm.lsq6))
 
-
     full_hierarchy = get_nonlinear_configuration_from_options(options.mbm.nlin.nlin_protocol,
                                                               options.mbm.nlin.reg_method,
                                                               resolution)
@@ -85,10 +85,13 @@ def mbm(imgs : List[MincAtom], options : MBMConf, prefix : str, output_dir : str
                                                        lsq12_conf=options.mbm.lsq12,
                                                        nlin_conf=full_hierarchy))
 
+    inverted_xfms = [s.defer(invert_xfmhandler(xfm)) for xfm in lsq12_nlin_result.output]
+
     determinants = [s.defer(determinants_at_fwhms(
-                              xfm=xfm,
+                              xfm=inv_xfm,
+                              inv_xfm=xfm,
                               blur_fwhms=options.mbm.stats.stats_kernels))
-                    for xfm in lsq12_nlin_result.output]
+                    for xfm, inv_xfm in zip(lsq12_nlin_result.output, inverted_xfms)]
 
     overall_xfms = [s.defer(concat_xfmhandlers([rigid_xfm, nlin_xfm]))
                     for rigid_xfm, nlin_xfm in zip(lsq6_result, lsq12_nlin_result.output)]
