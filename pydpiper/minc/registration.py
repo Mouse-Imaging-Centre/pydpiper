@@ -202,7 +202,7 @@ def mincaverage(imgs: List[MincAtom],
 
     # if all input files have masks associated with them, add the combined mask to
     # the average:
-    all_inputs_have_masks = True;
+    all_inputs_have_masks = True
     for img_inst in imgs:
         if not img_inst.mask:
             all_inputs_have_masks = False
@@ -687,7 +687,7 @@ RotationalMinctraccConf = NamedTuple('RotationalMinctraccConf',
                                       ("temp_dir", str)])
 
 default_rotational_minctracc_conf = RotationalMinctraccConf(
-    blur_factor=10,
+    blur_factor=5,
     resample_step_factor=4,
     registration_step_factor=10,
     w_translations_factor=8,
@@ -728,7 +728,7 @@ def rotational_minctracc(source: MincAtom,
     input files. Here is the list:
         
     argument to be set   --  default (factor)  -- (for 56 micron, translates to)
-            blur                    10                    (560 micron) 
+            blur                     5                    (230 micron)
         resample stepsize            4                    (224 micron)
       registration stepsize         10                    (560 micron)
         w_translations               8                    (448 micron)
