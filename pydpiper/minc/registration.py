@@ -1087,7 +1087,7 @@ def minctracc(source: MincAtom,
                              + ['-sub_lattice', str(nlin_conf.sub_lattice)]
                              + ['-lattice_diameter'] + space_sep(nlin_conf.lattice_diameter))
                             if nlin_conf is not None else [])
-                         + (['-nonlinear %s' % (nlin_conf.objective if nlin_conf.objective else '')]
+                         + (['-nonlinear %s' % (nlin_conf.objective.name if nlin_conf.objective else '')]
                             if nlin_conf else [])
                          + (['-source_mask', source.mask.path]
                             if source.mask and conf.use_masks else [])
@@ -1488,33 +1488,41 @@ def mincANTS_NLIN_build_model(imgs: List[MincAtom],
 def lsq12_nlin(source: MincAtom,
                target: MincAtom,
                lsq12_conf: MinctraccConf,
-               nlin_conf: Union[MultilevelMinctraccConf, MincANTSConf]):
+               nlin_conf: Union[MultilevelMinctraccConf, MincANTSConf],
+               resample_source: bool = True):
     # TODO combine this with LSQ12_mincANTS_nlin OR write a wrapping LSQ12_NLIN function; write documentation ...
     s = Stages()
 
     if isinstance(nlin_conf, MincANTSConf):
-        registration = mincANTS
+        lsq12_transform_handler = s.defer(multilevel_minctracc(source=source,
+                                                               target=target,
+                                                               conf=lsq12_conf,
+                                                               resample_source=True))
+        nlin_transform_handler = s.defer(mincANTS(source=source,
+                                                  target=target,
+                                                  conf=nlin_conf,
+                                                  resample_source=resample_source))
+        full_transform = s.defer(concat_xfmhandlers(xfms=[lsq12_transform_handler, nlin_transform_handler],
+                                                    name=source.filename_wo_ext + "_to_" +
+                                                      target.filename_wo_ext + "_lsq12_mincANTS_nlin",
+                                                    resample_source=resample_source))
     elif isinstance(nlin_conf, MultilevelMinctraccConf):
-        registration = multilevel_minctracc
+        lsq12_transform_handler = s.defer(multilevel_minctracc(source=source,
+                                                               target=target,
+                                                               conf=lsq12_conf,
+                                                               # TODO allow a transform here?
+                                                               resample_source=resample_source))
+        nlin_transform_handler = s.defer(multilevel_minctracc(source=source,
+                                                              target=target,
+                                                              conf=nlin_conf,
+                                                              transform=lsq12_transform_handler.xfm,
+                                                              resample_source=resample_source))
+        full_transform = nlin_transform_handler
     else:
         raise ValueError("What sort of conf is this?!")
 
-    lsq12_transform_handler = s.defer(multilevel_minctracc(source,
-                                                           target,
-                                                           conf=lsq12_conf,
-                                                           resample_source=True))
-
-    nlin_transform_handler = s.defer(registration(source=lsq12_transform_handler.resampled,
-                                                  target=target,
-                                                  conf=nlin_conf,
-                                                  resample_source=True))
-
-    full_transform = s.defer(concat_xfmhandlers([lsq12_transform_handler,
-                                                 nlin_transform_handler],
-                                                name=source.filename_wo_ext + "_to_" +
-                                                target.filename_wo_ext + "_lsq12_mincANTS_nlin"))
-
     return Result(stages=s, output=full_transform)
+
 
 # TODO obsolete...remove uses and definition?
 def LSQ12_mincANTS_nlin(source: MincAtom,
