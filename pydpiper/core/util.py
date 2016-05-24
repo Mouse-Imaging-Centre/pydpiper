@@ -32,13 +32,6 @@ T = TypeVar('T')
 U = TypeVar('U')
 
 
-def collect(xs : Iterable[Tuple[T, U]]) -> Dict[T, List[U]]:  # TODO could add 'by=...' instead of just accumulating
-    d = defaultdict(list)
-    for a, b in xs:
-        d[a] += [b]
-    return d
-
-
 def raise_(err: BaseException):
     """`raise` is a keyword and `raise e` isn't an expression, so can't be used freely"""
     raise err
