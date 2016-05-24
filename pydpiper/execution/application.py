@@ -1,4 +1,6 @@
 import time
+from collections import defaultdict
+
 import pkg_resources
 import logging
 import networkx as nx
@@ -67,6 +69,35 @@ def ensure_output_paths_in_dir(stages, d):
                 raise ValueError("output %s of stage %s not contained inside "
                                  "pipeline directory %s" % (o.path, s, d))
 
+
+# TODO: where should this live - util?
+# TODO: write some tests to check that this might be working
+# TODO: could generalize to '(non)distinctOn' but nobody would ever use ...
+def nondistinct_outputs(stages):
+    """
+    TODO: move this doctest to a proper test in test/
+    >>> c1 = CmdStage(argArray=["touch", OutputFile("/tmp/foo.txt")])
+    >>> c2 = CmdStage(argArray=[">",     OutputFile("/tmp/foo.txt")])
+    >>> nondistinct_outputs([c1, c2]) == { '/tmp/foo.txt' : set([c1,c2]) }
+    True
+    """
+    m = ((o, s) for s in stages for o in s.outputFiles)
+    d = defaultdict(set)
+    for o,s in m:
+        d[o].add(s)
+    bad_outputs = { o : ss for o, ss in d.items() if len(ss) > 1 }
+    return bad_outputs
+
+def ensure_distinct_outputs(stages):
+    bad_outputs = nondistinct_outputs(stages)
+    if len(bad_outputs) > 1:
+        print("Uh-oh - some files appear as outputs of multiple stages, to wit:", file=sys.stderr)
+        for o, ss in bad_outputs.items():
+            print("output: %s\nstages:\n" % o, file=sys.stderr)
+            for s in ss:
+                print(s, file=sys.stderr)
+        raise ValueError("Conflicting outputs:", bad_outputs)
+
 #TODO: change this to ...(static_pipeline, options)?
 def execute(stages, options):
     """Basically just looks at the arguments and exits if `--no-execute` is specified,
@@ -76,20 +107,22 @@ def execute(stages, options):
     pipeline = Pipeline(stages=[convertCmdStage(s) for s in stages],
                         options=options)
 
-    ensure_short_output_paths(stages)
-    ensure_output_paths_in_dir(stages, options.application.output_directory)
-
     # TODO: print/log version
     reconstruct_command(options)
 
     write_stages(stages, options.application.pipeline_name)
-    
+
     if options.application.create_graph:
         # TODO: these could have more descriptive names ...
         logger.debug("Writing dot file...")
         nx.write_dot(pipeline.G, str(options.application.pipeline_name) + "_labeled-tree.dot")
         nx.write_dot(file_graph(stages, options.application.output_directory), str(options.application.pipeline_name) + "_labeled-tree-alternate.dot")
         logger.debug("Done.")
+
+    # for debugging reasons, it's best if these come after writing stages, drawing graph, ...
+    ensure_short_output_paths(stages)  # TODO convert to new `CmdStage`s
+    ensure_output_paths_in_dir(stages, options.application.output_directory)
+    ensure_distinct_outputs([convertCmdStage(s) for s in stages])
 
     if not options.application.execute:
         print("Not executing the command (--no-execute is specified).\nDone.")

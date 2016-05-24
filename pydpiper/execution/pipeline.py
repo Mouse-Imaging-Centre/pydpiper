@@ -208,23 +208,6 @@ def counts(xs):
         d[x] += 1
     return d
 
-# TODO: where should this live - util?
-# TODO: write some tests to check that this might be working
-# TODO: could generalize to '(non)distinctOn' but nobody would ever use ...
-def nondistinct_outputs(stages):
-    """
-    TODO: move this doctest to a proper test in test/
-    >>> c1 = CmdStage(argArray=["touch", OutputFile("/tmp/foo.txt")])
-    >>> c2 = CmdStage(argArray=[">",     OutputFile("/tmp/foo.txt")])
-    >>> nondistinct_outputs([c1, c2]) == { '/tmp/foo.txt' : set([c1,c2]) }
-    True
-    """
-    m = ((o, s) for s in stages for o in s.outputFiles)
-    d = defaultdict(set)
-    for o,s in m:
-        d[o].add(s)
-    bad_outputs = { o : ss for o, ss in d.items() if len(ss) > 1 }
-    return bad_outputs
 
 """A graph with no edge information; see networkx/classes/digraph.py"""
 class ThinGraph(nx.DiGraph):
@@ -299,15 +282,6 @@ class Pipeline(object):
             serverLogFile = os.path.join(self.outputDir, self.pipeline_name + '_server_stdout.log')
             LINE_BUFFERING = 1
             sys.stdout = open(serverLogFile, 'a', LINE_BUFFERING)
- 
-        bad_outputs = nondistinct_outputs(stages)
-        if len(bad_outputs) > 1:
-            print("Uh-oh - some files appear as outputs of multiple stages, to wit:", file=sys.stderr)
-            for o, ss in bad_outputs.items():
-                print("output: %s\nstages:\n" % o, file=sys.stderr)
-                for s in ss:
-                    print(ss, file=sys.stderr)
-            raise ValueError("Conflicting outputs:", bad_outputs)
 
         for s in stages:
             self._add_stage(s)
