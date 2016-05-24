@@ -34,11 +34,10 @@ def write_stages(stages, name):
     """
     writes all pipeline stages to a file
     """
-    fileForPrinting = os.path.abspath(os.curdir + "/" + str(name) + "_pipeline_stages.txt")
-    pf = open(fileForPrinting, "w")
-    for i, stage in enumerate(stages):
-        pf.write(str(i) + "  " + str(stage.render()) + "\n")
-    pf.close()
+    fileForPrinting = os.path.join(os.curdir, "%s_pipeline_stages.txt" % name)
+    with open(fileForPrinting, 'w') as pf:
+        for i, stage in enumerate(stages):
+            pf.write(str(i) + "  " + str(stage.render()) + "\n")
 
 def file_graph(stages, pipeline_dir):
     # TODO remove pipeline_dir from node pathnames
@@ -56,11 +55,13 @@ def file_graph(stages, pipeline_dir):
     # TODO: nx.write_dot doesn't show `cmd` attribute;
     # need to use something like nx.to_pydot to convert
 
+
 def ensure_short_output_paths(stages, max_len=245): # magic no. for mincblur, &c.
     for s in stages:
         for o in s.outputs:
             if len(o.path) > max_len:
                 raise ValueError("output filename '%s' too long (more than %s chars)" % (o.path, max_len))
+
 
 def ensure_output_paths_in_dir(stages, d):
     for s in stages:
