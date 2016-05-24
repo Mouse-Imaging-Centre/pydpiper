@@ -1,3 +1,5 @@
+import os
+
 import ordered_set
 import shlex
 from typing import Any, Callable, Generic, Iterable, List, Set, Tuple, TypeVar, Union
@@ -32,7 +34,9 @@ class CmdStage(object):
         self.when_finished_hooks = []  # type: List[Callable[[], Any]]
         self.memory = memory
         self.procs = procs
-        self.log_file = None
+        self.log_file = (os.path.join(self.outputs[0].dir, "..", "log",
+                                      "%s_%s.log" % (cmd[0], self.outputs[0].filename_wo_ext))
+                         if len(self.outputs) == 1 else None)
     # NB: __hash__ and __eq__ ignore hooks, memory
     # Also, we assume cmd determines inputs, outputs so ignore it in hash/eq calculations
     # FIXME: we should make the CmdStage fields immutable (via properties) to prevent hashing-related bugs
