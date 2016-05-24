@@ -441,6 +441,7 @@ def xfmconcat(xfms: List[XfmAtom],
 #
 def concat_xfmhandlers(xfms: List[XfmHandler],
                        name: str = None,
+                       resample_source: bool = True,
                        interpolation: Optional[Interpolation] = None,  # remove or make `sinc` default?
                        extra_flags: Tuple[str] = ()) -> Result[XfmHandler]:
     """
@@ -455,7 +456,7 @@ def concat_xfmhandlers(xfms: List[XfmHandler],
                                xfm=t,
                                like=xfms[-1].target,
                                interpolation=interpolation,
-                               extra_flags=extra_flags))
+                               extra_flags=extra_flags)) if resample_source else None
     return Result(stages=s,
                   output=XfmHandler(source=xfms[0].source,
                                     target=xfms[-1].target,
