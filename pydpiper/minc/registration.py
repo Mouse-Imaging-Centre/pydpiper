@@ -169,10 +169,8 @@ def mincblur(img: MincAtom,
         # won't lift this length calculation automatically ...
         cmd=shlex.split('mincblur -clobber -no_apodize -fwhm %s %s %s' % (fwhm, img.path, out_img.path[:-9]))
             + (['-gradient'] if gradient else []))
-    stage.set_log_file(os.path.join(out_img.pipeline_sub_dir,
-                                    out_img.output_sub_dir,
-                                    "log",
-                                    "mincblur_" + out_img.filename_wo_ext + ".log"))
+    stage.set_log_file(os.path.join(out_img.dir, "..", "log",
+                                    "%s_%s.log" % ("mincblur", out_img.filename_wo_ext)))
     return Result(stages=Stages((stage,)),
                   output=Namespace(img=out_img, gradient=out_gradient) if gradient else Namespace(img=out_img))
 
@@ -238,10 +236,6 @@ def mincaverage(imgs: List[MincAtom],
                        ['-sdfile', sdfile.path] +
                        sorted([img.path for img in imgs]) +
                        [avg.path])
-    avg_cmd.set_log_file(os.path.join(avg.pipeline_sub_dir,
-                                avg.output_sub_dir,
-                                "log",
-                                "mincaverage_" + avg.filename_wo_ext + ".log"))
     s.add(avg_cmd)
     return Result(stages=s, output=avg)
 
@@ -257,10 +251,6 @@ def pmincaverage(imgs: List[MincAtom],
     avg = MincAtom(name=os.path.join(output_dir, "%s.mnc" % name_wo_ext), orig_name=None)
     s = CmdStage(inputs=tuple(imgs), outputs=(avg,),
                  cmd=["pmincaverage", "--clobber"] + sorted([img.path for img in imgs]) + [avg.path])
-    s.set_log_file(os.path.join(avg.pipeline_sub_dir,
-                                avg.output_sub_dir,
-                                "log",
-                                "pmincaverage_" + avg.filename_wo_ext + ".log"))
     return Result(stages=Stages([s]), output=avg)
 
 
@@ -411,10 +401,6 @@ def xfmconcat(xfms: List[XfmAtom],
             inputs=tuple(xfms), outputs=(outf,),
             cmd=shlex.split('xfmconcat -clobber %s %s' % (' '.join([x.path for x in xfms]), outf.path)))
 
-        stage.set_log_file(os.path.join(outf.pipeline_sub_dir,
-                                        outf.output_sub_dir,
-                                        "log",
-                                        "xfmconcat_" + outf.filename_wo_ext + ".log"))
         return Result(stages=Stages([stage]), output=outf)
 
 
@@ -485,10 +471,7 @@ def nu_estimate(src: MincAtom,
                        "nu_estimate -clobber -iterations 100 -stop 0.001 -fwhm 0.15 -shrink 4 -lambda 5.0e-02")
                        + ["-distance", str(distance_value)] + (
                        ['-mask', mask_for_nu_est.path] if mask_for_nu_est else []) + [src.path, out.path])
-    cmd.set_log_file(os.path.join(out.pipeline_sub_dir,
-                                  out.output_sub_dir,
-                                  "log",
-                                  "nu_estimate_" + out.filename_wo_ext + ".log"))
+
     return Result(stages=Stages([cmd]), output=out)
 
 def mincmath(op       : str,
@@ -517,15 +500,11 @@ def mincmath(op       : str,
     else:
         outf = out_atom
 
-
     s = CmdStage(inputs=tuple(vols), outputs=(outf,),
                  cmd=(['mincmath', '-clobber', '-2']
                    + (['-const', _const] if _const else [])
                    + ['-' + op] + [v.path for v in vols] + [outf.path]))
-    s.set_log_file(os.path.join(outf.pipeline_sub_dir,
-                                outf.output_sub_dir,
-                                "log",
-                                "mincmath_" + outf.filename_wo_ext + ".log"))
+
     return Result(stages=Stages([s]), output=outf)
 
 def nu_evaluate(img: MincAtom,
@@ -534,10 +513,7 @@ def nu_evaluate(img: MincAtom,
     out = img.newname_with_suffix("_N", subdir=subdir)
     cmd = CmdStage(inputs=(img, field), outputs=(out,),
                    cmd=['nu_evaluate', '-clobber', '-mapping', field.path, img.path, out.path])
-    cmd.set_log_file(os.path.join(out.pipeline_sub_dir,
-                                  out.output_sub_dir,
-                                  "log",
-                                  "nu_evaluate_" + out.filename_wo_ext + ".log"))
+
     return Result(stages=Stages([cmd]), output=out)
 
 
@@ -589,10 +565,7 @@ def inormalize(src: MincAtom,
                    cmd=shlex.split('inormalize -clobber -const %s -%s' % (conf.const, conf.method.name))
                        + (['-mask', mask_for_inormalize.path] if mask_for_inormalize else [])
                        + [src.path, out.path])
-    cmd.set_log_file(os.path.join(out.pipeline_sub_dir,
-                                  out.output_sub_dir,
-                                  "log",
-                                  "inormalize_" + out.filename_wo_ext + ".log"))
+
     return Result(stages=Stages([cmd]), output=out)
 
 
@@ -630,10 +603,7 @@ def xfmaverage(xfms: List[XfmAtom],
 
     stage = CmdStage(inputs=tuple(xfms), outputs=(outf,),
                      cmd=["xfmavg", "-clobber"] + sorted([x.path for x in xfms]) + [outf.path])
-    stage.set_log_file(os.path.join(outf.pipeline_sub_dir,
-                                    outf.output_sub_dir,
-                                    "log",
-                                    "xfmavg_" + outf.filename_wo_ext + ".log"))
+
     return Result(stages=Stages([stage]), output=outf)
 
 
@@ -643,10 +613,7 @@ def xfminvert(xfm: XfmAtom,
                                       subdir=subdir)  # type: XfmAtom
     s = CmdStage(inputs=(xfm,), outputs=(inv_xfm,),
                  cmd=['xfminvert', '-clobber', xfm.path, inv_xfm.path])
-    s.set_log_file(os.path.join(inv_xfm.pipeline_sub_dir,
-                                inv_xfm.output_sub_dir,
-                                "log",
-                                "xfminvert_" + inv_xfm.filename_wo_ext + ".log"))
+
     return Result(stages=Stages([s]), output=inv_xfm)
 
 
@@ -783,10 +750,7 @@ def rotational_minctracc(source: MincAtom,
                         blurred_dest.path,
                         out_xfm.path,
                         "/dev/null"] + (['-m', mask_for_command.path] if mask_for_command else []))
-    cmd.set_log_file(os.path.join(out_xfm.pipeline_sub_dir,
-                                  out_xfm.output_sub_dir,
-                                  "log",
-                                  "rotation_minctracc_" + out_xfm.filename_wo_ext + ".log"))
+
     s.update(Stages([cmd]))
 
     resampled = (s.defer(mincresample(img=source, xfm=out_xfm, like=target,
@@ -1105,10 +1069,7 @@ def minctracc(source: MincAtom,
                             ((source.mask,) if source.mask and conf.use_masks else ()) +
                             ((target.mask,) if target.mask and conf.use_masks else ()),
                      outputs=(out_xfm,))
-    stage.set_log_file(os.path.join(out_xfm.pipeline_sub_dir,
-                                    out_xfm.output_sub_dir,
-                                    "log",
-                                    "minctracc_" + out_xfm.filename_wo_ext + ".log"))
+
     s.add(stage)
 
     # note accessing a None resampled field from an XfmHandler is an error (by property magic),
@@ -1416,10 +1377,7 @@ def mincANTS(source: MincAtom,
                '-i', conf.iterations,
                '-o', out_xfm.path]
             + (['-x', target.mask.path] if conf.use_mask and target.mask else []))
-    stage.set_log_file(os.path.join(out_xfm.pipeline_sub_dir,
-                                    out_xfm.output_sub_dir,
-                                    "log",
-                                    "mincANTS_" + out_xfm.filename_wo_ext + ".log"))
+
     s.add(stage)
     resampled = (s.defer(mincresample(img=source, xfm=out_xfm, like=target,
                                       interpolation=Interpolation.sinc,
@@ -2668,10 +2626,6 @@ def create_quality_control_images(imgs: List[MincAtom],
                  img.path, img_verification.path],
             memory=0,
             procs=0)
-        mincpik_stage.set_log_file(os.path.join(img_verification.pipeline_sub_dir,
-                                                img_verification.output_sub_dir,
-                                                "log",
-                                                "mincpik_" + img_verification.filename_wo_ext + ".log"))
         s.add(mincpik_stage)
         individualImages.append(img_verification)
 
@@ -2699,10 +2653,6 @@ def create_quality_control_images(imgs: List[MincAtom],
                  img_verification_convert.path],
             memory=0,
             procs=0)
-        convert_stage.set_log_file(os.path.join(img_verification_convert.pipeline_sub_dir,
-                                                img_verification_convert.output_sub_dir,
-                                                "log",
-                                                "convert_" + img_verification_convert.filename_wo_ext + ".log"))
         s.add(convert_stage)
         individualImagesLabeled.append(img_verification_convert)
 

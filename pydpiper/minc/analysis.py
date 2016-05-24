@@ -18,10 +18,6 @@ def lin_from_nlin(xfm : XfmHandler) -> Result[XfmHandler]:
                      cmd = (['lin_from_nlin', '-clobber', '-lsq12']
                             + (['-mask', xfm.source.mask.path] if xfm.source.mask else [])
                             + [xfm.source.path, xfm.xfm.path, out_xfm.path]))
-    stage.set_log_file(os.path.join(out_xfm.pipeline_sub_dir,
-                                    out_xfm.output_sub_dir,
-                                    "log",
-                                    "lin_from_nlin_" + out_xfm.filename_wo_ext + ".log"))
     return Result(stages=Stages([stage]),
                   output=XfmHandler(xfm=out_xfm, source=xfm.source,
                                     target=xfm.target))
@@ -32,10 +28,6 @@ def minc_displacement(xfm : XfmHandler) -> Result[MincAtom]:
     output_grid = xfmToMinc(xfm.xfm.newname_with_suffix("_displ", ext='.mnc', subdir="tmp"))
     stage = CmdStage(inputs=(xfm.source, xfm.xfm), outputs=(output_grid,),
                      cmd=['minc_displacement', '-clobber', xfm.source.path, xfm.xfm.path, output_grid.path])
-    stage.set_log_file(os.path.join(output_grid.pipeline_sub_dir,
-                                    output_grid.output_sub_dir,
-                                    "log",
-                                    "minc_displacement_" + output_grid.filename_wo_ext + ".log"))
     return Result(stages=Stages([stage]), output=output_grid)
 
 def mincblob(op : str, grid : MincAtom, subdir : str = "tmp") -> Result[MincAtom]:
@@ -59,10 +51,6 @@ def mincblob(op : str, grid : MincAtom, subdir : str = "tmp") -> Result[MincAtom
 
     stage = CmdStage(inputs=(grid,), outputs=(out_file,),
                  cmd=['mincblob', '-clobber', '-' + op, grid.path, out_file.path])
-    stage.set_log_file(os.path.join(out_file.pipeline_sub_dir,
-                                out_file.output_sub_dir,
-                                "log",
-                                "mincblob_" + out_file.filename_wo_ext + ".log"))
 
     s = Stages([stage])
     # now create the proper determinant if that's what was asked for
