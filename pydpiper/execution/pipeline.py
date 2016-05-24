@@ -1025,6 +1025,7 @@ def launchServer(pipeline):
         h.start()
         #del pipeline   # `top` shows this has no effect on vmem
 
+        # TODO cherry-pick the stderr swallowing from 1.x
         try:
             jid    = os.environ["PBS_JOBID"]
             output = check_output(['qstat', '-f', jid])
