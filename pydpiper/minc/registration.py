@@ -149,7 +149,7 @@ def atoms_from_same_subject(atoms: List[FileAtom]):
 def mincblur(img: MincAtom,
              fwhm: float,
              gradient: bool = True,
-             subdir: str = 'tmp') -> Result[Namespace]:  # (out_img=MincAtom, gradient=MincAtom)]:
+             subdir: str = 'tmp') -> Result[Namespace]:  # (img=MincAtom, Optional[gradient=MincAtom]):
     """
     >>> img = MincAtom(name='/images/img_1.mnc', pipeline_sub_dir='/scratch/some_pipeline_processed/')
     >>> img_blur = mincblur(img=img, fwhm=0.056)
@@ -158,6 +158,12 @@ def mincblur(img: MincAtom,
     >>> [i.render() for i in img_blur.stages]
     ['mincblur -clobber -no_apodize -fwhm 0.056 /images/img_1.mnc /scratch/some_pipeline_processed/img_1/tmp/img_1_fwhm0.056']
     """
+
+    # Is this the appropriate place for this?
+    # Also, 0/None might make more sense (but protocol files/parsing would have to change ...)
+    if fwhm == -1:
+        return Result(stages=Stages(), output=Namespace(img=img))
+
     # suffix   = "_dxyz" if gradient else "_blur"
     fwhm_str = "_fwhm%s" % fwhm
     out_img      = img.newname_with_suffix(fwhm_str + "_blur", subdir=subdir)
