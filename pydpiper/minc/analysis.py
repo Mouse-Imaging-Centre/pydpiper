@@ -202,24 +202,20 @@ def smooth_vector(source : MincAtom, fwhm : float) -> Result[MincAtom]:
     cmd  = ['smooth_vector', '--clobber', '--filter', '--fwhm=%s' % fwhm,
             source.path, outf.path]
     stage = CmdStage(inputs=(source,), outputs=(outf,), cmd=cmd)
-    stage.set_log_file(os.path.join(outf.pipeline_sub_dir,
-                                    outf.output_sub_dir,
-                                    "log",
-                                    "smooth_vector_" + outf.filename_wo_ext + ".log"))
     return Result(stages=Stages([stage]), output=outf)
 
 StatsConf = NamedTuple("StatsConf", [('stats_kernels', str)])
 
 
-def voxel_vote(label_files : List[MincAtom]):
+def voxel_vote(label_files : List[MincAtom], output_dir : str, name : str = "voted"):  # TODO too stringy ...
 
     if len(label_files) == 0:
         raise ValueError("can't vote with 0 files")
 
-    out = MincAtom(name="voted_TODO.mnc")
+    out = MincAtom(name=os.path.join(output_dir, "%s.mnc" % name), pipeline_sub_dir=output_dir)  # FIXME better naming
 
     s = CmdStage(cmd=["voxel_vote"] + [l.path for l in label_files] + [out.path],
                  inputs=label_files,
-                 outputs=(out.path,))
+                 outputs=(out,))
 
     return Result(stages=Stages([s]), output=out)
