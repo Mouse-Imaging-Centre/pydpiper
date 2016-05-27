@@ -133,26 +133,16 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir):
                                                              extra_flags=("-keep_real_range",))))
             .groupby('img', sort=False, as_index=False)
             # sort=False: for speed, and since we haven't implemented comparisons on `MincAtom`s
-            #.apply(lambda row: s.defer(voxel_vote(label_files=rowmask)))
             .aggregate({'resampled_mask' : lambda masks: list(masks)})
                                          #  lambda masks: s.defer(voxel_vote(label_files=masks,
                                          #                                   output_dir="TODO", name="voted_mask")) })  #,
                         #'img' : lambda imgs: imgs[0]})
             .rename(columns={"resampled_mask" : "resampled_masks"})
-            # NB aggregate can keep the other columns around if a reduction operation is supplied for them ...?
-            #.reset_index())
-            #.apply(lambda df: s.defer(voxel_vote(label_files=df.resampled_masks,
-            #                                     name="voted_mask",
-            #                                     output_dir=df.img.pipeline_sub_dir)),
-            #       axis=1)
             .assign(voted_mask=lambda df: df.apply(axis=1,
                                                    func=lambda row:
                                                      s.defer(voxel_vote(label_files=row.resampled_masks,
                                                                         name="voted_mask",
-                                                                        output_dir="TODO"))))
-        #    # TODO drop resampled_masks col
-        #    #.rename(columns={"resampled_mask" : "voted_mask"}))
-
+                                                                        output_dir=row.img.pipeline_sub_dir))))
             .assign(masked_img=lambda df:
                                   df.apply(axis=1,
                                            func=lambda row:
@@ -237,15 +227,15 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir):
                                                                       interpolation=Interpolation.nearest_neighbour,
                                                                       extra_flags=("-keep_real_range",),
                                                                       like=df.img, invert=True)))
-                .groupby('img', sort=False)
-                .aggregate({'resampled_labels' : lambda labels:
-                               s.defer(voxel_vote(label_files=labels,
-                                                  output_dir="TODO"))})
-                .rename(columns={"resampled_labels" : "voted_labels"})
-                .reset_index())
+                .groupby('img', sort=False, as_index=False)
+                .aggregate({'resampled_labels' : lambda labels: list(labels)})
+                .assign(voted_labels=lambda df: df.apply(axis=1,
+                                                         func=lambda row:
+                                                           s.defer(voxel_vote(label_files=row.resampled_labels,
+                                                                              name="voted_labels",
+                                                                              output_dir=row.img.pipeline_sub_dir)))))
 
-            #
-            # TODO write a procedure for this ...
+            # TODO write a procedure for this assign-groupby-aggregate-rename...
             # FIXME should be in above algebraic manipulation but MincAtoms don't support flexible immutable updating
             for row in pd.merge(left=new_template_to_atlas_alignments, right=new_templates_labelled,
                                 on=["img"], how="right", sort=False).itertuples():
