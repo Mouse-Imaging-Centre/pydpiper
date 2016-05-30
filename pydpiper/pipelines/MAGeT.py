@@ -132,17 +132,15 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir):
                                                              #    axis=1),
                                                              extra_flags=("-keep_real_range",))))
             .groupby('img', sort=False, as_index=False)
-            # sort=False: for speed, and since we haven't implemented comparisons on `MincAtom`s
+            # sort=False: just for speed (might also need to implement more comparison methods on `MincAtom`s)
             .aggregate({'resampled_mask' : lambda masks: list(masks)})
-                                         #  lambda masks: s.defer(voxel_vote(label_files=masks,
-                                         #                                   output_dir="TODO", name="voted_mask")) })  #,
-                        #'img' : lambda imgs: imgs[0]})
             .rename(columns={"resampled_mask" : "resampled_masks"})
             .assign(voted_mask=lambda df: df.apply(axis=1,
                                                    func=lambda row:
                                                      s.defer(voxel_vote(label_files=row.resampled_masks,
-                                                                        name="voted_mask",
-                                                                        output_dir=row.img.pipeline_sub_dir))))
+                                                                        name="%s_voted_mask" % row.img.filename_wo_ext,
+                                                                        output_dir=os.path.join(row.img.output_sub_dir,
+                                                                                                "tmp")))))
             .assign(masked_img=lambda df:
                                   df.apply(axis=1,
                                            func=lambda row:
@@ -232,8 +230,11 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir):
                 .assign(voted_labels=lambda df: df.apply(axis=1,
                                                          func=lambda row:
                                                            s.defer(voxel_vote(label_files=row.resampled_labels,
-                                                                              name="voted_labels",
-                                                                              output_dir=row.img.pipeline_sub_dir)))))
+                                                                              #name="voted_labels",
+                                                                              name="%s_voted_labels" %
+                                                                                   row.img.filename_wo_ext,
+                                                                              output_dir=os.path.join(
+                                                                                  row.img.output_sub_dir, "labels"))))))
 
             # TODO write a procedure for this assign-groupby-aggregate-rename...
             # FIXME should be in above algebraic manipulation but MincAtoms don't support flexible immutable updating
@@ -241,10 +242,9 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir):
                                 on=["img"], how="right", sort=False).itertuples():
                 row.img.labels = s.defer(mincresample_new(img=row.voted_labels, xfm=row.xfm.xfm, like=row.img,
                                                           invert=True, interpolation=Interpolation.nearest_neighbour,
-                                                          postfix="-input-labels",
-                                                          #new_name_wo_ext="%s_to_%s-input-labels" %
-                                                          #                (row.img.filename_wo_ext,
-                                                          #                 row.voted_labels.filename_wo_ext),
+                                                          #postfix="-input-labels",
+                                                          # this makes names really long ...:
+                                                          postfix="_via_%s-input-labels" % row.xfm.xfm.filename_wo_ext,
                                                           extra_flags=("-keep_real_range",)))
 
             # now that the new templates have been labelled, combine with the atlases:
@@ -268,7 +268,7 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir):
         #       sure exactly when this is faster than doing a single registration).
         #       This _can_ allow the overall computation to finish more rapidly
         #       (depending on the relative speed of the two alignment methods/parameters,
-        #       number of atlases and other templates used, number of cores available, etc.)
+        #       number of atlases and other templates used, number of cores available, etc.).
         image_to_template_alignments = (
             pd.DataFrame({ "img"      : img,
                            "template" : template_img,
@@ -309,7 +309,7 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir):
                  .reset_index()
                  .assign(voted_labels=lambda df: defer(np.vectorize(voxel_vote)(label_files=df.resampled_labels,
                                                                                 output_dir=df.img.apply(
-                                                                                    lambda x: x.pipeline_sub_dir)))))
+                                                                                    lambda x: x.output_sub_dir)))))
 
         # TODO doing mincresample -invert separately for the img->atlas xfm for mask, labels is silly
         # (when Pydpiper's `mincresample` does both automatically)?
