@@ -84,20 +84,23 @@ def nondistinct_outputs(stages):
     """
     m = ((o, s) for s in stages for o in s.outputFiles)
     d = defaultdict(set)
-    for o,s in m:
+    for o, s in m:
         d[o].add(s)
     bad_outputs = { o : ss for o, ss in d.items() if len(ss) > 1 }
     return bad_outputs
 
+
 def ensure_distinct_outputs(stages):
     bad_outputs = nondistinct_outputs(stages)
-    if len(bad_outputs) > 1:
+    if len(bad_outputs) >= 1:
         print("Uh-oh - some files appear as outputs of multiple stages, to wit:", file=sys.stderr)
         for o, ss in bad_outputs.items():
             print("output: %s\nstages:\n" % o, file=sys.stderr)
             for s in ss:
-                print(s, file=sys.stderr)
+                print("%s\n" % s, file=sys.stderr)
+            print("\n", file=sys.stderr)
         raise ValueError("Conflicting outputs:", bad_outputs)
+
 
 #TODO: change this to ...(static_pipeline, options)?
 def execute(stages, options):
