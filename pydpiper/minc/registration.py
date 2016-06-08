@@ -175,8 +175,8 @@ def mincblur(img: MincAtom,
         # won't lift this length calculation automatically ...
         cmd=shlex.split('mincblur -clobber -no_apodize -fwhm %s %s %s' % (fwhm, img.path, out_img.path[:-9]))
             + (['-gradient'] if gradient else []))
-    stage.set_log_file(os.path.join(out_img.dir, "..", "log",
-                                    "%s_%s.log" % ("mincblur", out_img.filename_wo_ext)))
+    #stage.set_log_file(os.path.join(out_img.dir, "..", "log",
+    #                                "%s_%s.log" % ("mincblur", out_img.filename_wo_ext)))
     return Result(stages=Stages((stage,)),
                   output=Namespace(img=out_img, gradient=out_gradient) if gradient else Namespace(img=out_img))
 
@@ -716,7 +716,7 @@ def rotational_minctracc(source: MincAtom,
     
     simplex -- this simplex will be set based on the resolution provided.
                for the mouse brain we want it to be 1mm. We have mouse brain
-               files at either 0.056mm or 0.04mm resultion. For now we will
+               files at either 0.056mm or 0.04mm resolution. For now we will
                determine the value for the simplex by multiplying the 
                resolution by 20.
         
@@ -1468,16 +1468,18 @@ def mincANTS_NLIN_build_model(imgs: List[MincAtom],
     s = Stages()
     avg = initial_target
     avg_imgs = []  # type: List[MincAtom]
-    for i, conf_inst in enumerate(conf.confs, start=1):
+    # changed start=1 to start=0 (and i -> i+1 in average creation) to match old code:
+    for i, conf_inst in enumerate(conf.confs, start=0):
         # in the following command we resample the output of the mincANTS command. This is because
         # we create an average during each iteration which is used as the target for the next iteration.
         # However, we should not save all resampled files in the resampled/ directory (default for
         # the mincANTS() call). Do this only for the last iteration:
-        resampled_subdir = "resampled" if len(conf.confs) == i else "tmp"
+        resampled_subdir = "resampled" if i == len(conf.confs) else "tmp"
         xfms = [s.defer(mincANTS(source=img, target=avg, conf=conf_inst, generation=i,
                                  resample_source=True, subdir_for_resample=resampled_subdir))
                 for img in imgs]
-        avg = s.defer(mincaverage([xfm.resampled for xfm in xfms], name_wo_ext='nlin-%d' % i, output_dir=nlin_dir))
+        #  TODO make resampled name 'final-nlin' ?? need another option to mincANTS for that, I guess ...
+        avg = s.defer(mincaverage([xfm.resampled for xfm in xfms], name_wo_ext='nlin-%d' % (i+1), output_dir=nlin_dir))
         avg_imgs.append(avg)
     return Result(stages=s, output=WithAvgImgs(output=xfms, avg_img=avg, avg_imgs=avg_imgs))
 
@@ -2099,8 +2101,9 @@ def lsq6(imgs: List[MincAtom],
                            blur_resolution=defaults["blur_factors"][i] * resolution,
                            use_gradient=defaults["gradients"][i],
                            use_masks=True,
-                           linear_conf=default_linear_minctracc_conf('lsq6').replace(w_translations=[defaults["translations"][i]] * 3,
-                                                                                     simplex=defaults["simplex_factors"][i] * resolution),
+                           linear_conf=(default_linear_minctracc_conf(LinearTransType.lsq6).
+                                          replace(w_translations=[defaults["translations"][i]] * 3,
+                                                  simplex=defaults["simplex_factors"][i] * resolution)),
                            nonlinear_conf=None)
              for i in range(len(defaults["blur_factors"]))])  # FIXME: don't assume all lengths are equal
         return conf
@@ -2149,7 +2152,7 @@ def lsq6(imgs: List[MincAtom],
 
         if conf.protocol_file is not None:  # FIXME the proliferations of LSQ6Confs vs. MultilevelMinctraccConfs here is very confusing ...
             mt_conf = parse_minctracc_linear_protocol_file(filename=conf.protocol_file,
-                                                           transform_type=LinearTransType.lsq12,
+                                                           transform_type=LinearTransType.lsq6,
                                                            minctracc_conf=default_lsq6_minctracc_conf)
         else:
             mt_conf = conf_from_defaults(defaults)  # FIXME print a warning?!
