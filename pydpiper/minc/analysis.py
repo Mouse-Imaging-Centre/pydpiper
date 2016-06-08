@@ -143,7 +143,7 @@ def determinants_at_fwhms(xfm        : XfmHandler,
                           blur_fwhms : str, # TODO: change back to List[float]
                           inv_xfm    : Optional[XfmHandler] = None)   \
                        -> Result[Tuple[List[Tuple[float, Tuple[MincAtom, MincAtom]]],  \
-                                       List[Tuple[float, Tuple[MincAtom, MincAtom]]]]]:
+                                       List[Tuple[float, Tuple[MincAtom, MincAtom]]]]]:  # TODO fix this horribleness
     """
     The most common way to use this function is by providing
     it with transformations that go from the final average
