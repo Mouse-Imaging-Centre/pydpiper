@@ -40,10 +40,15 @@ class XfmHandler(object):
     #path = property(lambda self: self.xfm.path, "`path` property")
 
     # accessing a null `resampled` field is almost certainly a programming error; throw an exception:
-    @property
-    def resampled(self) -> MincAtom:
+
+    def get_resampled(self) -> MincAtom:
         return ensure_nonnull_return(lambda self: self._resampled)(self)
     #resampled = property(ensure_nonnull_return(lambda self: self._resampled), "`resampled` property")
+
+    def set_resampled(self, resampled) -> None:
+        self._resampled = resampled
+
+    resampled = property(get_resampled, set_resampled)
 
     def replace(self, **kwargs):
         o = copy.copy(self)
