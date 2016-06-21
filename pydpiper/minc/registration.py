@@ -1131,7 +1131,7 @@ default_similarity_metric_conf = SimilarityMetricConf(
 MincANTSConf = NamedTuple("MincANTSConf",
                           [("file_resolution", float),
                            ("iterations", str),
-                           ("transformation_model", str),
+                           ("transformation_model", str), # TODO make an enumeration so, e.g., users don't type "Syn"
                            ("regularization", str),
                            ("use_mask", bool),
                            ("sim_metric_confs", List[SimilarityMetricConf])])
@@ -1144,7 +1144,7 @@ class MultilevelMincANTSConf(object):
 # to take resolution from initial target instead
 mincANTS_default_conf = MincANTSConf(
     iterations="100x100x100x150",
-    transformation_model="'Syn[0.1]'",
+    transformation_model="'SyN[0.1]'",
     regularization="'Gauss[2,1]'",
     use_mask=True,
     file_resolution=None,
