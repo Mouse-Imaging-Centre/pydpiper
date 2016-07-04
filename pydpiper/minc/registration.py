@@ -2190,12 +2190,13 @@ def lsq6(imgs: List[MincAtom],
         composed_xfms = [s.defer(xfmconcat([xfm.xfm, post_alignment_xfm],
                                            name=xfm.xfm.output_sub_dir + "_lsq6"))
                          for xfm in xfms_to_target]
-        resampled_imgs = ([mincresample(img=native_img,
-                                        xfm=overall_xfm,
-                                        like=post_alignment_target,
-                                        interpolation=Interpolation.sinc,
-                                        new_name_wo_ext=native_img.filename_wo_ext + "_lsq6",
-                                        subdir=resample_subdir) for native_img, overall_xfm in zip(imgs, composed_xfms)]
+        resampled_imgs = ([s.defer(mincresample(img=native_img,
+                                                xfm=overall_xfm,
+                                                like=post_alignment_target,
+                                                interpolation=Interpolation.sinc,
+                                                new_name_wo_ext=native_img.filename_wo_ext + "_lsq6",
+                                                subdir=resample_subdir))
+                           for native_img, overall_xfm in zip(imgs, composed_xfms)]
                           if resample_images else [None] * len(imgs))
         final_xfmhs = [XfmHandler(xfm=overall_xfm,
                                   target=post_alignment_target,
