@@ -1910,22 +1910,15 @@ def lsq12_nlin_build_model(imgs       : List[MincAtom],
                                           lsq12_dir=lsq12_dir))
 
     # extract the resampled lsq12 images
-    lsq12_resampled_imgs = [xfm_handler.resampled for xfm_handler in  lsq12_result.output]
+    lsq12_resampled_imgs = [xfm_handler.resampled for xfm_handler in lsq12_result.output]
 
-    if isinstance(nlin_conf, MultilevelMinctraccConf):
-        nlin_result = s.defer(minctracc_NLIN_build_model(imgs=lsq12_resampled_imgs,
-                                                         initial_target=lsq12_result.avg_img,
-                                                         conf=nlin_conf,
-                                                         nlin_dir=nlin_dir))
-    elif isinstance(nlin_conf, MultilevelMincANTSConf):
-        nlin_result = s.defer(mincANTS_NLIN_build_model(imgs=lsq12_resampled_imgs,
-                                                        initial_target=lsq12_result.avg_img,
-                                                        conf=nlin_conf,
-                                                        nlin_dir=nlin_dir))
-    else:
-        # this should never happen
-        raise ValueError("The non linear configuration passed to lsq12_nlin_build_model is neither for minctracc nor for mincANTS.")
+    nlin_result = s.defer(nlin_build_model(imgs=lsq12_resampled_imgs,
+                                           initial_target=lsq12_result.avg_img,
+                                           conf=nlin_conf,
+                                           nlin_dir=nlin_dir,
+                                           nlin_prefix=nlin_prefix))
 
+    # FIXME: this line does nothing ...
     nlin_resampled_imgs = [xfm_handler.resampled for xfm_handler in nlin_result.output]
 
     # concatenate the transformations from lsq12 and nlin before returning them
