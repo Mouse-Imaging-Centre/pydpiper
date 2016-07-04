@@ -1453,6 +1453,7 @@ def mincANTS_NLIN_build_model(imgs: List[MincAtom],
                               initial_target: MincAtom,
                               conf: MultilevelMincANTSConf,
                               nlin_dir: str,
+                              nlin_prefix : str = "",
                               mincaverage = mincaverage) -> Result[WithAvgImgs[List[XfmHandler]]]:
     """
     This functions runs a hierarchical mincANTS registration on the input
@@ -1479,7 +1480,8 @@ def mincANTS_NLIN_build_model(imgs: List[MincAtom],
                                  resample_source=True, subdir_for_resample=resampled_subdir))
                 for img in imgs]
         #  TODO make resampled name 'final-nlin' ?? need another option to mincANTS for that, I guess ...
-        avg = s.defer(mincaverage([xfm.resampled for xfm in xfms], name_wo_ext='nlin-%d' % (i+1), output_dir=nlin_dir))
+        avg = s.defer(mincaverage([xfm.resampled for xfm in xfms], name_wo_ext='%s-nlin-%d' % (nlin_prefix, i+1),
+                                  output_dir=nlin_dir))
         avg_imgs.append(avg)
     return Result(stages=s, output=WithAvgImgs(output=xfms, avg_img=avg, avg_imgs=avg_imgs))
 
@@ -1855,10 +1857,36 @@ def lsq12_pairwise_on_dictionaries(imgs: Dict[K, MincAtom],
     l = [(k, v) for k, v in sorted(imgs.items())]  # type: List[Tuple[K, MincAtom]]
     ks = [k for k, _ in l]
     vs = [v for _, v in l]
-    res = s.defer(lsq12_pairwise(imgs=vs, conf=conf, lsq12_dir=lsq12_dir, like=like))
+    res = s.defer(lsq12_pairwise(imgs=vs, lsq12_conf=conf, lsq12_dir=lsq12_dir, like=like))
     return Result(stages=s, output=WithAvgImgs(output=dict(zip(ks, res.output)),
                                                avg_imgs=res.avg_imgs,
                                                avg_img=res.avg_img))
+
+
+def nlin_build_model(imgs           : List[MincAtom],
+                     initial_target : MincAtom,
+                     conf           : Union[MultilevelMinctraccConf, MultilevelMincANTSConf],
+                     nlin_dir       : str,
+                     nlin_prefix    : str = ""):
+    s = Stages()
+
+    if isinstance(conf, MultilevelMinctraccConf):
+        nlin_result = s.defer(minctracc_NLIN_build_model(imgs=imgs,  # TODO add nlin_prefix to this one!!!
+                                                         initial_target=initial_target,
+                                                         conf=conf,
+                                                         nlin_dir=nlin_dir))
+        return Result(stages=s, output=nlin_result)
+    elif isinstance(conf, MultilevelMincANTSConf):
+        nlin_result = s.defer(mincANTS_NLIN_build_model(imgs=imgs,
+                                                        initial_target=initial_target,
+                                                        conf=conf,
+                                                        nlin_prefix=nlin_prefix,
+                                                        nlin_dir=nlin_dir))
+        return Result(stages=s, output=nlin_result)
+    else:
+        # this should never happen
+        raise ValueError("The nonlinear configuration passed to lsq12_nlin_build_model is neither for minctracc nor for mincANTS.")
+
 
 
 def lsq12_nlin_build_model(imgs       : List[MincAtom],
@@ -1866,7 +1894,8 @@ def lsq12_nlin_build_model(imgs       : List[MincAtom],
                            lsq12_dir  : str,
                            nlin_dir   : str,
                            nlin_conf  : Union[MultilevelMinctraccConf, MultilevelMincANTSConf],
-                           resolution : float) -> Result[WithAvgImgs[List[XfmHandler]]]:
+                           resolution : float,
+                           nlin_prefix : str = "") -> Result[WithAvgImgs[List[XfmHandler]]]:
     """
     Runs both a pairwise lsq12 registration followed by a non linear
     registration procedure on the input files.
