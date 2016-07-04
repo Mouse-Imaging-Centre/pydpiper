@@ -55,18 +55,17 @@ def mbm(imgs : List[MincAtom], options : MBMConf, prefix : str, output_dir : str
     if len(imgs) == 0:
         raise ValueError("Please, some files!")
 
-    # TODO this is quite tedious and duplicates stuff in the registration chain ...
-    resolution = (options.registration.resolution or
-                  get_resolution_from_file(
-                      registration_targets(lsq6_conf=options.mbm.lsq6,
-                                           app_conf=options.application).registration_standard.path))
-    options.registration = options.registration.replace(resolution=resolution)
 
     # FIXME: why do we have to call registration_targets *outside* of lsq6_nuc_inorm? is it just because of the extra
     # options required?
     targets = registration_targets(lsq6_conf=options.mbm.lsq6,
                                    app_conf=options.application,
-                                   first_input_file=options.application.files[0])
+                                   first_input_file=imgs[0].path)
+
+    # TODO this is quite tedious and duplicates stuff in the registration chain ...
+    resolution = (options.registration.resolution or
+                  get_resolution_from_file(targets.registration_standard.path))
+    options.registration = options.registration.replace(resolution=resolution)
 
     lsq6_result = s.defer(lsq6_nuc_inorm(imgs=imgs,
                                          resolution=resolution,
@@ -74,14 +73,15 @@ def mbm(imgs : List[MincAtom], options : MBMConf, prefix : str, output_dir : str
                                          lsq6_dir=lsq6_dir,
                                          lsq6_options=options.mbm.lsq6))
 
-    full_hierarchy = get_nonlinear_configuration_from_options(options.mbm.nlin.nlin_protocol,
-                                                              options.mbm.nlin.reg_method,
-                                                              resolution)
+    full_hierarchy = get_nonlinear_configuration_from_options(nlin_protocol=options.mbm.nlin.nlin_protocol,
+                                                              reg_method=options.mbm.nlin.reg_method,
+                                                              file_resolution=resolution)
 
     lsq12_nlin_result = s.defer(lsq12_nlin_build_model(imgs=[xfm.resampled for xfm in lsq6_result],
                                                        resolution=resolution,
                                                        lsq12_dir=lsq12_dir,
                                                        nlin_dir=nlin_dir,
+                                                       nlin_prefix=prefix,
                                                        lsq12_conf=options.mbm.lsq12,
                                                        nlin_conf=full_hierarchy))
 

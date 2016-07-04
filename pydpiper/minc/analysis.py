@@ -1,12 +1,15 @@
+from argparse import Namespace
+from typing import List, Optional, Tuple
+import os
+import pandas as pd
+
 from pydpiper.core.stages import Stages, CmdStage, Result
 from pydpiper.core.util   import NamedTuple
 from pydpiper.minc.files  import MincAtom, xfmToMinc
 from pydpiper.minc.containers import XfmHandler
 from pydpiper.minc.registration import concat_xfmhandlers, invert_xfmhandler, mincmath
 
-from typing import List, Optional, Tuple
 
-import os
 
 #TODO find the nicest API (currently determinants_at_fwhms, but still weird)
 #and write documentation indicating it
@@ -29,6 +32,7 @@ def minc_displacement(xfm : XfmHandler) -> Result[MincAtom]:
     stage = CmdStage(inputs=(xfm.source, xfm.xfm), outputs=(output_grid,),
                      cmd=['minc_displacement', '-clobber', xfm.source.path, xfm.xfm.path, output_grid.path])
     return Result(stages=Stages([stage]), output=output_grid)
+
 
 def mincblob(op : str, grid : MincAtom, subdir : str = "tmp") -> Result[MincAtom]:
     """
@@ -166,7 +170,6 @@ def determinants_at_fwhms(xfm        : XfmHandler,
     when passing an inverted xfm to determinants_at_fwhms,
     specify the original here).
     """
-    # "(nlin_displacement, minc_displacement) <=< invert"
     s = Stages()
 
     inv_xfm = inv_xfm or s.defer(invert_xfmhandler(xfm))
