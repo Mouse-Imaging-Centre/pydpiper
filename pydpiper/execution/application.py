@@ -56,7 +56,7 @@ def file_graph(stages, pipeline_dir):
     # need to use something like nx.to_pydot to convert
 
 
-def ensure_short_output_paths(stages, max_len=245): # magic no. for mincblur, &c.
+def ensure_short_output_paths(stages, max_len=245):  # magic no. for mincblur, &c.
     for s in stages:
         for o in s.outputs:
             if len(o.path) > max_len:
@@ -105,7 +105,7 @@ def ensure_distinct_outputs(stages):
 #TODO: change this to ...(static_pipeline, options)?
 def execute(stages, options):
     """Basically just looks at the arguments and exits if `--no-execute` is specified,
-    otherwise dispatch on backend type."""
+    otherwise dispatches on backend type."""
 
     # TODO: logger.info('Constructing pipeline...')
     pipeline = Pipeline(stages=[convertCmdStage(s) for s in stages],
@@ -119,8 +119,9 @@ def execute(stages, options):
     if options.application.create_graph:
         # TODO: these could have more descriptive names ...
         logger.debug("Writing dot file...")
-        nx.write_dot(pipeline.G, str(options.application.pipeline_name) + "_labeled-tree.dot")
-        nx.write_dot(file_graph(stages, options.application.output_directory), str(options.application.pipeline_name) + "_labeled-tree-alternate.dot")
+        nx.drawing.nx_agraph.write_dot(pipeline.G, str(options.application.pipeline_name) + "_labeled-tree.dot")
+        nx.drawing.nx_agraph.write_dot(file_graph(stages, options.application.output_directory),
+                                       str(options.application.pipeline_name) + "_labeled-tree-alternate.dot")
         logger.debug("Done.")
 
     # for debugging reasons, it's best if these come after writing stages, drawing graph, ...
