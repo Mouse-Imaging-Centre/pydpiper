@@ -71,9 +71,10 @@ def mincblob(op : str, grid : MincAtom, subdir : str = "tmp") -> Result[MincAtom
     return Result(stages=s, output=result_file)
     #TODO add a 'before' to newname_with, e.g., before="grid" -> disp._grid.mnc
 
+
 def det_and_log_det(displacement_grid : MincAtom,
                     fwhm : Optional[float],
-                    annotation: str = "") -> Result[Tuple[MincAtom, MincAtom]]:
+                    annotation: str = "") -> Result[Namespace]:  # (det=MincAtom, log_det=MincAtom)]:
     """
     When this function is called, you might (or should) know what kind of
     deformation grid is passed along. This allows you to provide a proper
@@ -93,7 +94,8 @@ def det_and_log_det(displacement_grid : MincAtom,
                                vols=[det],
                                subdir="stats-volumes",
                                new_name=output_filename_wo_ext))
-    return Result(stages=s, output=(det, log_det))
+    return Result(stages=s, output=Namespace(det=det, log_det=log_det))
+
 
 def nlin_part(xfm : XfmHandler, inv_xfm : Optional[XfmHandler] = None) -> Result[XfmHandler]:
     """
@@ -128,6 +130,7 @@ def nlin_part(xfm : XfmHandler, inv_xfm : Optional[XfmHandler] = None) -> Result
     xfm = s.defer(concat_xfmhandlers([xfm, inv_lin_part]))
     return Result(stages=s, output=xfm)
 
+
 def nlin_displacement(xfm : XfmHandler, inv_xfm : Optional[XfmHandler] = None) -> Result[MincAtom]:
     """
     See: nlin_part().
@@ -144,11 +147,11 @@ def nlin_displacement(xfm : XfmHandler, inv_xfm : Optional[XfmHandler] = None) -
                   output=s.defer(minc_displacement(
                                    s.defer(nlin_part(xfm, inv_xfm=inv_xfm)))))
 
-def determinants_at_fwhms(xfm        : XfmHandler,
-                          blur_fwhms : str, # TODO: change back to List[float]
-                          inv_xfm    : Optional[XfmHandler] = None)   \
-                       -> Result[Tuple[List[Tuple[float, Tuple[MincAtom, MincAtom]]],  \
-                                       List[Tuple[float, Tuple[MincAtom, MincAtom]]]]]:  # TODO fix this horribleness
+
+def determinants_at_fwhms(xfms       : List[XfmHandler],  # TODO change to pd.Series to get indexing (hence safer inv_xfm)?
+                          blur_fwhms : str, # TODO: change back to List[float]; should unblurred dets be found automatically?
+                          inv_xfms   : Optional[List[XfmHandler]] = None)   \
+                       -> Result[pd.DataFrame]:  # TODO how to write down a Pandas type here ?!
     """
     The most common way to use this function is by providing
     it with transformations that go from the final average
@@ -173,23 +176,31 @@ def determinants_at_fwhms(xfm        : XfmHandler,
     """
     s = Stages()
 
-    inv_xfm = inv_xfm or s.defer(invert_xfmhandler(xfm))
+    inv_xfms = inv_xfms or s.defer([invert_xfmhandler(xfm) for xfm in xfms])
 
-    nlin_disp = s.defer(nlin_displacement(xfm=xfm, inv_xfm=inv_xfm))
-    full_disp = s.defer(minc_displacement(xfm))
-    # TODO add the option to add additional xfm?  (do we even need this? used in mbm etc but might be trivial)
-   
     fwhms = [float(x) for x in blur_fwhms.split(',')]
 
-    nlin_dets = [(fwhm, s.defer(det_and_log_det(displacement_grid=nlin_disp,
-                                                fwhm=fwhm,
-                                                annotation="_rel"))) for fwhm in fwhms + [None]]
-    full_dets = [(fwhm, s.defer(det_and_log_det(displacement_grid=full_disp,
-                                                fwhm=fwhm,
-                                                annotation="_abs"))) for fwhm in fwhms + [None]]
+    df = pd.DataFrame([{"xfm" : xfm, "inv_xfm" : inv_xfm, "fwhm" : fwhm,
+                        "nlin_det" : nlin_det, "log_nlin_det" : nlin_log_det,
+                        "full_det" : full_det, "log_full_det" : full_log_det }
+                       for fwhm in fwhms + [None]
+                       for xfm, inv_xfm in zip(xfms, inv_xfms)
+                       for full_det_and_log_det in
+                         [s.defer(det_and_log_det(displacement_grid=s.defer(minc_displacement(xfm)),
+                                                  fwhm=fwhm,
+                                                  annotation="_abs"))]
+                       for full_det, full_log_det in [(full_det_and_log_det.det, full_det_and_log_det.log_det)]
+                       for nlin_det_and_log_det in
+                         [s.defer(det_and_log_det(displacement_grid=s.defer(nlin_displacement(xfm,
+                                                                                              inv_xfm=inv_xfm)),
+                                                  fwhm=fwhm,
+                                                  annotation="_rel"))]
+                       for nlin_det, nlin_log_det in [(nlin_det_and_log_det.det, nlin_det_and_log_det.log_det)]])
+    # TODO this is terrible, and should probably be done with joins, but one gets the idea ...
+    # TODO remove 'inv_xfm' column?
+    # TODO the return of this function is 'everything', not really just 'determinants_at_fwhms' ...
+    return Result(stages=s, output=df)
 
-    #could return a different isomorphic presentation of this big structure...
-    return Result(stages=s, output=(nlin_dets, full_dets))
 
 def determinant(displacement_grid : MincAtom) -> Result[MincAtom]:
     """
@@ -219,7 +230,7 @@ def voxel_vote(label_files : List[MincAtom], output_dir : str, name : str = "vot
     out = MincAtom(name=os.path.join(output_dir, "%s.mnc" % name), output_sub_dir=output_dir)  # FIXME better naming
 
     s = CmdStage(cmd=["voxel_vote"] + [l.path for l in label_files] + [out.path],
-                 inputs=label_files,
+                 inputs=tuple(label_files),
                  outputs=(out,))
 
     return Result(stages=Stages([s]), output=out)
