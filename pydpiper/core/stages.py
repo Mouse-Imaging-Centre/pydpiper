@@ -115,8 +115,9 @@ class Stages(ordered_set.OrderedSet):
     def defer(self, result : 'Result[T]') -> T:
         self.update(result.stages)
         return result.output
-    # FIXME this doesn't remember the order stages were added (see ordereddict/orderedset)
-    # so they won't appear in the pipeline-stages.txt file in a nice order ...
+    # TODO this now remembers the order stages were added (due to use of the strangely-named `OrderedSet` package)
+    # but due to randomization in iteration order over various data structures, the pipeline_stages files will
+    # still be reordered across runs, which is annoying ... might want to fix the random seed or something ...
 
 # TODO make it possible to inline many inputs somehow (using cooperation from the string formatter?)
 def parse(cmd_str : str) -> CmdStage:
