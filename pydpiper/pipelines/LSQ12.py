@@ -2,7 +2,7 @@ import csv
 import os
 import sys
 
-from pydpiper.core.arguments import (AnnotatedParser, execution_parser, lsq6_parser,
+from pydpiper.core.arguments import (AnnotatedParser, execution_parser, # lsq6_parser,
                                      lsq12_parser, registration_parser, application_parser, parse, CompoundParser)
 from pydpiper.execution.application import execute
 from pydpiper.minc.registration import (lsq12_pairwise, LSQ12Conf,
@@ -12,8 +12,6 @@ from pydpiper.minc.registration import (lsq12_pairwise, LSQ12Conf,
 from pydpiper.minc.files import MincAtom
 
 
-# Q. should a pipeline (post-cmdline-parsing) take a `files` arg
-# (an array of minc files) or just an options arg containing filenames?
 def LSQ12_pipeline(options):
 
     output_dir    = options.application.output_directory
@@ -41,10 +39,8 @@ def main(args):
           [execution_parser,
            application_parser,
            registration_parser,  #cast=RegistrationConf),
-           lsq6_parser,
            lsq12_parser])
 
-    # TODO could abstract and then parametrize by prefix/ns ??
     options = parse(p, args[1:])
     stages = LSQ12_pipeline(options).stages
     execute(stages, options)
