@@ -164,11 +164,6 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir):
                                                    #                          axis=1),
                                                    like=df.img, invert=True)))
 
-        # apply atlases' masks:
-        #for atlas in atlases:
-        #    # again, img must precede mask here for correct output image range:
-        #    s.defer(mincmath(op='mult', vols=[atlas, atlas.mask], subdir="resampled",
-        #                     new_name="%s_masked" % atlas.filename_wo_ext))
         masked_atlases = atlases.apply(lambda atlas:
                            s.defer(mincmath(op='mult', vols=[atlas, atlas.mask], subdir="resampled",
                                             new_name="%s_masked" % atlas.filename_wo_ext)))
@@ -216,7 +211,7 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir):
 
             # label the new templates from resampling the atlas labels onto them:
             # TODO now vote on the labels to be used for the new templates ...
-            # TODO extract into procedure
+            # TODO extract into procedure?
             new_templates_labelled = (
                 new_template_to_atlas_alignments
                 .assign(resampled_labels=lambda df: defer(
@@ -230,7 +225,6 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir):
                 .assign(voted_labels=lambda df: df.apply(axis=1,
                                                          func=lambda row:
                                                            s.defer(voxel_vote(label_files=row.resampled_labels,
-                                                                              #name="voted_labels",
                                                                               name="%s_voted_labels" %
                                                                                    row.img.filename_wo_ext,
                                                                               output_dir=os.path.join(
@@ -286,9 +280,6 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir):
                          )
         )
 
-            ### propagate labels from templates to images
-            ###all_alignments = alignments.rename(columns={ "atlas" : "template" })
-
         # now do a voxel_vote on all resampled template labels, just as earlier with the masks
         voted = (image_to_template_alignments
                  .assign(resampled_labels=lambda df:
@@ -300,11 +291,10 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir):
                                                            extra_flags=("-keep_real_range",),
                                                            like=df.img, invert=True)))
                  .groupby('img', sort=False)
-                 # old stuff that didn't seem to give access to img inside `voxel_voxel` call:
-                 #.aggregate({'resampled_labels' : lambda labels: s.defer(voxel_vote(label_files=labels,
-                 #                                                                  output_dir="TODO"))})
-                 #.rename(columns={"resampled_labels" : "voted_labels"})
-                 #.reset_index())
+                 # TODO the pattern groupby-aggregate(lambda x: list(x))-reset_index-assign is basically a hack
+                 # to do a groupby-assign with access to the group name;
+                 # see http://stackoverflow.com/a/30224447/849272 for a better solution
+                 # (note this pattern occurs several times in MAGeT and two-level code)
                  .aggregate({'resampled_labels' : lambda labels: list(labels)})
                  .reset_index()
                  .assign(voted_labels=lambda df: defer(np.vectorize(voxel_vote)(label_files=df.resampled_labels,
