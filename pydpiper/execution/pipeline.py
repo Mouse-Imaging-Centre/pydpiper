@@ -202,12 +202,6 @@ class ThinGraph(nx.DiGraph):
         return self.all_edge_dict
     edge_attr_dict_factory = single_edge_dict
 
-def counts(xs):
-    d = defaultdict(int)
-    for x in xs:
-        d[x] += 1
-    return d
-
 
 """A graph with no edge information; see networkx/classes/digraph.py"""
 class ThinGraph(nx.DiGraph):
