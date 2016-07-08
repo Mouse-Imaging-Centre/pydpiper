@@ -2,19 +2,20 @@
 
 import os
 
-from configargparse import ArgParser
+from configargparse import Namespace
+from pydpiper.core.stages import Stages, Result
+
+from pydpiper.minc.analysis import determinants_at_fwhms
 
 from pydpiper.minc.registration import (get_resolution_from_file, nlin_build_model,
-                                        get_nonlinear_configuration_from_options)
+                                        get_nonlinear_configuration_from_options, invert_xfmhandler)
 from pydpiper.minc.files import MincAtom
 from pydpiper.execution.application import mk_application
-from pydpiper.core.arguments import (CompoundParser, execution_parser, application_parser,
-                                     registration_parser, AnnotatedParser, BaseParser,
-                                     _mk_nlin_parser, _nlin_parser, nlin_parser)
+from pydpiper.core.arguments import (nlin_parser, stats_parser)
 
 
 # TODO in some sense all the code here (as with LSQ6_pipeline, LSQ12_pipeline) is redundant:
-# `NLIN_pipeline` should be expressable as a special case of `mbm_pipeline` by turning off certain parts
+# `NLIN_pipeline` should be expressible as a special case of `mbm_pipeline` by turning off certain parts
 # and setting certain parameters appropriately
 
 def NLIN_pipeline(options):
@@ -46,7 +47,29 @@ def NLIN_pipeline(options):
                                                               reg_method=options.nlin.reg_method,
                                                               file_resolution=resolution)
 
-    return nlin_build_model(imgs, initial_target=initial_target, conf=full_hierarchy, nlin_dir=nlin_dir)
+    s = Stages()
+
+    nlin_result = s.defer(nlin_build_model(imgs, initial_target=initial_target, conf=full_hierarchy, nlin_dir=nlin_dir))
+
+    # TODO return these?
+    inverted_xfms = [s.defer(invert_xfmhandler(xfm)) for xfm in nlin_result.output]
+
+    if options.stats.calc_stats:
+        # TODO: put the stats part behind a flag ...
+
+        determinants = [s.defer(determinants_at_fwhms(
+                                  xfm=inv_xfm,
+                                  inv_xfm=xfm,
+                                  blur_fwhms=options.stats.stats_kernels))
+                        for xfm, inv_xfm in zip(nlin_result.output, inverted_xfms)]
+
+        return Result(stages=s,
+                      output=Namespace(nlin_xfms=nlin_result,
+                                       avg_img=nlin_result.avg_img,
+                                       determinants=determinants))
+    else:
+        # there's no consistency in what gets returned, yikes ...
+        return Result(stages=s, output=Namespace(nlin_xfms=nlin_result, avg_img=nlin_result.avg_img))
 
 
 #_nlin_parser = _mk_nlin_parser(ArgParser(add_help=False))
@@ -64,7 +87,7 @@ nlin_parser.parser.argparser.add_argument("--target-mask", dest="target_mask",
                                                "[Default = %(default)s]")
 
 
-nlin_application = mk_application(parsers=[nlin_parser], #, namespace='nlin')],
+nlin_application = mk_application(parsers=[nlin_parser, stats_parser], #, namespace='nlin')],
                                   pipeline=NLIN_pipeline)
 
 
