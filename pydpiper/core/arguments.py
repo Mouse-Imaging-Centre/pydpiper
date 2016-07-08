@@ -614,4 +614,5 @@ def to_nlin_conf(nlin_args : Namespace) -> NLINConf:
     return NLINConf(**nlin_args.__dict__)
 
 _nlin_parser = BaseParser(_mk_nlin_parser(ArgParser(add_help=False)), group_name='nlin')
-nlin_parser = AnnotatedParser(parser=_nlin_parser, namespace="nlin", cast=to_nlin_conf)
+nlin_parser = AnnotatedParser(parser=_nlin_parser, namespace="nlin")  #, cast=to_nlin_conf)
+# TODO cast doesn't work for NLIN.py parser with extra --target flag
