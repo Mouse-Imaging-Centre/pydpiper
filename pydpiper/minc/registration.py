@@ -348,9 +348,7 @@ def mincresample(img: MincAtom,
     # to know what the main file will be resampled as
     if not new_name_wo_ext:
         # FIXME this is wrong when invert=True
-       new_name_wo_ext = xfm.filename_wo_ext + '-resampled'
-    #if not new_name_wo_ext:
-    #    from_img, to_img = (, if invert else ) + "-resampled"
+        new_name_wo_ext = xfm.filename_wo_ext + '-resampled'
 
     new_img = s.defer(mincresample_simple(img=img, xfm=xfm, like=like,
                                           extra_flags=extra_flags,
@@ -379,7 +377,7 @@ def mincresample(img: MincAtom,
 
 
 # TODO should this be a method on XfmHandlers, allowing use of the default argument syntax to refer to
-# the relevant mnc files?
+# the relevant mnc files?  (N.B.: each use site is on files already contained in XfmHandlers and manually dereferenced)
 def mincresample_new(img: MincAtom,
                      xfm: XfmAtom,  # TODO: add optional 'img', 'like' params to override those determined from XfmH
                      like: MincAtom,
@@ -1216,12 +1214,11 @@ def get_nonlinear_configuration_from_options(nlin_protocol : Union[MincANTSConf,
             non_linear_configuration = get_default_multi_level_mincANTS(file_resolution=file_resolution)
         elif reg_method == "minctracc":
             #TODO: this. Still TODO.
-            raise ValueError("Error.. we do not have proper minctracc non linear defaults yet. ")
+            raise ValueError("Error.. we do not have proper minctracc nonlinear defaults yet. ")
         else:
             raise ValueError("?!")
 
     return non_linear_configuration
-
 
 
 def parse_many(parser, sep=','):
@@ -1247,8 +1244,6 @@ def parse_mincANTS_protocol_file(config_file,
 
     Use the resulting list to `.replace` the default values.
     """
-    f_handle = open(config_file, 'r')
-    reader = csv.reader(f_handle, delimiter=";")
 
     # parsers to use for each row of the protocol file
     parsers = {"blur"               : parse_many(parse_nullable(float)),
@@ -1275,18 +1270,20 @@ def parse_mincANTS_protocol_file(config_file,
              "memoryRequired" : "memory_required"}
     params = list(parsers.keys())
 
-    # build a mapping from (Python, not file) field names to a list of values (one for each generation)
-    d = {}
-    for l in reader:
-        k, *vs = l
-        if k not in params:
-            raise ParseError("Unrecognized parameter: %s" % k)
-        else:
-            new_k = names[k]
-            if new_k in d:
-                raise ParseError("Duplicate key: %s" % k)
+    with open(config_file, 'r') as f:
+        reader = csv.reader(f, delimiter=";")
+        # build a mapping from (Python, not file) field names to a list of values (one for each generation)
+        d = {}
+        for l in reader:
+            k, *vs = l
+            if k not in params:
+                raise ParseError("Unrecognized parameter: %s" % k)
             else:
-                d[new_k] = [parsers[k](v) for v in vs]
+                new_k = names[k]
+                if new_k in d:
+                    raise ParseError("Duplicate key: %s" % k)
+                else:
+                    d[new_k] = [parsers[k](v) for v in vs]
 
     # some error checking ...
     if not all_equal(d.values(), by=len):
@@ -1295,7 +1292,7 @@ def parse_mincANTS_protocol_file(config_file,
         raise ParseError("Empty file ...")   # TODO should this really be an error?
     if "blur" in d:
         print("Warning: no longer using `blur` even though it's specified in the protocol ...")
-        # TODO should be a logger.warning, not a print
+        # TODO should be a warnings/logger.warning, not a print
         # TODO: why is this not being used anymore? It allows you to specify what you want
         # TODO: to do with the similarity metrics. Not sure whether we should have hard coded
         # TODO: defaults for this?
@@ -1328,8 +1325,8 @@ def parse_mincANTS_protocol_file(config_file,
                                              file_resolution=file_resolution,
                                              **other_attrs)
 
-    full_configuration = MultilevelMincANTSConf([convert_single_gen({ key : vs[j] for key, vs in d.items() }, file_resolution) for j in range(l)])
-    f_handle.close()
+    full_configuration = MultilevelMincANTSConf([convert_single_gen({ key : vs[j] for key, vs in d.items() },
+                                                                    file_resolution) for j in range(l)])
 
     return full_configuration
 
@@ -1365,7 +1362,7 @@ def mincANTS(source: MincAtom,
     if transform_name_wo_ext:
         name = os.path.join(source.pipeline_sub_dir, source.output_sub_dir, trans_output_dir,
                             "%s.xfm" % (transform_name_wo_ext))
-    elif generation != None:
+    elif generation is not None:
         name = os.path.join(source.pipeline_sub_dir, source.output_sub_dir, trans_output_dir,
                             "%s_mincANTS_nlin-%s.xfm" % (source.filename_wo_ext, generation))
     else:
@@ -1432,10 +1429,11 @@ class WithAvgImgs(Generic[T]):
         self.avg_img = avg_img
 
 
+# TODO expand parameter list to be similar to mincANTS_NLIN_build_model, possible add resolution parameter?
 def minctracc_NLIN_build_model(imgs: List[MincAtom],
                                initial_target: MincAtom,
                                conf: MultilevelMinctraccConf,
-                               nlin_dir: str) -> Result[WithAvgImgs[List[XfmHandler]]]:  # TODO: add resolution parameter:
+                               nlin_dir: str) -> Result[WithAvgImgs[List[XfmHandler]]]:
     if len(conf.confs) == 0:
         raise ValueError("No configurations supplied ...")
     s = Stages()
@@ -1485,16 +1483,18 @@ def mincANTS_NLIN_build_model(imgs: List[MincAtom],
         avg_imgs.append(avg)
     return Result(stages=s, output=WithAvgImgs(output=xfms, avg_img=avg, avg_imgs=avg_imgs))
 
-# some stuff for the registration chain.
-# The Subject class moved here since `intrasubject_registrations` was also here.
-
-
+# nothing requires the linear conf to specify 12 params, so perhaps this should be called 'lin_nlin' ...
 def lsq12_nlin(source: MincAtom,
                target: MincAtom,
                lsq12_conf: MinctraccConf,
                nlin_conf: Union[MultilevelMinctraccConf, MincANTSConf],
                resample_source: bool = True):
-    # TODO combine this with LSQ12_mincANTS_nlin OR write a wrapping LSQ12_NLIN function; write documentation ...
+    """
+    Runs a 12 parameter (or really any) linear registration followed by a nonlinear registration
+    (minctracc or mincANTS, depending on the supplied nonlinear configuration)
+    from the source to the target. (I.e., this is *not* a model-building function.)
+    It can be used, for instance, for intra-subject registrations in the registration_chain or in MAGeT
+    """
     s = Stages()
 
     if isinstance(nlin_conf, MincANTSConf):
@@ -1561,8 +1561,10 @@ def LSQ12_mincANTS_nlin(source: MincAtom,
     return Result(stages=s, output=full_transform)
 
 
-V = TypeVar('V')
+# some stuff for the registration chain.
+# The Subject class moved here since `intrasubject_registrations` was also here.
 
+V = TypeVar('V')
 
 class Subject(Generic[V]):
     """
@@ -1625,10 +1627,11 @@ def intrasubject_registrations(subj: Subject,
 
     time_pt_to_xfms = [(timepts_indices[source_index],
                         timepts_indices[source_index + 1],
-                        s.defer(LSQ12_mincANTS_nlin(source=src[1],
-                                                    target=dest[1],
-                                                    linear_conf=linear_conf,
-                                                    nlin_conf=nlin_conf)))
+                        s.defer(lsq12_nlin(source=src[1],
+                                           target=dest[1],
+                                           lsq12_conf=linear_conf,
+                                           nlin_conf=nlin_conf,
+                                           resample_source=True)))
                        for source_index, (src, dest) in enumerate(pairs(timepts))]
     return Result(stages=s, output=(time_pt_to_xfms, index_of_common_time_pt))
 
@@ -1925,8 +1928,8 @@ def lsq12_nlin_build_model(imgs       : List[MincAtom],
     from_imgs_to_nlin_xfms = [s.defer(concat_xfmhandlers(xfms=[lsq12_xfmh, nlin_xfmh],
                                                          name=img.filename_wo_ext + "_lsq12_and_nlin")) for
                               lsq12_xfmh, nlin_xfmh, img in zip(lsq12_result.output,
-                                                                     nlin_result.output,
-                                                                     imgs)]
+                                                                nlin_result.output,
+                                                                imgs)]
 
     return Result(stages=s, output=WithAvgImgs(output=from_imgs_to_nlin_xfms,
                                                avg_img=nlin_result.avg_img,
@@ -1935,11 +1938,11 @@ def lsq12_nlin_build_model(imgs       : List[MincAtom],
 
 def can_read_MINC_file(filename: str) -> bool:
     """Can the MINC file `filename` with be read with `mincinfo`?"""
-    # FIXME: opening and closing this file many times can be quite slow on some platforms ...
+    # FIXME: opening and closing this file many times might be quite slow on some platforms ...
     # better to change to can_read_MINC_files.
     with open(os.devnull, 'w') as dev_null:
-        returncode = subprocess.call(["mincinfo", filename], stdout=dev_null, stderr=dev_null) == 0
-    return returncode
+        ok = subprocess.call(["mincinfo", filename], stdout=dev_null, stderr=dev_null) == 0
+    return ok
 
 
 def check_MINC_input_files(args: List[str]) -> None:
@@ -2123,9 +2126,9 @@ def lsq6(imgs: List[MincAtom],
                            blur_resolution=defaults["blur_factors"][i] * resolution,
                            use_gradient=defaults["gradients"][i],
                            use_masks=True,
-                           linear_conf=(default_linear_minctracc_conf(LinearTransType.lsq6).
-                                          replace(w_translations=[defaults["translations"][i]] * 3,
-                                                  simplex=defaults["simplex_factors"][i] * resolution)),
+                           linear_conf=(default_linear_minctracc_conf(LinearTransType.lsq6)
+                                        .replace(w_translations=[defaults["translations"][i]] * 3,
+                                                 simplex=defaults["simplex_factors"][i] * resolution)),
                            nonlinear_conf=None)
              for i in range(len(defaults["blur_factors"]))])  # FIXME: don't assume all lengths are equal
         return conf
@@ -2755,13 +2758,9 @@ def create_quality_control_images(imgs: List[MincAtom],
         message_to_print += "%s. " % message
         message_to_print += "\n%s\n" % montage_output
         message_to_print += "* * * * * * *\n"
-        # the hook needs a return. Given that "print" does not return
-        # anything, we need to encapsulate the print statement in a
-        # function (which in this case will return None, but that's fine)
-        def printMessageForMontage():
-            print(message_to_print)
+
         montage_stage.when_finished_hooks.append(
-            lambda : printMessageForMontage())
+            lambda : print(message_to_print))
 
         s.add(montage_stage)
 
