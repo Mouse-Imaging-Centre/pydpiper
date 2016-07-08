@@ -20,10 +20,11 @@ def lin_from_nlin(xfm : XfmHandler) -> Result[XfmHandler]:
     stage = CmdStage(inputs=(xfm.source, xfm.xfm), outputs=(out_xfm,),
                      cmd = (['lin_from_nlin', '-clobber', '-lsq12']
                             + (['-mask', xfm.source.mask.path] if xfm.source.mask else [])
-                            + [xfm.source.path, xfm.xfm.path, out_xfm.path]))
+                            + [xfm.target.path, xfm.xfm.path, out_xfm.path]))
     return Result(stages=Stages([stage]),
                   output=XfmHandler(xfm=out_xfm, source=xfm.source,
                                     target=xfm.target))
+
 
 def minc_displacement(xfm : XfmHandler) -> Result[MincAtom]:
     # TODO: add dir argument
