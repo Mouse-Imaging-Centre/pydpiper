@@ -16,7 +16,7 @@ class XfmHandler(object):
     
     resampled -- this is the file we care about in terms of 
                  continuing with the pipeline. It does not necessarily have to be
-                 the source file resampled with the xfm. For instace, if
+                 the source file resampled with the xfm. For instance, if
                  the intensities of the source were first manipulated, and
                  then the xfm applied, that file will be stored in resampled.
     """
