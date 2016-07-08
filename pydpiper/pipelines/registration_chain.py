@@ -226,14 +226,14 @@ def chain(options):
             print(subject + '\t' + s_id_to_intersubj_img_dict[subject].path)
 
     # determine what configuration to use for the non linear registration
-    non_linear_configuration = get_nonlinear_configuration_from_options(options.nlin.nlin_protocol,
-                                                                        options.nlin.reg_method,
-                                                                        options.registration.resolution)
+    nonlinear_configuration = get_nonlinear_configuration_from_options(options.nlin.nlin_protocol,
+                                                                       options.nlin.reg_method,
+                                                                       options.registration.resolution)
 
     if options.registration.input_space in [InputSpace.lsq6, InputSpace.native]:
         intersubj_xfms = s.defer(lsq12_nlin_build_model(imgs=list(s_id_to_intersubj_img_dict.values()),
                                                 lsq12_conf=options.lsq12,
-                                                nlin_conf=non_linear_configuration,
+                                                nlin_conf=nonlinear_configuration,
                                                 resolution=options.registration.resolution,
                                                 lsq12_dir=pipeline_lsq12_common_dir,
                                                 nlin_dir=pipeline_nlin_common_dir))
@@ -249,7 +249,7 @@ def chain(options):
         intersubj_xfms = s.defer(mincANTS_NLIN_build_model(imgs=list(s_id_to_intersubj_img_dict.values()),
                                                    initial_target=first_nlin_target,
                                                    nlin_dir=pipeline_nlin_common_dir,
-                                                   conf=full_hierarchy))
+                                                   conf=nonlinear_configuration))
 
 
     intersubj_img_to_xfm_to_common_avg_dict = { xfm.source : xfm for xfm in intersubj_xfms.output }
@@ -261,7 +261,6 @@ def chain(options):
     for s_id, subj_at_common_tp in s_id_to_intersubj_img_dict.items():
         subj_ID_to_xfm_handler_to_common_avg[s_id] = intersubj_img_to_xfm_to_common_avg_dict[subj_at_common_tp]
 
-
     # create verification images to show the inter-subject  alignment
     montage_inter_subject = pipeline_montage_dir + "/quality_control_montage_inter_subject_registration.png"
     avg_and_inter_subject_images = []
@@ -269,10 +268,11 @@ def chain(options):
     for xfmh in intersubj_xfms.output:
         avg_and_inter_subject_images.append(xfmh.resampled)
 
-    inter_subject_verification_images = s.defer(create_quality_control_images(avg_and_inter_subject_images,
-                                                                              montage_output=montage_inter_subject,
-                                                                              montage_dir=pipeline_montage_dir,
-                                                                              message=" the result of the inter-subject alignment"))
+    inter_subject_verification_images = s.defer(create_quality_control_images(
+                                                  imgs=avg_and_inter_subject_images,
+                                                  montage_output=montage_inter_subject,
+                                                  montage_dir=pipeline_montage_dir,
+                                                  message=" the result of the inter-subject alignment"))
 
     if options.application.verbose:
         print("\nTransformations for intersubject images to final nlin common space:")
@@ -320,8 +320,9 @@ def chain(options):
     chain_xfms = { s_id : s.defer(intrasubject_registrations(
                                     subj=subj,
                                     linear_conf=default_lsq12_multilevel_minctracc,
-                                    nlin_conf=mincANTS_default_conf.replace(file_resolution=options.registration.resolution,
-                                                                  iterations="100x100x100x50")))
+                                    nlin_conf=mincANTS_default_conf.replace(
+                                        file_resolution=options.registration.resolution,
+                                        iterations="100x100x100x50")))
                    for s_id, subj in subj_id_to_Subjec_for_within_dict.items() }
 
     # create a montage image for each pair of time points
@@ -361,8 +362,8 @@ def chain(options):
     #       These are temporary, because they still need to be resampled into the
     #       average common time point space
     determinants_from_subject_common_to_subject = map_over_time_pt_dict_in_Subject(
-        lambda xfm: s.defer(determinants_at_fwhms(xfm=s.defer(invert_xfmhandler(xfm)),
-                                                  inv_xfm=xfm,
+        lambda xfm: s.defer(determinants_at_fwhms(xfms=[s.defer(invert_xfmhandler(xfm))],
+                                                  inv_xfms=[xfm],  # determinants_at_fwhms now vectorized-unhelpful here
                                                   blur_fwhms=options.stats.stats_kernels)),
         non_rigid_xfms_to_common_subj)
     # the content of determinants_from_subject_common_to_subject is:
@@ -396,14 +397,12 @@ def chain(options):
     for s_id, subject_with_determinants in determinants_from_subject_common_to_subject.items():
         transform_from_common_subj_to_common_avg = subj_ID_to_xfm_handler_to_common_avg[s_id].xfm
         for time_pt, determinant_info in subject_with_determinants.time_pt_dict.items():
-            # determinant_info is a tuple (two entries, one for relative and one for absolute Jacobians)
-            for stats_kind in determinant_info:
-                # this is a list with an entry for each level of blur. A single entry has the form:
-                # Tuple(float=blurring_kernel, Tuple(MincAtom=Jacoabian, MincAtom=log_of_Jacobian))
-                # for each entry, we want to resample the log of the Jacobian, which is the second
-                # element of the inner Tuple, which resides in the second element of the outer Tuple
-                for blur_tuple in stats_kind:
-                    log_det_file_to_resample = blur_tuple[1][1]
+            # here, each determinant_info is a DataFrame where each row contains
+            # 'abs_det', 'nlin_det', 'log_nlin_det', 'log_abs_det', 'fwhm' fields
+            # of the log-determinants, blurred at various fwhms (corresponding to different rows)
+            for _ix, row in determinant_info.iterrows():
+                for log_det_file_to_resample in (row.log_full_det, row.log_nlin_det):
+                    # TODO the MincAtoms corresponding to the resampled files are never returned
                     new_name_wo_ext = log_det_file_to_resample.filename_wo_ext + "_resampled_to_common"
                     s.defer(mincresample(img=log_det_file_to_resample,
                                          xfm=transform_from_common_subj_to_common_avg,
@@ -411,23 +410,24 @@ def chain(options):
                                          new_name_wo_ext=new_name_wo_ext,
                                          subdir="stats-volumes"))
 
-
-
     # Ad 2) provide transformations from the common avg to each subject. That's the
     #       inverse of what was provided by get_chain_transforms_for_stats()
     determinants_from_common_avg_to_subject = map_over_time_pt_dict_in_Subject(
-        lambda xfm: s.defer(determinants_at_fwhms(xfm=s.defer(invert_xfmhandler(xfm)),
-                                                  inv_xfm=xfm,
+        lambda xfm: s.defer(determinants_at_fwhms(xfms=[s.defer(invert_xfmhandler(xfm))],
+                                                  inv_xfms=[xfm],  # determinants_at_fwhms now vectorized-unhelpful here
                                                   blur_fwhms=options.stats.stats_kernels)),
         non_rigid_xfms_to_common_avg)
-    
+
+    # TODO don't just return an (unnamed-)tuple here
     return Result(stages=s, output=(non_rigid_xfms_to_common_avg,
                                     determinants_from_common_avg_to_subject,
                                     determinants_from_subject_common_to_subject))
-                 
+
+
 K = TypeVar('K')
 T = TypeVar('T')
 U = TypeVar('U')
+
 
 def get_closest_model_from_pride_of_models(pride_of_models_dict,
                                            time_point):
@@ -657,7 +657,7 @@ def get_chain_transforms_for_stats(pipeline_subject_info, intersubj_xfms_dict, c
         # will hold the XfmHandler from current to average of common time pt
         current_xfm_to_common_avg = intersubj_xfms_dict[subj.intersubject_registration_image]
         # and the XfmHandler from current to the subject common time point
-        # starts out as None (technically the identiy transformation)
+        # starts out as None (technically the identity transformation)
         current_xfm_to_common_subject = None
 
         # we start at the common time point and are going forward at this point
