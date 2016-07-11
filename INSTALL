@@ -10,7 +10,6 @@ System dependencies:
 
 minc-toolkit - https://github.com/BIC-MNI/minc-toolkit
 minc-stuffs - https://github.com/Mouse-Imaging-Centre/minc-stuffs
-pyminc - https://github.com/Mouse-Imaging-Centre/pyminc (Python, but not on PyPI)
 graphviz - http://www.graphviz.org/ (optional)
 
 Various Python libraries are also required (see `setup.py` for details); these should
