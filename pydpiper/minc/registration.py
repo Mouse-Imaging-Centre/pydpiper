@@ -2766,3 +2766,14 @@ def create_quality_control_images(imgs: List[MincAtom],
 
     return Result(stages=s, output=None)
 
+
+class FlipAxis(AutoEnum):
+    # named so that <...>.name returns the appropriate string to pass to volflip
+    x = y = z = ()
+
+
+def volflip(img : MincAtom, axis : FlipAxis = None):
+    flipped = img.newname_with_suffix(suffix="_flipped")
+    s = CmdStage(inputs=(img,), outputs=(flipped,),
+                 cmd=["volflip", "-clobber", img.path, flipped.path] + (["-%s" % axis] if axis else []))
+    return Result(stages=Stages([s]), output=flipped)

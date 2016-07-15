@@ -24,8 +24,7 @@ TwoLevelConf = NamedTuple("TwoLevelConf", [("first_level_conf", MBMConf),
                                            ("second_level_conf", MBMConf)])
 
 
-def two_level(options : TwoLevelConf):
-    s = Stages()
+def two_level_pipeline(options : TwoLevelConf):
 
     # TODO split this out into a function that operates on strings and one that operates on MincAtoms, as usual
     if options.application.files:
@@ -35,8 +34,19 @@ def two_level(options : TwoLevelConf):
                                usecols=['group', 'file'],
                                converters={ 'file' : lambda f: MincAtom(f) })  # TODO pipeline_sub_dir?
 
+    # TODO check input files ...
+
+    return two_level(grouped_files_df=files_df, options=options)
+
+
+def two_level(grouped_files_df, options : TwoLevelConf):
+    """
+    grouped_files_df - must contain 'group':<any comparable, sortable type> and 'file':MincAtom columns
+    """
+    s = Stages()
+
     first_level_results = (
-        files_df
+        grouped_files_df
         .groupby('group', as_index=False, sort=False)
         .aggregate({ 'file' : lambda files: list(files) })
         .rename(columns={ 'file' : "files" })
@@ -45,11 +55,11 @@ def two_level(options : TwoLevelConf):
                                        func=lambda row:
                                               s.defer(mbm(imgs=row.files,
                                                           options=options,
-                                                          prefix="%d" % row.group,
+                                                          prefix="%s" % row.group,
                                                           output_dir=os.path.join(
                                                               options.application.output_directory,
                                                               options.application.pipeline_name + "_first_level",
-                                                              "%d_processed" % row.group)))))
+                                                              "%s_processed" % row.group)))))
         )
     # TODO replace .assign(...apply(...)...) with just an apply, producing a series right away?
 
@@ -57,7 +67,6 @@ def two_level(options : TwoLevelConf):
     # TODO should there be a pride of models for this pipe as well ?
     second_level_options = copy.deepcopy(options)
     second_level_options.mbm.lsq6 = second_level_options.mbm.lsq6.replace(nuc=False, inormalize=False)
-    #                              second_level_options.lsq6.replace(nuc=False, inormalize=False)
 
     second_level_results = s.defer(mbm(imgs=[m.avg_img for m in first_level_results.build_model],
                                        options=second_level_options,
@@ -131,7 +140,7 @@ def main(args):
 
     options = parse(p, args[1:])
 
-    execute(two_level(options).stages, options)
+    execute(two_level_pipeline(options).stages, options)
 
 if __name__ == "__main__":
     main(sys.argv)

@@ -34,8 +34,8 @@ setup(name='pydpiper',
       scripts=([os.path.join("pydpiper/execution", script) for script in
                 ['pipeline_executor.py', 'check_pipeline_status.py']] +
                [os.path.join("pydpiper/pipelines", f) for f in
-                ['LSQ12.py', 'LSQ6.py', 'MAGeT.py', 'MBM.py', 'NLIN.py',
-                 'registration_chain.py',
-                 'twolevel_model_building.py']]),
+                ['asymmetry.py', 'LSQ12.py', 'LSQ6.py', 'MAGeT.py', 'MBM.py', 'NLIN.py',
+                 'registration_chain.py', 'twolevel_model_building.py']]),
+                 #'stats.py',
       tests_require=['pytest']
       )
