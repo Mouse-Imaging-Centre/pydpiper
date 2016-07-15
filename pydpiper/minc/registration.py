@@ -7,6 +7,7 @@ import subprocess
 import sys
 import inspect
 import re
+import warnings
 
 from configargparse import Namespace
 from typing import Any, cast, Dict, Generic, Iterable, List, Optional, Set, Tuple, TypeVar, Union, Callable
@@ -1792,26 +1793,13 @@ def multilevel_pairwise_minctracc(imgs: List[MincAtom],
 
     return Result(stages=s, output=WithAvgImgs(avg_imgs=[final_avg], avg_img=final_avg, output=avg_xfms))
 
-# MultilevelMinctraccConf = NamedTuple('MultilevelMinctraccConf',
-#  [#('resolution', float),   # TODO: used to choose step size...shouldn't be here
-#   ('single_gen_confs', MinctraccConf) # list of minctracc confs for each generation; could fold res/transform_type into these ...
-# ('transform_type', str)])
-#  ])
-# OR:
-
-
-# TODO move LSQ12 stuff to an LSQ12 file?
-# LSQ12_default_conf = MultilevelMinctraccConf(transform_type='lsq12', resolution = NotImplemented,
-#                                              single_gen_confs = [])
-
 
 """ Pairwise lsq12 registration, returning array of transforms and an average image
     Assumption: given that this is a pairwise registration, we assume that all the input
-                files to this function have the same shape (i.e. resolution, and dimension sizes.
+                files to this function have the same shape (i.e., resolution and dimension sizes).
                 This allows us to use any of the input files as the likefile for resampling if
                 none is provided. """
-
-
+# TODO actually check the assumption in the above comment ...
 # TODO all this does is call multilevel_pairwise_minctracc and then return an average; fold into that procedure?
 # TODO eliminate/provide default val for resolutions, move resolutions into conf, finish conf ...
 def lsq12_pairwise(imgs: List[MincAtom],
@@ -1828,15 +1816,6 @@ def lsq12_pairwise(imgs: List[MincAtom],
                                                            transform_type=LinearTransType.lsq12,
                                                            file_resolution=resolution)
 
-    #if conf and lsq12_conf.protocol: "???"
-    #if lsq12_conf.protocol:
-    #    minctracc_conf = parse_minctracc_linear_protocol_file(filename=lsq12_conf.protocol,
-    #                                                          transform_type=LinearTransType.lsq12)
-    #else:
-    #    #minctracc_conf = default_lsq12_multilevel_minctracc
-    #    raise NotImplementedError("You need to supply an lsq12 configuration at the moment.  Sorry!")
-    #    # FIXME `replace` the resolution, etc.!!  Also print a warning?
-    # conf.transform_type='-lsq12' # hack ... copy? or set external to lsq12 call ? might be better
     s = Stages()
     avgs_and_xfms = s.defer(multilevel_pairwise_minctracc(imgs=imgs, conf=minctracc_conf, like=like,
                                                           output_dir_for_avg=lsq12_dir, mincaverage=mincaverage,
@@ -1921,7 +1900,8 @@ def lsq12_nlin_build_model(imgs       : List[MincAtom],
                                            nlin_dir=nlin_dir,
                                            nlin_prefix=nlin_prefix))
 
-    # FIXME: this line does nothing ...
+    # FIXME: this line just uses property magic to ensure all xfm_handlers have non-null `resampled` fields ... why?'
+    # any use of these will trigger an immediate error anyway (by said magic)
     nlin_resampled_imgs = [xfm_handler.resampled for xfm_handler in nlin_result.output]
 
     # concatenate the transformations from lsq12 and nlin before returning them
@@ -2739,8 +2719,8 @@ def create_quality_control_images(imgs: List[MincAtom],
         montage_stage = CmdStage(
             inputs=tuple(individualImagesLabeled),
             outputs=(montage_output_fileatom,),
-            cmd=["montage", "-geometry", "+2+2"] + \
-                [labeled_img.path for labeled_img in individualImagesLabeled] + \
+            cmd=["montage", "-geometry", "+2+2"] +
+                [labeled_img.path for labeled_img in individualImagesLabeled] +
                 [montage_output_fileatom.path],
             memory=0,
             procs=0)
