@@ -203,6 +203,8 @@ def reconstruct_command(options):
     fileForCommandAndVersion = options.application.pipeline_name + "-command-and-version-" + time.strftime("%d-%m-%Y-at-%H-%m-%S") + ".sh"
     pf = open(fileForCommandAndVersion, "w")
     pf.write("#!/usr/bin/env bash\n")
+    for p in ["PATH", "PYTHONPATH", "LD_LIBRARY_PATH", "PERL5LIB"]:
+        pf.write("#export %s=%s\n" % (p, os.getenv(p)))
     pf.write("# Command version is: " + PYDPIPER_VERSION + "\n")
     pf.write("# Command was: \n")
     pf.write(reconstruct + '\n')
