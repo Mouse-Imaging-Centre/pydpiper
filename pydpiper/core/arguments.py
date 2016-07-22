@@ -224,7 +224,7 @@ def _mk_application_parser(p: ArgParser) -> ArgParser:
                    action="store_true", default=False,
                    help="Create a .dot file with graphical representation of pipeline relationships [default = %(default)s]")
     g.set_defaults(execute=True)
-    g.set_defaults(verbose=False)
+    g.set_defaults(verbose=True)
     g.add_argument("--execute", dest="execute",
                    action="store_true",
                    help="Actually execute the planned commands [default = %(default)s]")
