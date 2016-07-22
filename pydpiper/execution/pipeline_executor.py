@@ -504,7 +504,7 @@ class pipelineExecutor(object):
                          self.idle_time, self.time_to_seppuku * 60)
 
         if self.is_seppuku_time():
-            logger.warn("Exceeded allowed idle time... Seppuku!")
+            logger.warning("Exceeded allowed idle time... Seppuku!")
             return False
 
         # It is possible that the executor does not accept any new jobs
