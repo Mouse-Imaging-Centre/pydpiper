@@ -545,7 +545,7 @@ def nu_evaluate(img: MincAtom,
 
     return Result(stages=Stages([cmd]), output=out)
 
-
+# TODO: could also use the `nu_correct` program instead of doing this:
 def nu_correct(src: MincAtom,
                resolution: float,
                mask: Optional[MincAtom] = None,
@@ -1870,7 +1870,6 @@ def nlin_build_model(imgs           : List[MincAtom],
         raise ValueError("The nonlinear configuration passed to lsq12_nlin_build_model is neither for minctracc nor for mincANTS.")
 
 
-
 def lsq12_nlin_build_model(imgs       : List[MincAtom],
                            lsq12_conf : LSQ12Conf,
                            lsq12_dir  : str,
@@ -1899,10 +1898,6 @@ def lsq12_nlin_build_model(imgs       : List[MincAtom],
                                            conf=nlin_conf,
                                            nlin_dir=nlin_dir,
                                            nlin_prefix=nlin_prefix))
-
-    # FIXME: this line just uses property magic to ensure all xfm_handlers have non-null `resampled` fields ... why?'
-    # any use of these will trigger an immediate error anyway (by said magic)
-    nlin_resampled_imgs = [xfm_handler.resampled for xfm_handler in nlin_result.output]
 
     # concatenate the transformations from lsq12 and nlin before returning them
     from_imgs_to_nlin_xfms = [s.defer(concat_xfmhandlers(xfms=[lsq12_xfmh, nlin_xfmh],
@@ -1956,6 +1951,7 @@ def check_MINC_input_files(args: List[str]) -> None:
                              "input file list:\n" + str(fileBase) + ".mnc\nPlease provide "
                                                                     "unique names for all input files.\n")
         seen.add(fileBase)
+
 
 def check_MINC_files_have_equal_dimensions_and_resolution(args: List[str],
                                                           additional_msg: str = "") -> bool:
