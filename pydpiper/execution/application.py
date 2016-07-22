@@ -37,7 +37,9 @@ def write_stages(stages, name):
     fileForPrinting = os.path.join(os.curdir, "%s_pipeline_stages.txt" % name)
     with open(fileForPrinting, 'w') as pf:
         for i, stage in enumerate(stages):
-            pf.write(str(i) + "  " + str(stage.render()) + "\n")
+            # TODO indices of this enumeration only correspond to stage numbers by "coincidence"
+            # (a similar iteration is performed elsewhere with the same results) but this is sort of silly/dangerous
+            pf.write(str(i) + "\t" + str(stage.render()) + "\n")
 
 def file_graph(stages, pipeline_dir):
     # TODO remove pipeline_dir from node pathnames
