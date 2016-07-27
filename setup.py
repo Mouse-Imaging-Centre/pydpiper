@@ -3,7 +3,7 @@
 from setuptools import setup
 
 setup(name='pydpiper',
-      version='1.17',
+      version='1.18',
       license='Modified BSD',
       description='Python code for flexible pipeline control',
       long_description = 'Python code for flexible pipeline control', 
@@ -12,7 +12,7 @@ setup(name='pydpiper',
       url='https://github.com/Mouse-Imaging-Centre/pydpiper',
       platforms="any",
       install_requires=[
-        'ConfigArgParse',
+        'ConfigArgParse>0.10.0',
         'networkx',
         #'pygraphviz',
         'Pyro4',

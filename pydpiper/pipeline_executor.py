@@ -159,6 +159,7 @@ def launchExecutor(executor):
             raise
 
     p = Pyro4.Proxy(serverURI)
+    p._pyroTimeout = 30  # TODO: magic number
     # Register the executor with the pipeline
     # the following command only works if the server is alive. Currently if that's
     # not the case, the executor will die which is okay, but this should be
@@ -324,6 +325,7 @@ class pipelineExecutor(object):
         self.current_running_job_pids = []
         self.registered_with_server = False
         self.heartbeat_thread_crashed = False
+        self.cmd_wrapper = options.cmd_wrapper
         # we associate an event with each executor which is set when jobs complete.
         # in the future it might also be set by the server, and we might have more
         # than one event (for reclaiming, server messages, ...)
@@ -398,7 +400,7 @@ class pipelineExecutor(object):
     def submitToQueue(self, number, program_name=None):
         """Submits to queueing system using qsub"""
         if self.queue_type not in ['sge', 'pbs']:
-            msg = ("Specified queueing system is: %s" % (self.queue_type) + 
+            msg = (("Specified queueing system is: %s.  " % self.queue_type) +
                    "Only `queue_type`s 'sge', 'pbs', and None currently support launching executors." + 
                    "Exiting...")
             logger.warn(msg)
@@ -548,9 +550,20 @@ class pipelineExecutor(object):
     # use an event set/timeout system to run the executor mainLoop -
     # we might want to pass some extra information in addition to waking the system
     def mainLoop(self):
-        while self.mainFn():
-            self.e.wait(EXECUTOR_MAIN_LOOP_INTERVAL)
-            self.e.clear()
+
+        while True:
+            try:
+                res = self.mainFn()
+            except Pyro4.errors.TimeoutError:
+                logger.exception("Blargh ... Pyro call timed out")
+                continue
+            else:
+                if res:
+                    self.e.wait(EXECUTOR_MAIN_LOOP_INTERVAL)
+                    self.e.clear()
+                else:
+                    break
+
         logger.debug("Main loop finished")
 
     def mainFn(self):
@@ -629,7 +642,7 @@ class pipelineExecutor(object):
             # this correctly, that binds the function to a class instance). There is
             # a way to make a bound function picklable, but this seems cumbersome. So instead
             # runStage is now a standalone function.
-            result = self.pool.apply_async(runStage, (self.serverURI, self.clientURI, i, options.cmd_wrapper))
+            result = self.pool.apply_async(runStage, (self.serverURI, self.clientURI, i, self.cmd_wrapper))
 
             self.runningChildren.append(ChildProcess(i, result, stageMem, stageProcs))
             logger.debug("Added stage %i to the running pool.", i)
@@ -685,8 +698,8 @@ if __name__ == "__main__":
             roq.createAndSubmitExecutorJobFile(i, after=None,
                             time=q.timestr_to_secs(options.time))
     elif options.queue_type is not None:
-        for i in range(options.num_exec):
-            pe = pipelineExecutor(options)
-            pe.submitToQueue()
+        #for i in range(options.num_exec):
+        pe = pipelineExecutor(options)
+        pe.submitToQueue(i)
     else:
         local_launch(options)
