@@ -20,6 +20,7 @@ from typing import Any
 from pyminc.volumes.volumes import mincException
 
 
+Pyro4.config.REQUIRE_EXPOSE = False
 Pyro4.config.SERVERTYPE = "multiplex"
 
 
