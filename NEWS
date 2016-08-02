@@ -1,3 +1,7 @@
+New in Version 1.18.1
+=====================
+* point to ConfigArgParse 0.11.0 on github until its maintainer makes a new release and uploads to PyPI
+
 New in Version 1.18
 ===================
 * bug fix to minctracc memory config
