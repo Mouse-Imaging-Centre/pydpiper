@@ -74,6 +74,9 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir):
 
     maget_options = options.maget.maget
 
+    if maget_options.atlas_lib is None:
+        raise ValueError("Need some atlases ...")
+
     #atlas_dir = os.path.join(output_dir, "input_atlases") ???
 
     # TODO should alternately accept a CSV file ...
@@ -86,7 +89,7 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir):
                                                        LinearTransType.lsq12,
                                                        options.registration.resolution)
 
-    masking_nlin_hierarchy = get_nonlinear_configuration_from_options(options.maget.maget.nlin_protocol,
+    masking_nlin_hierarchy = get_nonlinear_configuration_from_options(options.maget.maget.masking_nlin_protocol,
                                                                       options.maget.maget.mask_method,
                                                                       options.registration.resolution)
 
@@ -225,7 +228,7 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir):
                 .assign(voted_labels=lambda df: df.apply(axis=1,
                                                          func=lambda row:
                                                            s.defer(voxel_vote(label_files=row.resampled_labels,
-                                                                              name="%s_voted_labels" %
+                                                                              name="%s_template_labels" %
                                                                                    row.img.filename_wo_ext,
                                                                               output_dir=os.path.join(
                                                                                   row.img.output_sub_dir, "labels"))))))
@@ -238,7 +241,10 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir):
                                                           invert=True, interpolation=Interpolation.nearest_neighbour,
                                                           #postfix="-input-labels",
                                                           # this makes names really long ...:
-                                                          postfix="_via_%s-input-labels" % row.xfm.xfm.filename_wo_ext,
+                                                          new_name_wo_ext="%s_on_%s" %
+                                                                          (row.voted_labels.filename_wo_ext,
+                                                                           row.img.filename_wo_ext),
+                                                          #postfix="_labels_via_%s" % row.xfm.xfm.filename_wo_ext,
                                                           extra_flags=("-keep_real_range",)))
 
             # now that the new templates have been labelled, combine with the atlases:
@@ -327,8 +333,8 @@ def maget_pipeline(options):
 
 def _mk_maget_parser(parser : ArgParser):
     group = parser.add_argument_group("MAGeT options", "Options for running MAGeT.")
-    group.add_argument("--atlas-library", dest="atlas_lib",
-                       type=str, default="atlas_label_pairs",
+    group.add_argument("--atlas-library", dest="atlas_lib",  # can't make required=True since may not be using MAGeT :|
+                       type=str,                             # TODO: check existence of this dir?
                        help="Directory of existing atlas/label pairs")
     group.add_argument("--pairwise", dest="pairwise",
                        action="store_true",
@@ -349,7 +355,8 @@ def _mk_maget_parser(parser : ArgParser):
     group.add_argument("--masking-method", dest="mask_method",
                        default="minctracc", type=str,
                        help="Specify whether to use minctracc or mincANTS for masking. [Default = %(default)s].")
-    group.add_argument("--masking-nlin-protocol", dest="nlin_protocol",  # TODO basically copy/pasted from nlin parser
+    group.add_argument("--masking-nlin-protocol", dest="masking_nlin_protocol",
+                       # TODO basically copied from nlin parser
                        type=str, default=None,
                        help="Can optionally specify a registration protocol that is different from defaults. "
                             "Parameters must be specified as in either or the following examples: \n"
@@ -363,10 +370,9 @@ maget_parser = AnnotatedParser(parser=BaseParser(_mk_maget_parser(ArgParser(add_
                                                  "maget"),
                                namespace="maget")
 
-maget_application = mk_application(parsers=[AnnotatedParser(parser=CompoundParser([#lsq6_parser,
-                                                                                   lsq12_parser,
-                                                                                   nlin_parser, stats_parser,
-                                                                                   maget_parser]),
+maget_parsers = CompoundParser([lsq12_parser, nlin_parser, maget_parser])
+
+maget_application = mk_application(parsers=[AnnotatedParser(parser=maget_parsers,
                                                             namespace="maget")],
                                    pipeline=maget_pipeline)
 
