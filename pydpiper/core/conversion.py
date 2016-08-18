@@ -9,7 +9,7 @@ def convertCmdStage(cmd_stage):
     c.procs = cmd_stage.procs
     c.name = c.cmd[0]
     c.checkLogFile()
-    c.runnable_hooks = cmd_stage.when_runnable_hooks
+    c._runnable_hooks = cmd_stage.when_runnable_hooks
     c.finished_hooks = cmd_stage.when_finished_hooks
     c.logFile = cmd_stage.log_file
     return c
