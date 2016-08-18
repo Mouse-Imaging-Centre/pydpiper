@@ -183,7 +183,7 @@ def determinants_at_fwhms(xfms       : List[XfmHandler],  # TODO change to pd.Se
     df = pd.DataFrame([{"xfm" : xfm, "inv_xfm" : inv_xfm, "fwhm" : fwhm,
                         "nlin_det" : nlin_det, "log_nlin_det" : nlin_log_det,
                         "full_det" : full_det, "log_full_det" : full_log_det }
-                       for fwhm in fwhms + [None]
+                       for fwhm in fwhms + [0]  # was: None, but this turns to NaN in Pandas ...
                        for xfm, inv_xfm in zip(xfms, inv_xfms)
                        for full_det_and_log_det in
                          [s.defer(det_and_log_det(displacement_grid=s.defer(minc_displacement(xfm)),

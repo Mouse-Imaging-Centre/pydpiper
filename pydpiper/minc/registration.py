@@ -8,9 +8,13 @@ import sys
 import inspect
 import re
 import warnings
+from operator import mul
 
 from configargparse import Namespace
 from typing import Any, cast, Dict, Generic, Iterable, List, Optional, Set, Tuple, TypeVar, Union, Callable
+
+from functools import reduce
+
 from pydpiper.core.files import FileAtom
 from pydpiper.core.stages import CmdStage, Result, Stages
 from pydpiper.core.util import pairs, AutoEnum, NamedTuple, raise_
@@ -147,6 +151,17 @@ def atoms_from_same_subject(atoms: List[FileAtom]):
 # lazily computing the gradient ...
 # We currently return a Namespace(img) or Namespace(img, gradient), but dynamically choosing which field to select
 # is tedious in Python ...
+
+MincblurMemCfg = NamedTuple("MincblurMemCfg",
+                            [('base_mem', float),
+                             ('mem_per_voxel', float),
+                             ('include_tmpdir', bool),
+                             ('tmpdir_factor', float)])
+
+default_mincblur_mem_cfg = MincblurMemCfg(base_mem=1.25e-02, mem_per_voxel=5.9e-9,
+                                          tmpdir_factor=2.5, include_tmpdir=True)
+
+
 def mincblur(img: MincAtom,
              fwhm: float,
              gradient: bool = True,
@@ -161,8 +176,9 @@ def mincblur(img: MincAtom,
     """
 
     # Is this the appropriate place for this?
-    # Also, 0/None might make more sense (but protocol files/parsing would have to change ...)
-    if fwhm == -1:
+    # the -1 is for compatibility with protocol files, while 0/False might make more sense (but is sort of 'in-band');
+    # None is converted to NaN in Pandas data frames, which seems annoying
+    if fwhm in (-1, 0, None):
         return Result(stages=Stages(), output=Namespace(img=img))
 
     # suffix   = "_dxyz" if gradient else "_blur"
@@ -178,6 +194,20 @@ def mincblur(img: MincAtom,
             + (['-gradient'] if gradient else []))
     #stage.set_log_file(os.path.join(out_img.dir, "..", "log",
     #                                "%s_%s.log" % ("mincblur", out_img.filename_wo_ext)))
+
+    def set_memory(stage, mem_cfg):
+        # we pass the stage itself as an argument since the stage will be converted to an old-style CmdStage,
+        # so `stage` will have no effect.  In order to receive this argument, hooks must now take a self-argument
+        # (instead of no arguments as previously).
+        voxels = reduce(mul, volumeFromFile(img.path).getSizes())
+        #default_mem = self.mem #hack; see pipeline.addStage method
+        stage.setMem((mem_cfg.base_mem + voxels * mem_cfg.mem_per_voxel)
+                     * (mem_cfg.tmpdir_factor if mem_cfg.include_tmpdir else 1))
+    # FIXME this is the final word; we might want (1) either the executor/system to look at it
+    # or (2) a wrapper that enforces some sensible minimum, as with Pydpiper 1.x
+    # (but the default_job_mem is not accessible here ... could make exec_options an arg to the hooks ...? crazy)
+    stage.when_runnable_hooks.append(lambda s: set_memory(s, default_mincblur_mem_cfg))
+
     return Result(stages=Stages((stage,)),
                   output=Namespace(img=out_img, gradient=out_gradient) if gradient else Namespace(img=out_img))
 
@@ -213,12 +243,12 @@ def mincaverage(imgs: List[MincAtom],
             all_inputs_have_masks = False
 
     if all_inputs_have_masks:
-        combined_mask =  MincAtom(name=os.path.join(avg_file.dir, '%s_mask.mnc' % avg_file.filename_wo_ext),
+        combined_mask = (MincAtom(name=os.path.join(avg_file.dir, '%s_mask.mnc' % avg_file.filename_wo_ext),
                                   orig_name=None,
-                                  pipeline_sub_dir=avg_file.pipeline_sub_dir) if avg_file else \
+                                  pipeline_sub_dir=avg_file.pipeline_sub_dir) if avg_file else
                          MincAtom(name=os.path.join(output_dir, '%s_mask.mnc' % name_wo_ext),
                                   orig_name=None,
-                                  pipeline_sub_dir=output_dir)
+                                  pipeline_sub_dir=output_dir))
         s.defer(mincmath(op='max',
                        vols=[img_inst.mask for img_inst in imgs],
                        out_atom=combined_mask))
@@ -230,21 +260,25 @@ def mincaverage(imgs: List[MincAtom],
     # set. However, this is something we only really use for input files. All averages
     # and related files to directly into the _lsq6, _lsq12 and _nlin directories. That's
     # why we'll create this MincAtom here if avg_file was provided:
-    sdfile = MincAtom(name=os.path.join(avg_file.dir, '%s_sd.mnc' % avg_file.filename_wo_ext),
-                      orig_name=None,
-                      pipeline_sub_dir=avg_file.pipeline_sub_dir) if avg_file else \
-             MincAtom(name=os.path.join(output_dir, '%s_sd.mnc' % name_wo_ext),
-                      orig_name=None,
-                      pipeline_sub_dir=output_dir)
+    sdfile = (MincAtom(name=os.path.join(avg_file.dir, '%s_sd.mnc' % avg_file.filename_wo_ext),
+                       orig_name=None,
+                       pipeline_sub_dir=avg_file.pipeline_sub_dir) if avg_file else
+              MincAtom(name=os.path.join(output_dir, '%s_sd.mnc' % name_wo_ext),
+                       orig_name=None,
+                       pipeline_sub_dir=output_dir))
     additional_flags = ["-copy_header"] if copy_header_from_first_input else []  # type: List[str]
     avg_cmd = CmdStage(inputs=tuple(imgs), outputs=(avg, sdfile),
-                       cmd=['mincaverage', '-clobber', '-normalize',
-                            '-max_buffer_size_in_kb', '409620'] + additional_flags +
-                       ['-sdfile', sdfile.path] +
-                       sorted([img.path for img in imgs]) +
-                       [avg.path])
+                       cmd=['mincaverage', '-clobber', '-normalize', '-max_buffer_size_in_kb', '409620'] +
+                           additional_flags +
+                           ['-sdfile', sdfile.path] +
+                           sorted([img.path for img in imgs]) +
+                           [avg.path])
     s.add(avg_cmd)
     return Result(stages=s, output=avg)
+
+
+PMincAverageMemCfg = NamedTuple("PMincAverageMemCfg", [('base_mem', float), ('mem_per_voxel', float)])
+default_pmincaverage_mem_cfg = PMincAverageMemCfg(base_mem=0.5, mem_per_voxel=17.0/(1064*13158000.0))
 
 # FIXME this doesn't implement the avg_file and other mincaverage stuff (other than copy_header ...)
 # ... maybe there's enough similarity to parametrize over these and maybe others (xfmavg?!)
@@ -253,11 +287,18 @@ def pmincaverage(imgs: List[MincAtom],
                  output_dir: str = '.',
                  copy_header_from_first_input: bool = False):
     if copy_header_from_first_input:
-        # TODO: should be logged, not printed?
-        print("Warning: pmincaverage doesn't implement copy_header; use mincaverage instead", sys.stderr)
+        # TODO: should be logged, not just printed?
+        warnings.warn("Warning: pmincaverage doesn't implement copy_header; use mincaverage instead")
     avg = MincAtom(name=os.path.join(output_dir, "%s.mnc" % name_wo_ext), orig_name=None)
     s = CmdStage(inputs=tuple(imgs), outputs=(avg,),
                  cmd=["pmincaverage", "--clobber"] + sorted([img.path for img in imgs]) + [avg.path])
+
+    def set_memory(st, cfg):
+        voxels_per_file = reduce(mul, volumeFromFile(imgs[0]).getSizes())
+        st.setMem(cfg.base_mem + voxels_per_file * cfg.mem_per_foxel * len(imgs))
+
+    s.when_runnable_hooks.append(lambda st: set_memory(st, default_pmincaverage_mem_cfg))
+
     return Result(stages=Stages([s]), output=avg)
 
 
@@ -324,13 +365,16 @@ def mincresample(img: MincAtom,
     ...
     new_name_wo_ext -- string indicating a user specified file name (without extension)
     subdir          -- string indicating which subdirectory to output the file in:
-    
-    >>> img  = MincAtom('/tmp/img_1.mnc')
-    >>> like = MincAtom('/tmp/img_2.mnc')
+
+    >>> img1 = MincAtom('/tmp/img_1.mnc')
+    >>> img2 = MincAtom('/tmp/img_2.mnc')
     >>> xfm  = XfmAtom('/tmp/trans.xfm')
-    >>> stages, resampled = mincresample(img=img, xfm=xfm, like=like)
+    >>> stages = mincresample(img=img1, xfm=xfm, like=img2).stages
     >>> [x.render() for x in stages]
-    ['mincresample -clobber -2 -transform /tmp/trans.xfm -like /tmp/img_2.mnc /tmp/img_1.mnc /micehome/bdarwin/git/pydpiper/img_1/resampled/trans-resampled.mnc']
+    ['mincresample -clobber -2 -transform /tmp/trans.xfm -like /tmp/img_2.mnc /tmp/img_1.mnc img_1/resampled/trans-resampled.mnc']
+    >>> stages_ = mincresample(img=img2, xfm=xfm, like=img1, invert=True).stages
+    >>> [x.render() for x in stages_]
+    ['mincresample -clobber -2 -invert -transform /tmp/trans.xfm -like /tmp/img_1.mnc /tmp/img_2.mnc img_2/resampled/trans-resampled.mnc']
     """
 
     s = Stages()
@@ -986,6 +1030,13 @@ def parse_minctracc_linear_protocol(f, transform_type : LinearTransType,
                                     base_minctracc_conf=base_minctracc_conf)
 
 
+MinctraccMemCfg = NamedTuple("MinctraccMemCfg",
+                             [('base_mem', float),
+                              ('mem_per_voxel', float)])
+
+default_minctracc_mem_cfg = MinctraccMemCfg(base_mem=3e-1, mem_per_voxel=6e-7)
+
+
 # TODO: add memory estimation hook
 def minctracc(source: MincAtom,
               target: MincAtom,
@@ -1099,9 +1150,17 @@ def minctracc(source: MincAtom,
                             ((target.mask,) if target.mask and conf.use_masks else ()),
                      outputs=(out_xfm,))
 
+    # TODO what about linear registration?  Probably uses less memory; could use defaults then ...
+    def set_memory(st, cfg):
+        voxels = reduce(mul, volumeFromFile(source.path).getSizes())
+        st.setMem(voxels * cfg.mem_per_voxel + cfg.base_mem)
+
+    stage.when_runnable_hooks.append(lambda st: set_memory(st, default_minctracc_mem_cfg))
+
     s.add(stage)
 
-    # note accessing a None resampled field from an XfmHandler is an error (by property magic),
+    # note accessing a None resampled field from an XfmHandler is an error
+    # (by property magic, but would be similar using getters),
     # so the possibility of `resampled` being None isn't as annoying as it looks
     resampled = (s.defer(mincresample(img=source, xfm=out_xfm, like=target,
                                       interpolation=Interpolation.sinc))
@@ -1181,7 +1240,9 @@ def get_linear_configuration_from_options(conf, transform_type : LinearTransType
                                           # minctracc config uses factors, so should be OK.
                          )
     else:
-        #minctracc_conf = default_lsq12_multilevel_minctracc.replace(...)
+        warnings.warn("No %s protocol specified -- using the defaults, which might not be what you want"
+                      % transform_type)
+        minctracc_conf = default_lsq12_multilevel_minctracc #.replace(...)
         # FIXME `replace` the resolution (<-> step factors, etc.), transform_type, etc.!!  Also print a warning?
         raise NotImplementedError("You need to supply a protocol at the moment.  Sorry!")
 
@@ -1331,8 +1392,18 @@ def parse_mincANTS_protocol_file(config_file,
 
     return full_configuration
 
+
 def all_equal(xs, by=lambda x: x):
     return len(set((by(x) for x in xs))) == 1
+
+
+MincANTSMemCfg = NamedTuple("MincANTSMemCfg",
+                            [('base_mem', float),
+                             ('mem_per_voxel_coarse', float),
+                             ('mem_per_voxel_fine', bool)])
+
+default_mincANTS_mem_cfg = MincANTSMemCfg(base_mem=0.177, mem_per_voxel_coarse=1.385e-7, mem_per_voxel_fine=2.1e-7)
+
 
 def mincANTS(source: MincAtom,
              target: MincAtom,
@@ -1406,6 +1477,18 @@ def mincANTS(source: MincAtom,
                '-o', out_xfm.path]
             + (['-x', target.mask.path] if conf.use_mask and target.mask else []))
 
+
+    def set_memory(st, mem_cfg):
+        # see comments re: mincblur memory configuration
+        voxels = reduce(mul, volumeFromFile(source.path).getSizes())
+        mem_per_voxel = (mem_cfg.mem_per_voxel_coarse
+                         if int(conf.iterations.split('x')[-1]) == 0  # yikes ... this parsing should be done earlier
+                         else mem_cfg.mem_per_voxel_fine)
+        st.setMem(mem_cfg.base_mem + voxels * mem_per_voxel)
+
+    # see comments re: mincblur memory configuration
+    stage.when_runnable_hooks.append(lambda st: set_memory(st, default_mincANTS_mem_cfg))
+
     s.add(stage)
     resampled = (s.defer(mincresample(img=source, xfm=out_xfm, like=target,
                                       interpolation=Interpolation.sinc,
@@ -1416,6 +1499,7 @@ def mincANTS(source: MincAtom,
                                     target=target,
                                     xfm=out_xfm,
                                     resampled=resampled))
+
 
 T = TypeVar('T')
 
@@ -1498,6 +1582,11 @@ def lsq12_nlin(source: MincAtom,
     """
     s = Stages()
 
+    # This is strange.  The minctracc case requires a multilevel conf, while the mincANTS case requires a single conf.
+    # Of course, it's because a 'single' mincANTS run may work at several resolutions iteratively; if we're not
+    # constructing intermediate models, there's no need for separate calls.  However, this is annoying since
+    # one would hope this function would similarly to the model-building version in being able to dispatch
+    # on the configuration passed in (and in the same way, to avoid extra logic).
     if isinstance(nlin_conf, MincANTSConf):
         lsq12_transform_handler = s.defer(multilevel_minctracc(source=source,
                                                                target=target,
