@@ -616,3 +616,16 @@ def to_nlin_conf(nlin_args : Namespace) -> NLINConf:
 _nlin_parser = BaseParser(_mk_nlin_parser(ArgParser(add_help=False)), group_name='nlin')
 nlin_parser = AnnotatedParser(parser=_nlin_parser, namespace="nlin")  #, cast=to_nlin_conf)
 # TODO cast doesn't work for NLIN.py parser with extra --target flag
+
+
+def _mk_segmentation_parser(parser : ArgParser, default : bool):
+    group = parser.add_argument_group("Segmentation", "Segmentation options.")
+    group.add_argument("--run-maget", dest="run_maget",
+                       default=default, type=str,
+                       help="Run MAGeT segmentation.")
+    return parser
+
+# FIXME change this default ?!
+segmentation_parser = AnnotatedParser(parser=BaseParser(_mk_segmentation_parser(ArgParser(add_help=False), default=True),
+                                                        "mbm"),
+                                      namespace="mbm")
