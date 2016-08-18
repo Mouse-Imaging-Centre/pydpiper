@@ -8,16 +8,17 @@ import warnings
 import numpy as np
 from configargparse import Namespace, ArgParser
 import pandas as pd
+from pydpiper.pipelines.MAGeT import maget
 
 from pydpiper.minc.analysis import determinants_at_fwhms
 from pydpiper.minc.files import MincAtom
-from pydpiper.minc.registration import (concat_xfmhandlers, invert_xfmhandler, mincresample_new)
+from pydpiper.minc.registration import (concat_xfmhandlers, invert_xfmhandler, mincresample_new, check_MINC_input_files)
 from pydpiper.pipelines.MBM import mbm, mbm_parser, MBMConf
 from pydpiper.execution.application import execute
 from pydpiper.core.util import NamedTuple
 from pydpiper.core.stages import Stages, Result
 from pydpiper.core.arguments import (AnnotatedParser, CompoundParser, application_parser,
-                                     execution_parser, registration_parser, parse, BaseParser)
+                                     execution_parser, registration_parser, parse, BaseParser, segmentation_parser)
 
 
 TwoLevelConf = NamedTuple("TwoLevelConf", [("first_level_conf", MBMConf),
@@ -26,15 +27,18 @@ TwoLevelConf = NamedTuple("TwoLevelConf", [("first_level_conf", MBMConf),
 
 def two_level_pipeline(options : TwoLevelConf):
 
-    # TODO split this out into a function that operates on strings and one that operates on MincAtoms, as usual
     if options.application.files:
         warnings.warn("Got extra arguments: '%s'" % options.application.files)
     with open(options.twolevel.csv_file, 'r') as f:
-        files_df = pd.read_csv(filepath_or_buffer=f,
-                               usecols=['group', 'file'],
-                               converters={ 'file' : lambda f: MincAtom(f) })  # TODO pipeline_sub_dir?
+        try:
+            files_df = pd.read_csv(filepath_or_buffer=f,
+                                   usecols=['group', 'file'],
+                                   converters={ 'file' : lambda f: MincAtom(f) })  # TODO pipeline_sub_dir?
+        except AttributeError:
+            warnings.warn("Something went wrong ... does your .csv file have `group` and `file` columns?")
+            raise
 
-    # TODO check input files ...
+    check_MINC_input_files(files_df.file.map(lambda x: x.path))
 
     return two_level(grouped_files_df=files_df, options=options)
 
@@ -47,8 +51,8 @@ def two_level(grouped_files_df, options : TwoLevelConf):
 
     first_level_results = (
         grouped_files_df
-        .groupby('group', as_index=False, sort=False)
-        .aggregate({ 'file' : lambda files: list(files) })
+        .groupby('group', as_index=False, sort=False)       # the usual annoying pattern to do a aggregate with access
+        .aggregate({ 'file' : lambda files: list(files) })  # to the groupby object's keys ... TODO: fix
         .rename(columns={ 'file' : "files" })
         .assign(build_model=lambda df:
                               df.apply(axis=1,
@@ -68,15 +72,15 @@ def two_level(grouped_files_df, options : TwoLevelConf):
     second_level_options = copy.deepcopy(options)
     second_level_options.mbm.lsq6 = second_level_options.mbm.lsq6.replace(nuc=False, inormalize=False)
 
-    second_level_results = s.defer(mbm(imgs=[m.avg_img for m in first_level_results.build_model],
+    second_level_results = s.defer(mbm(imgs=first_level_results.build_model.map(lambda m: m.avg_img),
                                        options=second_level_options,
                                        prefix=os.path.join(options.application.output_directory,
                                                            options.application.pipeline_name + "_second_level")))
 
     # FIXME sadly, `mbm` doesn't return a pd.Series of xfms, so we don't have convenient indexing ...
     overall_xfms = [s.defer(concat_xfmhandlers([xfm_1, xfm_2]))
-                    for xfms_1, xfm_2 in zip([r.lsq12_nlin_xfms.output for r in first_level_results.build_model],
-                                             second_level_results.overall_xfms)
+                    for xfms_1, xfm_2 in zip([r.xfms.lsq12_nlin_xfm for r in first_level_results.build_model],
+                                             second_level_results.xfms.overall_xfm)
                     for xfm_1 in xfms_1]
     resample  = np.vectorize(mincresample_new, excluded={"extra_flags"})
     defer     = np.vectorize(s.defer)
@@ -89,7 +93,7 @@ def two_level(grouped_files_df, options : TwoLevelConf):
 
     resampled_determinants = (pd.merge(
         left=first_level_determinants,
-        right=pd.DataFrame({'group_xfm':second_level_results.overall_xfms})
+        right=pd.DataFrame({'group_xfm' : second_level_results.xfms.overall_xfm})
               .assign(source=lambda df: df.group_xfm.apply(lambda r: r.source)),
         left_on="first_level_avg",
         right_on="source")
@@ -109,13 +113,33 @@ def two_level(grouped_files_df, options : TwoLevelConf):
                               inv_xfms=overall_xfms,
                               blur_fwhms=options.mbm.stats.stats_kernels))]
 
-    # TODO package up all transforms, first-level/resampled determinants into one nice big data frame and return it ...
+    # TODO return some MAGeT stuff from two_level function ??
+    # FIXME running MAGeT from within the `twolevel` function has the same problem as running it from within `mbm`:
+    # it will now run when this pipeline is called from within another one (e.g., n-level), which will be
+    # redundant, create filename clashes, etc.
+    if options.mbm.mbm.run_maget:
+        maget_options = copy.deepcopy(options)
+        maget_options.maget = options.mbm.maget
+        del maget_options.mbm
+
+        # again using a weird combination of vectorized and loop constructs ...
+        s.defer(maget([xfm.resampled for _ix, m in first_level_results.iterrows()
+                       for xfm in m.build_model.xfms.rigid_xfm],
+                      options=maget_options,
+                      prefix="%s_MAGeT" % options.application.pipeline_name,
+                      output_dir=os.path.join(options.application.output_directory,
+                                              options.application.pipeline_name + "_processed")))
+
+    # TODO resampling to database model ...
+
+    # TODO package up all transforms and first-level/resampled determinants into a couple tables and return them ...
     return Result(stages=s, output=NotImplemented)
 
-
+# FIXME: better to replace --files by this for all/most pipelines;
+# then we can enforce presence of metadata in the CSV file ... (pace MINC2)
 def _mk_twolevel_parser(p):
     p.add_argument("--csv-file", dest="csv_file", type=str, required=True,
-                   help="CSV file containing at least columns 'group' and 'file")
+                   help="CSV file containing at least 'group' and 'file' columns")
     return p
 
 
@@ -136,6 +160,7 @@ def main(args):
            #AnnotatedParser(parser=mbm_parser, namespace="first_level", prefix="first-level"),
            #AnnotatedParser(parser=mbm_parser, namespace="second_level", prefix="second-level"),
            #stats_parser
+           #segmentation_parser
            ])  # TODO add more stats parsers?
 
     options = parse(p, args[1:])
