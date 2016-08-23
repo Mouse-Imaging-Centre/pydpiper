@@ -1,10 +1,24 @@
-New in Version 1.17
+New in Version 1.18.1
+=====================
+* point to ConfigArgParse 0.11.0 on github until its maintainer makes a new release and uploads to PyPI
+
+New in Version 1.18
 ===================
+* bug fix to minctracc memory config
+* added a `--use-dir-names` flag to two-level code to create groups based on directory names
+  rather than first input files
+* update the dependencies; in particular, specify minimum ConfigArgParse version due to bug in that library
 * many changes supporting operation on the Sick Kids CCM grid (and other PBS/Torque 'capability'
   systems) - mostly slowly implementing a HPC queue submission library inside Pydpiper ...
+* new config file for CCM cluster
+* added a --submit-server flag so that use of this mode of operations isn't determined by queue type
+  (at the moment this only works for PBS/Torque grids)
+* added some logic to executor `mainLoop` procedure to detect Pyro4 timeouts ... this doesn't ever
+  seem to be triggered, so should probably be removed again in future
 * fixed a bug where only --lsq12-max-pairs images were used to generate the lsq12 average;
   doesn't seem to have made much difference
 * runnable-time hooks are now cached
+  (and are now added via a method, rather than by appending to runnable_hooks directly)
 * very hackish memory estimates for pmincaverage (for these to agree with SGE's estimates,
   probably need minc-stuffs 0.1.14 or later)
 * fewer executors are launched in some situations when more aren't needed

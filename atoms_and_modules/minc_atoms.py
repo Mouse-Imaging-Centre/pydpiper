@@ -149,7 +149,7 @@ class mincANTS(CmdStage):
             return
 
 MinctraccMemCfg = namedtuple('MinctraccMemCfg', ['base_mem', 'mem_per_voxel'])
-minctracc_default_mem_cfg = MinctraccMemCfg(base_mem = 3e-4, mem_per_voxel = 3.175e-10)
+minctracc_default_mem_cfg = MinctraccMemCfg(base_mem = 3e-1, mem_per_voxel = 6e-7)
 # these coefficients assume we're at the native resolution, hence are conservative
 # for all sensible registrations
         
