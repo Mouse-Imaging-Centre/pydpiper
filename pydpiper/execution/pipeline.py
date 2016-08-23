@@ -665,7 +665,7 @@ class Pipeline(object):
           # running indefinitely with no jobs
           (self.number_launched_and_waiting_clients + len(self.clients) == 0 and
           self.max_memory_required(self.runnable) > self.memAvail)):
-            msg = "Shutting down due to jobs which require more memory (%.2fG) than available anywhere." % self.max_memory_required(self.runnable)
+            msg = "Shutting down due to jobs which require more memory (%.2fG) than available anywhere. Please use the --mem argument to increase the amount of memory that executors can request." % self.max_memory_required(self.runnable)
             print(msg)
             logger.warning(msg)
             return False
