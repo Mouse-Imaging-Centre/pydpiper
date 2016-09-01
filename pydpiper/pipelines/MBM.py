@@ -22,7 +22,7 @@ from pydpiper.minc.registration import (lsq6_nuc_inorm, lsq12_nlin_build_model, 
                                         get_nonlinear_configuration_from_options,
                                         invert_xfmhandler, check_MINC_input_files, lsq12_nlin, MultilevelMincANTSConf,
                                         LinearTransType, get_linear_configuration_from_options, mincresample_new,
-                                        Interpolation)
+                                        Interpolation, param2xfm)
 from pydpiper.minc.analysis     import determinants_at_fwhms, StatsConf
 from pydpiper.core.arguments    import (lsq6_parser, lsq12_parser, nlin_parser, stats_parser, CompoundParser,
                                         AnnotatedParser, NLINConf, BaseParser, segmentation_parser)
@@ -108,11 +108,16 @@ def mbm(imgs : List[MincAtom], options : MBMConf, prefix : str, output_dir : str
                   get_resolution_from_file(targets.registration_standard.path))
     options.registration = options.registration.replace(resolution=resolution)
 
-    lsq6_result = s.defer(lsq6_nuc_inorm(imgs=imgs,
-                                         resolution=resolution,
-                                         registration_targets=targets,
-                                         lsq6_dir=lsq6_dir,
-                                         lsq6_options=options.mbm.lsq6))
+    if options.mbm.lsq6.run_lsq6:
+        lsq6_result = s.defer(lsq6_nuc_inorm(imgs=imgs,
+                                             resolution=resolution,
+                                             registration_targets=targets,
+                                             lsq6_dir=lsq6_dir,
+                                             lsq6_options=options.mbm.lsq6))
+    else:
+        identity_xfm = s.defer(param2xfm(out_xfm=FileAtom(name="identity_xfm")))
+        lsq6_result  = [XfmHandler(source=img, target=img, resampled=img, xfm=identity_xfm) for img in imgs]
+    # what about running nuc/inorm without a linear registration step??
 
     full_hierarchy = get_nonlinear_configuration_from_options(nlin_protocol=options.mbm.nlin.nlin_protocol,
                                                               reg_method=options.mbm.nlin.reg_method,
@@ -136,7 +141,7 @@ def mbm(imgs : List[MincAtom], options : MBMConf, prefix : str, output_dir : str
     overall_xfms = [s.defer(concat_xfmhandlers([rigid_xfm, nlin_xfm]))
                     for rigid_xfm, nlin_xfm in zip(lsq6_result, lsq12_nlin_result.output)]
 
-    output_xfms = (pd.DataFrame({ "rigid_xfm"      : lsq6_result,
+    output_xfms = (pd.DataFrame({ "rigid_xfm"      : lsq6_result,  # maybe don't return this if LSQ6 not run??
                                   "lsq12_nlin_xfm" : lsq12_nlin_result.output,
                                   "overall_xfm"    : overall_xfms }))
     # we could `merge` the determinants with this table, but preserving information would cause lots of duplication

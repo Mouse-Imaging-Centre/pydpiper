@@ -70,7 +70,12 @@ def two_level(grouped_files_df, options : TwoLevelConf):
     # FIXME right now the same options set is being used for both levels -- use options.first/second_level
     # TODO should there be a pride of models for this pipe as well ?
     second_level_options = copy.deepcopy(options)
-    second_level_options.mbm.lsq6 = second_level_options.mbm.lsq6.replace(nuc=False, inormalize=False)
+    second_level_options.mbm.lsq6 = second_level_options.mbm.lsq6.replace(run_lsq6=False) #nuc=False, inormalize=False
+    # NOTE: running lsq6_nuc_inorm here doesn't work in general (but possibly with rotational minctracc)
+    # since the native-space initial model is used, but our images are
+    # already in standard space(as we resampled there after the 1st-level lsq6).
+    # On the other hand, we might want to run it here (although of course not nuc/inorm) in the future,
+    # for instance given a 'pride' of models (one for each group).
 
     second_level_results = s.defer(mbm(imgs=first_level_results.build_model.map(lambda m: m.avg_img),
                                        options=second_level_options,
@@ -106,17 +111,17 @@ def two_level(grouped_files_df, options : TwoLevelConf):
     # TODO only resamples the log determinants, but still a bit ugly ... abstract somehow?
     # TODO shouldn't be called resampled_determinants since this is basically the whole (first_level) thing ...
 
-    inverted_xfms = [s.defer(invert_xfmhandler(xfm)) for xfm in overall_xfms]
+    inverted_overall_xfms = [s.defer(invert_xfmhandler(xfm)) for xfm in overall_xfms]
 
-    overall_determinants = [s.defer(determinants_at_fwhms(
-                              xfms=inverted_xfms,
-                              inv_xfms=overall_xfms,
-                              blur_fwhms=options.mbm.stats.stats_kernels))]
+    overall_determinants = s.defer(determinants_at_fwhms(
+                                     xfms=inverted_overall_xfms,
+                                     inv_xfms=overall_xfms,
+                                     blur_fwhms=options.mbm.stats.stats_kernels))
 
     # TODO return some MAGeT stuff from two_level function ??
-    # FIXME running MAGeT from within the `twolevel` function has the same problem as running it from within `mbm`:
+    # FIXME running MAGeT from within the `two_level` function has the same problem as running it from within `mbm`:
     # it will now run when this pipeline is called from within another one (e.g., n-level), which will be
-    # redundant, create filename clashes, etc.
+    # redundant, create filename clashes, etc. -- this should be moved to `two_level_pipeline`.
     if options.mbm.mbm.run_maget:
         maget_options = copy.deepcopy(options)
         maget_options.maget = options.mbm.maget

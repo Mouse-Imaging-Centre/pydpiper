@@ -17,7 +17,7 @@ from functools import reduce
 
 from pydpiper.core.files import FileAtom
 from pydpiper.core.stages import CmdStage, Result, Stages
-from pydpiper.core.util import pairs, AutoEnum, NamedTuple, raise_
+from pydpiper.core.util import pairs, AutoEnum, NamedTuple, raise_, flatten
 from pydpiper.minc.files import MincAtom, XfmAtom
 from pydpiper.minc.containers import XfmHandler
 
@@ -300,6 +300,10 @@ def pmincaverage(imgs: List[MincAtom],
     s.when_runnable_hooks.append(lambda st: set_memory(st, default_pmincaverage_mem_cfg))
 
     return Result(stages=Stages([s]), output=avg)
+
+
+def mincreshape():
+    raise NotImplementedError
 
 
 class Interpolation(AutoEnum):
@@ -2825,11 +2829,32 @@ def create_quality_control_images(imgs: List[MincAtom],
         message_to_print += "* * * * * * *\n"
 
         montage_stage.when_finished_hooks.append(
-            lambda : print(message_to_print))
+            lambda _: print(message_to_print))
 
         s.add(montage_stage)
 
     return Result(stages=s, output=None)
+
+
+def optional(truthy, val):
+    if truthy:
+        return [val]
+    else:
+        return []
+
+
+def param2xfm(out_xfm, center=None, translation=None, rotations=None, scales=None, shears=None):
+    s = CmdStage(inputs=(), outputs=(out_xfm,),
+                 cmd=["param2xfm", "-clobber"]
+                     + flatten(*[(optional(x, [s, x]))
+                        for s, x in
+                        [("-center", center),
+                         ("-translation", translation),
+                         ("-rotations", rotations),
+                         ("-scales", scales),
+                         ("-shears", shears)]])
+                     + [out_xfm.path])
+    return Result(stages=Stages([s]), output=out_xfm)
 
 
 class FlipAxis(AutoEnum):

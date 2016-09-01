@@ -543,7 +543,7 @@ class Pipeline(object):
             self.removeFromRunning(index, clientURI, new_status = "finished")
             # run any potential hooks now that the stage has finished:
             for f in s.finished_hooks:
-                f()
+                f(s)
         self.num_finished_stages += 1
         # write out the (index, hash) pairs to disk.  We don't actually need the indices
         # for anything (in fact, the restart code in skip_completed_stages is resilient 
@@ -607,7 +607,7 @@ class Pipeline(object):
         logger.log(SUBDEBUG, "Queueing stage %d", i)
         self.runnable.add(i)
         for f in self.stages[i]._runnable_hooks:
-            f()
+            f(self.stages[i])
         # keep track of the memory requirements of the runnable jobs
         self.mem_req_for_runnable.append(self.stages[i].mem)
 
