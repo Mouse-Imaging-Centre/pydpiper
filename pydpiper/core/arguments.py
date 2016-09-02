@@ -620,12 +620,15 @@ nlin_parser = AnnotatedParser(parser=_nlin_parser, namespace="nlin")  #, cast=to
 
 def _mk_segmentation_parser(parser : ArgParser, default : bool):
     group = parser.add_argument_group("Segmentation", "Segmentation options.")
-    group.add_argument("--run-maget", dest="run_maget",
-                       default=default, type=str,
+    group.add_argument("--run-maget", action='store_true', dest="run_maget",
                        help="Run MAGeT segmentation.")
+    group.add_argument("--no-run-maget", dest="run_maget",
+                       action='store_false', help="Don't run MAGeT segmentation")
+    parser.set_defaults(run_maget=True)
     return parser
 
 # FIXME change this default ?!
-segmentation_parser = AnnotatedParser(parser=BaseParser(_mk_segmentation_parser(ArgParser(add_help=False), default=True),
+segmentation_parser = AnnotatedParser(parser=BaseParser(_mk_segmentation_parser(ArgParser(add_help=False),
+                                                                                default=True),
                                                         "mbm"),
                                       namespace="mbm")
