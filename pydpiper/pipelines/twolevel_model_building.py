@@ -12,7 +12,8 @@ from pydpiper.pipelines.MAGeT import maget
 
 from pydpiper.minc.analysis import determinants_at_fwhms
 from pydpiper.minc.files import MincAtom
-from pydpiper.minc.registration import (concat_xfmhandlers, invert_xfmhandler, mincresample_new, check_MINC_input_files)
+from pydpiper.minc.registration import (concat_xfmhandlers, invert_xfmhandler, mincresample_new, check_MINC_input_files,
+                                        TargetType)
 from pydpiper.pipelines.MBM import mbm, mbm_parser, MBMConf
 from pydpiper.execution.application import execute
 from pydpiper.core.util import NamedTuple
@@ -70,6 +71,13 @@ def two_level(grouped_files_df, options : TwoLevelConf):
     # FIXME right now the same options set is being used for both levels -- use options.first/second_level
     # TODO should there be a pride of models for this pipe as well ?
     second_level_options = copy.deepcopy(options)
+
+    if options.mbm.lsq6.target_type == TargetType.bootstrap:
+        # won't work since the second level part tries to get the resolution of the first input file, which
+        # hasn't been created.  We could instead pass in a resolution to the `mbm` function,
+        # but instead disable for now:
+        raise ValueError("Bootstrap model building currently doesn't work with this pipeline; "
+                         "just specify an initial target instead")
     second_level_options.mbm.lsq6 = second_level_options.mbm.lsq6.replace(run_lsq6=False) #nuc=False, inormalize=False
     # NOTE: running lsq6_nuc_inorm here doesn't work in general (but possibly with rotational minctracc)
     # since the native-space initial model is used, but our images are
