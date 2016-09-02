@@ -376,7 +376,7 @@ class pipelineExecutor(object):
                                     "#PBS -N %s" % jobname,
                                     "#PBS -l nodes=1:ppn=1",
                                     # CCM is strict, and doesn't like float values:
-                                    "#PBS -l walltime:%s" % (self.time),
+                                    "#PBS -l walltime=%s" % (self.time),
                                     "#PBS -l %s=%dg\n" % (self.mem_request_attribute, m.ceil(self.mem)),
                                     # FIXME add walltime stuff here if specified (and check <= max_walltime ??)
                                     "df /dev/shm >&2",  # FIXME: remove
@@ -512,7 +512,8 @@ class pipelineExecutor(object):
         # anymore. If that is the case, we can leave this main loop
         # and just wait until current running jobs (children) have finished
         if self.is_time_to_drain():
-            logger.info("Time expired for accepting new jobs")  #...leaving main loop.")
+            logger.debug("Time expired for accepting new jobs")  #...leaving main loop.")
+            # was logger.info; made this a debug since we currently don't bail out of the loop ...
             #return False
             return True
 
