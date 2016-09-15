@@ -992,6 +992,7 @@ def parse_minctracc_nonlinear_protocol(f,
                "step"               : float,  # use thrice_result here too?
                "gradient"           : parse_bool,
                "iterations"         : int,
+               "lattice_diameter"   : thrice_result(float),
                "optimization"       : lambda o: True if o == "-use_simplex" \
                                                      else raise_(NotImplementedError("optimization %s" % o)),
                "simplex"            : float,
