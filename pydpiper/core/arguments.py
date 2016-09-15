@@ -324,6 +324,11 @@ def _mk_execution_parser(p: ArgParser) -> ArgParser:
     group.add_argument("--default-job-mem", dest="default_job_mem",
                        type=float, default=1.75,
                        help="Memory (in GB) to allocate to jobs which don't make a request. [Default=%(default)s]")
+    #group.add_argument("--memory-factor", dest="memory_factor",
+    #                   type=float, default=1,
+    #                   help="Factor by which to scale memory estimates for all stages, e.g., on systems where there"
+    #                        " isn't actually as much memory as the scheduler believes.  Currently the default request"
+    #                        " is also scaled.  [Default=%(default)s]")
     group.add_argument("--cmd-wrapper", dest="cmd_wrapper",
                        type=str, default="",
                        help="Wrapper inside of which to run the command, e.g., '/usr/bin/time -v'. [Default='%(default)s']")
@@ -627,8 +632,12 @@ def _mk_segmentation_parser(parser : ArgParser, default : bool):
     parser.set_defaults(run_maget=True)
     return parser
 
+
 # FIXME change this default ?!
 segmentation_parser = AnnotatedParser(parser=BaseParser(_mk_segmentation_parser(ArgParser(add_help=False),
                                                                                 default=True),
-                                                        "mbm"),
-                                      namespace="mbm")
+                                                        "segmentation"),
+                                      namespace="segmentation")
+
+
+

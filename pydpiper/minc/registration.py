@@ -295,15 +295,18 @@ def pmincaverage(imgs: List[MincAtom],
 
     def set_memory(st, cfg):
         voxels_per_file = reduce(mul, volumeFromFile(imgs[0]).getSizes())
-        st.setMem(cfg.base_mem + voxels_per_file * cfg.mem_per_foxel * len(imgs))
+        st.setMem(cfg.base_mem + voxels_per_file * cfg.mem_per_voxel * len(imgs))
 
     s.when_runnable_hooks.append(lambda st: set_memory(st, default_pmincaverage_mem_cfg))
 
     return Result(stages=Stages([s]), output=avg)
 
 
-def mincreshape():
-    raise NotImplementedError
+def mincreshape(img : MincAtom, args : List[str]):
+    out_img=img.newname_with(''.join(args))  # TODO better naming
+    stage = CmdStage(inputs=(img,), outputs=out_img,
+                     cmd=["mincreshape", "-clobber"] + args + [img.path, out_img.path])
+    return Result(stages=Stages([stage]), output=out_img)
 
 
 class Interpolation(AutoEnum):
@@ -2868,3 +2871,25 @@ def volflip(img : MincAtom, axis : FlipAxis = None):
     s = CmdStage(inputs=(img,), outputs=(flipped,),
                  cmd=["volflip", "-clobber", img.path, flipped.path] + (["-%s" % axis] if axis else []))
     return Result(stages=Stages([s]), output=flipped)
+
+
+class LabelOp(AutoEnum):
+    convert = merge = remap = select = remove = mask = binarize = ()
+
+
+def minc_label_ops(in_labels : MincAtom, op : LabelOp, op_arg : Optional[Union[MincAtom, str]] = None):
+    out_labels = NotImplementedError
+
+    if op in { LabelOp.convert, LabelOp.binarize }:
+        if op_arg is not None:
+            raise ValueError("extraneous argument provided with %s op" % op)
+    else:
+        if op_arg is None:
+            raise ValueError("op %s needs a value" % op)
+
+    s = CmdStage(inputs=(in_labels,), outputs=(out_labels,),
+                 cmd=["minc_label_ops"]
+                     + ["--%s" % op]
+                     + ([op_arg] if op_arg is not None else [])
+                     + [in_labels.path, out_labels.path])
+    return Result(stages=Stages([s]), output=out_labels)

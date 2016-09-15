@@ -241,10 +241,13 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir):
                                                           invert=True, interpolation=Interpolation.nearest_neighbour,
                                                           #postfix="-input-labels",
                                                           # this makes names really long ...:
-                                                          new_name_wo_ext="%s_on_%s" %
-                                                                          (row.voted_labels.filename_wo_ext,
-                                                                           row.img.filename_wo_ext),
+                                                          # TODO this doesn't work for running MAGeT on the nlin avg:
+                                                          #new_name_wo_ext="%s_on_%s" %
+                                                          #                (row.voted_labels.filename_wo_ext,
+                                                          #                 row.img.filename_wo_ext),
                                                           #postfix="_labels_via_%s" % row.xfm.xfm.filename_wo_ext,
+                                                          new_name_wo_ext="%s_via_%s" % (row.voted_labels.filename_wo_ext,
+                                                                                         row.xfm.xfm.filename_wo_ext),
                                                           extra_flags=("-keep_real_range",)))
 
             # now that the new templates have been labelled, combine with the atlases:
@@ -314,7 +317,8 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir):
         for row in voted.itertuples():
             row.img.labels = row.voted_labels
 
-        return Result(stages=s, output=voted.drop("voted_labels", axis=1))
+        # returning voted_labels as a column is slightly redundant, but possibly useful ...
+        return Result(stages=s, output=voted)  # voted.drop("voted_labels", axis=1))
 
 
 def maget_pipeline(options):

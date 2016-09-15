@@ -9,7 +9,7 @@ from typing import List
 from pydpiper.minc.containers import XfmHandler
 
 from pydpiper.core.files import FileAtom
-
+from pydpiper.minc.thickness import cortical_thickness
 from pydpiper.pipelines.MAGeT import maget, maget_parser, maget_parsers
 from pydpiper.core.util import NamedTuple
 
@@ -24,6 +24,7 @@ from pydpiper.minc.registration import (lsq6_nuc_inorm, lsq12_nlin_build_model, 
                                         LinearTransType, get_linear_configuration_from_options, mincresample_new,
                                         Interpolation, param2xfm)
 from pydpiper.minc.analysis     import determinants_at_fwhms, StatsConf
+from pydpiper.minc.thickness    import thickness_parser
 from pydpiper.core.arguments    import (lsq6_parser, lsq12_parser, nlin_parser, stats_parser, CompoundParser,
                                         AnnotatedParser, NLINConf, BaseParser, segmentation_parser)
 from pydpiper.execution.application    import mk_application
@@ -64,7 +65,7 @@ def mbm_pipeline(options : MBMConf):
             f.write(dataframe.applymap(maybe_deref_path).to_csv(index=False))
 
     # TODO moved here from inside `mbm` for now ... does this make most sense?
-    if options.mbm.mbm.run_maget:
+    if options.mbm.segmentation.run_maget:
         import copy
         maget_options = copy.deepcopy(options)  #Namespace(maget=options)
         #maget_options
@@ -138,8 +139,8 @@ def mbm(imgs : List[MincAtom], options : MBMConf, prefix : str, output_dir : str
                              inv_xfms=lsq12_nlin_result.output,
                              blur_fwhms=options.mbm.stats.stats_kernels))
 
-    overall_xfms = [s.defer(concat_xfmhandlers([rigid_xfm, nlin_xfm]))
-                    for rigid_xfm, nlin_xfm in zip(lsq6_result, lsq12_nlin_result.output)]
+    overall_xfms = [s.defer(concat_xfmhandlers([rigid_xfm, lsq12_nlin_xfm]))
+                    for rigid_xfm, lsq12_nlin_xfm in zip(lsq6_result, lsq12_nlin_result.output)]
 
     output_xfms = (pd.DataFrame({ "rigid_xfm"      : lsq6_result,  # maybe don't return this if LSQ6 not run??
                                   "lsq12_nlin_xfm" : lsq12_nlin_result.output,
@@ -173,6 +174,24 @@ def mbm(imgs : List[MincAtom], options : MBMConf, prefix : str, output_dir : str
     #                   options=maget_options,
     #                   prefix="%s_MAGeT" % prefix,
     #                   output_dir=os.path.join(output_dir, prefix + "_processed")))
+
+    # should also move outside `mbm` function ...
+    if options.mbm.thickness.run_thickness:
+        # run MAGeT to segment the nlin average:
+        import copy
+        maget_options = copy.deepcopy(options)  #Namespace(maget=options)
+        maget_options.maget = options.mbm.maget
+        del maget_options.mbm
+        segmented_avg = s.defer(maget(imgs=[lsq12_nlin_result.avg_img],
+                                      options=maget_options,
+                                      output_dir=os.path.join(options.application.output_directory,
+                                                              prefix + "_processed"),
+                                      prefix="%s_thickness_MAGeT" % prefix)).ix[0].img
+        # call cortical thickness
+        thickness = s.defer(cortical_thickness(xfms=pd.Series(inverted_xfms), atlas=segmented_avg,
+                                               label_mapping=FileAtom(options.mbm.thickness.label_mapping),
+                                               atlas_fwhm=0.56, thickness_fwhm=0.56))  # TODO magic fwhms
+
 
     # FIXME: this needs to go outside of the `mbm` function to avoid being run from within other pipelines (or
     # those other pipelines need to turn off this option)
@@ -246,6 +265,7 @@ mbm_parser = CompoundParser(
                 nlin_parser,
                 stats_parser,
                 common_space_parser,
+                thickness_parser,
                 AnnotatedParser(parser=maget_parsers, namespace="maget", prefix="maget"),
                 # TODO note that the maget-specific flags (--mask, --masking-method, etc., also get the "maget-" prefix)
                 # which could be changed by putting in the maget-specific parser separately from its lsq12, nlin parsers
