@@ -1,11 +1,13 @@
-import time
-from collections import defaultdict
 
+from collections import defaultdict
 import pkg_resources
 import logging
 import networkx as nx
-import sys
 import os
+import sys
+import shutil
+import time
+
 from typing import NamedTuple, List, Callable, Any
 
 from pydpiper.core.stages import Result
@@ -104,6 +106,13 @@ def ensure_distinct_outputs(stages):
         raise ValueError("Conflicting outputs:", bad_outputs)
 
 
+def ensure_commands_exist(stages):
+    cmds = set((s.to_array()[0] for s in stages))
+    bad_cmds = [cmd for cmd in cmds if shutil.which(cmd) is None]
+    if len(bad_cmds) > 0:
+        raise ValueError("Missing executables: %s" % bad_cmds)
+
+
 #TODO: change this to ...(static_pipeline, options)?
 def execute(stages, options):
     """Basically just looks at the arguments and exits if `--no-execute` is specified,
@@ -130,6 +139,8 @@ def execute(stages, options):
     ensure_short_output_paths(stages)  # TODO convert to new `CmdStage`s
     ensure_output_paths_in_dir(stages, options.application.output_directory)
     ensure_distinct_outputs([convertCmdStage(s) for s in stages])
+    ensure_commands_exist(stages)
+
 
     if not options.application.execute:
         print("Not executing the command (--no-execute is specified).\nDone.")
