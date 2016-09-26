@@ -3,7 +3,7 @@ import os
 from setuptools import setup
 
 setup(name='pydpiper',
-      version='2.0a2',
+      version='2.0a3',
       license='Modified BSD',
       description='Python code for flexible pipeline control',
       long_description='Python code for flexible pipeline control',
@@ -11,7 +11,7 @@ setup(name='pydpiper',
       maintainer_email='matthijs@mouseimaging.ca',
       url='https://github.com/Mouse-Imaging-Centre/pydpiper',
       install_requires=[
-        'ConfigArgParse>0.10.0',
+        'ConfigArgParse>=0.11.0',
         'networkx',
         'ordered-set',
         'pandas',
