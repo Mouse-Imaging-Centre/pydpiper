@@ -1,3 +1,4 @@
+import warnings
 from argparse import Namespace
 from typing import Optional, List
 
@@ -175,6 +176,12 @@ def cortical_thickness(xfms   : pd.Series,  # nlin avg -> subject XfmHandler (ii
                        label_mapping : FileAtom,
                        atlas_fwhm : float,
                        thickness_fwhm : float):
+
+    try:
+        import vtk
+    except:
+        warnings.warn("couldn't `import vtk`, without which `decimate.py` is unable to run ...")
+        raise
 
     s = Stages()
 
