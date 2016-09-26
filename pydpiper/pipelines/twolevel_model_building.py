@@ -130,7 +130,7 @@ def two_level(grouped_files_df, options : TwoLevelConf):
     # FIXME running MAGeT from within the `two_level` function has the same problem as running it from within `mbm`:
     # it will now run when this pipeline is called from within another one (e.g., n-level), which will be
     # redundant, create filename clashes, etc. -- this should be moved to `two_level_pipeline`.
-    if options.mbm.mbm.run_maget:
+    if options.mbm.segmentation.run_maget:
         maget_options = copy.deepcopy(options)
         maget_options.maget = options.mbm.maget
         del maget_options.mbm
