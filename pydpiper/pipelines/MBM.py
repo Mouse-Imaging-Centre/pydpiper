@@ -46,13 +46,13 @@ def mbm_pipeline(options : MBMConf):
 
     prefix = options.application.pipeline_name
 
-    result = s.defer(mbm(imgs=imgs, options=options,
+    mbm_result = s.defer(mbm(imgs=imgs, options=options,
                          prefix=prefix,
                          output_dir=options.application.output_directory))
 
     # create useful CSVs (note the files listed therein won't yet exist ...)
-    for filename, dataframe in (("transforms.csv", result.xfms),
-                                ("determinants.csv", result.determinants)):
+    for filename, dataframe in (("transforms.csv", mbm_result.xfms),
+                                ("determinants.csv", mbm_result.determinants)):
         with open(filename, 'w') as f:
             def maybe_deref_path(x):
                 # ugh ... just a convenience to allow using applymap in a 'generic' way ...
@@ -75,12 +75,12 @@ def mbm_pipeline(options : MBMConf):
         maget_options.maget = options.mbm.maget
         del maget_options.mbm
 
-        s.defer(maget([xfm.resampled for _ix, xfm in mbm.xfms.rigid_xfm.iterrows()],
+        s.defer(maget([xfm.resampled for _ix, xfm in mbm_result.xfms.rigid_xfm.iteritems()],
                        options=maget_options,
                        prefix="%s_MAGeT" % prefix,
                        output_dir=os.path.join(options.application.output_directory, prefix + "_processed")))
 
-    return Result(stages=s, output=result)
+    return Result(stages=s, output=mbm_result)
 
 
 def mbm(imgs : List[MincAtom], options : MBMConf, prefix : str, output_dir : str = ""):
