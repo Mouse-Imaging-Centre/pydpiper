@@ -34,8 +34,7 @@ class CmdStage(object):
         self.when_finished_hooks = []  # type: List[Callable[[], Any]]
         self.memory = memory
         self.procs = procs
-        self.log_file = (os.path.join(self.outputs[0].dir, "..", "log",
-                                      "%s_%s.log" % (cmd[0], self.outputs[0].filename_wo_ext))
+        self.log_file = (os.path.join(self.outputs[0].dir, "..", "log", cmd[0], "%s.log" % self.outputs[0].filename_wo_ext)
                          if len(self.outputs) >= 1 else None)  # FIXME: for |self.outputs| > 1, this is a fragile hack
     # NB: __hash__ and __eq__ ignore hooks, memory
     # Also, we assume cmd determines inputs, outputs so ignore it in hash/eq calculations
