@@ -434,8 +434,8 @@ class pipelineExecutor(object):
                 qsub_cmd = ['qsub'] + queue_opts
 
                 header = '\n'.join(["#!/usr/bin/env bash",
-                                    "#$ -S /bin/sh",  # default is csh, but don't assume that
-                                    "export PYRO_LOGFILE=logs/%s-${JOB_ID}-${SGE_TASK_ID}.log" % ident])
+                                    "#$ -S /bin/csh",  # default is csh, but don't assume that
+                                    "setenv PYRO_LOGFILE logs/%s-${JOB_ID}-${SGE_TASK_ID}.log" % ident])
                 # FIXME huge hack -- shouldn't we just iterate over options,
                 # possibly checking for membership in the executor option group?
                 # The problem is that we can't easily check if an option is
