@@ -11,7 +11,7 @@ import re
 import resource
 from collections import defaultdict
 from datetime import datetime
-from subprocess import call, check_output
+import subprocess
 from shlex import split
 from multiprocessing import Process, Event  # type: ignore
 from configargparse import Namespace
@@ -178,7 +178,7 @@ class CmdStage(PipelineStage):
         of.flush()
 
         args = split(repr(self))
-        returncode = call(args, stdout=of, stderr=of, shell=False)
+        returncode = subprocess.call(args, stdout=of, stderr=of, shell=False)
         of.close()
         return(returncode)
 
@@ -1019,10 +1019,9 @@ def launchServer(pipeline):
         h.start()
         #del pipeline   # `top` shows this has no effect on vmem
 
-        # TODO cherry-pick the stderr swallowing from 1.x
         try:
             jid    = os.environ["PBS_JOBID"]
-            output = check_output(['qstat', '-f', jid])
+            output = subprocess.check_output(['qstat', '-f', jid], stderr=subprocess.STDOUT)
 
             time_left = int(re.search('Walltime.Remaining = (\d*)', output).group(1))
             logger.debug("Time remaining: %d s" % time_left)
