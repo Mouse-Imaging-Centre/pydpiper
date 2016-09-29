@@ -804,7 +804,7 @@ def rotational_minctracc(source: MincAtom,
     blurred_dest = s.defer(mincblur(target, blur_stepsize)).img
 
     if not output_name_wo_ext:
-        output_name_wo_ext = "%s_rotational_minctracc_to_%s" % (source.filename_wo_ext, target.filename_wo_ext)
+        output_name_wo_ext = "%s_rot_mt_to_%s" % (source.filename_wo_ext, target.filename_wo_ext)
 
     out_xfm = XfmAtom(name=os.path.join(source.pipeline_sub_dir, source.output_sub_dir, 'transforms',
                                         output_name_wo_ext + ".xfm"),
@@ -1100,7 +1100,7 @@ def minctracc(source: MincAtom,
             trans_type = "nlin"
 
         out_xfm = XfmAtom(name=os.path.join(source.pipeline_sub_dir, source.output_sub_dir, 'transforms',
-                                            "%s_minctracc_to_%s_%s_%s.xfm" %
+                                            "%s_mt_to_%s_%s_%s.xfm" %
                                             (source.filename_wo_ext,
                                              target.filename_wo_ext,
                                              trans_type,
@@ -1109,7 +1109,7 @@ def minctracc(source: MincAtom,
                           output_sub_dir=source.output_sub_dir)
     else:
         out_xfm = XfmAtom(name=os.path.join(source.pipeline_sub_dir, source.output_sub_dir, 'transforms',
-                                            "%s_minctracc_to_%s.xfm" % (
+                                            "%s_mt_to_%s.xfm" % (
                                             source.filename_wo_ext, target.filename_wo_ext)),
                           pipeline_sub_dir=source.pipeline_sub_dir,
                           output_sub_dir=source.output_sub_dir)
