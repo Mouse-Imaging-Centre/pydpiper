@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import os.path
+import warnings
 
 import pandas as pd
 from configargparse import Namespace, ArgParser
@@ -177,6 +178,8 @@ def mbm(imgs : List[MincAtom], options : MBMConf, prefix : str, output_dir : str
 
     # should also move outside `mbm` function ...
     if options.mbm.thickness.run_thickness:
+        if not options.mbm.segmentation.run_maget:
+            warnings.warn("MAGeT files (atlases, protocols) are needed to run thickness calculation.")
         # run MAGeT to segment the nlin average:
         import copy
         maget_options = copy.deepcopy(options)  #Namespace(maget=options)
@@ -187,10 +190,10 @@ def mbm(imgs : List[MincAtom], options : MBMConf, prefix : str, output_dir : str
                                       output_dir=os.path.join(options.application.output_directory,
                                                               prefix + "_processed"),
                                       prefix="%s_thickness_MAGeT" % prefix)).ix[0].img
-        # call cortical thickness
         thickness = s.defer(cortical_thickness(xfms=pd.Series(inverted_xfms), atlas=segmented_avg,
                                                label_mapping=FileAtom(options.mbm.thickness.label_mapping),
                                                atlas_fwhm=0.56, thickness_fwhm=0.56))  # TODO magic fwhms
+        # TODO write CSV -- should `cortical_thickness` do this/return a table?
 
 
     # FIXME: this needs to go outside of the `mbm` function to avoid being run from within other pipelines (or
