@@ -442,9 +442,9 @@ def mincresample_new(img: MincAtom,
 
     return mincresample(img=img, xfm=xfm, like=like, invert=invert,
                         interpolation=interpolation, extra_flags=extra_flags,
-                        new_name_wo_ext=new_name_wo_ext or ("%s_resampled_to_%s%s" % (img.filename_wo_ext,
-                                                                                      like.filename_wo_ext,
-                                                                                      postfix if postfix else "")),
+                        new_name_wo_ext=new_name_wo_ext or ("%s_res_to_%s%s" % (img.filename_wo_ext,
+                                                                                like.filename_wo_ext,
+                                                                                postfix if postfix else "")),
                         subdir=subdir)
 
 
