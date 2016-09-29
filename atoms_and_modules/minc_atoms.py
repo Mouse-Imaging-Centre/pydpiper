@@ -263,8 +263,9 @@ class minctracc(CmdStage):
         if memory is not None:
             self.mem = memory
         else:
-            self.add_runnable_hook(
-                lambda : self.setMemory(self.source, minctracc_default_mem_cfg))
+            if self.linearparam == 'nlin':
+                self.add_runnable_hook(
+                    lambda : self.setMemory(self.source, minctracc_default_mem_cfg))
 
     def setMemory(self, source, cfg):
         voxels = reduce(mul, volumeFromFile(source).getSizes())
