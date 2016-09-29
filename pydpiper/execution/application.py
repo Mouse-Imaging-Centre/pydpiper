@@ -60,14 +60,18 @@ def file_graph(stages, pipeline_dir):
     # need to use something like nx.to_pydot to convert
 
 
-def ensure_short_output_paths(stages, max_len=245):  # magic no. for mincblur, &c.
+def ensure_short_output_paths(stages, max_len=255):  # magic no. for EXT3, EXT4, NFS (?), Linux NAME_MAX, etc.
+    # N.B. - at some point we had 245 instead of 255 -- a typo, a program-specific buffer size,
+    # or something to do with one of the file systems (NFS, SciNet's IBM GPFS, etc. ...)?
+    # TODO check the other parts of the path aren't too long either (much less likely)?
     for s in stages:
-        for o in s.outputs:
-            if len(o.path) > max_len:
-                raise ValueError("output filename '%s' too long (more than %s chars)" % (o.path, max_len))
+        for o in [o.filename_wo_ext for o in s.outputs] + [os.path.basename(s.log_file)]:
+            if len(o) > max_len:
+                raise ValueError("output filename '%s' too long (more than %s chars)" % (o, max_len))
 
 
 def ensure_output_paths_in_dir(stages, d):
+    # TODO also check the logfiles ... should these be counted as stage outputs (tedious to add by hand ...)?
     for s in stages:
         for o in s.outputs:
             if os.path.relpath(o.path, d).startswith('..'):
@@ -95,6 +99,7 @@ def nondistinct_outputs(stages):
 
 
 def ensure_distinct_outputs(stages):
+    # TODO logfiles as well? (see comment in `ensure_output_paths_in_dir`)
     bad_outputs = nondistinct_outputs(stages)
     if len(bad_outputs) >= 1:
         print("Uh-oh - some files appear as outputs of multiple stages, to wit:", file=sys.stderr)
@@ -140,7 +145,6 @@ def execute(stages, options):
     ensure_output_paths_in_dir(stages, options.application.output_directory)
     ensure_distinct_outputs([convertCmdStage(s) for s in stages])
     ensure_commands_exist(stages)
-
 
     if not options.application.execute:
         print("Not executing the command (--no-execute is specified).\nDone.")
