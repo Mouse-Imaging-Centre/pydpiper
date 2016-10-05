@@ -845,7 +845,9 @@ class pMincAverage(mincAverage):
     def setMemory(self):
         memory_per_voxel = 17.0/(1064 * 13158000.0)
         voxels_per_file  = reduce(mul, volumeFromFile(self.inputFiles[0]).getSizes())
-        self.setMem(0.5 + len(self.inputFiles) * memory_per_voxel * voxels_per_file)  # GB
+        estimated_memory = 0.5 + len(self.inputFiles) * memory_per_voxel * voxels_per_file
+        if estimated_memory > self.mem:
+            self.setMem(estimated_memory) # GB
     def addDefaults(self, copyHeaderInfo=False):
         self.inputFiles.extend(self.filesToAvg)
         self.outputFiles += [self.output]
