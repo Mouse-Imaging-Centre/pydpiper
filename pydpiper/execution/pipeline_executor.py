@@ -133,25 +133,43 @@ def launchExecutor(executor):
         daemon.shutdown()
         t.join()
 
-def runStage(serverURI, clientURI, i, cmd_wrapper):
+
+# like a stage but lighter weight ...
+class StageInfo(object):
+    def __init__(self, *, mem, procs, ix, cmd):
+        self.mem = mem
+        self.procs = procs
+        self.ix = ix
+        self.cmd = cmd
+
+
+def stageinfo_dict_to_class(classname, d):
+    return StageInfo(mem=d['mem'], procs=d['procs'], ix=d['ix'], cmd=d['cmd'])
+
+
+Pyro4.util.SerializerBase.register_dict_to_class("pydpiper.execution.pipeline_executor.StageInfo",
+                                                 stageinfo_dict_to_class)
+
+
+def runStage(*, clientURI, stage, cmd_wrapper):
     ## Proc needs its own proxy as it's independent of executor
-    p = Pyro4.core.Proxy(serverURI)
     client = Pyro4.core.Proxy(clientURI)
+    ix = stage.ix
     
     # Retrieve stage information, run stage and set finished or failed accordingly  
     try:
-        logger.info("Running stage %i (on %s)", i, clientURI)
-        logger.debug("Memory requested: %.2f", p.getStageMem(i))
-        p.setStageStarted(i, clientURI)
+        logger.info("Running stage %i (on %s)", ix, clientURI)
+        logger.debug("Memory requested: %.2f", stage.mem)
         try:
             # get stage information
-            command_to_run  = ((cmd_wrapper + ' ') if cmd_wrapper else '') + str(p.getStageCommand(i))
+            command_to_run  = ((cmd_wrapper + ' ') if cmd_wrapper else '') + stage.cmd
             logger.info(command_to_run)
-            command_logfile = p.getStageLogfile(i)
+            command_logfile = stage.logFile
             
             # log file for the stage
             of = open(command_logfile, 'a')
-            of.write("Stage " + str(i) + " running on " + socket.gethostname() + " (" + clientURI + ") at " + datetime.isoformat(datetime.now(), " ") + ":\n")
+            of.write("Stage " + str(ix) + " running on " + socket.gethostname()
+                     + " (" + clientURI + ") at " + datetime.isoformat(datetime.now(), " ") + ":\n")
             of.write(command_to_run + "\n")
             of.flush()
             
@@ -164,16 +182,17 @@ def runStage(serverURI, clientURI, i, cmd_wrapper):
             of.close()
         except:
             logger.exception("Exception whilst running stage: %i (on %s)", i, clientURI)   
-            client.notifyStageTerminated(i)
+            client.notifyStageTerminated(ix)
         else:
             logger.info("Stage %i finished, return was: %i (on %s)", i, ret, clientURI)
-            client.notifyStageTerminated(i, ret)
+            client.notifyStageTerminated(ix, ret)
 
         # If completed, return mem & processes back for re-use
-        return (p.getStageMem(i), p.getStageProcs(i))
+        # TODO instead of getting this again, store metadata about the running stage in the executor and lookup by AsyncResult
+        return (stage.mem, stage.procs)
     except:
         logger.exception("Error communicating to server in runStage. " 
-                        "Error raised to calling thread in launchExecutor. ")
+                         "Error raised to calling thread in launchExecutor. ")
         raise     
 
 
@@ -536,13 +555,14 @@ class pipelineExecutor(object):
         elif cmd == "wait":
             return True
         elif cmd == "run_stage":
-            stageMem, stageProcs = self.pyro_proxy_for_server.getStageMem(i), self.pyro_proxy_for_server.getStageProcs(i)
+            stage = self.pyro_proxy_for_server.get_stage_info(i)
+            #stageMem, stageProcs = self.pyro_proxy_for_server.getStageMem(i), self.pyro_proxy_for_server.getStageProcs(i)
             # we trust that the server has given us a stage
             # that we have enough memory and processors to run ...
             # reset the idle time, we are running a stage!
             self.idle_time = 0
-            self.runningMem += stageMem
-            self.runningProcs += stageProcs
+            self.runningMem += stage.mem
+            self.runningProcs += stage.procs
             # The multiprocessing library must pickle things in order to execute them.
             # I wanted the following function (runStage) to be a function of the pipelineExecutor
             # class. That way we can access self.serverURI and self.clientURI from
@@ -551,9 +571,15 @@ class pipelineExecutor(object):
             # this correctly, that binds the function to a class instance). There is
             # a way to make a bound function picklable, but this seems cumbersome. So instead
             # runStage is now a standalone function.
-            result = self.pool.apply_async(runStage, (self.serverURI, self.clientURI, i, options.cmd_wrapper))
+            # TODO eliminate use of Pyro from within the pool by passing in the needed args from the client/server ...
+            # TODO use of a tuple is nasty (and will become nastier ...): instead: define a new unary function here
+            # and then call it ...
+            def f():
+                return runStage(self.serverURI, self.clientURI, options.cmd_wrapper)
+            result = self.pool.apply_async(f, ())
+            self.pyro_proxy_for_server.setStageStarted(i, self.clientURI)
 
-            self.runningChildren.append(ChildProcess(i, result, stageMem, stageProcs))
+            self.runningChildren.append(ChildProcess(i, result, stage.mem, stage.procs))
             logger.debug("Added stage %i to the running pool.", i)
             return True
         else:
