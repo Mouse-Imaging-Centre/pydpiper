@@ -301,10 +301,9 @@ class pipelineExecutor(object):
         # of a keyboard interrupt). So we can close the pool of processes 
         # in the normal way (don't need to use the pids here)
         # prevent more jobs from starting, and exit
-        if len(self.current_running_job_pids) > 0:
-            self.pool.close()
-            # wait for the worker processes (children) to exit (must be called after terminate() or close()
-            self.pool.join()
+        self.pool.close()
+        # wait for the worker processes (children) to exit (must be called after terminate() or close()
+        self.pool.join()
         self.unregister_with_server()
 
     def unregister_with_server(self):
