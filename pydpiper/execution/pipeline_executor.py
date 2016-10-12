@@ -5,7 +5,7 @@ import sys
 import os
 from configargparse import ArgParser, Namespace  # type: ignore
 from datetime import datetime
-from multiprocessing import Process, Pool # type: ignore
+from multiprocessing import Process, Pool, Lock # type: ignore
 import subprocess
 import shlex
 import pydpiper.execution.queueing as q
@@ -90,9 +90,11 @@ def launchExecutor(executor):
     
     executor.connection_time_with_server = time.time()
     logger.info("Connected to the server at: %s", datetime.isoformat(datetime.now(), " "))
-    
+
+    # you'd think this could be done in __init__, but sometimes that's in the wrong process,
+    # which causes an error when calling `join` ...
     executor.initializePool()
-    
+
     logger.debug("Executor daemon running at: %s", daemon.locationStr)
     try:
         # run the daemon, not the executor mainLoop, in a new thread
@@ -134,7 +136,7 @@ def launchExecutor(executor):
         t.join()
 
 
-# like a stage but lighter weight ...
+# like a stage but lighter weight (no methods wasting memory...)
 class StageInfo(object):
     def __init__(self, *, mem, procs, ix, cmd, log_file):
         self.mem = mem
@@ -176,7 +178,6 @@ def runStage(*, clientURI, stage, cmd_wrapper):
             #client.removePIDfromRunningList(process.pid)
             ret = process.returncode 
             of.close()
-            logger.debug("OK" + str(ret))
         except Exception as e:
             logger.exception("Exception whilst running stage: %i (on %s)", ix, clientURI)
             return ix, e
@@ -240,7 +241,8 @@ class pipelineExecutor(object):
         self.runningMem = 0.0
         self.runningProcs = 0   
         self.runningChildren = {}  # was: # no scissors (i.e. children should not run around with sharp objects...)
-        self.pool = None
+        self.lock = Lock()
+        self.pool = None  # type: Pool
         self.pyro_proxy_for_server = None
         self.clientURI = None
         self.serverURI = None
@@ -283,7 +285,7 @@ class pipelineExecutor(object):
         # but the keyboard interrupt handling proved tricky. Instead, the executor now keeps
         # track of the process IDs (pid) of the current running jobs. Those are targetted by
         # os.kill in order to stop the processes in the Pool
-        logger.debug("Executor shutting down.  Killing running jobs:")
+        logger.debug("Executor shutting down.  Killing running jobs...")
         #for subprocID in self.current_running_job_pids:
         #    os.kill(subprocID, signal.SIGTERM)
         self.pool.terminate()
@@ -434,14 +436,14 @@ class pipelineExecutor(object):
         return False
 
     # TODO do this cleanup in the callback!
-    def free_resources(self):
-        # Free up resources from any completed (successful or otherwise) stages
-        for child in self.runningChildren:
-            if child.result.ready():
-                logger.debug("Freeing up resources for stage %i.", child.stage)
-                self.runningMem -= child.mem
-                self.runningProcs -= child.procs
-                self.runningChildren.remove(child)
+    #def free_resources(self):
+    #    # Free up resources from any completed (successful or otherwise) stages
+    #    for child in self.runningChildren:
+    #        if child.result.ready():
+    #            logger.debug("Freeing up resources for stage %i.", child.stage)
+    #            self.runningMem -= child.mem
+    #            self.runningProcs -= child.procs
+    #            self.runningChildren.remove(child)
 
     #@Pyro4.oneway
     def notifyStageTerminated(self, i, returncode=None):
@@ -533,6 +535,7 @@ class pipelineExecutor(object):
         # another event/timeout to get another.  In general we might want 
         # getCommand to order multiple stages to be run on the same server
         # (just setting the event immediately would be somewhat hackish)
+        # FIXME send/get the whole stageinfo here (it contains an `ix` field, right?)?!
         cmd, i = self.pyro_proxy_for_server.getCommand(clientURIstr = self.clientURI,
                                                        clientMemFree = self.mem - self.runningMem,
                                                        clientProcsFree = self.procs - self.runningProcs)
@@ -554,8 +557,9 @@ class pipelineExecutor(object):
             # that we have enough memory and processors to run ...
             # reset the idle time, we are running a stage!
             self.idle_time = 0
-            self.runningMem += stage.mem
-            self.runningProcs += stage.procs
+            with self.lock:
+                self.runningMem += stage.mem
+                self.runningProcs += stage.procs
             # The multiprocessing library must pickle things in order to execute them.
             # I wanted the following function (runStage) to be a function of the pipelineExecutor
             # class. That way we can access self.serverURI and self.clientURI from
@@ -565,25 +569,28 @@ class pipelineExecutor(object):
             # a way to make a bound function picklable, but this seems cumbersome. So instead
             # runStage is now a standalone function.
 
+            # callback for result of runStage, run by executor
             def process_result(result):
-
                 ix, res = result
                 if isinstance(res, int):
                     # it's a return code
-                    logger.info("Stage %i finished, return was: %i (on %s)", ix, res, self.clientURI)
+                    # don't do this logging in the callback for politenessoliphant
+                    #logger.info("Stage %i finished, return was: %i (on %s)", ix, res, self.clientURI)
                     self.notifyStageTerminated(ix, res)
                 elif isinstance(res, Exception):
-                    # runStage raised an exception
-                    # TODO does this work correctly??
-                    logger.exception("Exception whilst running stage: %i (on %s)", ix, self.clientURI, exc_info=res)
+                    # runStage raised an exception.  We could use apply_async's error_callback to handle this case
+                    # instead, but we need to know the index of the stage we were attempting to run, so we'd have
+                    # to catch the exception anyway to stuff the index into it ... this seems cleaner (no re-raising).
+                    #logger.exception("Exception whilst running stage: %i (on %s)", ix, self.clientURI, exc_info=res)
                     self.notifyStageTerminated(ix)
                 logger.debug("Freeing up resources for stage %i.", ix)
-                # FIXME not thread-safe ...
                 stage = self.runningChildren[ix]
-                self.runningMem -= stage.mem
-                self.runningProcs -= stage.procs
+                with self.lock:
+                    self.runningMem -= stage.mem
+                    self.runningProcs -= stage.procs
                 del self.runningChildren[stage]
 
+            # why does this need a separate call? should be able to infer that this stage will start from getCommand...
             self.pyro_proxy_for_server.setStageStarted(i, self.clientURI)
             result = self.pool.apply_async(runStage, args=(),
                                            kwds={ "clientURI" : self.clientURI, "stage" : stage,
