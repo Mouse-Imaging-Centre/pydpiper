@@ -299,12 +299,13 @@ class pipelineExecutor(object):
     def completeAndExitChildren(self):
         # This function is called under normal circumstances (i.e., not because
         # of a keyboard interrupt). So we can close the pool of processes 
-        # in the normal way (don't need to use the pids here)
-        # prevent more jobs from starting, and exit
-        self.pool.close()
-        # wait for the worker processes (children) to exit (must be called after terminate() or close()
-        self.pool.join()
+        # in the normal way, prevent more jobs from starting, and exit
         self.unregister_with_server()
+        if len(self.runningChildren) > 0:
+            logger.warn("Exiting with some processes still running: %s" % self.runningChildren)
+        # wait for the worker processes (children) to exit (must be called after terminate() or close())
+        self.pool.close()
+        self.pool.join()
 
     def unregister_with_server(self):
         if self.registered_with_server:
@@ -587,7 +588,7 @@ class pipelineExecutor(object):
                 with self.lock:
                     self.runningMem -= stage.mem
                     self.runningProcs -= stage.procs
-                del self.runningChildren[stage]
+                del self.runningChildren[ix]
 
             # why does this need a separate call? should be able to infer that this stage will start from getCommand...
             self.pyro_proxy_for_server.setStageStarted(i, self.clientURI)
