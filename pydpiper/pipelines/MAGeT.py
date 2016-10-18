@@ -17,7 +17,7 @@ from pydpiper.minc.files            import MincAtom
 from pydpiper.minc.registration     import (check_MINC_input_files, lsq12_nlin,
                                             get_nonlinear_configuration_from_options,
                                             get_linear_configuration_from_options, LinearTransType,
-                                            mincresample, mincmath, Interpolation)
+                                            mincresample_new, mincmath, Interpolation)
 
 
 def find_by(f, xs, on_empty=None):  # TODO move to util
@@ -103,7 +103,7 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir):
     # TODO issue a warning if not all atlases used?
     # TODO also, doesn't slicing with a higher number (i.e., if max_templates > n) go to the end of the list anyway?
 
-    resample  = np.vectorize(mincresample, excluded={"extra_flags"})
+    resample  = np.vectorize(mincresample_new, excluded={"extra_flags"})
     defer     = np.vectorize(s.defer)
 
     # plan the basic registrations between all image-atlas pairs; store the result paths in a table
@@ -237,18 +237,18 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir):
             # FIXME should be in above algebraic manipulation but MincAtoms don't support flexible immutable updating
             for row in pd.merge(left=new_template_to_atlas_alignments, right=new_templates_labelled,
                                 on=["img"], how="right", sort=False).itertuples():
-                row.img.labels = s.defer(mincresample(img=row.voted_labels, xfm=row.xfm.xfm, like=row.img,
-                                                      invert=True, interpolation=Interpolation.nearest_neighbour,
-                                                      #postfix="-input-labels",
+                row.img.labels = s.defer(mincresample_new(img=row.voted_labels, xfm=row.xfm.xfm, like=row.img,
+                                                          invert=True, interpolation=Interpolation.nearest_neighbour,
+                                                          #postfix="-input-labels",
                                                           # this makes names really long ...:
                                                           # TODO this doesn't work for running MAGeT on the nlin avg:
                                                           #new_name_wo_ext="%s_on_%s" %
                                                           #                (row.voted_labels.filename_wo_ext,
                                                           #                 row.img.filename_wo_ext),
                                                           #postfix="_labels_via_%s" % row.xfm.xfm.filename_wo_ext,
-                                                      new_name_wo_ext="%s_via_%s" % (row.voted_labels.filename_wo_ext,
-                                                                                     row.xfm.xfm.filename_wo_ext),
-                                                      extra_flags=("-keep_real_range",)))
+                                                          new_name_wo_ext="%s_via_%s" % (row.voted_labels.filename_wo_ext,
+                                                                                         row.xfm.xfm.filename_wo_ext),
+                                                          extra_flags=("-keep_real_range",)))
 
             # now that the new templates have been labelled, combine with the atlases:
             # FIXME use the masked atlases created earlier ??

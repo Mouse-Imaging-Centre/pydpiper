@@ -12,7 +12,7 @@ from pydpiper.pipelines.MAGeT import maget
 
 from pydpiper.minc.analysis import determinants_at_fwhms
 from pydpiper.minc.files import MincAtom
-from pydpiper.minc.registration import (concat_xfmhandlers, invert_xfmhandler, mincresample, check_MINC_input_files,
+from pydpiper.minc.registration import (concat_xfmhandlers, invert_xfmhandler, mincresample_new, check_MINC_input_files,
                                         TargetType)
 from pydpiper.pipelines.MBM import mbm, mbm_parser, MBMConf
 from pydpiper.execution.application import execute
@@ -95,7 +95,7 @@ def two_level(grouped_files_df, options : TwoLevelConf):
                     for xfms_1, xfm_2 in zip([r.xfms.lsq12_nlin_xfm for r in first_level_results.build_model],
                                              second_level_results.xfms.overall_xfm)
                     for xfm_1 in xfms_1]
-    resample  = np.vectorize(mincresample, excluded={"extra_flags"})
+    resample  = np.vectorize(mincresample_new, excluded={"extra_flags"})
     defer     = np.vectorize(s.defer)
 
     # TODO using the avg_img here is a bit clunky -- maybe better to propagate group indices ...

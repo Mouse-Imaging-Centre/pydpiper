@@ -360,16 +360,13 @@ def mincresample_simple(img: MincAtom,
 #   "-keep_real_rnge" all over the place ...
 # TODO mincresample_simple could easily be replaced by a recursive call to mincresample ... what about separate
 # wrappers mincresample_mask, mincresample_labels?
-# TODO should this be a method on XfmHandlers, allowing use of the default argument syntax to refer to
-# the relevant mnc files?  (N.B.: each use site is on files already contained in XfmHandlers and manually dereferenced)
 def mincresample(img: MincAtom,
-                 xfm: XfmAtom,  # TODO: update to handler with optional 'img', 'like' params to override xfmh's?
+                 xfm: XfmAtom,  # TODO: update to handler?
                  like: MincAtom,
-                 extra_flags: Tuple[str] = (),
                  invert: bool = False,
                  interpolation: Interpolation = None,
+                 extra_flags: Tuple[str] = (),
                  new_name_wo_ext: str = None,
-                 postfix: Optional[str] = None,
                  subdir: str = None) -> Result[MincAtom]:
     """
     ...
@@ -402,7 +399,8 @@ def mincresample(img: MincAtom,
     # we supply its name with "_mask" and "_labels" for which we need
     # to know what the main file will be resampled as
     if not new_name_wo_ext:
-        new_name_wo_ext="%s_res_to_%s%s" % (img.filename_wo_ext, like.filename_wo_ext, postfix if postfix else "")
+        # FIXME this is wrong when invert=True
+        new_name_wo_ext = xfm.filename_wo_ext + '-resampled'
 
     new_img = s.defer(mincresample_simple(img=img, xfm=xfm, like=like,
                                           extra_flags=extra_flags,
@@ -428,6 +426,26 @@ def mincresample(img: MincAtom,
     # (If this isn't automatic, a relevant helper function would be trivial.)
     # TODO: can/should this be done semi-automatically? probably ...
     return Result(stages=s, output=new_img)
+
+
+# TODO should this be a method on XfmHandlers, allowing use of the default argument syntax to refer to
+# the relevant mnc files?  (N.B.: each use site is on files already contained in XfmHandlers and manually dereferenced)
+def mincresample_new(img: MincAtom,
+                     xfm: XfmAtom,  # TODO: add optional 'img', 'like' params to override those determined from XfmH
+                     like: MincAtom,
+                     extra_flags: Tuple[str] = (),
+                     invert: bool = False,
+                     interpolation: Interpolation = None,
+                     new_name_wo_ext: Optional[str] = None,
+                     postfix: Optional[str] = None,
+                     subdir: str = None) -> Result[MincAtom]:
+
+    return mincresample(img=img, xfm=xfm, like=like, invert=invert,
+                        interpolation=interpolation, extra_flags=extra_flags,
+                        new_name_wo_ext=new_name_wo_ext or ("%s_res_to_%s%s" % (img.filename_wo_ext,
+                                                                                like.filename_wo_ext,
+                                                                                postfix if postfix else "")),
+                        subdir=subdir)
 
 
 def xfmconcat(xfms: List[XfmAtom],

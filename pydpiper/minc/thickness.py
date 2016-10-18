@@ -7,7 +7,7 @@ from configargparse import ArgParser
 
 from pydpiper.core.arguments import AnnotatedParser, BaseParser
 from pydpiper.core.util import AutoEnum
-from pydpiper.minc.registration import lsq12_nlin, concat_xfmhandlers, mincblur, mincresample, mincresample, \
+from pydpiper.minc.registration import lsq12_nlin, concat_xfmhandlers, mincblur, mincresample, mincresample_new, \
     mincreshape, minc_label_ops, LabelOp, optional
 from pydpiper.core.files import FileAtom
 from pydpiper.core.stages import Stages, CmdStage, Result
@@ -209,7 +209,7 @@ def cortical_thickness(xfms   : pd.Series,  # nlin avg -> subject XfmHandler (ii
         'xfm' : xfms,
         # resample the atlas files to each subject:
         'blurred_atlas_grid_resampled'  :
-            xfms.apply(lambda xfm: s.defer(mincresample(img=blurred_atlas, xfm=xfm.xfm, like=xfm.target))),
+            xfms.apply(lambda xfm: s.defer(mincresample_new(img=blurred_atlas, xfm=xfm.xfm, like=xfm.target))),
         'atlas_left_resampled'    :
             xfms.apply(lambda xfm: s.defer(transform_objects(input_obj=atlas_left_thickness, xfm=xfm.xfm))),
         'atlas_right_resampled'   :
