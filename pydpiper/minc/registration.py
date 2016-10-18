@@ -1695,7 +1695,7 @@ class Subject(Generic[V]):
         return self.time_pt_dict[self.intersubject_registration_time_pt]
 
     def __repr__(self) -> str:
-        return ("Subject(inter_sub_time_pt: %s, time_pt_dict keys: %s ... (values not shown))"
+        return ("Subject(intersubject_registration_time_pt: %s, time_pt_dict keys: %s ... (values not shown))"
                 % (self.intersubject_registration_time_pt, self.time_pt_dict.keys()))
 
 
