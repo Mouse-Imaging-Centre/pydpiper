@@ -3,7 +3,7 @@ import os
 from setuptools import setup
 
 setup(name='pydpiper',
-      version='2.0a3',
+      version='2.0b1',
       license='Modified BSD',
       description='Python code for flexible pipeline control',
       long_description='Python code for flexible pipeline control',
@@ -16,7 +16,7 @@ setup(name='pydpiper',
         'ordered-set',
         'pandas',
         #'pydotplus',  # use nx.nx_pydot.write_dot to write graphviz files
-        'pygraphviz',
+        #'pygraphviz',
         # in principle one could require 'pydotplus' instead (and use nx.nx_pydot.write_dot), but that package isn't
         # very maintained (pydot_ng seems to be more popular, but networkx hasn't switched).  This is
         # annoying because pygraphviz needs the graphviz headers (e.g., from libgraphviz-dev .deb) to compile.
