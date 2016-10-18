@@ -762,7 +762,6 @@ if __name__ == "__main__":
         options.registration = options.registration.replace(
                                    resolution=get_resolution_from_file(file_for_resolution))
     
-    print("Ha! The registration resolution is: %s\n" % options.registration.resolution)
     # *** *** *** *** *** *** *** *** ***
 
     chain_result = chain(options)
