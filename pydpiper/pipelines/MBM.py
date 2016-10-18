@@ -177,23 +177,23 @@ def mbm(imgs : List[MincAtom], options : MBMConf, prefix : str, output_dir : str
     #                   output_dir=os.path.join(output_dir, prefix + "_processed")))
 
     # should also move outside `mbm` function ...
-    if options.mbm.thickness.run_thickness:
-        if not options.mbm.segmentation.run_maget:
-            warnings.warn("MAGeT files (atlases, protocols) are needed to run thickness calculation.")
-        # run MAGeT to segment the nlin average:
-        import copy
-        maget_options = copy.deepcopy(options)  #Namespace(maget=options)
-        maget_options.maget = options.mbm.maget
-        del maget_options.mbm
-        segmented_avg = s.defer(maget(imgs=[lsq12_nlin_result.avg_img],
-                                      options=maget_options,
-                                      output_dir=os.path.join(options.application.output_directory,
-                                                              prefix + "_processed"),
-                                      prefix="%s_thickness_MAGeT" % prefix)).ix[0].img
-        thickness = s.defer(cortical_thickness(xfms=pd.Series(inverted_xfms), atlas=segmented_avg,
-                                               label_mapping=FileAtom(options.mbm.thickness.label_mapping),
-                                               atlas_fwhm=0.56, thickness_fwhm=0.56))  # TODO magic fwhms
-        # TODO write CSV -- should `cortical_thickness` do this/return a table?
+    #if options.mbm.thickness.run_thickness:
+    #    if not options.mbm.segmentation.run_maget:
+    #        warnings.warn("MAGeT files (atlases, protocols) are needed to run thickness calculation.")
+    #    # run MAGeT to segment the nlin average:
+    #    import copy
+    #    maget_options = copy.deepcopy(options)  #Namespace(maget=options)
+    #    maget_options.maget = options.mbm.maget
+    #    del maget_options.mbm
+    #    segmented_avg = s.defer(maget(imgs=[lsq12_nlin_result.avg_img],
+    #                                  options=maget_options,
+    #                                  output_dir=os.path.join(options.application.output_directory,
+    #                                                          prefix + "_processed"),
+    #                                  prefix="%s_thickness_MAGeT" % prefix)).ix[0].img
+    #    thickness = s.defer(cortical_thickness(xfms=pd.Series(inverted_xfms), atlas=segmented_avg,
+    #                                           label_mapping=FileAtom(options.mbm.thickness.label_mapping),
+    #                                           atlas_fwhm=0.56, thickness_fwhm=0.56))  # TODO magic fwhms
+    #    # TODO write CSV -- should `cortical_thickness` do this/return a table?
 
 
     # FIXME: this needs to go outside of the `mbm` function to avoid being run from within other pipelines (or
