@@ -608,6 +608,12 @@ class Pipeline(object):
         self.runnable.add(i)
         for f in self.stages[i]._runnable_hooks:
             f(self.stages[i])
+        # the easiest place to ensure that all stages request at least
+        # the default job mem is here. The hooks above might estimate
+        # memory for the jobs, here we'll override that if they requested
+        # less than the minimum
+        if self.stages[i].mem < self.exec_options.default_job_mem:
+            self.stages[i].setMem(self.exec_options.default_job_mem)
         # keep track of the memory requirements of the runnable jobs
         self.mem_req_for_runnable.append(self.stages[i].mem)
 
