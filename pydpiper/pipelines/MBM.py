@@ -22,7 +22,7 @@ from pydpiper.minc.registration import (lsq6_nuc_inorm, lsq12_nlin_build_model, 
                                         LSQ6Conf, LSQ12Conf, get_resolution_from_file, concat_xfmhandlers,
                                         get_nonlinear_configuration_from_options,
                                         invert_xfmhandler, check_MINC_input_files, lsq12_nlin, MultilevelMincANTSConf,
-                                        LinearTransType, get_linear_configuration_from_options, mincresample_new,
+                                        LinearTransType, get_linear_configuration_from_options, mincresample,
                                         Interpolation, param2xfm)
 from pydpiper.minc.analysis     import determinants_at_fwhms, StatsConf
 from pydpiper.minc.thickness    import thickness_parser
@@ -217,9 +217,9 @@ def mbm(imgs : List[MincAtom], options : MBMConf, prefix : str, output_dir : str
                                            lsq12_conf=lsq12_conf, nlin_conf=nlin_conf,
                                            resample_source=True))
 
-        model_common = s.defer(mincresample_new(img=lsq12_nlin_result.avg_img,
-                                                xfm=xfm_to_common.xfm, like=common_space_model,
-                                                postfix="_common"))
+        model_common = s.defer(mincresample(img=lsq12_nlin_result.avg_img,
+                                            xfm=xfm_to_common.xfm, like=common_space_model,
+                                            postfix="_common"))
 
         overall_xfms_common = [s.defer(concat_xfmhandlers([rigid_xfm, nlin_xfm, xfm_to_common]))
                                for rigid_xfm, nlin_xfm in zip(lsq6_result, lsq12_nlin_result.output)]
@@ -230,7 +230,7 @@ def mbm(imgs : List[MincAtom], options : MBMConf, prefix : str, output_dir : str
         output_xfms = output_xfms.assign(xfm_common=xfms_common, overall_xfm_common=overall_xfms_common)
 
         log_nlin_det_common, log_full_det_common = [dets.map(lambda d:
-                                                      s.defer(mincresample_new(
+                                                      s.defer(mincresample(
                                                         img=d,
                                                         xfm=xfm_to_common.xfm,
                                                         like=common_space_model,
