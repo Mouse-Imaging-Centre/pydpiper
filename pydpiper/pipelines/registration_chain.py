@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 
 import csv
+from argparse import Namespace
 from collections import defaultdict
 import os
 import sys
 import bisect
+import re
 
 from typing import Callable, Dict, List, TypeVar, Iterator
 from pydpiper.minc.analysis import determinants_at_fwhms, invert_xfmhandler
@@ -419,9 +421,9 @@ def chain(options):
         non_rigid_xfms_to_common_avg)
 
     # TODO don't just return an (unnamed-)tuple here
-    return Result(stages=s, output=(non_rigid_xfms_to_common_avg,
-                                    determinants_from_common_avg_to_subject,
-                                    determinants_from_subject_common_to_subject))
+    return Result(stages=s, output=Namespace(non_rigid_xfms_to_common=non_rigid_xfms_to_common_avg,
+                                             determinants_from_common_avg_to_subject=determinants_from_common_avg_to_subject,
+                                             determinants_from_subject_common_to_subject=determinants_from_subject_common_to_subject))
 
 
 K = TypeVar('K')
@@ -763,6 +765,40 @@ if __name__ == "__main__":
     print("Ha! The registration resolution is: %s\n" % options.registration.resolution)
     # *** *** *** *** *** *** *** *** ***
 
-    chain_stages = chain(options).stages
+    chain_result = chain(options)
+    chain_output = chain_result.output
 
-    execute(chain_stages, options)
+    # write some useful CSVs:
+    analysis_csv = open("".join([options.application.pipeline_name, "_analysis_files.csv"]), "w")
+    print("subject_id, timepoint, fwhm, log_det_absolute_second_level, "
+          "log_det_relative_second_level, log_det_absolute_first_level, "
+          "log_det_relative_first_level", file=analysis_csv)
+    for subj_id, subject in chain_output.determinants_from_common_avg_to_subject.items():
+        for timept, img in subject.time_pt_dict.items():
+            # these rows contain full_det, fwhm, inv_xfm, log_full_det, log_nlin_det,... (some more)
+            for i, row in img.iterrows():
+                #import pdb; pdb.set_trace()
+                if timept != subject.intersubject_registration_time_pt:
+                    # TODO: this is not really the proper way of dealing with things. If
+                    # the code above changes (i.e., if the filenames change) this won't work anymore...
+                    from_subject_common_absolute = os.path.realpath(re.sub(".mnc", "_resampled_to_common.mnc", chain_output.determinants_from_subject_common_to_subject[subj_id].time_pt_dict[timept].ix[i].log_full_det.path))
+                    from_subject_common_relative = os.path.realpath(re.sub(".mnc", "_resampled_to_common.mnc", chain_output.determinants_from_subject_common_to_subject[subj_id].time_pt_dict[timept].ix[i].log_nlin_det.path))
+                else:
+                    from_subject_common_absolute = "NA"
+                    from_subject_common_relative = "NA"
+                print(",".join([str(subj_id), str(timept), str(row.fwhm), os.path.realpath(row.log_full_det.path),
+                               os.path.realpath(row.log_nlin_det.path), from_subject_common_absolute, from_subject_common_relative]),file=analysis_csv)
+                      #, ",",
+                      #chain_output.determinants_from_subject_common_to_subject[subj_id].time_pt_dict[timept].ix[i].log_full_det.path, ",",
+                      #chain_output.determinants_from_subject_common_to_subject[subj_id].time_pt_dict[timept].ix[i].log_nlin_det.path
+                      #)
+    analysis_csv.close()
+    #import pdb; pdb.set_trace()
+
+#Namespace(non_rigid_xfms_to_common=non_rigid_xfms_to_common_avg,
+#                                             determinants_from_common_avg_to_subject=determinants_from_common_avg_to_subject,
+#                                             determinants_from_subject_common_to_subject
+
+    #chain_stages = chain(options).stages
+
+    execute(chain_result.stages, options)
