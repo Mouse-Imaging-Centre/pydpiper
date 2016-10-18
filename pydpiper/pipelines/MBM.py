@@ -199,6 +199,7 @@ def mbm(imgs : List[MincAtom], options : MBMConf, prefix : str, output_dir : str
     # FIXME: this needs to go outside of the `mbm` function to avoid being run from within other pipelines (or
     # those other pipelines need to turn off this option)
     if options.mbm.common_space.do_common_space_registration:
+        warnings.warn("This feature is experimental ...")
         if not options.mbm.common_space.common_space_model:
             raise ValueError("No common space template provided!")
         # TODO allow lsq6 registration as well ...
@@ -255,7 +256,7 @@ def _mk_common_space_parser(parser : ArgParser):
     group.add_argument("--common-space-model", dest="common_space_model",
                        type=str, help="Run MAGeT segmentation on the images.")
     group.add_argument("--no-common-space-registration", dest="do_common_space_registration",
-                       default=True, action="store_false", help="Skip registration to common (db) space.")
+                       default=False, action="store_false", help="Skip registration to common (db) space.")
     return parser
 
 common_space_parser = AnnotatedParser(parser=BaseParser(_mk_common_space_parser(ArgParser(add_help=False)),
@@ -268,7 +269,7 @@ mbm_parser = CompoundParser(
                 nlin_parser,
                 stats_parser,
                 common_space_parser,
-                thickness_parser,
+                #thickness_parser,
                 AnnotatedParser(parser=maget_parsers, namespace="maget", prefix="maget"),
                 # TODO note that the maget-specific flags (--mask, --masking-method, etc., also get the "maget-" prefix)
                 # which could be changed by putting in the maget-specific parser separately from its lsq12, nlin parsers
