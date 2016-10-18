@@ -324,11 +324,11 @@ def _mk_execution_parser(p: ArgParser) -> ArgParser:
     group.add_argument("--default-job-mem", dest="default_job_mem",
                        type=float, default=1.75,
                        help="Memory (in GB) to allocate to jobs which don't make a request. [Default=%(default)s]")
-    #group.add_argument("--memory-factor", dest="memory_factor",
-    #                   type=float, default=1,
-    #                   help="Factor by which to scale memory estimates for all stages, e.g., on systems where there"
-    #                        " isn't actually as much memory as the scheduler believes.  Currently the default request"
-    #                        " is also scaled.  [Default=%(default)s]")
+    group.add_argument("--memory-factor", dest="memory_factor",
+                       type=float, default=1,
+                       help="Overall factor by which to scale all memory estimates/requests (including default job memory, "
+                            "but not executor totals (--mem)), say due to system differences or overcommitted nodes. "
+                            "[Default=%(default)s]")
     group.add_argument("--cmd-wrapper", dest="cmd_wrapper",
                        type=str, default="",
                        help="Wrapper inside of which to run the command, e.g., '/usr/bin/time -v'. [Default='%(default)s']")

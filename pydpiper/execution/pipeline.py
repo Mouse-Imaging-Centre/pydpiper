@@ -618,6 +618,8 @@ class Pipeline(object):
         # less than the minimum
         if self.stages[i].mem < self.exec_options.default_job_mem:
             self.stages[i].setMem(self.exec_options.default_job_mem)
+        # scale everything by the memory_factor
+        self.stages[i].setMem(self.stages[i].mem * self.exec_options.memory_factor)
         # keep track of the memory requirements of the runnable jobs
         self.mem_req_for_runnable.append(self.stages[i].mem)
 

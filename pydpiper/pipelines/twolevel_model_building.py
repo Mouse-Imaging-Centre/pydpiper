@@ -47,7 +47,7 @@ def two_level_pipeline(options : TwoLevelConf):
 def two_level(grouped_files_df, options : TwoLevelConf):
     """
     grouped_files_df - must contain 'group':<any comparable, sortable type> and 'file':MincAtom columns
-    """
+    """  # TODO weird naming since the grouped_files_df isn't a GroupBy object?  just files_df?
     s = Stages()
 
     first_level_results = (
