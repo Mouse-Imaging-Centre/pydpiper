@@ -2768,8 +2768,8 @@ def create_quality_control_images(imgs: List[MincAtom],
                  "-scale", str(scaling_factor),
                  "-triplanar",
                  img.path, img_verification.path],
-            memory=0,
-            procs=0)
+            memory=1,
+            procs=1)
         s.add(mincpik_stage)
         individualImages.append(img_verification)
 
@@ -2795,20 +2795,14 @@ def create_quality_control_images(imgs: List[MincAtom],
                  "-label", img.output_sub_dir,
                  img_verification.path,
                  img_verification_convert.path],
-            memory=0,
-            procs=0)
+            memory=1,
+            procs=1)
         s.add(convert_stage)
         individualImagesLabeled.append(img_verification_convert)
 
 
     # if montageOutput is specified, create the overview image
     if create_montage:
-        # TODO: the memory and procs are set to 0 to ensure that
-        # these stages finish soonish. No other stages depend on
-        # these, but we do want them to finish as soon as possible
-        # TODO: maybe... currently inputs and outputs to a pipeline
-        # can only be FileAtoms/MincAtoms, so we can't just provide
-        # a string to a file for this
         montage_output_fileatom = FileAtom(montage_output)
 
         montage_stage = CmdStage(
@@ -2817,8 +2811,8 @@ def create_quality_control_images(imgs: List[MincAtom],
             cmd=["montage", "-geometry", "+2+2"] +
                 [labeled_img.path for labeled_img in individualImagesLabeled] +
                 [montage_output_fileatom.path],
-            memory=0,
-            procs=0)
+            memory=1,
+            procs=1)
         if montage_dir:
             montage_stage.set_log_file(os.path.join(montage_dir,
                                                     "log",
@@ -2839,6 +2833,7 @@ def create_quality_control_images(imgs: List[MincAtom],
 
         s.add(montage_stage)
 
+    # TODO return some output images ?
     return Result(stages=s, output=None)
 
 

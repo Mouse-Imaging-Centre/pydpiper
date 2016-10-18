@@ -5,7 +5,7 @@ import sys
 import os
 from configargparse import ArgParser, Namespace  # type: ignore
 from datetime import datetime
-from multiprocessing import Process, Pool # type: ignore
+from multiprocessing import Process, Pool, Lock # type: ignore
 import subprocess
 import shlex
 import pydpiper.execution.queueing as q
@@ -90,9 +90,11 @@ def launchExecutor(executor):
     
     executor.connection_time_with_server = time.time()
     logger.info("Connected to the server at: %s", datetime.isoformat(datetime.now(), " "))
-    
+
+    # you'd think this could be done in __init__, but sometimes that's in the wrong process,
+    # which causes an error when calling `join` ...
     executor.initializePool()
-    
+
     logger.debug("Executor daemon running at: %s", daemon.locationStr)
     try:
         # run the daemon, not the executor mainLoop, in a new thread
@@ -133,48 +135,55 @@ def launchExecutor(executor):
         daemon.shutdown()
         t.join()
 
-def runStage(serverURI, clientURI, i, cmd_wrapper):
-    ## Proc needs its own proxy as it's independent of executor
-    p = Pyro4.core.Proxy(serverURI)
-    client = Pyro4.core.Proxy(clientURI)
-    
-    # Retrieve stage information, run stage and set finished or failed accordingly  
-    try:
-        logger.info("Running stage %i (on %s)", i, clientURI)
-        logger.debug("Memory requested: %.2f", p.getStageMem(i))
-        p.setStageStarted(i, clientURI)
+
+# like a stage but lighter weight (no methods wasting memory...)
+class StageInfo(object):
+    def __init__(self, *, mem, procs, ix, cmd, log_file):
+        self.mem = mem
+        self.procs = procs
+        self.ix = ix
+        self.cmd = cmd
+        self.log_file = log_file
+
+
+def stageinfo_dict_to_class(classname, d):
+    return StageInfo(mem=d['mem'], procs=d['procs'], ix=d['ix'], cmd=d['cmd'], log_file=d['log_file'])
+
+
+Pyro4.util.SerializerBase.register_dict_to_class("pydpiper.execution.pipeline_executor.StageInfo",
+                                                 stageinfo_dict_to_class)
+
+
+def runStage(*, clientURI, stage, cmd_wrapper):
+        ix = stage.ix
+
+        logger.info("Running stage %i (on %s)", ix, clientURI)
+        logger.debug("Memory requested: %.2f", stage.mem)
         try:
-            # get stage information
-            command_to_run  = ((cmd_wrapper + ' ') if cmd_wrapper else '') + str(p.getStageCommand(i))
+            command_to_run  = ((cmd_wrapper + ' ') if cmd_wrapper else '') + ' '.join(stage.cmd)
             logger.info(command_to_run)
-            command_logfile = p.getStageLogfile(i)
-            
+            command_logfile = stage.log_file
+
             # log file for the stage
             of = open(command_logfile, 'a')
-            of.write("Stage " + str(i) + " running on " + socket.gethostname() + " (" + clientURI + ") at " + datetime.isoformat(datetime.now(), " ") + ":\n")
+            of.write("Stage " + str(ix) + " running on " + socket.gethostname()
+                     + " (" + clientURI + ") at " + datetime.isoformat(datetime.now(), " ") + ":\n")
             of.write(command_to_run + "\n")
             of.flush()
             
-            args = shlex.split(command_to_run) 
+            args = shlex.split(command_to_run)
             process = subprocess.Popen(args, stdout=of, stderr=of, shell=False)
-            client.addPIDtoRunningList(process.pid)
+            #client.addPIDtoRunningList(process.pid)
             process.communicate()
-            client.removePIDfromRunningList(process.pid)
+            #client.removePIDfromRunningList(process.pid)
             ret = process.returncode 
             of.close()
-        except:
-            logger.exception("Exception whilst running stage: %i (on %s)", i, clientURI)   
-            client.notifyStageTerminated(i)
+        except Exception as e:
+            logger.exception("Exception whilst running stage: %i (on %s)", ix, clientURI)
+            return ix, e
         else:
-            logger.info("Stage %i finished, return was: %i (on %s)", i, ret, clientURI)
-            client.notifyStageTerminated(i, ret)
-
-        # If completed, return mem & processes back for re-use
-        return (p.getStageMem(i), p.getStageProcs(i))
-    except:
-        logger.exception("Error communicating to server in runStage. " 
-                        "Error raised to calling thread in launchExecutor. ")
-        raise     
+            logger.info("Stage %i finished, return was: %i (on %s)", ix, ret, clientURI)
+            return ix, ret
 
 
 class ChildProcess(object):
@@ -231,12 +240,13 @@ class pipelineExecutor(object):
         #initialize runningMem and Procs
         self.runningMem = 0.0
         self.runningProcs = 0   
-        self.runningChildren = [] # no scissors (i.e. children should not run around with sharp objects...)
-        self.pool = None
+        self.runningChildren = {}  # was: # no scissors (i.e. children should not run around with sharp objects...)
+        self.lock = Lock()
+        self.pool = None  # type: Pool
         self.pyro_proxy_for_server = None
         self.clientURI = None
         self.serverURI = None
-        self.current_running_job_pids = []
+        #self.current_running_job_pids = []
         self.registered_with_server = False
         # we associate an event with each executor which is set when jobs complete.
         # in the future it might also be set by the server, and we might have more
@@ -247,12 +257,12 @@ class pipelineExecutor(object):
         self.registered_with_server = True
 
     #@Pyro4.oneway
-    def addPIDtoRunningList(self, pid):
-        self.current_running_job_pids.append(pid)
+    #def addPIDtoRunningList(self, pid):
+    #    self.current_running_job_pids.append(pid)
 
     #@Pyro4.oneway
-    def removePIDfromRunningList(self, pid):
-        self.current_running_job_pids.remove(pid)
+    #def removePIDfromRunningList(self, pid):
+    #    self.current_running_job_pids.remove(pid)
 
     def initializePool(self):
         self.pool = Pool(processes = self.procs)
@@ -269,14 +279,17 @@ class pipelineExecutor(object):
     # TODO rename completeAndExitChildren,generalShutdownCall to something like
     # normalShutdown, dirtyShutdown
     def generalShutdownCall(self):
+        # FIXME this comment is outdated (but is the problem described still a problem?)
         # stop the worker processes (children) immediately without completing outstanding work
         # Initially I wanted to stop the running processes using pool.terminate() and pool.join()
         # but the keyboard interrupt handling proved tricky. Instead, the executor now keeps
         # track of the process IDs (pid) of the current running jobs. Those are targetted by
         # os.kill in order to stop the processes in the Pool
-        logger.debug("Executor shutting down.  Killing running jobs:")
-        for subprocID in self.current_running_job_pids:
-            os.kill(subprocID, signal.SIGTERM)
+        logger.debug("Executor shutting down.  Killing running jobs...")
+        #for subprocID in self.current_running_job_pids:
+        #    os.kill(subprocID, signal.SIGTERM)
+        self.pool.terminate()
+        self.pool.join()
         # FIXME the death of the child process causes runStage
         # to notify the server of the job's destruction
         # so the job is no longer in the client's set of stages
@@ -286,13 +299,13 @@ class pipelineExecutor(object):
     def completeAndExitChildren(self):
         # This function is called under normal circumstances (i.e., not because
         # of a keyboard interrupt). So we can close the pool of processes 
-        # in the normal way (don't need to use the pids here)
-        # prevent more jobs from starting, and exit
-        if len(self.current_running_job_pids) > 0:
-            self.pool.close()
-            # wait for the worker processes (children) to exit (must be called after terminate() or close()
-            self.pool.join()
+        # in the normal way, prevent more jobs from starting, and exit
         self.unregister_with_server()
+        if len(self.runningChildren) > 0:
+            logger.warn("Exiting with some processes still running: %s" % self.runningChildren)
+        # wait for the worker processes (children) to exit (must be called after terminate() or close())
+        self.pool.close()
+        self.pool.join()
 
     def unregister_with_server(self):
         if self.registered_with_server:
@@ -421,15 +434,16 @@ class pipelineExecutor(object):
             if self.time_to_accept_jobs < minutes_so_far:
                 return True
         return False
-    
-    def free_resources(self):
-        # Free up resources from any completed (successful or otherwise) stages
-        for child in self.runningChildren:
-            if child.result.ready():
-                logger.debug("Freeing up resources for stage %i.", child.stage)
-                self.runningMem -= child.mem
-                self.runningProcs -= child.procs
-                self.runningChildren.remove(child)
+
+    # TODO do this cleanup in the callback!
+    #def free_resources(self):
+    #    # Free up resources from any completed (successful or otherwise) stages
+    #    for child in self.runningChildren:
+    #        if child.result.ready():
+    #            logger.debug("Freeing up resources for stage %i.", child.stage)
+    #            self.runningMem -= child.mem
+    #            self.runningProcs -= child.procs
+    #            self.runningChildren.remove(child)
 
     #@Pyro4.oneway
     def notifyStageTerminated(self, i, returncode=None):
@@ -490,7 +504,7 @@ class pipelineExecutor(object):
         # doesn't matter too much as there will never be new jobs
         # (unless, in the future, we allow clients to connect to switch allegiances
         # to other servers)
-        self.free_resources()
+        #self.free_resources()
 
         logger.debug("Updating timestamp...")
         self.pyro_proxy_for_server.updateClientTimestamp(self.clientURI, tick=42)  # FIXME (42)
@@ -521,6 +535,7 @@ class pipelineExecutor(object):
         # another event/timeout to get another.  In general we might want 
         # getCommand to order multiple stages to be run on the same server
         # (just setting the event immediately would be somewhat hackish)
+        # FIXME send/get the whole stageinfo here (it contains an `ix` field, right?)?!
         cmd, i = self.pyro_proxy_for_server.getCommand(clientURIstr = self.clientURI,
                                                        clientMemFree = self.mem - self.runningMem,
                                                        clientProcsFree = self.procs - self.runningProcs)
@@ -536,13 +551,15 @@ class pipelineExecutor(object):
         elif cmd == "wait":
             return True
         elif cmd == "run_stage":
-            stageMem, stageProcs = self.pyro_proxy_for_server.getStageMem(i), self.pyro_proxy_for_server.getStageProcs(i)
+            stage = self.pyro_proxy_for_server.get_stage_info(i)
+            #stageMem, stageProcs = self.pyro_proxy_for_server.getStageMem(i), self.pyro_proxy_for_server.getStageProcs(i)
             # we trust that the server has given us a stage
             # that we have enough memory and processors to run ...
             # reset the idle time, we are running a stage!
             self.idle_time = 0
-            self.runningMem += stageMem
-            self.runningProcs += stageProcs
+            with self.lock:
+                self.runningMem += stage.mem
+                self.runningProcs += stage.procs
             # The multiprocessing library must pickle things in order to execute them.
             # I wanted the following function (runStage) to be a function of the pipelineExecutor
             # class. That way we can access self.serverURI and self.clientURI from
@@ -551,9 +568,36 @@ class pipelineExecutor(object):
             # this correctly, that binds the function to a class instance). There is
             # a way to make a bound function picklable, but this seems cumbersome. So instead
             # runStage is now a standalone function.
-            result = self.pool.apply_async(runStage, (self.serverURI, self.clientURI, i, options.cmd_wrapper))
 
-            self.runningChildren.append(ChildProcess(i, result, stageMem, stageProcs))
+            # callback for result of runStage, run by executor
+            def process_result(result):
+                ix, res = result
+                if isinstance(res, int):
+                    # it's a return code
+                    # don't do this logging in the callback for politenessoliphant
+                    #logger.info("Stage %i finished, return was: %i (on %s)", ix, res, self.clientURI)
+                    self.notifyStageTerminated(ix, res)
+                elif isinstance(res, Exception):
+                    # runStage raised an exception.  We could use apply_async's error_callback to handle this case
+                    # instead, but we need to know the index of the stage we were attempting to run, so we'd have
+                    # to catch the exception anyway to stuff the index into it ... this seems cleaner (no re-raising).
+                    #logger.exception("Exception whilst running stage: %i (on %s)", ix, self.clientURI, exc_info=res)
+                    self.notifyStageTerminated(ix)
+                logger.debug("Freeing up resources for stage %i.", ix)
+                stage = self.runningChildren[ix]
+                with self.lock:
+                    self.runningMem -= stage.mem
+                    self.runningProcs -= stage.procs
+                del self.runningChildren[ix]
+
+            # why does this need a separate call? should be able to infer that this stage will start from getCommand...
+            self.pyro_proxy_for_server.setStageStarted(i, self.clientURI)
+            result = self.pool.apply_async(runStage, args=(),
+                                           kwds={ "clientURI" : self.clientURI, "stage" : stage,
+                                                  "cmd_wrapper" : options.cmd_wrapper},
+                                           callback=process_result)
+            self.runningChildren[i] = ChildProcess(i, result, stage.mem, stage.procs)
+
             logger.debug("Added stage %i to the running pool.", i)
             return True
         else:
