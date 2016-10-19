@@ -1573,7 +1573,9 @@ def mincANTS_NLIN_build_model(imgs: List[MincAtom],
                                  resample_source=True, subdir_for_resample=resampled_subdir))
                 for img in imgs]
         #  TODO make resampled name 'final-nlin' ?? need another option to mincANTS for that, I guess ...
-        avg = s.defer(mincaverage([xfm.resampled for xfm in xfms], name_wo_ext='%s-nlin-%d' % (nlin_prefix, i+1),
+        # if no nlin_prefix is provided, we should remove the leading dash
+        avg = s.defer(mincaverage([xfm.resampled for xfm in xfms],
+                                  name_wo_ext='%s-nlin-%d' % (nlin_prefix, i+1) if nlin_prefix != "" else 'nlin-%d' % (i+1),
                                   output_dir=nlin_dir))
         avg_imgs.append(avg)
     return Result(stages=s, output=WithAvgImgs(output=xfms, avg_img=avg, avg_imgs=avg_imgs))
