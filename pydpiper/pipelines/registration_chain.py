@@ -238,7 +238,8 @@ def chain(options):
                                                 nlin_conf=nonlinear_configuration,
                                                 resolution=options.registration.resolution,
                                                 lsq12_dir=pipeline_lsq12_common_dir,
-                                                nlin_dir=pipeline_nlin_common_dir))
+                                                nlin_dir=pipeline_nlin_common_dir,
+                                                nlin_prefix="common"))
                                                 #, like={atlas_from_init_model_at_this_tp}
     elif options.registration.input_space == InputSpace.lsq12:
         #TODO: write reader that creates a mincANTS configuration out of an input protocol
