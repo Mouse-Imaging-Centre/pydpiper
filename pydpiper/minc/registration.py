@@ -1604,7 +1604,7 @@ def lsq12_nlin(source: MincAtom,
                                                                target=target,
                                                                conf=lsq12_conf,
                                                                resample_source=True))
-        nlin_transform_handler = s.defer(mincANTS(source=source,
+        nlin_transform_handler = s.defer(mincANTS(source=lsq12_transform_handler.resampled,
                                                   target=target,
                                                   conf=nlin_conf,
                                                   resample_source=resample_source))
