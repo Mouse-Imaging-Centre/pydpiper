@@ -2864,10 +2864,18 @@ class FlipAxis(AutoEnum):
 
 
 def volflip(img : MincAtom, axis : FlipAxis = None):
+    # N.B.: it's currently the users of a `volflip`ped volume's responsibility to add that volume's mask/labels
+    # to their inputs if used (as with mincresample itself; minctracc/mincANTS have to do this ...)
+    s = Stages()
     flipped = img.newname_with_suffix(suffix="_flipped")
-    s = CmdStage(inputs=(img,), outputs=(flipped,),
-                 cmd=["volflip", "-clobber", img.path, flipped.path] + (["-%s" % axis] if axis else []))
-    return Result(stages=Stages([s]), output=flipped)
+    if img.mask is not None:
+        flipped.mask = s.defer(volflip(img.mask, axis=axis))
+    if img.labels is not None:
+        flipped.labels = s.defer(volflip(img.labels, axis=axis))
+    stage = CmdStage(inputs=(img,), outputs=(flipped,),
+                     cmd=["volflip", "-clobber", img.path, flipped.path] + (["-%s" % axis] if axis else []))
+    s.add(stage)
+    return Result(stages=s, output=flipped)
 
 
 class LabelOp(AutoEnum):
