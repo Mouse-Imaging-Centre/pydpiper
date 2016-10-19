@@ -28,13 +28,22 @@ TwoLevelConf = NamedTuple("TwoLevelConf", [("first_level_conf", MBMConf),
 
 def two_level_pipeline(options : TwoLevelConf):
 
+    first_level_dir = options.application.pipeline_name + "_first_level"
+
     if options.application.files:
         warnings.warn("Got extra arguments: '%s'" % options.application.files)
     with open(options.twolevel.csv_file, 'r') as f:
         try:
-            files_df = pd.read_csv(filepath_or_buffer=f,
-                                   usecols=['group', 'file'],
-                                   converters={ 'file' : lambda f: MincAtom(f) })  # TODO pipeline_sub_dir?
+            files_df = (pd.read_csv(
+                          filepath_or_buffer=f,
+                          usecols=['group', 'file'])
+                        .assign(file=lambda df:
+                                       df.apply(axis="columns",
+                                                func=lambda r:
+                                                  MincAtom(r.file,
+                                                           pipeline_sub_dir=os.path.join(first_level_dir,
+                                                                                         "%s_processed" % r.group,
+                                                                                         )))))
         except AttributeError:
             warnings.warn("Something went wrong ... does your .csv file have `group` and `file` columns?")
             raise
