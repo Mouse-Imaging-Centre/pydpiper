@@ -34,7 +34,14 @@ class CmdStage(object):
         self.when_finished_hooks = []  # type: List[Callable[[], Any]]
         self.memory = memory
         self.procs = procs
-        self.log_file = (os.path.join(self.outputs[0].dir, "..", "log", cmd[0], "%s.log" % self.outputs[0].filename_wo_ext)
+        # some cosmetics: we would like the log files to reside in the "log" subdirectory. For most mincAtoms, we can
+        # access this directory by using its "dir" and adding "../log". This is not true for files that live in the
+        # _nlin or _lsq12 directories though. They live in their own top level directory, so we should just create
+        # a log directory in there
+        self.log_file = (os.path.join(self.outputs[0].dir,
+                                      ".." if self.outputs[0].dir != self.outputs[0].pipeline_sub_dir else "" ,
+                                      "log",
+                                      cmd[0], "%s.log" % self.outputs[0].filename_wo_ext)
                          if len(self.outputs) >= 1 else None)  # FIXME: for |self.outputs| > 1, this is a fragile hack
     # NB: __hash__ and __eq__ ignore hooks, memory
     # Also, we assume cmd determines inputs, outputs so ignore it in hash/eq calculations
