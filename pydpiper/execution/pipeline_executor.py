@@ -508,7 +508,10 @@ class pipelineExecutor(object):
         #self.free_resources()
 
         logger.debug("Updating timestamp...")
-        self.pyro_proxy_for_server.updateClientTimestamp(self.clientURI, tick=42)  # FIXME (42)
+        try:
+            self.pyro_proxy_for_server.updateClientTimestamp(self.clientURI, tick=42)  # FIXME (42)
+        except:
+            logger.debug("Pyro call timeod out...")
         logger.debug("Done")
         #if self.heartbeat_thread_crashed:
         #    logger.debug("Heartbeat thread crashed; quitting")
