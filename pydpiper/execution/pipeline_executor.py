@@ -14,6 +14,7 @@ import logging
 import socket
 import signal
 import threading
+os.environ["PYRO_LOGLEVEL"] = os.getenv("PYRO_LOGLEVEL", "INFO")
 import Pyro4       # type: ignore
 from typing import Any
 
