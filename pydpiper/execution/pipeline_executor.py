@@ -324,7 +324,8 @@ class pipelineExecutor(object):
             try:
                 self.pyro_proxy_for_server.unregisterClient(self.clientURI)
             except:
-                logger.debug("Pyro call timeod out for unregisterClient...")
+                logger.exception("Here's what went wrong:")
+                logger.debug("Pyro call timed out for unregisterClient...")
                 logger.debug("Trying to release the proxy connection...")
                 self.pyro_proxy_for_server._pyroRelease()
                 logger.debug("Proxy release.")
@@ -461,7 +462,8 @@ class pipelineExecutor(object):
                 try:
                     self.pyro_proxy_for_server.setStageFinished(i, self.clientURI)
                 except:
-                    logger.debug("Pyro call timeod out for setStageFinished...")
+                    logger.exception("Here's what went wrong:")
+                    logger.debug("Pyro call timed out for setStageFinished...")
                     logger.debug("Trying to release the proxy connection...")
                     self.pyro_proxy_for_server._pyroRelease()
                     logger.debug("Proxy release.")
@@ -472,7 +474,8 @@ class pipelineExecutor(object):
                 try:
                     self.pyro_proxy_for_server.setStageFailed(i, self.clientURI)
                 except:
-                    logger.debug("Pyro call timeod out for setStageFailed...")
+                    logger.exception("Here's what went wrong:")
+                    logger.debug("Pyro call timed out for setStageFailed...")
                     logger.debug("Trying to release the proxy connection...")
                     self.pyro_proxy_for_server._pyroRelease()
                     logger.debug("Proxy release.")
@@ -534,7 +537,8 @@ class pipelineExecutor(object):
         try:
             self.pyro_proxy_for_server.updateClientTimestamp(self.clientURI, tick=42)  # FIXME (42)
         except:
-            logger.debug("Pyro call timeod out for updateClientTimestamp...")
+            logger.exception("Here's what went wrong:")
+            logger.debug("Pyro call timed out for updateClientTimestamp...")
             logger.debug("Trying to release the proxy connection...")
             self.pyro_proxy_for_server._pyroRelease()
             logger.debug("Proxy release.")
@@ -572,7 +576,8 @@ class pipelineExecutor(object):
                                                            clientMemFree = self.mem - self.runningMem,
                                                            clientProcsFree = self.procs - self.runningProcs)
         except:
-            logger.debug("Pyro call timeod out for getCommand...")
+            logger.exception("Here's what went wrong:")
+            logger.debug("Pyro call timed out for getCommand...")
             logger.debug("Trying to release the proxy connection...")
             self.pyro_proxy_for_server._pyroRelease()
             logger.debug("Proxy release.")
@@ -594,7 +599,8 @@ class pipelineExecutor(object):
             try:
                 stage = self.pyro_proxy_for_server.get_stage_info(i)
             except:
-                logger.debug("Pyro call timeod out for get_stage_info...")
+                logger.exception("Here's what went wrong:")
+                logger.debug("Pyro call timed out for get_stage_info...")
                 logger.debug("Trying to release the proxy connection...")
                 self.pyro_proxy_for_server._pyroRelease()
                 logger.debug("Proxy release.")
@@ -642,7 +648,8 @@ class pipelineExecutor(object):
             try:
                 self.pyro_proxy_for_server.setStageStarted(i, self.clientURI)
             except:
-                logger.debug("Pyro call timeod out for setStageStarted...")
+                logger.exception("Here's what went wrong:")
+                logger.debug("Pyro call timed out for setStageStarted...")
                 logger.debug("Trying to release the proxy connection...")
                 self.pyro_proxy_for_server._pyroRelease()
                 logger.debug("Proxy release.")
