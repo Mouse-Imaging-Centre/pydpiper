@@ -1889,7 +1889,6 @@ def multilevel_pairwise_minctracc(imgs: List[MincAtom],
         avg_xfms = [avg_xfm_from(img, target_imgs=random.sample(imgs, max_pairs)) for img in imgs]
                       # FIXME might use one fewer image than `max_pairs`...
 
-    # FIXME the average computed in lsq12_pairwise is now rather redundant -- resolve by returning this one?
     final_avg = s.defer(mincaverage([xfm.resampled for xfm in avg_xfms], avg_file=final_avg))
 
     return Result(stages=s, output=WithAvgImgs(avg_imgs=[final_avg], avg_img=final_avg, output=avg_xfms))
@@ -1910,6 +1909,7 @@ def lsq12_pairwise(imgs: List[MincAtom],
                    # what to do if both it and a protocol file are supplied?
                    lsq12_conf: LSQ12Conf,
                    lsq12_dir: str,
+                   create_qc_images: bool = True,
                    like: MincAtom = None,
                    mincaverage = mincaverage) -> Result[WithAvgImgs[List[XfmHandler]]]:
 
@@ -1921,6 +1921,13 @@ def lsq12_pairwise(imgs: List[MincAtom],
     avgs_and_xfms = s.defer(multilevel_pairwise_minctracc(imgs=imgs, conf=minctracc_conf, like=like,
                                                           output_dir_for_avg=lsq12_dir, mincaverage=mincaverage,
                                                           max_pairs=lsq12_conf.max_pairs))
+
+    if create_qc_images:
+        s.defer(create_quality_control_images(imgs=[avgs_and_xfms.avg_img]
+                                                   + [xfm.resampled for xfm in avgs_and_xfms.output],
+                                              montage_output=os.path.join(lsq12_dir, "LSQ12_montage"),
+                                              message="lsq12"))
+
     return Result(stages=s, output=avgs_and_xfms)
 
 
