@@ -321,7 +321,14 @@ class pipelineExecutor(object):
             logger.info("Unsetting the registered-with-the-server flag for executor: %s", self.clientURI)
             self.registered_with_server = False
             logger.info("Now going to call unregisterClient on the server (executor: %s)", self.clientURI)
-            self.pyro_proxy_for_server.unregisterClient(self.clientURI)
+            try:
+                self.pyro_proxy_for_server.unregisterClient(self.clientURI)
+            except:
+                logger.debug("Pyro call timeod out for unregisterClient...")
+                logger.debug("Trying to release the proxy connection...")
+                self.pyro_proxy_for_server._pyroRelease()
+                logger.debug("Proxy release.")
+            logger.info("Done calling unregisterClient")
 
     def submitToQueue(self, number):
         """Submits to queueing system using qsub"""
@@ -450,10 +457,26 @@ class pipelineExecutor(object):
     def notifyStageTerminated(self, i, returncode=None):
         #try:
             if returncode == 0:
-                self.pyro_proxy_for_server.setStageFinished(i, self.clientURI)
+                logger.info("Setting stage finished")
+                try:
+                    self.pyro_proxy_for_server.setStageFinished(i, self.clientURI)
+                except:
+                    logger.debug("Pyro call timeod out for setStageFinished...")
+                    logger.debug("Trying to release the proxy connection...")
+                    self.pyro_proxy_for_server._pyroRelease()
+                    logger.debug("Proxy release.")
+                logger.info("Done setting stage finished")
             else:
                 # a None returncode is also considered a failure
-                self.pyro_proxy_for_server.setStageFailed(i, self.clientURI)
+                logger.info("Setting stage failed")
+                try:
+                    self.pyro_proxy_for_server.setStageFailed(i, self.clientURI)
+                except:
+                    logger.debug("Pyro call timeod out for setStageFailed...")
+                    logger.debug("Trying to release the proxy connection...")
+                    self.pyro_proxy_for_server._pyroRelease()
+                    logger.debug("Proxy release.")
+                logger.info("Done setting stage failed")
         #except Pyro4.errors.CommunicationError:
             # the server may have shutdown or otherwise become unavailable
             # (currently this is expected when a long-running job completes;
@@ -511,8 +534,11 @@ class pipelineExecutor(object):
         try:
             self.pyro_proxy_for_server.updateClientTimestamp(self.clientURI, tick=42)  # FIXME (42)
         except:
-            logger.debug("Pyro call timeod out...")
-        logger.debug("Done")
+            logger.debug("Pyro call timeod out for updateClientTimestamp...")
+            logger.debug("Trying to release the proxy connection...")
+            self.pyro_proxy_for_server._pyroRelease()
+            logger.debug("Proxy release.")
+        logger.debug("Done updating timestamp")
         #if self.heartbeat_thread_crashed:
         #    logger.debug("Heartbeat thread crashed; quitting")
         #    return False
@@ -540,9 +566,18 @@ class pipelineExecutor(object):
         # getCommand to order multiple stages to be run on the same server
         # (just setting the event immediately would be somewhat hackish)
         # FIXME send/get the whole stageinfo here (it contains an `ix` field, right?)?!
-        cmd, i = self.pyro_proxy_for_server.getCommand(clientURIstr = self.clientURI,
-                                                       clientMemFree = self.mem - self.runningMem,
-                                                       clientProcsFree = self.procs - self.runningProcs)
+        logger.info("Going to get command from server")
+        try:
+            cmd, i = self.pyro_proxy_for_server.getCommand(clientURIstr = self.clientURI,
+                                                           clientMemFree = self.mem - self.runningMem,
+                                                           clientProcsFree = self.procs - self.runningProcs)
+        except:
+            logger.debug("Pyro call timeod out for getCommand...")
+            logger.debug("Trying to release the proxy connection...")
+            self.pyro_proxy_for_server._pyroRelease()
+            logger.debug("Proxy release.")
+        logger.info("Done getting command from server")
+
         if cmd == "shutdown_normally":
             logger.debug('Saw shutdown command from server')
             return False
@@ -555,7 +590,15 @@ class pipelineExecutor(object):
         elif cmd == "wait":
             return True
         elif cmd == "run_stage":
-            stage = self.pyro_proxy_for_server.get_stage_info(i)
+            logger.info("Going to get stage info")
+            try:
+                stage = self.pyro_proxy_for_server.get_stage_info(i)
+            except:
+                logger.debug("Pyro call timeod out for get_stage_info...")
+                logger.debug("Trying to release the proxy connection...")
+                self.pyro_proxy_for_server._pyroRelease()
+                logger.debug("Proxy release.")
+            logger.info("Done getting stage information")
             #stageMem, stageProcs = self.pyro_proxy_for_server.getStageMem(i), self.pyro_proxy_for_server.getStageProcs(i)
             # we trust that the server has given us a stage
             # that we have enough memory and processors to run ...
@@ -595,7 +638,15 @@ class pipelineExecutor(object):
                 del self.runningChildren[ix]
 
             # why does this need a separate call? should be able to infer that this stage will start from getCommand...
-            self.pyro_proxy_for_server.setStageStarted(i, self.clientURI)
+            logger.info("Telling the server that a stage has started")
+            try:
+                self.pyro_proxy_for_server.setStageStarted(i, self.clientURI)
+            except:
+                logger.debug("Pyro call timeod out for setStageStarted...")
+                logger.debug("Trying to release the proxy connection...")
+                self.pyro_proxy_for_server._pyroRelease()
+                logger.debug("Proxy release.")
+            logger.info("Server knows that stage started")
             result = self.pool.apply_async(runStage, args=(),
                                            kwds={ "clientURI" : self.clientURI, "stage" : stage,
                                                   "cmd_wrapper" : options.cmd_wrapper},
