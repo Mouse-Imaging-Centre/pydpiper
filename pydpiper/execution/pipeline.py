@@ -744,6 +744,8 @@ class Pipeline(object):
                 dt = t - client.timestamp
                 if dt > pe.HEARTBEAT_INTERVAL + self.exec_options.latency_tolerance:
                     logger.warning("Executor at %s has died (no contact for %.1f sec)!", client.clientURI, dt)
+                    ct = time.time()
+                    logger.warning("Difference between time used as reference and current time: %.3f", ct-t)
                     print("\nWarning: there has been no contact with %s, for %.1f seconds. Considering the executor as dead!\n" % (client.clientURI, dt))
                     if self.failed_executors > self.exec_options.max_failed_executors:
                         logger.warning("Currently %d executors have died. This is more than the number of allowed failed executors as set by the flag: --max-failed-executors. Too many executors lost to spawn new ones" % self.failed_executors)
