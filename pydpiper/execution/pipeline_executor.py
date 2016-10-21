@@ -534,14 +534,18 @@ class pipelineExecutor(object):
         #self.free_resources()
 
         logger.debug("Updating timestamp...")
-        try:
-            self.pyro_proxy_for_server.updateClientTimestamp(self.clientURI, tick=42)  # FIXME (42)
-        except:
+        P = Process(target = self.pyro_proxy_for_server.updateClientTimestamp,
+                    args=(self.clientURI,),
+                    kwargs = {"tick":42})  # FIXME (42)
+        P.start()
+        P.join(timeout=5)
+        if P.is_alive():
+            P.terminate()
             logger.exception("Here's what went wrong:")
             logger.debug("Pyro call timed out for updateClientTimestamp...")
-            logger.debug("Trying to release the proxy connection...")
-            self.pyro_proxy_for_server._pyroRelease()
-            logger.debug("Proxy release.")
+            #logger.debug("Trying to release the proxy connection...")
+            #self.pyro_proxy_for_server._pyroRelease()
+            #logger.debug("Proxy release.")
         logger.debug("Done updating timestamp")
         #if self.heartbeat_thread_crashed:
         #    logger.debug("Heartbeat thread crashed; quitting")
