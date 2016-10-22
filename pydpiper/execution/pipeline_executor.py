@@ -534,9 +534,17 @@ class pipelineExecutor(object):
         #self.free_resources()
 
         logger.debug("Updating timestamp (we're using processes)...")
-        P = Process(target=self.pyro_proxy_for_server.updateClientTimestamp,
-                    args=(self.clientURI,),
-                    kwargs={"tick":42})  # FIXME (42)
+
+        def updateClientTimestamp_with_local_call():
+            logger.debug("Simple local call before updateClientTimestamp")
+            self.pyro_proxy_for_server.updateClientTimestamp(self.clientURI, tick=42)
+            logger.debug("Flanking message after updateClientTimestamp")
+
+        #P = Process(target=self.pyro_proxy_for_server.updateClientTimestamp,
+        #            args=(self.clientURI,),
+        #            kwargs={"tick":42})  # FIXME (42)
+
+        P = Process(target=updateClientTimestamp_with_local_call)
         P.start()
         logger.debug("In between the start and the join")
 
