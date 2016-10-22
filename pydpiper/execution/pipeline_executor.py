@@ -545,13 +545,16 @@ class pipelineExecutor(object):
         #            kwargs={"tick":42})  # FIXME (42)
 
         P = Process(target=updateClientTimestamp_with_local_call)
+        logger.debug("After Process P can created")
         P.start()
         logger.debug("In between the start and the join")
         P.join(timeout=3)
         logger.debug("The return code from process updateClientTimeStamp: %f", P.exitcode)
         time_taken_by_process = time.time() - self.current_time
-        if time_taken_by_process > 6:
-            logger.debug("What the fuckerions. That stupid process lasted longer than 6 seconds (should be 5 at most)...???")
+        if time_taken_by_process > 3.5:
+            logger.debug("What the fuckerions. That stupid process lasted %f seconds (should be 5 at most)...???", time_taken_by_process)
+        #if time_taken_by_process > 0.5 and time_taken_by_process < 4:
+        #    logger.debug("Woohoo!!! We have sucessfully terminatored a communication delinquent.")
         if P.is_alive():
             P.terminate()
             logger.debug("Here's what went wrong:")
