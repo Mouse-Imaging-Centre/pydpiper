@@ -534,12 +534,20 @@ class pipelineExecutor(object):
         #self.free_resources()
 
         logger.debug("Updating timestamp (we're using processes)...")
-        P = Process(target = self.pyro_proxy_for_server.updateClientTimestamp,
+        P = Process(target=self.pyro_proxy_for_server.updateClientTimestamp,
                     args=(self.clientURI,),
-                    kwargs = {"tick":42})  # FIXME (42)
+                    kwargs={"tick":42})  # FIXME (42)
         P.start()
         logger.debug("In between the start and the join")
-        P.join(timeout=5)
+
+        def terminateProcessNoMatterWhat():
+            time.sleep(5)
+            P.terminate()
+
+        Pterminator = Process(target=terminateProcessNoMatterWhat)
+        Pterminator.start()
+
+        P.join(timeout=3)
         logger.debug("The return code from process updateClientTimeStamp: %f", P.exitcode)
         time_taken_by_process = time.time() - self.current_time
         if time_taken_by_process > 6:
