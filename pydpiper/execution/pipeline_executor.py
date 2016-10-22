@@ -547,14 +547,6 @@ class pipelineExecutor(object):
         P = Process(target=updateClientTimestamp_with_local_call)
         P.start()
         logger.debug("In between the start and the join")
-
-        def terminateProcessNoMatterWhat():
-            time.sleep(5)
-            P.terminate()
-
-        Pterminator = Process(target=terminateProcessNoMatterWhat)
-        Pterminator.start()
-
         P.join(timeout=3)
         logger.debug("The return code from process updateClientTimeStamp: %f", P.exitcode)
         time_taken_by_process = time.time() - self.current_time
