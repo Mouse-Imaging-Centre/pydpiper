@@ -27,7 +27,7 @@ Pyro4.config.COMMTIMEOUT = 5.0
 
 class SubmitError(ValueError): pass
 
-for boring_exception, name in [(mincException, "mincException"), (SubmitError, "SubmitError")]:
+for boring_exception, name in [(mincException, "mincException"), (SubmitError, "SubmitError"), (KeyError,"KeyError")]:
     Pyro4.util.SerializerBase.register_dict_to_class(name, lambda _classname, dict: boring_exception)
     Pyro4.util.SerializerBase.register_class_to_dict(boring_exception, lambda obj: { "__class__" : name })
 
@@ -533,20 +533,30 @@ class pipelineExecutor(object):
         # to other servers)
         #self.free_resources()
 
-        logger.debug("Updating timestamp...")
+        logger.debug("Updating timestamp (we're using processes)...")
         P = Process(target = self.pyro_proxy_for_server.updateClientTimestamp,
                     args=(self.clientURI,),
                     kwargs = {"tick":42})  # FIXME (42)
         P.start()
+        logger.debug("In between the start and the join")
         P.join(timeout=5)
+        logger.debug("The return code from process updateClientTimeStamp: %f", P.exitcode)
+        time_taken_by_process = time.time() - self.current_time
+        if time_taken_by_process > 6:
+            logger.debug("What the fuckerions. That stupid process lasted longer than 6 seconds (should be 5 at most)...???")
         if P.is_alive():
             P.terminate()
-            logger.exception("Here's what went wrong:")
+            logger.debug("Here's what went wrong:")
             logger.debug("Pyro call timed out for updateClientTimestamp...")
             #logger.debug("Trying to release the proxy connection...")
             #self.pyro_proxy_for_server._pyroRelease()
             #logger.debug("Proxy release.")
-        logger.debug("Done updating timestamp")
+        if P.exitcode != 0:
+            # there must have been an exception during the updateClienTimestamp
+            # so let's die here:
+            raise Exception("Terminating self, because most likely the updateClientTimestamp failed.")
+
+        logger.debug("Done updating timestamp (using processes)")
         #if self.heartbeat_thread_crashed:
         #    logger.debug("Heartbeat thread crashed; quitting")
         #    return False
