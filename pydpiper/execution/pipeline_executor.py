@@ -551,7 +551,7 @@ class pipelineExecutor(object):
         P.join(timeout=3)
         logger.debug("The return code from process updateClientTimeStamp: %f", P.exitcode)
         time_taken_by_process = time.time() - self.current_time
-        if time_taken_by_process > 3.5:
+        if time_taken_by_process > 6:
             logger.debug("What the fuckerions. That stupid process lasted %f seconds (should be 5 at most)...???", time_taken_by_process)
         #if time_taken_by_process > 0.5 and time_taken_by_process < 4:
         #    logger.debug("Woohoo!!! We have sucessfully terminatored a communication delinquent.")
@@ -562,10 +562,11 @@ class pipelineExecutor(object):
             #logger.debug("Trying to release the proxy connection...")
             #self.pyro_proxy_for_server._pyroRelease()
             #logger.debug("Proxy release.")
-        if P.exitcode != 0:
+        elif P.exitcode != 0:
             # there must have been an exception during the updateClienTimestamp
             # so let's die here:
             raise Exception("Terminating self, because most likely the updateClientTimestamp failed.")
+
 
         logger.debug("Done updating timestamp (using processes)")
         #if self.heartbeat_thread_crashed:
