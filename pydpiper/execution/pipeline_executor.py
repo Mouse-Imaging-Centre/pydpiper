@@ -268,8 +268,6 @@ class pipelineExecutor(object):
         # a consistent manner
         # first attempt the call:
         try:
-            "unregisterClient" : lambda _:self.pyro_proxy_for_server.unregisterClient(self.clientURI)
-
             if server_function == unregisterClient:
                 self.pyro_proxy_for_server.unregisterClient(self.clientURI)
             elif server_function == setStageFinished:
