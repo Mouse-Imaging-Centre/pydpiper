@@ -259,7 +259,7 @@ def _mk_execution_parser(p: ArgParser) -> ArgParser:
                        action="store_true",
                        help="Use the Pyro NameServer to store object locations. Currently a Pyro nameserver must be started separately for this to work.")
     group.add_argument("--latency-tolerance", dest="latency_tolerance",
-                       type=float, default=15.0,
+                       type=float, default=180.0,
                        help="Allowed grace period by which an executor may miss a heartbeat tick before being considered failed [Default = %(default)s.")
     group.add_argument("--num-executors", dest="num_exec",
                        type=int, default=-1,
