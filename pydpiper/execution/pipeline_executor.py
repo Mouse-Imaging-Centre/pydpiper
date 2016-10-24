@@ -23,7 +23,6 @@ from pyminc.volumes.volumes import mincException
 
 Pyro4.config.REQUIRE_EXPOSE = False
 Pyro4.config.SERVERTYPE = "multiplex"
-#Pyro4.config.COMMTIMEOUT = 5.0
 
 class SubmitError(ValueError): pass
 
