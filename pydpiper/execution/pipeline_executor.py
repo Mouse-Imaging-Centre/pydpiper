@@ -503,12 +503,12 @@ class pipelineExecutor(object):
     #            self.runningChildren.remove(child)
 
     #@Pyro4.oneway
-    def notifyStageTerminated(self, i, returncode=None):
+    def notifyStageTerminated(self, i, new_proxy, returncode=None):
         #try:
             if returncode == 0:
                 logger.info("Setting stage finished")
                 try:
-                    self.pyro_proxy_for_server.setStageFinished(i, self.clientURI)
+                    new_proxy.setStageFinished(i, self.clientURI)
                 except:
                     logger.exception("Here's what went wrong:")
                     logger.debug("Pyro call timed out for setStageFinished...")
@@ -520,12 +520,12 @@ class pipelineExecutor(object):
                 # a None returncode is also considered a failure
                 logger.info("Setting stage failed")
                 try:
-                    self.pyro_proxy_for_server.setStageFailed(i, self.clientURI)
+                    new_proxy.setStageFailed(i, self.clientURI)
                 except:
                     logger.exception("Here's what went wrong:")
                     logger.debug("Pyro call timed out for setStageFailed...")
                     logger.debug("Trying to release the proxy connection...")
-                    self.pyro_proxy_for_server._pyroRelease()
+                    new_proxy._pyroRelease()
                     logger.debug("Proxy release.")
                 logger.info("Done setting stage failed")
         #except Pyro4.errors.CommunicationError:
@@ -697,25 +697,27 @@ class pipelineExecutor(object):
             # runStage is now a standalone function.
 
             # callback for result of runStage, run by executor
-            def process_result(result):
-                ix, res = result
-                if isinstance(res, int):
-                    # it's a return code
-                    # don't do this logging in the callback for politenessoliphant
-                    #logger.info("Stage %i finished, return was: %i (on %s)", ix, res, self.clientURI)
-                    self.notifyStageTerminated(ix, res)
-                elif isinstance(res, Exception):
-                    # runStage raised an exception.  We could use apply_async's error_callback to handle this case
-                    # instead, but we need to know the index of the stage we were attempting to run, so we'd have
-                    # to catch the exception anyway to stuff the index into it ... this seems cleaner (no re-raising).
-                    #logger.exception("Exception whilst running stage: %i (on %s)", ix, self.clientURI, exc_info=res)
-                    self.notifyStageTerminated(ix)
-                logger.debug("Freeing up resources for stage %i.", ix)
-                stage = self.runningChildren[ix]
-                with self.lock:
-                    self.runningMem -= stage.mem
-                    self.runningProcs -= stage.procs
-                del self.runningChildren[ix]
+            def process_result(new_proxy):
+                def process_result_with_new_proxy(result):
+                    ix, res = result
+                    if isinstance(res, int):
+                        # it's a return code
+                        # don't do this logging in the callback for politenessoliphant
+                        #logger.info("Stage %i finished, return was: %i (on %s)", ix, res, self.clientURI)
+                        self.notifyStageTerminated(ix, new_proxy, res)
+                    elif isinstance(res, Exception):
+                        # runStage raised an exception.  We could use apply_async's error_callback to handle this case
+                        # instead, but we need to know the index of the stage we were attempting to run, so we'd have
+                        # to catch the exception anyway to stuff the index into it ... this seems cleaner (no re-raising).
+                        #logger.exception("Exception whilst running stage: %i (on %s)", ix, self.clientURI, exc_info=res)
+                        self.notifyStageTerminated(ix, new_proxy)
+                    logger.debug("Freeing up resources for stage %i.", ix)
+                    stage = self.runningChildren[ix]
+                    with self.lock:
+                        self.runningMem -= stage.mem
+                        self.runningProcs -= stage.procs
+                    del self.runningChildren[ix]
+                return process_result_with_new_proxy
 
             # why does this need a separate call? should be able to infer that this stage will start from getCommand...
             logger.info("Telling the server that a stage has started")
@@ -728,10 +730,20 @@ class pipelineExecutor(object):
                 self.pyro_proxy_for_server._pyroRelease()
                 logger.debug("Proxy release.")
             logger.info("Server knows that stage started")
+            # create a new proxy to communicate with the server. We've found
+            # that connecting to the server via the same proxy using several
+            # Process-es, can bring down either or both the server and the client
+            # (the documentation also states that proxies can only be shared between
+            # threads).
+            new_proxy = Pyro4.Proxy(self.serverURI)
+            # note that (and this is just for poor old Matthijs), we've changed
+            # the callback, because we can't pass arguments to it. In order to
+            # actually feed it an argument, we made it nested. Oh that Ben
+            # and his bag of tricks... 
             result = self.pool.apply_async(runStage, args=(),
                                            kwds={ "clientURI" : self.clientURI, "stage" : stage,
                                                   "cmd_wrapper" : options.cmd_wrapper},
-                                           callback=process_result)
+                                           callback=process_result(new_proxy))
             self.runningChildren[i] = ChildProcess(i, result, stage.mem, stage.procs)
 
             logger.debug("Added stage %i to the running pool.", i)
