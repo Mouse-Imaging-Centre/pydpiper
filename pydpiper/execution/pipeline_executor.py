@@ -252,7 +252,56 @@ class pipelineExecutor(object):
         # in the future it might also be set by the server, and we might have more
         # than one event (for reclaiming, server messages, ...)
         self.e = threading.Event()
-        
+        self.heartbeat_tick = 0
+
+    def wrapPyroCall(self, func, *args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except:
+            logger.exception("Exception while placing a Pyro call at the server:")
+            raise Exception("Pyro call with the server failed. Shutting down...")
+
+
+    def placePyroCall(self, server_function, stage_number=None):
+        # Deal with all Pyro4 related calls in one place. It's easier
+        # this way to shutdown the executor if any Pyro call fails in
+        # a consistent manner
+        # first attempt the call:
+        try:
+            "unregisterClient" : lambda _:self.pyro_proxy_for_server.unregisterClient(self.clientURI)
+
+            if server_function == unregisterClient:
+                self.pyro_proxy_for_server.unregisterClient(self.clientURI)
+            elif server_function == setStageFinished:
+                if stage_number == None:
+                    raise Exception("No stage_number was provided for the setStageFinished call.")
+                self.pyro_proxy_for_server.setStageFinished(stage_number, self.clientURI)
+            elif server_function == setStageFailed:
+                if stage_number == None:
+                    raise Exception("No stage_number was provided for the setStageFailed call.")
+                self.pyro_proxy_for_server.setStageFailed(stage_number, self.clientURI)
+            elif server_function == updateClientTimestamp:
+                self.pyro_proxy_for_server.updateClientTimestamp(self.clientURI, self.heartbeat_tick)
+                self.heartbeat_tick += 1
+            elif server_function == getCommand:
+                return self.pyro_proxy_for_server.getCommand(clientURIstr = self.clientURI,
+                                                             clientMemFree = self.mem - self.runningMem,
+                                                             clientProcsFree = self.procs - self.runningProcs)
+            elif server_function == get_stage_info:
+                if stage_number == None:
+                    raise Exception("No stage_number was provided for the get_stage_info call.")
+                return self.pyro_proxy_for_server.get_stage_info(stage_number)
+            elif server_function == setStageStarted:
+                if stage_number == None:
+                    raise Exception("No stage_number was provided for the setStageStarted call.")
+                self.pyro_proxy_for_server.setStageStarted(stage_number, self.clientURI)
+            else:
+                raise Exception("Unkown call to place at the server: %s", server_function)
+        except:
+            logger.exception("Exception while placing a Pyro call at the server:")
+            raise Exception("Pyro call with the server failed. Shutting down...")
+
+
     def registeredWithServer(self):
         self.registered_with_server = True
 
