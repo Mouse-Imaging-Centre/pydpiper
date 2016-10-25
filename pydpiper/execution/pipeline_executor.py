@@ -256,9 +256,12 @@ class pipelineExecutor(object):
 
     def wrapPyroCall(self, func, *args, **kwargs):
         try:
-            return func(*args, **kwargs)
+            # a bit expensive perhaps, but it might be safer to create
+            # a new proxy for the server whenever it is contacted.
+            with Pyro4.Proxy(self.serverURI) as one_time_proxy:
+                return one_time_proxy.func(*args, **kwargs)
         except:
-            logger.exception("Exception while placing a Pyro call at the server:")
+            logger.exception("Exception while placing a Pyro call at the server: %s", func)
             raise Exception("Pyro call with the server failed. Shutting down...")
 
 
@@ -367,14 +370,18 @@ class pipelineExecutor(object):
             logger.info("Unsetting the registered-with-the-server flag for executor: %s", self.clientURI)
             self.registered_with_server = False
             logger.info("Now going to call unregisterClient on the server (executor: %s)", self.clientURI)
-            try:
-                self.pyro_proxy_for_server.unregisterClient(self.clientURI)
-            except:
-                logger.exception("Here's what went wrong:")
-                logger.debug("Pyro call timed out for unregisterClient...")
-                logger.debug("Trying to release the proxy connection...")
-                self.pyro_proxy_for_server._pyroRelease()
-                logger.debug("Proxy release.")
+
+            @wrapPyroCall
+            unregisterClient(self.clientURI)
+
+            #try:
+            #    self.pyro_proxy_for_server.
+            #except:
+            #    logger.exception("Here's what went wrong:")
+            #    logger.debug("Pyro call timed out for unregisterClient...")
+            #    logger.debug("Trying to release the proxy connection...")
+            #    self.pyro_proxy_for_server._pyroRelease()
+            #    logger.debug("Proxy release.")
             logger.info("Done calling unregisterClient")
 
     def submitToQueue(self, number):
@@ -501,30 +508,39 @@ class pipelineExecutor(object):
     #            self.runningChildren.remove(child)
 
     #@Pyro4.oneway
-    def notifyStageTerminated(self, i, new_proxy, returncode=None):
+    def notifyStageTerminated(self, i, returncode=None):
         #try:
             if returncode == 0:
                 logger.info("Setting stage finished")
-                try:
-                    new_proxy.setStageFinished(i, self.clientURI)
-                except:
-                    logger.exception("Here's what went wrong:")
-                    logger.debug("Pyro call timed out for setStageFinished...")
-                    logger.debug("Trying to release the proxy connection...")
-                    self.pyro_proxy_for_server._pyroRelease()
-                    logger.debug("Proxy release.")
+
+                @wrapPyroCall
+                setStageFinished(i, self.clientURI)
+
+                #try:
+                #    new_proxy.setStageFinished(i, self.clientURI)
+                #except:
+                #    logger.exception("Here's what went wrong:")
+                #    logger.debug("Pyro call timed out for setStageFinished...")
+                #    logger.debug("Trying to release the proxy connection...")
+                #    self.pyro_proxy_for_server._pyroRelease()
+                #    logger.debug("Proxy release.")
                 logger.info("Done setting stage finished")
             else:
                 # a None returncode is also considered a failure
                 logger.info("Setting stage failed")
-                try:
-                    new_proxy.setStageFailed(i, self.clientURI)
-                except:
-                    logger.exception("Here's what went wrong:")
-                    logger.debug("Pyro call timed out for setStageFailed...")
-                    logger.debug("Trying to release the proxy connection...")
-                    new_proxy._pyroRelease()
-                    logger.debug("Proxy release.")
+
+                @wrapPyroCall
+                setStageFailed(i, self.clientURI)
+
+                #try:
+                #    new_proxy.setStageFailed(i, self.clientURI)
+                #except:
+                #    logger.exception("Here's what went wrong:")
+                #    logger.debug("Pyro call timed out for setStageFailed...")
+                #    logger.debug("Trying to release the proxy connection...")
+                #    new_proxy._pyroRelease()
+                #    logger.debug("Proxy release.")
+
                 logger.info("Done setting stage failed")
         #except Pyro4.errors.CommunicationError:
             # the server may have shutdown or otherwise become unavailable
@@ -543,7 +559,11 @@ class pipelineExecutor(object):
         while self.registered_with_server:
             logger.debug("Sending heartbeat %d...", tick)
             tick += 1
-            self.pyro_proxy_for_server.updateClientTimestamp(self.clientURI, tick)
+
+            @wrapPyroCall
+            updateClientTimestamp(self.clientURI, tick)
+
+            #self.pyro_proxy_for_server.updateClientTimestamp(self.clientURI, tick)
             logger.debug("...finished")
             time.sleep(HEARTBEAT_INTERVAL)
             # this will take down the executor to avoid the case
@@ -581,37 +601,43 @@ class pipelineExecutor(object):
 
         logger.debug("Updating timestamp (we're using processes)...")
 
-        def updateClientTimestamp_with_local_call():
-            logger.debug("Simple local call before updateClientTimestamp")
-            self.pyro_proxy_for_server.updateClientTimestamp(self.clientURI, tick=42)
-            logger.debug("Flanking message after updateClientTimestamp")
+        @wrapPyroCall
+        updateClientTimestamp(self.clientURI, tick=self.heartbeat_tick)
+
+        self.heartbeat_tick += 1
+
+
+        #def updateClientTimestamp_with_local_call():
+        #    logger.debug("Simple local call before updateClientTimestamp")
+        #    self.pyro_proxy_for_server.updateClientTimestamp(self.clientURI, tick=42)
+        #    logger.debug("Flanking message after updateClientTimestamp")
 
         #P = Process(target=self.pyro_proxy_for_server.updateClientTimestamp,
         #            args=(self.clientURI,),
         #            kwargs={"tick":42})  # FIXME (42)
 
-        P = Process(target=updateClientTimestamp_with_local_call)
-        logger.debug("After Process P can created")
-        P.start()
-        logger.debug("In between the start and the join")
-        P.join(timeout=3)
-        logger.debug("The return code from process updateClientTimeStamp: %f", P.exitcode)
-        time_taken_by_process = time.time() - self.current_time
-        if time_taken_by_process > 6:
-            logger.debug("What the fuckerions. That stupid process lasted %f seconds (should be 5 at most)...???", time_taken_by_process)
+        #P = Process(target=updateClientTimestamp_with_local_call)
+        #logger.debug("After Process P can created")
+        #P.start()
+        #logger.debug("In between the start and the join")
+        #P.join(timeout=3)
+        #logger.debug("The return code from process updateClientTimeStamp: %f", P.exitcode)
+        #time_taken_by_process = time.time() - self.current_time
+        #if time_taken_by_process > 6:
+        #    logger.debug("What the fuckerions. That stupid process lasted %f seconds (should be 5 at most)...???", time_taken_by_process)
         #if time_taken_by_process > 0.5 and time_taken_by_process < 4:
         #    logger.debug("Woohoo!!! We have sucessfully terminatored a communication delinquent.")
-        if P.is_alive():
-            P.terminate()
-            logger.debug("Here's what went wrong:")
-            logger.debug("Pyro call timed out for updateClientTimestamp...")
+        #if P.is_alive():
+        #    P.terminate()
+        #    logger.debug("Here's what went wrong:")
+        #    logger.debug("Pyro call timed out for updateClientTimestamp...")
             #logger.debug("Trying to release the proxy connection...")
             #self.pyro_proxy_for_server._pyroRelease()
             #logger.debug("Proxy release.")
-        elif P.exitcode != 0:
+        #elif P.exitcode != 0:
             # there must have been an exception during the updateClienTimestamp
             # so let's die here:
-            raise Exception("Terminating self, because most likely the updateClientTimestamp failed.")
+        #    raise Exception("Terminating self, because most likely the updateClientTimestamp failed.")
 
 
         logger.debug("Done updating timestamp (using processes)")
@@ -643,16 +669,22 @@ class pipelineExecutor(object):
         # (just setting the event immediately would be somewhat hackish)
         # FIXME send/get the whole stageinfo here (it contains an `ix` field, right?)?!
         logger.info("Going to get command from server")
-        try:
-            cmd, i = self.pyro_proxy_for_server.getCommand(clientURIstr = self.clientURI,
-                                                           clientMemFree = self.mem - self.runningMem,
-                                                           clientProcsFree = self.procs - self.runningProcs)
-        except:
-            logger.exception("Here's what went wrong:")
-            logger.debug("Pyro call timed out for getCommand...")
-            logger.debug("Trying to release the proxy connection...")
-            self.pyro_proxy_for_server._pyroRelease()
-            logger.debug("Proxy release.")
+
+        @wrapPyroCall
+        cmd, i = getCommand(clientURIstr=self.clientURI,
+                            clientMemFree=self.mem - self.runningMem,
+                            clientProcsFree=self.procs - self.runningProcs)
+
+        #try:
+        #    cmd, i = self.pyro_proxy_for_server.getCommand(clientURIstr = self.clientURI,
+        #                                                   clientMemFree = self.mem - self.runningMem,
+        #                                                   clientProcsFree = self.procs - self.runningProcs)
+        #except:
+        #    logger.exception("Here's what went wrong:")
+        #    logger.debug("Pyro call timed out for getCommand...")
+        #    logger.debug("Trying to release the proxy connection...")
+        #    self.pyro_proxy_for_server._pyroRelease()
+        #    logger.debug("Proxy release.")
         logger.info("Done getting command from server")
 
         if cmd == "shutdown_normally":
@@ -668,14 +700,19 @@ class pipelineExecutor(object):
             return True
         elif cmd == "run_stage":
             logger.info("Going to get stage info")
-            try:
-                stage = self.pyro_proxy_for_server.get_stage_info(i)
-            except:
-                logger.exception("Here's what went wrong:")
-                logger.debug("Pyro call timed out for get_stage_info...")
-                logger.debug("Trying to release the proxy connection...")
-                self.pyro_proxy_for_server._pyroRelease()
-                logger.debug("Proxy release.")
+
+            @wrapPyroCall
+            stage = get_stage_info(i)
+
+            #try:
+            #    stage = self.pyro_proxy_for_server.get_stage_info(i)
+            #except:
+            #    logger.exception("Here's what went wrong:")
+            #    logger.debug("Pyro call timed out for get_stage_info...")
+            #    logger.debug("Trying to release the proxy connection...")
+            #    self.pyro_proxy_for_server._pyroRelease()
+            #    logger.debug("Proxy release.")
+
             logger.info("Done getting stage information")
             #stageMem, stageProcs = self.pyro_proxy_for_server.getStageMem(i), self.pyro_proxy_for_server.getStageProcs(i)
             # we trust that the server has given us a stage
@@ -695,53 +732,55 @@ class pipelineExecutor(object):
             # runStage is now a standalone function.
 
             # callback for result of runStage, run by executor
-            def process_result(new_proxy):
-                def process_result_with_new_proxy(result):
-                    ix, res = result
-                    if isinstance(res, int):
-                        # it's a return code
-                        # don't do this logging in the callback for politenessoliphant
-                        #logger.info("Stage %i finished, return was: %i (on %s)", ix, res, self.clientURI)
-                        self.notifyStageTerminated(ix, new_proxy, res)
-                    elif isinstance(res, Exception):
-                        # runStage raised an exception.  We could use apply_async's error_callback to handle this case
-                        # instead, but we need to know the index of the stage we were attempting to run, so we'd have
-                        # to catch the exception anyway to stuff the index into it ... this seems cleaner (no re-raising).
-                        #logger.exception("Exception whilst running stage: %i (on %s)", ix, self.clientURI, exc_info=res)
-                        self.notifyStageTerminated(ix, new_proxy)
-                    logger.debug("Freeing up resources for stage %i.", ix)
-                    stage = self.runningChildren[ix]
-                    with self.lock:
-                        self.runningMem -= stage.mem
-                        self.runningProcs -= stage.procs
-                    del self.runningChildren[ix]
-                return process_result_with_new_proxy
+            def process_result():
+                ix, res = result
+                if isinstance(res, int):
+                    # it's a return code
+                    # don't do this logging in the callback for politenessoliphant
+                    #logger.info("Stage %i finished, return was: %i (on %s)", ix, res, self.clientURI)
+                    self.notifyStageTerminated(ix, res)
+                elif isinstance(res, Exception):
+                    # runStage raised an exception.  We could use apply_async's error_callback to handle this case
+                    # instead, but we need to know the index of the stage we were attempting to run, so we'd have
+                    # to catch the exception anyway to stuff the index into it ... this seems cleaner (no re-raising).
+                    #logger.exception("Exception whilst running stage: %i (on %s)", ix, self.clientURI, exc_info=res)
+                    self.notifyStageTerminated(ix)
+                logger.debug("Freeing up resources for stage %i.", ix)
+                stage = self.runningChildren[ix]
+                with self.lock:
+                    self.runningMem -= stage.mem
+                    self.runningProcs -= stage.procs
+                del self.runningChildren[ix]
 
             # why does this need a separate call? should be able to infer that this stage will start from getCommand...
             logger.info("Telling the server that a stage has started")
-            try:
-                self.pyro_proxy_for_server.setStageStarted(i, self.clientURI)
-            except:
-                logger.exception("Here's what went wrong:")
-                logger.debug("Pyro call timed out for setStageStarted...")
-                logger.debug("Trying to release the proxy connection...")
-                self.pyro_proxy_for_server._pyroRelease()
-                logger.debug("Proxy release.")
+
+            @wrapPyroCall
+            setStageStarted(i, self.clientURI)
+
+            #try:
+            #    self.pyro_proxy_for_server.setStageStarted(i, self.clientURI)
+            #except:
+            #    logger.exception("Here's what went wrong:")
+            #    logger.debug("Pyro call timed out for setStageStarted...")
+            #    logger.debug("Trying to release the proxy connection...")
+            #    self.pyro_proxy_for_server._pyroRelease()
+            #    logger.debug("Proxy release.")
             logger.info("Server knows that stage started")
             # create a new proxy to communicate with the server. We've found
             # that connecting to the server via the same proxy using several
             # Process-es, can bring down either or both the server and the client
             # (the documentation also states that proxies can only be shared between
             # threads).
-            new_proxy = Pyro4.Proxy(self.serverURI)
+            #new_proxy = Pyro4.Proxy(self.serverURI)
             # note that (and this is just for poor old Matthijs), we've changed
             # the callback, because we can't pass arguments to it. In order to
             # actually feed it an argument, we made it nested. Oh that Ben
-            # and his bag of tricks... 
+            # and his bag of tricks...
             result = self.pool.apply_async(runStage, args=(),
                                            kwds={ "clientURI" : self.clientURI, "stage" : stage,
                                                   "cmd_wrapper" : options.cmd_wrapper},
-                                           callback=process_result(new_proxy))
+                                           callback=process_result)
             self.runningChildren[i] = ChildProcess(i, result, stage.mem, stage.procs)
 
             logger.debug("Added stage %i to the running pool.", i)
