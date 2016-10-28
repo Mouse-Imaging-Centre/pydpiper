@@ -410,7 +410,7 @@ def _mk_lsq6_parser():
     # is reflected on GitHub
     p.add_argument("--pride-of-models", dest="pride_of_models",
                    type=str, default=None,
-                   help="(registration_chain.py only!) Specify a csv file that contains the mapping of "
+                   help="(selected longitudinal pipelines only!) Specify a csv file that contains the mapping of "
                         "all your initial models at different time points. The idea is that you might "
                         "want to use different initial models for the time points in your data. "
                         "The csv file should have one column called \"model_file\", and one column "
