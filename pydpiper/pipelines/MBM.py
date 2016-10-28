@@ -12,8 +12,7 @@ from pydpiper.minc.containers import XfmHandler
 from pydpiper.core.files import FileAtom
 from pydpiper.minc.thickness import cortical_thickness
 from pydpiper.pipelines.MAGeT import maget, maget_parser, maget_parsers
-from pydpiper.core.util import NamedTuple
-
+from pydpiper.core.util import NamedTuple, maybe_deref_path
 from pydpiper.core.stages       import Result, Stages
 
 #TODO fix up imports, naming, stuff in registration vs. pipelines, ...
@@ -55,14 +54,6 @@ def mbm_pipeline(options : MBMConf):
     for filename, dataframe in (("transforms.csv", mbm_result.xfms),
                                 ("determinants.csv", mbm_result.determinants)):
         with open(filename, 'w') as f:
-            def maybe_deref_path(x):
-                # ugh ... just a convenience to allow using applymap in a 'generic' way ...
-                if isinstance(x, FileAtom) or isinstance(x, XfmAtom):
-                    return x.path
-                elif isinstance(x, XfmHandler):
-                    return x.xfm.path
-                else:
-                    return x
             f.write(dataframe.applymap(maybe_deref_path).to_csv(index=False))
 
     # TODO moved here from inside `mbm` for now ... does this make most sense?
@@ -100,7 +91,7 @@ def mbm(imgs : List[MincAtom], options : MBMConf, prefix : str, output_dir : str
         raise ValueError("Please, some files!")
 
     # FIXME: why do we have to call registration_targets *outside* of lsq6_nuc_inorm? is it just because of the extra
-    # options required?
+    # options required?  Also, shouldn't options.registration be a required input (as it contains `input_space`) ...?
     targets = registration_targets(lsq6_conf=options.mbm.lsq6,
                                    app_conf=options.application,
                                    first_input_file=imgs[0].path)
