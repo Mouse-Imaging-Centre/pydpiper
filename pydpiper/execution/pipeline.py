@@ -665,7 +665,7 @@ class Pipeline(object):
                    "(%d) allowed by --max-failed-executors.  No executors remain; exiting..."
                    % (self.failed_executors, self.exec_options.max_failed_executors))
             print(msg)
-            logger.warn(msg)
+            logger.warning(msg)
             return False
 
         # TODO combine with above clause?
@@ -686,9 +686,7 @@ class Pipeline(object):
 
     #@Pyro4.oneway
     def updateClientTimestamp(self, clientURI, tick):
-        logger.debug("Time... (%s)", clientURI)
         t = time.time()  # use server clock for consistency
-        logger.debug("Got it... (%s)", clientURI)
         try:
             self.clients[clientURI].timestamp = t
             logger.debug("Client %s updated timestamp (tick %d)",

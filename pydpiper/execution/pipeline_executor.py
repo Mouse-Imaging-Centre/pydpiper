@@ -23,17 +23,16 @@ from pyminc.volumes.volumes import mincException
 
 Pyro4.config.REQUIRE_EXPOSE = False
 Pyro4.config.SERVERTYPE = "multiplex"
-Pyro4.config.COMMTIMEOUT = 5.0
 
 class SubmitError(ValueError): pass
 
-for boring_exception, name in [(mincException, "mincException"), (SubmitError, "SubmitError")]:
+for boring_exception, name in [(mincException, "mincException"), (SubmitError, "SubmitError"), (KeyError,"KeyError")]:
     Pyro4.util.SerializerBase.register_dict_to_class(name, lambda _classname, dict: boring_exception)
     Pyro4.util.SerializerBase.register_class_to_dict(boring_exception, lambda obj: { "__class__" : name })
 
 
 #TODO add these to executorArgumentGroup as options, pass into pipelineExecutor
-EXECUTOR_MAIN_LOOP_INTERVAL = 10.0
+EXECUTOR_MAIN_LOOP_INTERVAL = 30.0
 HEARTBEAT_INTERVAL = EXECUTOR_MAIN_LOOP_INTERVAL  # Logically necessary since the two threads have been merged
 #SHUTDOWN_TIME = EXECUTOR_MAIN_LOOP_INTERVAL + LATENCY_TOLERANCE
 
@@ -113,12 +112,6 @@ def launchExecutor(executor):
         t = threading.Thread(target=with_exception_logging(daemon.requestLoop, "Pyro daemon"))
         t.daemon = True
         t.start()
-        #h = threading.Thread(target=with_exception_logging(executor.heartbeat, "heartbeat",
-        #                                                   crash_hook=lambda : setattr(executor,  # Python is 'funny'
-        #                                                                               "heartbeat_thread_crashed",
-        #                                                                               True)))
-        #h.daemon = True
-        #h.start()
         executor.mainLoop()
     except KeyboardInterrupt:
         logger.exception("Caught keyboard interrupt. Shutting down executor...")
@@ -158,8 +151,7 @@ Pyro4.util.SerializerBase.register_dict_to_class("pydpiper.execution.pipeline_ex
 def runStage(*, clientURI, stage, cmd_wrapper):
         ix = stage.ix
 
-        logger.info("Running stage %i (on %s)", ix, clientURI)
-        logger.debug("Memory requested: %.2f", stage.mem)
+        logger.info("Running stage %i (on %s). Memory requested: %.2f", ix, clientURI, stage.mem)
         try:
             command_to_run  = ((cmd_wrapper + ' ') if cmd_wrapper else '') + ' '.join(stage.cmd)
             logger.info(command_to_run)
@@ -207,9 +199,9 @@ class pipelineExecutor(object):
         # -- perhaps options.mem should be renamed
         # options.max_mem since this represents a per-node
         # limit (or at least a per-executor limit)
-        logger.debug("memNeeded: %s", memNeeded)
+        logger.info("memNeeded: %s", memNeeded)
         self.mem = memNeeded or options.mem
-        logger.debug("self.mem = %0.2fG", self.mem)
+        logger.info("self.mem = %0.2fG", self.mem)
         if self.mem > options.mem:
             raise InsufficientResources("executor requesting %.2fG memory but maximum is %.2fG" % (options.mem, self.mem))
         self.procs = options.proc
@@ -253,7 +245,28 @@ class pipelineExecutor(object):
         # in the future it might also be set by the server, and we might have more
         # than one event (for reclaiming, server messages, ...)
         self.e = threading.Event()
-        
+        self.heartbeat_tick = 0
+
+    def wrapPyroCall(self, func, *args, **kwargs):
+        try:
+            # a bit expensive perhaps, but it is safer to create
+            # a new proxy for the server whenever it is contacted.
+            # We found that connecting to the server via the same proxy using several
+            # Process-es, can bring down either or both the server and the client
+            # (the documentation also states that proxies can only be shared between
+            # threads).
+            # also, note Ben and his bag of tricks! When a function on the server
+            # side needs to be called, and wrapPyroCall is invoked, we do this
+            # using the lambda functionality. Below the lambda p: p.call_at_the_server
+            # will pass the new proxy to p. At the same time, pycharm is still able
+            # to type check things.
+            logger.debug("wrapPyroCall: %s", func)
+            with Pyro4.Proxy(self.serverURI) as one_time_proxy:
+                return func(one_time_proxy)(*args, **kwargs)
+        except:
+            logger.exception("Exception while placing a Pyro call at the server: %s", func)
+            raise Exception("Pyro call with the server failed. Shutting down...")
+
     def registeredWithServer(self):
         self.registered_with_server = True
 
@@ -286,7 +299,7 @@ class pipelineExecutor(object):
         # but the keyboard interrupt handling proved tricky. Instead, the executor now keeps
         # track of the process IDs (pid) of the current running jobs. Those are targetted by
         # os.kill in order to stop the processes in the Pool
-        logger.debug("Executor shutting down.  Killing running jobs...")
+        logger.info("Executor shutting down.  Killing running jobs...")
         #for subprocID in self.current_running_job_pids:
         #    os.kill(subprocID, signal.SIGTERM)
         self.pool.terminate()
@@ -303,7 +316,7 @@ class pipelineExecutor(object):
         # in the normal way, prevent more jobs from starting, and exit
         self.unregister_with_server()
         if len(self.runningChildren) > 0:
-            logger.warn("Exiting with some processes still running: %s" % self.runningChildren)
+            logger.warning("Exiting with some processes still running: %s" % self.runningChildren)
         # wait for the worker processes (children) to exit (must be called after terminate() or close())
         self.pool.close()
         self.pool.join()
@@ -320,14 +333,7 @@ class pipelineExecutor(object):
             # since the server runs single-threaded)
             logger.info("Unsetting the registered-with-the-server flag for executor: %s", self.clientURI)
             self.registered_with_server = False
-            logger.info("Now going to call unregisterClient on the server (executor: %s)", self.clientURI)
-            try:
-                self.pyro_proxy_for_server.unregisterClient(self.clientURI)
-            except:
-                logger.debug("Pyro call timeod out for unregisterClient...")
-                logger.debug("Trying to release the proxy connection...")
-                self.pyro_proxy_for_server._pyroRelease()
-                logger.debug("Proxy release.")
+            self.wrapPyroCall(lambda p: p.unregisterClient, self.clientURI)
             logger.info("Done calling unregisterClient")
 
     def submitToQueue(self, number):
@@ -457,52 +463,23 @@ class pipelineExecutor(object):
     def notifyStageTerminated(self, i, returncode=None):
         #try:
             if returncode == 0:
-                logger.info("Setting stage finished")
-                try:
-                    self.pyro_proxy_for_server.setStageFinished(i, self.clientURI)
-                except:
-                    logger.debug("Pyro call timeod out for setStageFinished...")
-                    logger.debug("Trying to release the proxy connection...")
-                    self.pyro_proxy_for_server._pyroRelease()
-                    logger.debug("Proxy release.")
-                logger.info("Done setting stage finished")
+                logger.debug("Setting stage %d finished on the server side", i)
+                self.wrapPyroCall(lambda p: p.setStageFinished, i, self.clientURI)
+                logger.debug("Done setting stage finished")
             else:
                 # a None returncode is also considered a failure
-                logger.info("Setting stage failed")
-                try:
-                    self.pyro_proxy_for_server.setStageFailed(i, self.clientURI)
-                except:
-                    logger.debug("Pyro call timeod out for setStageFailed...")
-                    logger.debug("Trying to release the proxy connection...")
-                    self.pyro_proxy_for_server._pyroRelease()
-                    logger.debug("Proxy release.")
-                logger.info("Done setting stage failed")
-        #except Pyro4.errors.CommunicationError:
+                logger.debug("Setting stage %d failed on the server side. Return code: %s", i, returncode)
+                self.wrapPyroCall(lambda p: p.setStageFailed,i, self.clientURI)
+                logger.debug("Done setting stage failed")
             # the server may have shutdown or otherwise become unavailable
             # (currently this is expected when a long-running job completes;
             # we should add a more elegant check for this state of affairs),
             # but the executor may have running jobs that shouldn't be killed
             # TODO add similar error handling around certain other Pyro calls)
-        #    logger.info("Error communing with server; couldn't notify it of stage %d's termination", i)
             self.e.set()  # some work finished and server notified, so wake up
 
     def idle(self):
         return self.runningMem == 0 and self.runningProcs == 0 and self.prev_time
-
-    def heartbeat(self):
-        tick = 0
-        while self.registered_with_server:
-            logger.debug("Sending heartbeat %d...", tick)
-            tick += 1
-            self.pyro_proxy_for_server.updateClientTimestamp(self.clientURI, tick)
-            logger.debug("...finished")
-            time.sleep(HEARTBEAT_INTERVAL)
-            # this will take down the executor to avoid the case
-            # where an executor wastes time processing jobs which the server
-            # considers lost; there might be a better way to do this
-            # (re-register/restart heartbeat and notify server of existing
-            # jobs? quite complicated ...), and it could be done
-            # 'atomically' using an event for better guarantees ...
 
     # use an event set/timeout system to run the executor mainLoop -
     # we might want to pass some extra information in addition to waking the system
@@ -510,7 +487,7 @@ class pipelineExecutor(object):
         while self.mainFn():
             self.e.wait(EXECUTOR_MAIN_LOOP_INTERVAL)
             self.e.clear()
-        logger.debug("Main loop finished")
+        logger.info("Main loop finished")
 
     def mainFn(self):
         """Try to get a job from the server (if appropriate) and update
@@ -530,18 +507,10 @@ class pipelineExecutor(object):
         # to other servers)
         #self.free_resources()
 
-        logger.debug("Updating timestamp...")
-        try:
-            self.pyro_proxy_for_server.updateClientTimestamp(self.clientURI, tick=42)  # FIXME (42)
-        except:
-            logger.debug("Pyro call timeod out for updateClientTimestamp...")
-            logger.debug("Trying to release the proxy connection...")
-            self.pyro_proxy_for_server._pyroRelease()
-            logger.debug("Proxy release.")
+        logger.debug("Updating timestamp with heartbeat tick: %d", self.heartbeat_tick)
+        self.wrapPyroCall(lambda p: p.updateClientTimestamp, self.clientURI, tick=self.heartbeat_tick)
+        self.heartbeat_tick += 1
         logger.debug("Done updating timestamp")
-        #if self.heartbeat_thread_crashed:
-        #    logger.debug("Heartbeat thread crashed; quitting")
-        #    return False
 
         if self.idle():
             self.idle_time += self.current_time - self.prev_time
@@ -566,40 +535,24 @@ class pipelineExecutor(object):
         # getCommand to order multiple stages to be run on the same server
         # (just setting the event immediately would be somewhat hackish)
         # FIXME send/get the whole stageinfo here (it contains an `ix` field, right?)?!
-        logger.info("Going to get command from server")
-        try:
-            cmd, i = self.pyro_proxy_for_server.getCommand(clientURIstr = self.clientURI,
-                                                           clientMemFree = self.mem - self.runningMem,
-                                                           clientProcsFree = self.procs - self.runningProcs)
-        except:
-            logger.debug("Pyro call timeod out for getCommand...")
-            logger.debug("Trying to release the proxy connection...")
-            self.pyro_proxy_for_server._pyroRelease()
-            logger.debug("Proxy release.")
-        logger.info("Done getting command from server")
+        logger.debug("Going to get command from server")
+        cmd, i = self.wrapPyroCall(lambda p: p.getCommand, clientURIstr=self.clientURI,
+                                                           clientMemFree=self.mem - self.runningMem,
+                                                           clientProcsFree=self.procs - self.runningProcs)
+        logger.debug("Done getting command from server")
 
         if cmd == "shutdown_normally":
-            logger.debug('Saw shutdown command from server')
+            logger.info('Saw shutdown command from server')
             return False
-        #elif cmd == "shutdown_immediately":
-        #    logger.debug('Saw immediate shutdown command - killing jobs ...')
-        #    return False
         # TODO this won't work yet since we'll just go to shutdown normally
         # and wait for jobs to finish instead of killing them -
         # maybe throwing an exception is better?
         elif cmd == "wait":
             return True
         elif cmd == "run_stage":
-            logger.info("Going to get stage info")
-            try:
-                stage = self.pyro_proxy_for_server.get_stage_info(i)
-            except:
-                logger.debug("Pyro call timeod out for get_stage_info...")
-                logger.debug("Trying to release the proxy connection...")
-                self.pyro_proxy_for_server._pyroRelease()
-                logger.debug("Proxy release.")
-            logger.info("Done getting stage information")
-            #stageMem, stageProcs = self.pyro_proxy_for_server.getStageMem(i), self.pyro_proxy_for_server.getStageProcs(i)
+            logger.debug("Going to get stage info for stage: %d", i)
+            stage = self.wrapPyroCall(lambda p: p.get_stage_info,i)
+            logger.debug("Done getting stage information for stage: %d", i)
             # we trust that the server has given us a stage
             # that we have enough memory and processors to run ...
             # reset the idle time, we are running a stage!
@@ -622,13 +575,11 @@ class pipelineExecutor(object):
                 if isinstance(res, int):
                     # it's a return code
                     # don't do this logging in the callback for politenessoliphant
-                    #logger.info("Stage %i finished, return was: %i (on %s)", ix, res, self.clientURI)
                     self.notifyStageTerminated(ix, res)
                 elif isinstance(res, Exception):
                     # runStage raised an exception.  We could use apply_async's error_callback to handle this case
                     # instead, but we need to know the index of the stage we were attempting to run, so we'd have
                     # to catch the exception anyway to stuff the index into it ... this seems cleaner (no re-raising).
-                    #logger.exception("Exception whilst running stage: %i (on %s)", ix, self.clientURI, exc_info=res)
                     self.notifyStageTerminated(ix)
                 logger.debug("Freeing up resources for stage %i.", ix)
                 stage = self.runningChildren[ix]
@@ -638,15 +589,9 @@ class pipelineExecutor(object):
                 del self.runningChildren[ix]
 
             # why does this need a separate call? should be able to infer that this stage will start from getCommand...
-            logger.info("Telling the server that a stage has started")
-            try:
-                self.pyro_proxy_for_server.setStageStarted(i, self.clientURI)
-            except:
-                logger.debug("Pyro call timeod out for setStageStarted...")
-                logger.debug("Trying to release the proxy connection...")
-                self.pyro_proxy_for_server._pyroRelease()
-                logger.debug("Proxy release.")
-            logger.info("Server knows that stage started")
+            logger.debug("Telling the server that stage %d has started", i)
+            self.wrapPyroCall(lambda p: p.setStageStarted, i, self.clientURI)
+            logger.debug("Server knows that stage started")
             result = self.pool.apply_async(runStage, args=(),
                                            kwds={ "clientURI" : self.clientURI, "stage" : stage,
                                                   "cmd_wrapper" : options.cmd_wrapper},
