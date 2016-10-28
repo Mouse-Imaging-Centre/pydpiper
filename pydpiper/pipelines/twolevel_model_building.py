@@ -16,7 +16,7 @@ from pydpiper.minc.registration import (concat_xfmhandlers, invert_xfmhandler, m
                                         TargetType)
 from pydpiper.pipelines.MBM import mbm, mbm_parser, MBMConf
 from pydpiper.execution.application import execute
-from pydpiper.core.util import NamedTuple
+from pydpiper.core.util import NamedTuple, maybe_deref_path
 from pydpiper.core.stages import Stages, Result
 from pydpiper.core.arguments import (AnnotatedParser, CompoundParser, application_parser,
                                      execution_parser, registration_parser, parse, BaseParser, segmentation_parser)
@@ -50,7 +50,20 @@ def two_level_pipeline(options : TwoLevelConf):
 
     check_MINC_input_files(files_df.file.map(lambda x: x.path))
 
-    return two_level(grouped_files_df=files_df, options=options)
+    pipeline = two_level(grouped_files_df=files_df, options=options)
+
+    with open("overall_determinants.csv", 'w') as overall_csv:
+        overall_csv.write(pipeline.output.overall_determinants
+                          .drop('inv_xfm', axis=1)
+                          .applymap(maybe_deref_path)
+                          .to_csv(index=False))
+    with open("resampled_determinants.csv", 'w') as resampled_csv:
+        resampled_csv.write(pipeline.output.resampled_determinants
+                            .drop(['inv_xfm', 'full_det', 'nlin_det'], axis=1)
+                            .applymap(maybe_deref_path)
+                            .to_csv(index=False))
+
+    return pipeline
 
 
 def two_level(grouped_files_df, options : TwoLevelConf):
@@ -130,10 +143,13 @@ def two_level(grouped_files_df, options : TwoLevelConf):
 
     inverted_overall_xfms = [s.defer(invert_xfmhandler(xfm)) for xfm in overall_xfms]
 
-    overall_determinants = s.defer(determinants_at_fwhms(
+    overall_determinants = (s.defer(determinants_at_fwhms(
                                      xfms=inverted_overall_xfms,
                                      inv_xfms=overall_xfms,
                                      blur_fwhms=options.mbm.stats.stats_kernels))
+                            .assign(overall_log_full_det=lambda df: df.log_full_det,
+                                    overall_log_nlin_det=lambda df: df.log_nlin_det)
+                            .drop(['log_full_det', 'log_nlin_det'], axis=1))
 
     # TODO return some MAGeT stuff from two_level function ??
     # FIXME running MAGeT from within the `two_level` function has the same problem as running it from within `mbm`:
@@ -154,8 +170,11 @@ def two_level(grouped_files_df, options : TwoLevelConf):
 
     # TODO resampling to database model ...
 
-    # TODO package up all transforms and first-level/resampled determinants into a couple tables and return them ...
-    return Result(stages=s, output=NotImplemented)
+    # TODO there should be one table containing all determinants (first level, overall, resampled first level) for each file
+    # and another containing some groupwise information (averages and transforms to the common average)
+    return Result(stages=s, output=Namespace(first_level_results=first_level_results,
+                                             resampled_determinants=resampled_determinants,
+                                             overall_determinants=overall_determinants))
 
 # FIXME: better to replace --files by this for all/most pipelines;
 # then we can enforce presence of metadata in the CSV file ... (pace MINC2)
