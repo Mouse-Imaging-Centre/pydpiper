@@ -1,10 +1,24 @@
 import copy
 from typing import Optional
 
-from pydpiper.core.util  import ensure_nonnull_return
 from pydpiper.minc.files import MincAtom, XfmAtom
 
 #TODO: might move elsewhere?
+
+
+class NoneError(ValueError): pass
+
+
+def ensure_nonnull_return(f):
+    def g(*args):
+        result = f(*args)
+        if result is None:
+            raise NoneError
+        else:
+            return result
+
+    return g
+
 
 class XfmHandler(object):
     """An xfm together with src/target images and the resampled src image.

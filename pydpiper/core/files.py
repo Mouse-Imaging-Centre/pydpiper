@@ -1,9 +1,29 @@
 import copy
 import os
 
-from typing import Callable, Union
+from typing import Callable, Union, Tuple
 
-from pydpiper.core.util import explode, NotProvided
+
+def explode(filename: str) -> Tuple[str, str, str]:
+    # TODO should this be a namedtuple instead of a tuple? Probably...can still match against, etc.
+    """Split `filename` into a directory, 'base', and extension.
+    >>> explode('/path/to/some/file.ext')
+    ('/path/to/some', 'file', '.ext')
+    >>> explode('./relative_path_to/file.ext')
+    ('./relative_path_to', 'file', '.ext')
+    >>> explode('file')
+    ('', 'file', '')
+    """
+    base, ext = os.path.splitext(filename)
+    directory, name = os.path.split(base)
+    return (directory, name, ext)
+
+
+class NotProvided(object):
+    """To be used as a datatype indicating no argument with this name was supplied
+    in the situation when None has another sensible meaning, e.g., when a sensible
+    default file is available but None indicates *no* file should be used."""
+
 
 class FileAtom(object):
     """

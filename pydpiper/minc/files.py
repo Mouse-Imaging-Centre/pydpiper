@@ -1,11 +1,13 @@
-from pydpiper.core.util  import NotProvided
-from pydpiper.core.files import FileAtom
-
 import copy
+
+# from pydpiper.core.util  import NotProvided
+from pydpiper.core.files import NotProvided, FileAtom
+
 
 # NB: the types for this module are defined in a stub file in order to constrain the type
 # of `newname_with_*` functions to return an object of the same class rather than a general FileAtom.
 # If you add a function here and the typechecker can't see it being exported, that's why.
+
 
 class MincAtom(FileAtom):
     def __init__(self, name, orig_name=NotProvided(), pipeline_sub_dir=None,
@@ -19,6 +21,7 @@ class MincAtom(FileAtom):
     # behaviour for free if the FileAtom.newname_with used copy.copy() internally
     # some operations (blurring) preserve mask/labels, but others don't (resampling) ... add a preserve_labels=<bool> arg?
 
+
 class XfmAtom(FileAtom):
     """
     We create this just to be able to type check xfms. They don't need
@@ -26,6 +29,7 @@ class XfmAtom(FileAtom):
     remains unchanged
     """
     pass
+
 
 # nasty coercion just because newname_with returns an object of the same type
 def xfmToMinc(xfm):

@@ -1,12 +1,27 @@
 import os
 import functools  # type: ignore
-from collections import defaultdict
 from operator import add
 from enum import Enum
 import typing
-from typing import Any, Callable, Dict, Iterable, List, Set, Tuple, TypeVar
+from typing import Any, Callable, List, Set, Tuple, TypeVar
+
+from pydpiper.minc.files import XfmAtom
+
+from pydpiper.minc.containers import XfmHandler
+
+from pydpiper.core.files import FileAtom
 
 from pydpiper.execution.pipeline import CmdStage
+
+
+def maybe_deref_path(x):
+    # ugh ... just a convenience to allow using applymap in a 'generic' way ...
+    if isinstance(x, FileAtom) or isinstance(x, XfmAtom):
+        return x.path
+    elif isinstance(x, XfmHandler):
+        return x.xfm.path
+    else:
+        return x
 
 
 class AutoEnum(Enum):
@@ -37,19 +52,6 @@ def raise_(err: BaseException):
     raise err
 
 
-def explode(filename: str) -> Tuple[str, str, str]:
-    # TODO should this be a namedtuple instead of a tuple? Probably...can still match against, etc.
-    """Split `filename` into a directory, 'base', and extension.
-    >>> explode('/path/to/some/file.ext')
-    ('/path/to/some', 'file', '.ext')
-    >>> explode('./relative_path_to/file.ext')
-    ('./relative_path_to', 'file', '.ext')
-    >>> explode('file')
-    ('', 'file', '')
-    """
-    base, ext = os.path.splitext(filename)
-    directory, name = os.path.split(base)
-    return (directory, name, ext)
 
 
 def pairs(lst: List[T]) -> List[Tuple[T, T]]:
@@ -58,26 +60,6 @@ def pairs(lst: List[T]) -> List[Tuple[T, T]]:
 
 def flatten(*xs):
     return functools.reduce(add, xs, [])
-
-
-class NotProvided(object):
-    """To be used as a datatype indicating no argument with this name was supplied
-    in the situation when None has another sensible meaning, e.g., when a sensible
-    default file is available but None indicates *no* file should be used."""
-
-
-class NoneError(ValueError): pass
-
-
-def ensure_nonnull_return(f):
-    def g(*args):
-        result = f(*args)
-        if result is None:
-            raise NoneError
-        else:
-            return result
-
-    return g
 
 
 def output_directories(stages: Set[CmdStage]) -> Set[str]:
