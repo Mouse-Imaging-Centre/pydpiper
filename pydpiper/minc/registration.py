@@ -2576,28 +2576,17 @@ def verify_correct_lsq6_target_options(init_model: str,
     the chosen target type, and raises an error otherwise.
     """
 
-    # the registration_chain.py is the only program that works with the
-    # pride_of_models. It is a little cleaner (I think?) to only show this
-    # option when the main calling program is actually the registration_chain.py.
-    # So let's find out! The stack is first in last out, so we need the last element:
-    calling_program = inspect.stack()[-1][1]
-
     # check how many options have been specified that can be used as the initial target
     number_of_target_options = sum((bootstrap is not False,
                                     init_model is not None,
                                     lsq6_target is not None,
                                     pride_of_models is not None))
 
-    no_target_msg = "Error: please specify a target for the 6 parameter alignment. " \
-                    "Options are: --lsq6-target, --init-model, --bootstrap"
-    if re.search(calling_program, "registration_chain.py"):
-        no_target_msg += ", --pride-of-models"
-    too_many_target_msg = "Error: please specify only one of the following options: " \
-                          "--lsq6-target, --init-model, --bootstrap"
-    if re.search(calling_program, "registration_chain.py"):
-        too_many_target_msg += ", --pride-of-models. "
-    too_many_target_msg += " Don't know which target to use..."
-
+    no_target_msg = ("Error: please specify a target for the 6 parameter alignment. "
+                     "Options are: --lsq6-target, --init-model, --bootstrap, and for some pipelines --pride-of-models.")
+    too_many_target_msg = ("Error: please specify only one of the following options: "
+                           "--lsq6-target, --init-model, --bootstrap, --pride-of-models. "
+                           "Don't know which target to use...")
 
     if number_of_target_options == 0:
         raise ValueError(no_target_msg)
