@@ -32,7 +32,7 @@ for boring_exception, name in [(mincException, "mincException"), (SubmitError, "
 
 
 #TODO add these to executorArgumentGroup as options, pass into pipelineExecutor
-EXECUTOR_MAIN_LOOP_INTERVAL = 10.0
+EXECUTOR_MAIN_LOOP_INTERVAL = 30.0
 HEARTBEAT_INTERVAL = EXECUTOR_MAIN_LOOP_INTERVAL  # Logically necessary since the two threads have been merged
 #SHUTDOWN_TIME = EXECUTOR_MAIN_LOOP_INTERVAL + LATENCY_TOLERANCE
 

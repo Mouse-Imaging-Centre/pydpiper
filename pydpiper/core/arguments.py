@@ -259,13 +259,13 @@ def _mk_execution_parser(p: ArgParser) -> ArgParser:
                        action="store_true",
                        help="Use the Pyro NameServer to store object locations. Currently a Pyro nameserver must be started separately for this to work.")
     group.add_argument("--latency-tolerance", dest="latency_tolerance",
-                       type=float, default=180.0,
+                       type=float, default=600.0,
                        help="Allowed grace period by which an executor may miss a heartbeat tick before being considered failed [Default = %(default)s.")
     group.add_argument("--num-executors", dest="num_exec",
                        type=int, default=-1,
                        help="Number of independent executors to launch. [Default = %(default)s. Code will not run without an explicit number specified.]")
     group.add_argument("--max-failed-executors", dest="max_failed_executors",
-                       type=int, default=2,
+                       type=int, default=10,
                        help="Maximum number of failed executors before we stop relaunching. [Default = %(default)s]")
     # TODO: add corresponding --monitor-heartbeats
     group.add_argument("--no-monitor-heartbeats", dest="monitor_heartbeats",
