@@ -463,12 +463,12 @@ class pipelineExecutor(object):
     def notifyStageTerminated(self, i, returncode=None):
         #try:
             if returncode == 0:
-                logger.info("Setting stage %d finished on the server side", i)
+                logger.debug("Setting stage %d finished on the server side", i)
                 self.wrapPyroCall(lambda p: p.setStageFinished, i, self.clientURI)
                 logger.debug("Done setting stage finished")
             else:
                 # a None returncode is also considered a failure
-                logger.info("Setting stage %d failed on the server side. Return code: %s", i, returncode)
+                logger.debug("Setting stage %d failed on the server side. Return code: %s", i, returncode)
                 self.wrapPyroCall(lambda p: p.setStageFailed,i, self.clientURI)
                 logger.debug("Done setting stage failed")
             # the server may have shutdown or otherwise become unavailable
@@ -550,7 +550,7 @@ class pipelineExecutor(object):
         elif cmd == "wait":
             return True
         elif cmd == "run_stage":
-            logger.info("Going to get stage info for stage: %d", i)
+            logger.debug("Going to get stage info for stage: %d", i)
             stage = self.wrapPyroCall(lambda p: p.get_stage_info,i)
             logger.debug("Done getting stage information for stage: %d", i)
             # we trust that the server has given us a stage
@@ -589,7 +589,7 @@ class pipelineExecutor(object):
                 del self.runningChildren[ix]
 
             # why does this need a separate call? should be able to infer that this stage will start from getCommand...
-            logger.info("Telling the server that stage %d has started", i)
+            logger.debug("Telling the server that stage %d has started", i)
             self.wrapPyroCall(lambda p: p.setStageStarted, i, self.clientURI)
             logger.debug("Server knows that stage started")
             result = self.pool.apply_async(runStage, args=(),
@@ -598,7 +598,7 @@ class pipelineExecutor(object):
                                            callback=process_result)
             self.runningChildren[i] = ChildProcess(i, result, stage.mem, stage.procs)
 
-            logger.info("Added stage %i to the running pool.", i)
+            logger.debug("Added stage %i to the running pool.", i)
             return True
         else:
             raise Exception("Got invalid cmd from server: %s" % cmd)
