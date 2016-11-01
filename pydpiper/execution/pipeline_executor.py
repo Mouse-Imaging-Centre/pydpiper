@@ -304,6 +304,7 @@ class pipelineExecutor(object):
         #    os.kill(subprocID, signal.SIGTERM)
         self.pool.terminate()
         self.pool.join()
+        logger.debug("Finished joining process pool.")
         # FIXME the death of the child process causes runStage
         # to notify the server of the job's destruction
         # so the job is no longer in the client's set of stages
