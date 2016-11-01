@@ -250,8 +250,9 @@ def mincaverage(imgs: List[MincAtom],
                                   orig_name=None,
                                   pipeline_sub_dir=output_dir))
         s.defer(mincmath(op='max',
-                       vols=[img_inst.mask for img_inst in imgs],
-                       out_atom=combined_mask))
+                         # set comprehension loses order but removes duplicates:
+                         vols=list({img_inst.mask for img_inst in imgs}),
+                         out_atom=combined_mask))
         avg.mask = combined_mask
 
 
