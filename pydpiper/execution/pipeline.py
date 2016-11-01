@@ -588,7 +588,7 @@ class Pipeline(object):
             # a handful of milliseconds, that won't solve anything...
             # this sleep command will block the server for a small amount 
             # of time, but should happen only sporadically
-            time.sleep(STAGE_RETRY_INTERVAL)
+            #time.sleep(STAGE_RETRY_INTERVAL)
             self.removeFromRunning(index, clientURI, new_status = None)
             self.stages[index].incrementNumberOfRetries()
             logger.info("RETRYING: ERROR in Stage " + str(index) + ": " + str(self.stages[index]))
