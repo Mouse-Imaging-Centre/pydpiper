@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 
-from __future__ import print_function
 from datetime import datetime
 from os.path import isdir, basename
 from os import mkdir
