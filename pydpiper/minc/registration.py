@@ -1600,6 +1600,18 @@ def lsq12_nlin(source: MincAtom,
     # constructing intermediate models, there's no need for separate calls.  However, this is annoying since
     # one would hope this function would similarly to the model-building version in being able to dispatch
     # on the configuration passed in (and in the same way, to avoid extra logic).
+
+    if isinstance(nlin_conf, MultilevelMincANTSConf):
+        # if only a sinle level is specified inside this multilevel configuration, all is fine:
+        if len(nlin_conf.confs) == 1:
+            # and we can just extract that single level
+            nlin_conf = nlin_conf.confs[0]
+        else:
+            raise ValueError("The function lsq12_nlin was provided with a MultilevelMincANTSConf with more than 1 "
+                             "level. This is a function performing a source to target registration, and thus should "
+                             "only run a single level of mincANTS (with its internal iterations option).")
+
+
     if isinstance(nlin_conf, MincANTSConf):
         lsq12_transform_handler = s.defer(multilevel_minctracc(source=source,
                                                                target=target,
@@ -1626,7 +1638,9 @@ def lsq12_nlin(source: MincAtom,
                                                               resample_source=resample_source))
         full_transform = nlin_transform_handler
     else:
-        raise ValueError("What sort of conf is this?!")
+        raise ValueError("Expected one of the following 3 options: 1) a MultilevelMincANTSConf with a single "
+                         "level inside of it, 2) a MincANTSConf, or 3) a MultilevelMinctraccConf. The nlin_conf "
+                         "that we got has type: " + type(nlin_conf))
 
     return Result(stages=s, output=full_transform)
 

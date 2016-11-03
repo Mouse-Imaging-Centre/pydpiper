@@ -582,7 +582,7 @@ def _mk_lsq12_parser():
                         "alignment. Default is None, which means that the input file will be used. "
                         "[Default = %(default)s]")
     p.add_argument("--lsq12-protocol", dest="protocol",
-                   type=str, default=None,
+                   type=str, required=True,
                    help="Can optionally specify a registration protocol that is different from defaults. "
                         "Parameters must be specified as in the following example: \n"
                         "applications_testing/test_data/minctracc_example_linear_protocol.csv \n"
