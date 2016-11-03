@@ -470,7 +470,7 @@ class pipelineExecutor(object):
             else:
                 # a None returncode is also considered a failure
                 logger.debug("Setting stage %d failed on the server side. Return code: %s", i, returncode)
-                self.wrapPyroCall(lambda p: p.setStageFailed,i, self.clientURI)
+                self.wrapPyroCall(lambda p: p.setStageFailed, i, self.clientURI)
                 logger.debug("Done setting stage failed")
             # the server may have shutdown or otherwise become unavailable
             # (currently this is expected when a long-running job completes;
