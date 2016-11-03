@@ -1,3 +1,8 @@
+New in Version 2.0.1
+====================
+* made the lsq12 protocols required in order to provide proper error messages when not specified
+* allowed the specification of a mincANTS protocol with a single level in lsq12_nlin which is used for MAGeT (among others)
+
 New in Version 2.0
 ==================
 * switch from Python2 to Python3.5 or higher
