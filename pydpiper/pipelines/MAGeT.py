@@ -30,17 +30,17 @@ def find_by(f, xs, on_empty=None):  # TODO move to util
         raise ValueError("Nothing in iterable satisfies the predicate")
 
 
-def read_atlas_dir(atlas_lib : str) -> List[MincAtom]:
+def read_atlas_dir(atlas_lib : str, pipeline_sub_dir : str) -> List[MincAtom]:
     """Read in atlases from directory specified return them as processed MincAtoms (with masks and labels).
     Assumes atlas/label/mask groups have one of the following naming schemes:
     (1) name_average.mnc, name_labels.mnc, name_mask.mnc
     (2) name.mnc, name_labels.mnc, name_mask.mnc
     Note that all three files are required even if masking is not used."""
 
-    return process_atlas_files(glob.iglob(os.path.join(atlas_lib, "*.mnc")))
+    return process_atlas_files(glob.iglob(os.path.join(atlas_lib, "*.mnc")), pipeline_sub_dir=pipeline_sub_dir)
 
 
-def process_atlas_files(filenames : List[str]) -> List[MincAtom]:
+def process_atlas_files(filenames : List[str], pipeline_sub_dir) -> List[MincAtom]:
 
     suffixes = ["_average.mnc", "_mask.mnc", "_labels.mnc"] + [".mnc"]  # N.B.: order matters ...
 
@@ -62,8 +62,9 @@ def process_atlas_files(filenames : List[str]) -> List[MincAtom]:
         else:
             # TODO: screw around with filenames/directories as usual
             grouped_atlas_files[group] = MincAtom(name=img_file,
-                                                  mask=MincAtom(name=mask_file),
-                                                  labels=MincAtom(name=label_file))
+                                                  mask=MincAtom(name=mask_file, pipeline_sub_dir=pipeline_sub_dir),
+                                                  labels=MincAtom(name=label_file, pipeline_sub_dir=pipeline_sub_dir),
+                                                  pipeline_sub_dir=pipeline_sub_dir)
 
     return pd.Series(list(grouped_atlas_files.values()))
 
@@ -74,13 +75,16 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir):
 
     maget_options = options.maget.maget
 
+    pipeline_sub_dir = os.path.join(options.application.output_directory,
+                                    options.application.pipeline_name + "_atlases")
+
     if maget_options.atlas_lib is None:
         raise ValueError("Need some atlases ...")
 
     #atlas_dir = os.path.join(output_dir, "input_atlases") ???
 
     # TODO should alternately accept a CSV file ...
-    atlas_library = read_atlas_dir(atlas_lib=maget_options.atlas_lib)
+    atlas_library = read_atlas_dir(atlas_lib=maget_options.atlas_lib, pipeline_sub_dir=pipeline_sub_dir)
 
     if len(atlas_library) == 0:
         raise ValueError("No atlases found in specified directory '%s' ..." % options.maget.maget.atlas_lib)
@@ -231,7 +235,9 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir):
                                                                               name="%s_template_labels" %
                                                                                    row.img.filename_wo_ext,
                                                                               output_dir=os.path.join(
-                                                                                  row.img.output_sub_dir, "labels"))))))
+                                                                                  row.img.pipeline_sub_dir,
+                                                                                  row.img.output_sub_dir,
+                                                                                  "labels"))))))
 
             # TODO write a procedure for this assign-groupby-aggregate-rename...
             # FIXME should be in above algebraic manipulation but MincAtoms don't support flexible immutable updating
@@ -308,7 +314,9 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir):
                  .reset_index()
                  .assign(voted_labels=lambda df: defer(np.vectorize(voxel_vote)(label_files=df.resampled_labels,
                                                                                 output_dir=df.img.apply(
-                                                                                    lambda x: x.output_sub_dir)))))
+                                                                                    lambda x: os.path.join(
+                                                                                        x.pipeline_sub_dir,
+                                                                                        x.output_sub_dir))))))
 
         # TODO doing mincresample -invert separately for the img->atlas xfm for mask, labels is silly
         # (when Pydpiper's `mincresample` does both automatically)?

@@ -2643,7 +2643,9 @@ def registration_targets(lsq6_conf: LSQ6Conf,
         return RegistrationTargets(registration_standard=bootstrap_file)
 
     elif target_type == TargetType.initial_model:
-        return get_registration_targets_from_init_model(target_file, output_dir, pipeline_name)
+        return get_registration_targets_from_init_model(target_file,
+                                                        output_dir=output_dir,
+                                                        pipeline_name=pipeline_name)
     else:
         raise ValueError("Invalid target type: %s" % lsq6_conf.target_type)
 
