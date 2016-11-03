@@ -4,4 +4,9 @@
 *\.swp
 *\.pyc
 *.log
+*egg-info
+build/
+dist/
+.idea/
+doc/_build
 pydpiper.egg-info/

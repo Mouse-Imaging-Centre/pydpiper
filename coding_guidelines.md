@@ -1,0 +1,4 @@
+- helper functions should raise exceptions, not call a non-zero exit function so that higher level code can potentially deal with the exception. High level code might use sys.exit(1) as long as we make sure that any printed error messages go to stderr
+- (python standard) CamelCase for classes and snake_case for everything else
+- all pipelines should deal with relative paths, i.e. if you were to copy over all pipeline directories into a new top level directory, that should not have any effect on what was run, has to be run, can be run etc.
+- it is not necessary to have \ for line breaks if you are between brackets etc. So don't use them there

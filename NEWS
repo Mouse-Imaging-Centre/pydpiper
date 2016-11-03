@@ -1,3 +1,17 @@
+New in Version 2.0
+==================
+* switch from Python2 to Python3.5 or higher
+* PydPiper2.0 is a rewrite of PydPiper to facilitate easier creation of pipelines
+* we've made significant changes in how the communication between server and executors work, and most network related issues appear to be resolved.
+* new pipelines: asymmetry.py which is a pipeline that runs a twolevel_model_building on the input brains and their flipped versions
+* MBM and twolevel_model_building have a build-in MAGeT option
+* registration_chain code allows you to specify a "pride of models"; this is necessary for instance when there are large size differences between your timepoints
+* you can provide your csv that you'll use for your entire project (and stats) and feed that into: MBM, registration_chain, twolevel_model_building
+* usage differences:
+  - must specify --files for MBM.py
+  - some protocol defaults not specified; you need to specify these
+
+
 New in Version 1.18.1
 =====================
 * point to ConfigArgParse 0.11.0 on github until its maintainer makes a new release and uploads to PyPI
