@@ -2057,11 +2057,11 @@ def check_MINC_input_files(args: List[str]) -> None:
         raise ValueError("\nNo input files are provided.\n")
     else:
         # here we should also check that the input files can be read
-        issuesWithInputs = 0
+        issuesWithInputs = False
         for inputF in args:
             if not can_read_MINC_file(inputF):  # FIXME this will be quite slow on SciNet, etc.
                 print("\nError: can not read input file: " + str(inputF) + "\n", file=sys.stderr)
-                issuesWithInputs = 1
+                issuesWithInputs = True
         if issuesWithInputs:
             raise ValueError("\nIssues reading input files.\n")
     # lastly we should check that the actual filenames are distinct, because
