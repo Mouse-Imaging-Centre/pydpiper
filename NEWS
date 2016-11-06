@@ -1,3 +1,54 @@
+New in Version 2.0.1
+====================
+* made the lsq12 protocols required in order to provide proper error messages when not specified
+* allowed the specification of a mincANTS protocol with a single level in lsq12_nlin which is used for MAGeT (among others)
+
+New in Version 2.0
+==================
+* switch from Python2 to Python3.5 or higher
+* PydPiper2.0 is a rewrite of PydPiper to facilitate easier creation of pipelines
+* we've made significant changes in how the communication between server and executors work, and most network related issues appear to be resolved.
+* new pipelines: asymmetry.py which is a pipeline that runs a twolevel_model_building on the input brains and their flipped versions
+* MBM and twolevel_model_building have a build-in MAGeT option
+* registration_chain code allows you to specify a "pride of models"; this is necessary for instance when there are large size differences between your timepoints
+* you can provide your csv that you'll use for your entire project (and stats) and feed that into: MBM, registration_chain, twolevel_model_building
+* usage differences:
+  - must specify --files for MBM.py
+  - some protocol defaults not specified; you need to specify these
+
+
+New in Version 1.18.1
+=====================
+* point to ConfigArgParse 0.11.0 on github until its maintainer makes a new release and uploads to PyPI
+
+New in Version 1.18
+===================
+* bug fix to minctracc memory config
+* added a `--use-dir-names` flag to two-level code to create groups based on directory names
+  rather than first input files
+* update the dependencies; in particular, specify minimum ConfigArgParse version due to bug in that library
+* many changes supporting operation on the Sick Kids CCM grid (and other PBS/Torque 'capability'
+  systems) - mostly slowly implementing a HPC queue submission library inside Pydpiper ...
+* new config file for CCM cluster
+* added a --submit-server flag so that use of this mode of operations isn't determined by queue type
+  (at the moment this only works for PBS/Torque grids)
+* added some logic to executor `mainLoop` procedure to detect Pyro4 timeouts ... this doesn't ever
+  seem to be triggered, so should probably be removed again in future
+* fixed a bug where only --lsq12-max-pairs images were used to generate the lsq12 average;
+  doesn't seem to have made much difference
+* runnable-time hooks are now cached
+  (and are now added via a method, rather than by appending to runnable_hooks directly)
+* very hackish memory estimates for pmincaverage (for these to agree with SGE's estimates,
+  probably need minc-stuffs 0.1.14 or later)
+* fewer executors are launched in some situations when more aren't needed
+* qsub return codes are checked
+* job arrays are used to submit executors to avoid choking the grid engine and to reduce
+  vmem usage of the server when submitting; query these with "qsub -t <jid>[]"
+* Pyro knows how to serialize more exceptions
+* removed the executor heartbeat thread; may be restored in future
+* use subprocess32 instead of subprocess for (hopefully) improved correctness
+
+
 New in Version 1.15
 ===================
 * some of the python dependencies are now installed automatically (from PyPI): 
