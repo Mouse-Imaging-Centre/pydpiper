@@ -1187,7 +1187,7 @@ def minctracc(source: MincAtom,
 SimilarityMetricConf = NamedTuple('SimilarityMetricConf',
                                   [("metric", str),
                                    ("weight", float),
-                                   ("radius_or_bins", float),
+                                   ("radius_or_bins", int),
                                    ("use_gradient_image", bool)])
 
 
@@ -1323,7 +1323,7 @@ def parse_mincANTS_protocol_file(config_file,
                "gradient"           : parse_many(parse_bool),
                "similarity_metric"  : parse_many(str),
                "weight"             : parse_many(float),
-               "radius_or_histo"    : parse_many(float),
+               "radius_or_histo"    : parse_many(int),
                "transformation"     : str,
                "regularization"     : str,
                "iterations"         : str,
