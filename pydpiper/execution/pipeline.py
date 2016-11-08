@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 
 import hashlib
+import threading
+
 import networkx as nx  # type: ignore
 import os
 import sys
@@ -918,7 +920,10 @@ def launchPipelineExecutors(options, mem_needed, number, uri_file):
                                     uri_file=uri_file,
                                     #pipeline_name=options.application.pipeline_name,
                                     memNeeded=mem_needed)
-            pe.launchExecutor(e)
+            # since launchPipelineExecutors can be called from server,
+            # need some concurrency or pe.launchExecutor will hang server ....
+            threading.Thread(target=pe.launchExecutor, args=(e,)).start()
+            #pe.launchExecutor(e)
     else:
         pipelineExecutor = pe.pipelineExecutor(options=options.execution,
                                                uri_file=uri_file,
