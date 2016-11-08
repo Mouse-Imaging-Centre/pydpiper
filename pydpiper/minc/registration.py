@@ -1585,7 +1585,7 @@ def mincANTS_NLIN_build_model(imgs: List[MincAtom],
 def lsq12_nlin(source: MincAtom,
                target: MincAtom,
                lsq12_conf: MinctraccConf,
-               nlin_conf: Union[MultilevelMinctraccConf, MincANTSConf],
+               nlin_conf: Union[MultilevelMinctraccConf, MultilevelMincANTSConf, MincANTSConf],  # sigh ... ...
                resample_source: bool = True):
     """
     Runs a 12 parameter (or really any) linear registration followed by a nonlinear registration
