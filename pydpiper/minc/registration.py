@@ -38,7 +38,12 @@ class LinearTransType(AutoEnum):
     procrustes = ()
 
 
-class Objective(AutoEnum):
+class LinearObjectiveFn(AutoEnum):
+    # named so that <...>.name return the appropriate string to pass to minctracc
+    xcorr = zscore = ssc = vr = mi = nmi = ()
+
+
+class NonlinearObjectiveFn(AutoEnum):
     # named so that <...>.name returns the appropriate string to pass to minctracc
     xcorr = diff = sqdiff = label = chamfer = corrcoeff = opticalflow = ()
 
@@ -84,7 +89,8 @@ LSQ12Conf = NamedTuple('LSQ12Conf', [('run_lsq12', bool),
 
 
 LinearMinctraccConf = NamedTuple("LinearMinctraccConf",
-                                 [("simplex", float),
+                                 [("objective", Optional[LinearObjectiveFn]),
+                                  ("simplex", float),
                                   ("transform_type", Optional[LinearTransType]),
                                   ("tolerance", float),
                                   ("w_rotations", R3),
@@ -102,7 +108,7 @@ NonlinearMinctraccConf = NamedTuple("NonlinearMinctraccConf",
                                      ("stiffness", float),
                                      ("weight", float),
                                      ("similarity", float),
-                                     ("objective", Optional[Objective]),
+                                     ("objective", Optional[NonlinearObjectiveFn]),
                                      ("lattice_diameter", R3),
                                      ("sub_lattice", int),
                                      ("max_def_magnitude", R3)])
@@ -856,7 +862,8 @@ def rotational_minctracc(source: MincAtom,
 # does this even get used in the pipeline?  LSQ6/12 get their own
 # protocols, and many settings here are the minctracc default
 def default_linear_minctracc_conf(transform_type: LinearTransType) -> LinearMinctraccConf:
-    return LinearMinctraccConf(simplex=1,  # TODO simplex=1 -> simplex_factor=20?
+    return LinearMinctraccConf(objective=LinearObjectiveFn.xcorr,
+                               simplex=1,  # TODO simplex=1 -> simplex_factor=20?
                                transform_type=transform_type,
                                tolerance=0.0001,
                                w_scales=(0.02, 0.02, 0.02),
@@ -887,7 +894,7 @@ default_nonlinear_minctracc_conf = NonlinearMinctraccConf(
     use_simplex=True,
     stiffness=0.98,
     weight=0.8,
-    objective=Objective.corrcoeff,
+    objective=NonlinearObjectiveFn.corrcoeff,
     lattice_diameter=_lattice_diameter,
     sub_lattice=6,
     max_def_magnitude=None)
@@ -1022,10 +1029,11 @@ def parse_minctracc_linear_protocol(f, transform_type : LinearTransType,
                                     base_minctracc_conf : LinearMinctraccConf = default_linear_minctracc_conf) \
         -> MultilevelMinctraccConf:
     parsers = {"blur"               : float,
+               "objective"          : lambda x: LinearObjectiveFn[x],
                "step"               : float,
                "gradient"           : parse_bool,
                "simplex"            : float,
-               "transform_type"     : LinearTransType,
+               "transform_type"     : lambda x: LinearTransType[x],  # TODO: add readable exception
                "tolerance"          : float,
                "w_rotations"        : thrice_result(float),
                "w_translations"     : thrice_result(float),
@@ -1126,7 +1134,8 @@ def minctracc(source: MincAtom,
     # if we're not going to allow these, we should probably wrap this in a try/catch to give a better error
     # and/or start with a 'default' linear/nonlinear/both minctracc conf as appropriate and `replace` all
     # fields with the user-supplied ones.
-    stage = CmdStage(cmd=['minctracc', '-clobber', '-debug', '-xcorr']  # TODO: remove hard-coded `xcorr`?
+    stage = CmdStage(cmd=['minctracc', '-clobber', '-debug']
+                         + (['-%s' % lin_conf.objective.name] if lin_conf and lin_conf.objective else [])
                          + (['-transformation', transform.path] if transform
                             else (transform_info if transform_info else ["-identity"]))
                          + (['-' + lin_conf.transform_type.name]
@@ -1759,7 +1768,8 @@ def intrasubject_registrations(subj: Subject,
 
 # TODO: this is very static right now, but I just want to get things running
 
-_lin_conf_1 = LinearMinctraccConf(simplex=2.8,
+_lin_conf_1 = LinearMinctraccConf(objective=LinearObjectiveFn.xcorr,
+                                  simplex=2.8,
                                   transform_type=LinearTransType.lsq12,
                                   tolerance=0.0001,
                                   w_translations=(0.4,0.4,0.4),
