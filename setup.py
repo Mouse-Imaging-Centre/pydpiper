@@ -37,5 +37,6 @@ setup(name='pydpiper',
                 ['asymmetry.py', 'LSQ12.py', 'LSQ6.py', 'MAGeT.py', 'MBM.py', 'NLIN.py',
                  'registration_chain.py', 'twolevel_model_building.py']]),
                  #'stats.py',
-      tests_require=['pytest']
+      tests_require=['pytest'],
+      zip_safe=False  # since we want the data files to be installed on disk for the moment ...
       )
