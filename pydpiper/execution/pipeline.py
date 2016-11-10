@@ -583,16 +583,16 @@ class Pipeline(object):
         # happening, so trying this to see whether it solves the issue.
         num_retries = self.stages[index].getNumberOfRetries()
         if num_retries < 2:
-            # without a sleep statement, the stage will be retried within 
+            # without a sleep statement, the stage will be retried within
             # a handful of milliseconds, that won't solve anything...
-            # this sleep command will block the server for a small amount 
+            # this sleep command will block the server for a small amount
             # of time, but should happen only sporadically
             #time.sleep(STAGE_RETRY_INTERVAL)
             self.removeFromRunning(index, clientURI, new_status = None)
             self.stages[index].incrementNumberOfRetries()
-            logger.info("RETRYING: ERROR in Stage " + str(index) + ": " + str(self.stages[index]))
-            logger.info("RETRYING: adding this stage back to the runnable set.")
-            logger.info("RETRYING: Logfile for Stage " + str(self.stages[index].logFile))
+            logger.info("RETRYING: ERROR in Stage " + str(index) + ": " + str(self.stages[index] + "\n")
+                        + "RETRYING: adding this stage back to the runnable set.\n"
+                        + "RETRYING: Logfile for Stage " + str(self.stages[index].logFile) + "\n")
             self.enqueue(index)
         else:
             self.removeFromRunning(index, clientURI, new_status = "failed")
