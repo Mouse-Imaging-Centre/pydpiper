@@ -64,6 +64,7 @@ def mbm_pipeline(options : MBMConf):
         #maget_options.maget = maget_options.mbm
         #maget_options.execution = options.execution
         #maget_options.application = options.application
+        maget_options.application.output_directory = os.path.join(options.application.output_directory, "segmentation")
         maget_options.maget = options.mbm.maget
 
         fixup_maget_options(maget_options=maget_options.maget,
