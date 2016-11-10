@@ -1,3 +1,17 @@
+New in Version 2.0.2
+====================
+* automatically set MAGeT's protocols based off model building LSQ12/nlin protocols when possible
+* two-level pipeline supports multiple initial models
+* when LSQ6 is disabled, input files are resampled to a common grid so various programs (e.g., mincaverage) will work
+  (currently implemented in MBM, hence also in two-level, rather than in LSQ6 code itself)
+* zip_safe flag disabled in `setup` so that config files will be installed in unzipped form
+* more information is printed about stages unable to run due to memory limits
+* fix hang running executors locally
+* allow specification of objective function for linear minctracc stages
+* slight fix to ANTS stage formatting allowing compatibility with minc-toolkit v2
+* update SickKids HPF config file
+* various internal code improvements
+
 New in Version 2.0.1
 ====================
 * made the lsq12 protocols required in order to provide proper error messages when not specified
