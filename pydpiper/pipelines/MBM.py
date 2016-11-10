@@ -108,8 +108,13 @@ def mbm(imgs : List[MincAtom], options : MBMConf, prefix : str, output_dir : str
                                              lsq6_dir=lsq6_dir,
                                              lsq6_options=options.mbm.lsq6))
     else:
-        identity_xfm = s.defer(param2xfm(out_xfm=FileAtom(name="identity_xfm.xfm")))
-        lsq6_result  = [XfmHandler(source=img, target=img, resampled=img, xfm=identity_xfm) for img in imgs]
+        # TODO don't actually do this resampling if not required (i.e., if the imgs already have the same grids)
+        identity_xfm = s.defer(param2xfm(out_xfm=FileAtom(name="identity.xfm")))
+        lsq6_result  = [XfmHandler(source=img, target=img, xfm=identity_xfm,
+                                   resampled=s.defer(mincresample_new(img=img,
+                                                                      like=targets.registration_standard,
+                                                                      xfm=identity_xfm)))
+                        for img in imgs]
     # what about running nuc/inorm without a linear registration step??
 
     full_hierarchy = get_nonlinear_configuration_from_options(nlin_protocol=options.mbm.nlin.nlin_protocol,
