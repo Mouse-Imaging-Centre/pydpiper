@@ -385,10 +385,7 @@ def maget_pipeline(options):
                                                                      options.application.pipeline_name + "_processed"))
                        for name in options.application.files })
 
-    # TODO test!!!
-    fixup_maget_options(lsq12_options=options.maget.lsq12,
-                        nlin_options=options.maget.nlin,
-                        maget_options=options.maget.maget)
+    # TODO fixup masking protocols ...
 
     return maget(imgs=imgs, options=options,
                  prefix=options.application.pipeline_name,
