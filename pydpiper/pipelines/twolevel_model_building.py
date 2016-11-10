@@ -8,12 +8,14 @@ import warnings
 import numpy as np
 from configargparse import Namespace, ArgParser
 import pandas as pd
+from pydpiper.pipelines.registration_chain import get_closest_model_from_pride_of_models
 
 from pydpiper.pipelines.MAGeT import maget, fixup_maget_options
 from pydpiper.minc.analysis import determinants_at_fwhms
 from pydpiper.minc.files import MincAtom
 from pydpiper.minc.registration import (concat_xfmhandlers, invert_xfmhandler, mincresample_new, check_MINC_input_files,
-                                        TargetType)
+                                        TargetType, get_pride_of_models_mapping, get_resolution_from_file,
+                                        registration_targets)
 from pydpiper.pipelines.MBM import mbm, mbm_parser, MBMConf
 from pydpiper.execution.application import execute
 from pydpiper.core.util import NamedTuple, maybe_deref_path
@@ -72,6 +74,39 @@ def two_level(grouped_files_df, options : TwoLevelConf):
     """  # TODO weird naming since the grouped_files_df isn't a GroupBy object?  just files_df?
     s = Stages()
 
+    if options.mbm.lsq6.target_type == TargetType.bootstrap:
+        # won't work since the second level part tries to get the resolution of *its* "first input file", which
+        # hasn't been created.  We could instead pass in a resolution to the `mbm` function,
+        # but instead disable for now:
+        raise ValueError("Bootstrap model building currently doesn't work with this pipeline; "
+                         "just specify an initial target instead")
+    elif options.mbm.lsq6.target_type == TargetType.pride_of_models:
+        pride_of_models_mapping = get_pride_of_models_mapping(pride_csv=options.mbm.lsq6.target_file,
+                                                              output_dir=options.application.output_directory,
+                                                              pipeline_name=options.application.pipeline_name)
+
+    # FIXME this is the same as in the 'tamarack' except for names of arguments/enclosing variables
+    def group_options(options, group):
+        options = copy.deepcopy(options)
+
+        if options.mbm.lsq6.target_type == TargetType.pride_of_models:
+
+            targets = get_closest_model_from_pride_of_models(pride_of_models_dict=pride_of_models_mapping,
+                                                             time_point=group)
+
+            options.mbm.lsq6 = options.mbm.lsq6.replace(target_type=TargetType.initial_model,
+                                                        target_file=targets.registration_standard.path)
+        else:
+            # this will ensure that all groups have the same resolution -- is it necessary?
+            targets = registration_targets(lsq6_conf=options.mbm.lsq6,
+                                           app_conf=options.application,
+                                           first_input_file=grouped_files_df.file.iloc[0])
+
+        resolution = (options.registration.resolution
+                        or get_resolution_from_file(targets.registration_standard.path))
+        options.registration = options.registration.replace(resolution=resolution)
+        return options
+
     first_level_results = (
         grouped_files_df
         .groupby('group', as_index=False, sort=False)       # the usual annoying pattern to do a aggregate with access
@@ -81,7 +116,7 @@ def two_level(grouped_files_df, options : TwoLevelConf):
                               df.apply(axis=1,
                                        func=lambda row:
                                               s.defer(mbm(imgs=row.files,
-                                                          options=options,
+                                                          options=group_options(options, row.group),
                                                           prefix="%s" % row.group,
                                                           output_dir=os.path.join(
                                                               options.application.output_directory,
@@ -91,20 +126,20 @@ def two_level(grouped_files_df, options : TwoLevelConf):
     # TODO replace .assign(...apply(...)...) with just an apply, producing a series right away?
 
     # FIXME right now the same options set is being used for both levels -- use options.first/second_level
-    # TODO should there be a pride of models for this pipe as well ?
     second_level_options = copy.deepcopy(options)
+    second_level_options.mbm.lsq6 = second_level_options.mbm.lsq6.replace(run_lsq6=False)
 
-    if options.mbm.lsq6.target_type == TargetType.bootstrap:
-        # won't work since the second level part tries to get the resolution of the first input file, which
-        # hasn't been created.  We could instead pass in a resolution to the `mbm` function,
-        # but instead disable for now:
-        raise ValueError("Bootstrap model building currently doesn't work with this pipeline; "
-                         "just specify an initial target instead")
-    second_level_options.mbm.lsq6 = second_level_options.mbm.lsq6.replace(run_lsq6=False) #nuc=False, inormalize=False
+    # FIXME this is probably a hack -- instead add a --second-level-init-model option to specify which timepoint should be used
+    # as the initial model in the second level ???  (at this point it doesn't matter due to lack of lsq6 ...)
+    if second_level_options.mbm.lsq6.target_type == TargetType.pride_of_models:
+        second_level_options.mbm.lsq6 = second_level_options.mbm.lsq6.replace(
+            target_type=TargetType.target,  # target doesn't really matter as no lsq6 here, just used for resolution...
+            target_file=list(pride_of_models_mapping.values())[0].registration_standard.path)
+
     # NOTE: running lsq6_nuc_inorm here doesn't work in general (but possibly with rotational minctracc)
     # since the native-space initial model is used, but our images are
-    # already in standard space(as we resampled there after the 1st-level lsq6).
-    # On the other hand, we might want to run it here (although of course not nuc/inorm) in the future,
+    # already in standard space (as we resampled there after the 1st-level lsq6).
+    # On the other hand, we might want to run it here (although of course NOT nuc/inorm!) in the future,
     # for instance given a 'pride' of models (one for each group).
 
     second_level_results = s.defer(mbm(imgs=first_level_results.build_model.map(lambda m: m.avg_img),
