@@ -668,19 +668,25 @@ class Pipeline(object):
             return False
 
         # TODO combine with above clause?
-        elif ((len(self.runnable) > 0) and
+        else:
+          highest_mem_stage = self.highest_memory_stage(self.runnable)
+          max_memory_required = highest_mem_stage.mem
+          if ((len(self.runnable) > 0) and
           # require no running jobs rather than no clients
           # since in some configurations (e.g., currently SciNet config has
           # the server-local executor shut down only when the server does)
           # the latter choice might lead to the system
           # running indefinitely with no jobs
-          (self.number_launched_and_waiting_clients + len(self.clients) == 0 and
-          self.max_memory_required(self.runnable) > self.memAvail)):
-            msg = "Shutting down due to jobs which require more memory (%.2fG) than available anywhere. Please use the --mem argument to increase the amount of memory that executors can request." % self.max_memory_required(self.runnable)
-            print(msg)
-            logger.warning(msg)
-            return False
-        else:
+            (self.number_launched_and_waiting_clients + len(self.clients) == 0 and
+            max_memory_required > self.memAvail)):
+            #self.max_memory_required(self.runnable) > self.memAvail)):
+              msg = ("Shutting down due to jobs (e.g. `%s`) which require more memory (%.2fG) than available anywhere. "
+                     "Please use the --mem argument to increase the amount of memory that executors can request."
+                     % (("%s" % highest_mem_stage)[:1000], max_memory_required))
+              print(msg)
+              logger.warning(msg)
+              return False
+          else:
             return True
 
     #@Pyro4.oneway
@@ -697,10 +703,13 @@ class Pipeline(object):
 
     # requires: stages != []
     # a better interface might be (self, [stage]) -> { MemAmount : (NumStages, [Stage]) }
-    # or maybe the same in a heap (to facilitate getting N stages with most memory)
-    def max_memory_required(self, stages):
+    # or maybe the same using a heap (to facilitate getting N stages with most memory)
+    def highest_memory_stage(self, stages):
         s = max(stages, key=lambda i: self.stages[i].mem)
-        return self.stages[s].mem
+        return self.stages[s]
+
+    def max_memory_required(self, stages):
+        return self.highest_memory_stage(stages).mem  # TODO don't use below, propagate stage # ....
 
     # this can't be a loop since we call it via sockets and don't want to block the socket forever
     def manageExecutors(self):
@@ -708,7 +717,8 @@ class Pipeline(object):
         executors_to_launch = self.numberOfExecutorsToLaunch()
         if executors_to_launch > 0:
             # RAM needed to run a single job:
-            memNeeded = self.max_memory_required(self.runnable)
+            max_memory_stage = self.highest_memory_stage(self.stages)
+            memNeeded = max_memory_stage.mem  # self.max_memory_required(self.runnable)
             # RAM needed to run `proc` most expensive jobs (not the ideal choice):
             memWanted = sum(sorted([self.stages[i].mem for i in self.runnable],
                                    key = lambda x: -x)[0:self.exec_options.proc])
@@ -716,8 +726,8 @@ class Pipeline(object):
             logger.debug("needed: %s", memNeeded)
                 
             if memNeeded > self.memAvail:
-                msg = "A stage requires %.2fG of memory to run, but max allowed is %.2fG" \
-                        % (memNeeded, self.memAvail)
+                msg = "A stage (%s) requires %.2fG of memory to run, but max allowed is %.2fG" \
+                        % (("%s" % max_memory_stage)[:1000], memNeeded, self.memAvail)
                 logger.error(msg)
                 print(msg)
             else:
