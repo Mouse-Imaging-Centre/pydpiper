@@ -106,6 +106,8 @@ def mbm(imgs : List[MincAtom], options : MBMConf, prefix : str, output_dir : str
                   get_resolution_from_file(targets.registration_standard.path))
     options.registration = options.registration.replace(resolution=resolution)
 
+    # FIXME it probably makes most sense if the lsq6 module itself (even within lsq6_nuc_inorm) handles the run_lsq6
+    # setting (via use of the identity transform) since then this doesn't have to be implemented for every pipeline
     if options.mbm.lsq6.run_lsq6:
         lsq6_result = s.defer(lsq6_nuc_inorm(imgs=imgs,
                                              resolution=resolution,
