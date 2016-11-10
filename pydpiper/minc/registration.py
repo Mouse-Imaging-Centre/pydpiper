@@ -1171,9 +1171,8 @@ def minctracc(source: MincAtom,
     if nlin_conf is not None:  # TODO at the moment basically ignore resource requirements for linear stages ...
         def set_memory(st, cfg):
             voxels = reduce(mul, volumeFromFile(source.path).getSizes())
-            st.setMem(min(7, voxels * cfg.mem_per_voxel + cfg.base_mem))   # FIXME hard-coded 7 is a hack ...
-            # better: pass in options to hooks and use options.<...>.default_job_mem?
-            # even better: make a wrapper to generate these set_memory functions?
+            st.setMem(voxels * cfg.mem_per_voxel + cfg.base_mem)   # FIXME hard-coded 7 is a hack ...
+            # TODO make a wrapper to generate these set_memory functions?
 
         stage.when_runnable_hooks.append(lambda st: set_memory(st, default_minctracc_mem_cfg))
 
