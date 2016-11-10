@@ -8,8 +8,8 @@ import warnings
 import numpy as np
 from configargparse import Namespace, ArgParser
 import pandas as pd
-from pydpiper.pipelines.MAGeT import maget
 
+from pydpiper.pipelines.MAGeT import maget, fixup_maget_options
 from pydpiper.minc.analysis import determinants_at_fwhms
 from pydpiper.minc.files import MincAtom
 from pydpiper.minc.registration import (concat_xfmhandlers, invert_xfmhandler, mincresample_new, check_MINC_input_files,
@@ -158,6 +158,9 @@ def two_level(grouped_files_df, options : TwoLevelConf):
     if options.mbm.segmentation.run_maget:
         maget_options = copy.deepcopy(options)
         maget_options.maget = options.mbm.maget
+        fixup_maget_options(maget_options=maget_options.maget,
+                            lsq12_options=maget_options.mbm.lsq12,
+                            nlin_options=maget_options.mbm.nlin)
         del maget_options.mbm
 
         # again using a weird combination of vectorized and loop constructs ...

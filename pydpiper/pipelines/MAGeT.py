@@ -151,6 +151,24 @@ def maget_mask(imgs : List[MincAtom], atlases, options):
     return Result(stages=s, output=masking_alignments)
 
 
+def fixup_maget_options(lsq12_options, nlin_options, maget_options):
+
+    if maget_options.lsq12.protocol is None:
+        maget_options.lsq12.protocol = lsq12_options.protocol
+
+    if maget_options.nlin.nlin_protocol is None:
+        if maget_options.nlin.reg_method == nlin_options.reg_method:
+            maget_options.nlin.nlin_protocol = nlin_options.nlin_protocol
+        else:
+            raise ValueError("I'd use the nlin protocol for MAGeT as well but different programs are specified")
+
+    if maget_options.maget.masking_nlin_protocol is None:
+        if maget_options.maget.mask_method == maget_options.nlin.reg_method:
+            maget_options.maget.masking_nlin_protocol = maget_options.nlin.nlin_protocol
+        else:
+            raise ValueError("I'd use the MAGeT nlin protocol for masking as well but different programs are specified")
+
+
 # TODO support LSQ6 registrations??
 def maget(imgs : List[MincAtom], options, prefix, output_dir):     # FIXME prefix, output_dir aren't used !!
 
@@ -367,6 +385,11 @@ def maget_pipeline(options):
                                                                      options.application.pipeline_name + "_processed"))
                        for name in options.application.files })
 
+    # TODO test!!!
+    fixup_maget_options(lsq12_options=options.maget.lsq12,
+                        nlin_options=options.maget.nlin,
+                        maget_options=options.maget.maget)
+
     return maget(imgs=imgs, options=options,
                  prefix=options.application.pipeline_name,
                  output_dir=options.application.output_directory)
@@ -399,7 +422,7 @@ def _mk_maget_parser(parser : ArgParser):
     group.add_argument("--masking-nlin-protocol", dest="masking_nlin_protocol",
                        # TODO basically copied from nlin parser
                        type=str, default=None,
-                       help="Can optionally specify a registration protocol that is different from defaults. "
+                       help="Can optionally specify a registration protocol that is different from nlin protocol. "
                             "Parameters must be specified as in either or the following examples: \n"
                             "applications_testing/test_data/minctracc_example_nlin_protocol.csv \n"
                             "applications_testing/test_data/mincANTS_example_nlin_protocol.csv \n"

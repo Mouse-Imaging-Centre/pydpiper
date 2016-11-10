@@ -11,7 +11,7 @@ from pydpiper.minc.containers import XfmHandler
 
 from pydpiper.core.files import FileAtom
 from pydpiper.minc.thickness import cortical_thickness
-from pydpiper.pipelines.MAGeT import maget, maget_parser, maget_parsers
+from pydpiper.pipelines.MAGeT import maget, maget_parser, maget_parsers, fixup_maget_options
 from pydpiper.core.util import NamedTuple, maybe_deref_path
 from pydpiper.core.stages       import Result, Stages
 
@@ -65,6 +65,10 @@ def mbm_pipeline(options : MBMConf):
         #maget_options.execution = options.execution
         #maget_options.application = options.application
         maget_options.maget = options.mbm.maget
+
+        fixup_maget_options(maget_options=maget_options.maget,
+                            nlin_options=maget_options.mbm.nlin,
+                            lsq12_options=maget_options.mbm.lsq12)
         del maget_options.mbm
 
         s.defer(maget([xfm.resampled for _ix, xfm in mbm_result.xfms.rigid_xfm.iteritems()],
