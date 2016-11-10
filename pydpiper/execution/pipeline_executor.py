@@ -212,6 +212,7 @@ class pipelineExecutor(object):
         self.queue_type = options.queue_type
         self.queue_name = options.queue_name
         self.queue_opts = options.queue_opts
+        self.cmd_wrapper = options.cmd_wrapper
         self.executor_wrapper = options.executor_wrapper
         self.ns = options.use_ns
         self.uri_file = options.urifile
@@ -595,7 +596,7 @@ class pipelineExecutor(object):
             logger.debug("Server knows that stage started")
             result = self.pool.apply_async(runStage, args=(),
                                            kwds={ "clientURI" : self.clientURI, "stage" : stage,
-                                                  "cmd_wrapper" : options.cmd_wrapper},
+                                                  "cmd_wrapper" : self.cmd_wrapper},
                                            callback=process_result)
             self.runningChildren[i] = ChildProcess(i, result, stage.mem, stage.procs)
 
@@ -608,7 +609,7 @@ class pipelineExecutor(object):
 
 ##########     ---     Start of program     ---     ##########   
 
-if __name__ == "__main__":
+def main():
 
     # command line option handling
     # use an environment variable to look for a default config file
@@ -658,3 +659,6 @@ if __name__ == "__main__":
             pe.submitToQueue()
     else:
         local_launch(options)
+
+if __name__ == "__main__":
+    main()

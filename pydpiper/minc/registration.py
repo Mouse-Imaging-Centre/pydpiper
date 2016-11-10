@@ -38,7 +38,12 @@ class LinearTransType(AutoEnum):
     procrustes = ()
 
 
-class Objective(AutoEnum):
+class LinearObjectiveFn(AutoEnum):
+    # named so that <...>.name return the appropriate string to pass to minctracc
+    xcorr = zscore = ssc = vr = mi = nmi = ()
+
+
+class NonlinearObjectiveFn(AutoEnum):
     # named so that <...>.name returns the appropriate string to pass to minctracc
     xcorr = diff = sqdiff = label = chamfer = corrcoeff = opticalflow = ()
 
@@ -84,7 +89,8 @@ LSQ12Conf = NamedTuple('LSQ12Conf', [('run_lsq12', bool),
 
 
 LinearMinctraccConf = NamedTuple("LinearMinctraccConf",
-                                 [("simplex", float),
+                                 [("objective", Optional[LinearObjectiveFn]),
+                                  ("simplex", float),
                                   ("transform_type", Optional[LinearTransType]),
                                   ("tolerance", float),
                                   ("w_rotations", R3),
@@ -102,7 +108,7 @@ NonlinearMinctraccConf = NamedTuple("NonlinearMinctraccConf",
                                      ("stiffness", float),
                                      ("weight", float),
                                      ("similarity", float),
-                                     ("objective", Optional[Objective]),
+                                     ("objective", Optional[NonlinearObjectiveFn]),
                                      ("lattice_diameter", R3),
                                      ("sub_lattice", int),
                                      ("max_def_magnitude", R3)])
@@ -856,7 +862,8 @@ def rotational_minctracc(source: MincAtom,
 # does this even get used in the pipeline?  LSQ6/12 get their own
 # protocols, and many settings here are the minctracc default
 def default_linear_minctracc_conf(transform_type: LinearTransType) -> LinearMinctraccConf:
-    return LinearMinctraccConf(simplex=1,  # TODO simplex=1 -> simplex_factor=20?
+    return LinearMinctraccConf(objective=LinearObjectiveFn.xcorr,
+                               simplex=1,  # TODO simplex=1 -> simplex_factor=20?
                                transform_type=transform_type,
                                tolerance=0.0001,
                                w_scales=(0.02, 0.02, 0.02),
@@ -887,7 +894,7 @@ default_nonlinear_minctracc_conf = NonlinearMinctraccConf(
     use_simplex=True,
     stiffness=0.98,
     weight=0.8,
-    objective=Objective.corrcoeff,
+    objective=NonlinearObjectiveFn.corrcoeff,
     lattice_diameter=_lattice_diameter,
     sub_lattice=6,
     max_def_magnitude=None)
@@ -1022,10 +1029,11 @@ def parse_minctracc_linear_protocol(f, transform_type : LinearTransType,
                                     base_minctracc_conf : LinearMinctraccConf = default_linear_minctracc_conf) \
         -> MultilevelMinctraccConf:
     parsers = {"blur"               : float,
+               "objective"          : lambda x: LinearObjectiveFn[x],
                "step"               : float,
                "gradient"           : parse_bool,
                "simplex"            : float,
-               "transform_type"     : LinearTransType,
+               "transform_type"     : lambda x: LinearTransType[x],  # TODO: add readable exception
                "tolerance"          : float,
                "w_rotations"        : thrice_result(float),
                "w_translations"     : thrice_result(float),
@@ -1126,7 +1134,8 @@ def minctracc(source: MincAtom,
     # if we're not going to allow these, we should probably wrap this in a try/catch to give a better error
     # and/or start with a 'default' linear/nonlinear/both minctracc conf as appropriate and `replace` all
     # fields with the user-supplied ones.
-    stage = CmdStage(cmd=['minctracc', '-clobber', '-debug', '-xcorr']  # TODO: remove hard-coded `xcorr`?
+    stage = CmdStage(cmd=['minctracc', '-clobber', '-debug']
+                         + (['-%s' % lin_conf.objective.name] if lin_conf and lin_conf.objective else [])
                          + (['-transformation', transform.path] if transform
                             else (transform_info if transform_info else ["-identity"]))
                          + (['-' + lin_conf.transform_type.name]
@@ -1162,9 +1171,8 @@ def minctracc(source: MincAtom,
     if nlin_conf is not None:  # TODO at the moment basically ignore resource requirements for linear stages ...
         def set_memory(st, cfg):
             voxels = reduce(mul, volumeFromFile(source.path).getSizes())
-            st.setMem(min(7, voxels * cfg.mem_per_voxel + cfg.base_mem))   # FIXME hard-coded 7 is a hack ...
-            # better: pass in options to hooks and use options.<...>.default_job_mem?
-            # even better: make a wrapper to generate these set_memory functions?
+            st.setMem(voxels * cfg.mem_per_voxel + cfg.base_mem)   # FIXME hard-coded 7 is a hack ...
+            # TODO make a wrapper to generate these set_memory functions?
 
         stage.when_runnable_hooks.append(lambda st: set_memory(st, default_minctracc_mem_cfg))
 
@@ -1187,7 +1195,7 @@ def minctracc(source: MincAtom,
 SimilarityMetricConf = NamedTuple('SimilarityMetricConf',
                                   [("metric", str),
                                    ("weight", float),
-                                   ("radius_or_bins", float),
+                                   ("radius_or_bins", int),
                                    ("use_gradient_image", bool)])
 
 
@@ -1323,7 +1331,7 @@ def parse_mincANTS_protocol_file(config_file,
                "gradient"           : parse_many(parse_bool),
                "similarity_metric"  : parse_many(str),
                "weight"             : parse_many(float),
-               "radius_or_histo"    : parse_many(float),
+               "radius_or_histo"    : parse_many(int),
                "transformation"     : str,
                "regularization"     : str,
                "iterations"         : str,
@@ -1585,7 +1593,7 @@ def mincANTS_NLIN_build_model(imgs: List[MincAtom],
 def lsq12_nlin(source: MincAtom,
                target: MincAtom,
                lsq12_conf: MinctraccConf,
-               nlin_conf: Union[MultilevelMinctraccConf, MincANTSConf],
+               nlin_conf: Union[MultilevelMinctraccConf, MultilevelMincANTSConf, MincANTSConf],  # sigh ... ...
                resample_source: bool = True):
     """
     Runs a 12 parameter (or really any) linear registration followed by a nonlinear registration
@@ -1759,7 +1767,8 @@ def intrasubject_registrations(subj: Subject,
 
 # TODO: this is very static right now, but I just want to get things running
 
-_lin_conf_1 = LinearMinctraccConf(simplex=2.8,
+_lin_conf_1 = LinearMinctraccConf(objective=LinearObjectiveFn.xcorr,
+                                  simplex=2.8,
                                   transform_type=LinearTransType.lsq12,
                                   tolerance=0.0001,
                                   w_translations=(0.4,0.4,0.4),
@@ -2057,11 +2066,11 @@ def check_MINC_input_files(args: List[str]) -> None:
         raise ValueError("\nNo input files are provided.\n")
     else:
         # here we should also check that the input files can be read
-        issuesWithInputs = 0
+        issuesWithInputs = False
         for inputF in args:
             if not can_read_MINC_file(inputF):  # FIXME this will be quite slow on SciNet, etc.
                 print("\nError: can not read input file: " + str(inputF) + "\n", file=sys.stderr)
-                issuesWithInputs = 1
+                issuesWithInputs = True
         if issuesWithInputs:
             raise ValueError("\nIssues reading input files.\n")
     # lastly we should check that the actual filenames are distinct, because
@@ -2657,7 +2666,9 @@ def registration_targets(lsq6_conf: LSQ6Conf,
         return RegistrationTargets(registration_standard=bootstrap_file)
 
     elif target_type == TargetType.initial_model:
-        return get_registration_targets_from_init_model(target_file, output_dir, pipeline_name)
+        return get_registration_targets_from_init_model(target_file,
+                                                        output_dir=output_dir,
+                                                        pipeline_name=pipeline_name)
     else:
         raise ValueError("Invalid target type: %s" % lsq6_conf.target_type)
 
@@ -2793,11 +2804,8 @@ def create_quality_control_images(imgs: List[MincAtom],
         img_verification_convert = img.newname_with_suffix("_QC_image_labeled",
                                                            subdir="tmp",
                                                            ext=".png")
-        # FIXME: the memory and procs are set to 0 to ensure that
-        # these stages finish soonish. No other stages depend on
+        # FIXME: no other stages depend on
         # these, but we do want them to finish as soon as possible
-        # (Note that this may lead to large memory consumption by individual executors,
-        # particularly for large pipelines, and seems unlikely to work at all on the HPF)
         # -- perhaps we could instead return the montage stage (or, if no montage is to be created,
         # an empty stage) from this whole procedure and add it as in input (or better, a non-input dependency,
         # which isn't currently supported) to succeeding stages as desired?

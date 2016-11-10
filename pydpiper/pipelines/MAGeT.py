@@ -30,17 +30,17 @@ def find_by(f, xs, on_empty=None):  # TODO move to util
         raise ValueError("Nothing in iterable satisfies the predicate")
 
 
-def read_atlas_dir(atlas_lib : str) -> List[MincAtom]:
+def read_atlas_dir(atlas_lib : str, pipeline_sub_dir : str) -> List[MincAtom]:
     """Read in atlases from directory specified return them as processed MincAtoms (with masks and labels).
     Assumes atlas/label/mask groups have one of the following naming schemes:
     (1) name_average.mnc, name_labels.mnc, name_mask.mnc
     (2) name.mnc, name_labels.mnc, name_mask.mnc
     Note that all three files are required even if masking is not used."""
 
-    return process_atlas_files(glob.iglob(os.path.join(atlas_lib, "*.mnc")))
+    return process_atlas_files(glob.iglob(os.path.join(atlas_lib, "*.mnc")), pipeline_sub_dir=pipeline_sub_dir)
 
 
-def process_atlas_files(filenames : List[str]) -> List[MincAtom]:
+def process_atlas_files(filenames : List[str], pipeline_sub_dir) -> List[MincAtom]:
 
     suffixes = ["_average.mnc", "_mask.mnc", "_labels.mnc"] + [".mnc"]  # N.B.: order matters ...
 
@@ -62,17 +62,122 @@ def process_atlas_files(filenames : List[str]) -> List[MincAtom]:
         else:
             # TODO: screw around with filenames/directories as usual
             grouped_atlas_files[group] = MincAtom(name=img_file,
-                                                  mask=MincAtom(name=mask_file),
-                                                  labels=MincAtom(name=label_file))
+                                                  mask=MincAtom(name=mask_file, pipeline_sub_dir=pipeline_sub_dir),
+                                                  labels=MincAtom(name=label_file, pipeline_sub_dir=pipeline_sub_dir),
+                                                  pipeline_sub_dir=pipeline_sub_dir)
 
     return pd.Series(list(grouped_atlas_files.values()))
 
+
+def maget_mask(imgs : List[MincAtom], atlases, options):
+
+    s = Stages()
+
+    resample  = np.vectorize(mincresample_new, excluded={"extra_flags"})
+    defer     = np.vectorize(s.defer)
+
+    lsq12_conf = get_linear_configuration_from_options(options.maget.lsq12,
+                                                       LinearTransType.lsq12,
+                                                       options.registration.resolution)
+
+    masking_nlin_hierarchy = get_nonlinear_configuration_from_options(options.maget.maget.masking_nlin_protocol,
+                                                                      options.maget.maget.mask_method,
+                                                                      options.registration.resolution)
+
+    masking_alignments = pd.DataFrame({ 'img'   : img,
+                                        'atlas' : atlas,
+                                        'xfm'   : s.defer(lsq12_nlin(source=img, target=atlas,
+                                                                     lsq12_conf=lsq12_conf,
+                                                                     nlin_conf=masking_nlin_hierarchy,
+                                                                     resample_source=False))}
+                                      for img in imgs for atlas in atlases)
+    # propagate a mask to each image using the above `alignments` as follows:
+    # - for each image, voxel_vote on the masks propagated to that image to get a suitable mask
+    # - run mincmath -clobber -mult <img> <voted_mask> to apply the mask to the files
+    masked_img = (
+        masking_alignments
+        .assign(resampled_mask=lambda df: defer(resample(img=df.atlas.apply(lambda x: x.mask),
+                                                         xfm=df.xfm.apply(lambda x: x.xfm),
+                                                         like=df.img,
+                                                         invert=True,
+                                                         interpolation=Interpolation.nearest_neighbour,
+                                                         postfix="-input-mask",
+                                                         subdir="tmp",
+                                                         # TODO annoying hack; fix mincresample(_mask) ...:
+                                                         #new_name_wo_ext=df.apply(lambda row:
+                                                         #    "%s_to_%s-input-mask" % (row.atlas.filename_wo_ext,
+                                                         #                             row.img.filename_wo_ext),
+                                                         #    axis=1),
+                                                         extra_flags=("-keep_real_range",))))
+        .groupby('img', sort=False, as_index=False)
+        # sort=False: just for speed (might also need to implement more comparison methods on `MincAtom`s)
+        .aggregate({'resampled_mask' : lambda masks: list(masks)})
+        .rename(columns={"resampled_mask" : "resampled_masks"})
+        .assign(voted_mask=lambda df: df.apply(axis=1,
+                                               func=lambda row:
+                                                 s.defer(voxel_vote(label_files=row.resampled_masks,
+                                                                    name="%s_voted_mask" % row.img.filename_wo_ext,
+                                                                    output_dir=os.path.join(row.img.output_sub_dir,
+                                                                                            "tmp")))))
+        .assign(masked_img=lambda df:
+          df.apply(axis=1,
+                 func=lambda row:
+                   s.defer(mincmath(op="mult",
+                                    # img must precede mask here
+                                    # for output image range to be correct:
+                                    vols=[row.img, row.voted_mask],
+                                    new_name="%s_masked" % row.img.filename_wo_ext,
+                                    subdir="resampled")))))  #['img']
+
+    # resample the atlas images back to the input images:
+    # (note: this doesn't modify `masking_alignments`, but only stages additional outputs)
+    masking_alignments.assign(resampled_img=lambda df:
+    defer(resample(img=df.atlas,
+                   xfm=df.xfm.apply(lambda x: x.xfm),
+                   subdir="tmp",
+                   # TODO delete this stupid hack:
+                   #new_name_wo_ext=df.apply(lambda row:
+                   #  "%s_to_%s-resampled" % (row.atlas.filename_wo_ext,
+                   #                          row.img.filename_wo_ext),
+                   #                          axis=1),
+                   like=df.img, invert=True)))
+
+    # replace the table of alignments with a new one with masked images
+    masking_alignments = (pd.merge(left=masking_alignments.assign(unmasked_img=lambda df: df.img),
+                                   right=masked_img,
+                                   on=["img"], how="right", sort=False)
+                          .assign(img=lambda df: df.masked_img))
+
+    return Result(stages=s, output=masking_alignments)
+
+
+def fixup_maget_options(lsq12_options, nlin_options, maget_options):
+
+    if maget_options.lsq12.protocol is None:
+        maget_options.lsq12.protocol = lsq12_options.protocol
+
+    if maget_options.nlin.nlin_protocol is None:
+        if maget_options.nlin.reg_method == nlin_options.reg_method:
+            maget_options.nlin.nlin_protocol = nlin_options.nlin_protocol
+        else:
+            raise ValueError("I'd use the nlin protocol for MAGeT as well but different programs are specified")
+
+    if maget_options.maget.masking_nlin_protocol is None:
+        if maget_options.maget.mask_method == maget_options.nlin.reg_method:
+            maget_options.maget.masking_nlin_protocol = maget_options.nlin.nlin_protocol
+        else:
+            raise ValueError("I'd use the MAGeT nlin protocol for masking as well but different programs are specified")
+
+
 # TODO support LSQ6 registrations??
-def maget(imgs : List[MincAtom], options, prefix, output_dir):
+def maget(imgs : List[MincAtom], options, prefix, output_dir):     # FIXME prefix, output_dir aren't used !!
 
     s = Stages()
 
     maget_options = options.maget.maget
+
+    pipeline_sub_dir = os.path.join(options.application.output_directory,
+                                    options.application.pipeline_name + "_atlases")
 
     if maget_options.atlas_lib is None:
         raise ValueError("Need some atlases ...")
@@ -80,10 +185,16 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir):
     #atlas_dir = os.path.join(output_dir, "input_atlases") ???
 
     # TODO should alternately accept a CSV file ...
-    atlas_library = read_atlas_dir(atlas_lib=maget_options.atlas_lib)
+    atlas_library = read_atlas_dir(atlas_lib=maget_options.atlas_lib, pipeline_sub_dir=pipeline_sub_dir)
 
     if len(atlas_library) == 0:
         raise ValueError("No atlases found in specified directory '%s' ..." % options.maget.maget.atlas_lib)
+
+    num_atlases_needed = min(maget_options.max_templates, len(atlas_library))
+    # TODO arbitrary; could choose atlases better ...
+    atlases = atlas_library[:num_atlases_needed]
+    # TODO issue a warning if not all atlases used or if more atlases requested than available?
+    # TODO also, doesn't slicing with a higher number (i.e., if max_templates > n) go to the end of the list anyway?
 
     lsq12_conf = get_linear_configuration_from_options(options.maget.lsq12,
                                                        LinearTransType.lsq12,
@@ -96,12 +207,6 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir):
     nlin_hierarchy = get_nonlinear_configuration_from_options(options.maget.nlin.nlin_protocol,
                                                               options.maget.nlin.reg_method,
                                                               options.registration.resolution)
-
-    num_atlases_needed = min(maget_options.max_templates, len(atlas_library))
-    # TODO arbitrary; could choose atlases better ...
-    atlases = atlas_library[:num_atlases_needed]
-    # TODO issue a warning if not all atlases used?
-    # TODO also, doesn't slicing with a higher number (i.e., if max_templates > n) go to the end of the list anyway?
 
     resample  = np.vectorize(mincresample_new, excluded={"extra_flags"})
     defer     = np.vectorize(s.defer)
@@ -116,66 +221,12 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir):
                                       for img in imgs for atlas in atlases)
 
     if maget_options.mask or maget_options.mask_only:
-        # propagate a mask to each image using the above `alignments` as follows:
-        # - for each image, voxel_vote on the masks propagated to that image to get a suitable mask
-        # - run mincmath -clobber -mult <img> <voted_mask> to apply the mask to the files
-        masked_img = (
-            masking_alignments
-            .assign(resampled_mask=lambda df: defer(resample(img=df.atlas.apply(lambda x: x.mask),
-                                                             xfm=df.xfm.apply(lambda x: x.xfm),
-                                                             like=df.img,
-                                                             invert=True,
-                                                             interpolation=Interpolation.nearest_neighbour,
-                                                             postfix="-input-mask",
-                                                             subdir="tmp",
-                                                             # TODO annoying hack; fix mincresample(_mask) ...:
-                                                             #new_name_wo_ext=df.apply(lambda row:
-                                                             #    "%s_to_%s-input-mask" % (row.atlas.filename_wo_ext,
-                                                             #                             row.img.filename_wo_ext),
-                                                             #    axis=1),
-                                                             extra_flags=("-keep_real_range",))))
-            .groupby('img', sort=False, as_index=False)
-            # sort=False: just for speed (might also need to implement more comparison methods on `MincAtom`s)
-            .aggregate({'resampled_mask' : lambda masks: list(masks)})
-            .rename(columns={"resampled_mask" : "resampled_masks"})
-            .assign(voted_mask=lambda df: df.apply(axis=1,
-                                                   func=lambda row:
-                                                     s.defer(voxel_vote(label_files=row.resampled_masks,
-                                                                        name="%s_voted_mask" % row.img.filename_wo_ext,
-                                                                        output_dir=os.path.join(row.img.output_sub_dir,
-                                                                                                "tmp")))))
-            .assign(masked_img=lambda df:
-                                  df.apply(axis=1,
-                                           func=lambda row:
-                                                  s.defer(mincmath(op="mult",
-                                                                   # img must precede mask here
-                                                                   # for output image range to be correct:
-                                                                   vols=[row.img, row.voted_mask],
-                                                                   new_name="%s_masked" % row.img.filename_wo_ext,
-                                                                   subdir="resampled")))))  #['img']
 
-        # resample the atlas images back to the input images:
-        # (note: this doesn't modify `masking_alignments`, but only stages additional outputs)
-        masking_alignments.assign(resampled_img=lambda df:
-                                    defer(resample(img=df.atlas,
-                                                   xfm=df.xfm.apply(lambda x: x.xfm),
-                                                   subdir="tmp",
-                                                   # TODO delete this stupid hack:
-                                                   #new_name_wo_ext=df.apply(lambda row:
-                                                   #  "%s_to_%s-resampled" % (row.atlas.filename_wo_ext,
-                                                   #                          row.img.filename_wo_ext),
-                                                   #                          axis=1),
-                                                   like=df.img, invert=True)))
+        masking_alignments = s.defer(maget_mask(imgs, atlases, options))
 
         masked_atlases = atlases.apply(lambda atlas:
                            s.defer(mincmath(op='mult', vols=[atlas, atlas.mask], subdir="resampled",
                                             new_name="%s_masked" % atlas.filename_wo_ext)))
-
-        # replace the table of alignments with a new one with masked images
-        masking_alignments = (pd.merge(left=masking_alignments.assign(unmasked_img=lambda df: df.img),
-                                       right=masked_img,
-                                       on=["img"], how="right", sort=False)
-                                .assign(img=lambda df: df.masked_img))
 
         # now propagate only the masked form of the images and atlases:
         imgs    = masking_alignments.img
@@ -231,7 +282,9 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir):
                                                                               name="%s_template_labels" %
                                                                                    row.img.filename_wo_ext,
                                                                               output_dir=os.path.join(
-                                                                                  row.img.output_sub_dir, "labels"))))))
+                                                                                  row.img.pipeline_sub_dir,
+                                                                                  row.img.output_sub_dir,
+                                                                                  "labels"))))))
 
             # TODO write a procedure for this assign-groupby-aggregate-rename...
             # FIXME should be in above algebraic manipulation but MincAtoms don't support flexible immutable updating
@@ -308,7 +361,9 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir):
                  .reset_index()
                  .assign(voted_labels=lambda df: defer(np.vectorize(voxel_vote)(label_files=df.resampled_labels,
                                                                                 output_dir=df.img.apply(
-                                                                                    lambda x: x.output_sub_dir)))))
+                                                                                    lambda x: os.path.join(
+                                                                                        x.pipeline_sub_dir,
+                                                                                        x.output_sub_dir))))))
 
         # TODO doing mincresample -invert separately for the img->atlas xfm for mask, labels is silly
         # (when Pydpiper's `mincresample` does both automatically)?
@@ -329,6 +384,8 @@ def maget_pipeline(options):
                                        pipeline_sub_dir=os.path.join(options.application.output_directory,
                                                                      options.application.pipeline_name + "_processed"))
                        for name in options.application.files })
+
+    # TODO fixup masking protocols ...
 
     return maget(imgs=imgs, options=options,
                  prefix=options.application.pipeline_name,
@@ -362,7 +419,7 @@ def _mk_maget_parser(parser : ArgParser):
     group.add_argument("--masking-nlin-protocol", dest="masking_nlin_protocol",
                        # TODO basically copied from nlin parser
                        type=str, default=None,
-                       help="Can optionally specify a registration protocol that is different from defaults. "
+                       help="Can optionally specify a registration protocol that is different from nlin protocol. "
                             "Parameters must be specified as in either or the following examples: \n"
                             "applications_testing/test_data/minctracc_example_nlin_protocol.csv \n"
                             "applications_testing/test_data/mincANTS_example_nlin_protocol.csv \n"

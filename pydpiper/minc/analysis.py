@@ -227,7 +227,8 @@ def voxel_vote(label_files : List[MincAtom], output_dir : str, name : str = "vot
     if len(label_files) == 0:
         raise ValueError("can't vote with 0 files")
 
-    out = MincAtom(name=os.path.join(output_dir, "%s.mnc" % name), output_sub_dir=output_dir)  # FIXME better naming
+    out = MincAtom(name=os.path.join(output_dir, "%s.mnc" % name),
+                   output_sub_dir=output_dir)  # FIXME better naming
 
     s = CmdStage(cmd=["voxel_vote", "--clobber"] + [l.path for l in label_files] + [out.path],
                  inputs=tuple(label_files),

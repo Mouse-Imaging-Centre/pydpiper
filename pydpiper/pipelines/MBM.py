@@ -11,7 +11,7 @@ from pydpiper.minc.containers import XfmHandler
 
 from pydpiper.core.files import FileAtom
 from pydpiper.minc.thickness import cortical_thickness
-from pydpiper.pipelines.MAGeT import maget, maget_parser, maget_parsers
+from pydpiper.pipelines.MAGeT import maget, maget_parser, maget_parsers, fixup_maget_options
 from pydpiper.core.util import NamedTuple, maybe_deref_path
 from pydpiper.core.stages       import Result, Stages
 
@@ -64,7 +64,12 @@ def mbm_pipeline(options : MBMConf):
         #maget_options.maget = maget_options.mbm
         #maget_options.execution = options.execution
         #maget_options.application = options.application
+        maget_options.application.output_directory = os.path.join(options.application.output_directory, "segmentation")
         maget_options.maget = options.mbm.maget
+
+        fixup_maget_options(maget_options=maget_options.maget,
+                            nlin_options=maget_options.mbm.nlin,
+                            lsq12_options=maget_options.mbm.lsq12)
         del maget_options.mbm
 
         s.defer(maget([xfm.resampled for _ix, xfm in mbm_result.xfms.rigid_xfm.iteritems()],
@@ -101,6 +106,8 @@ def mbm(imgs : List[MincAtom], options : MBMConf, prefix : str, output_dir : str
                   get_resolution_from_file(targets.registration_standard.path))
     options.registration = options.registration.replace(resolution=resolution)
 
+    # FIXME it probably makes most sense if the lsq6 module itself (even within lsq6_nuc_inorm) handles the run_lsq6
+    # setting (via use of the identity transform) since then this doesn't have to be implemented for every pipeline
     if options.mbm.lsq6.run_lsq6:
         lsq6_result = s.defer(lsq6_nuc_inorm(imgs=imgs,
                                              resolution=resolution,
@@ -108,8 +115,13 @@ def mbm(imgs : List[MincAtom], options : MBMConf, prefix : str, output_dir : str
                                              lsq6_dir=lsq6_dir,
                                              lsq6_options=options.mbm.lsq6))
     else:
-        identity_xfm = s.defer(param2xfm(out_xfm=FileAtom(name="identity_xfm.xfm")))
-        lsq6_result  = [XfmHandler(source=img, target=img, resampled=img, xfm=identity_xfm) for img in imgs]
+        # TODO don't actually do this resampling if not required (i.e., if the imgs already have the same grids)
+        identity_xfm = s.defer(param2xfm(out_xfm=FileAtom(name="identity.xfm")))
+        lsq6_result  = [XfmHandler(source=img, target=img, xfm=identity_xfm,
+                                   resampled=s.defer(mincresample_new(img=img,
+                                                                      like=targets.registration_standard,
+                                                                      xfm=identity_xfm)))
+                        for img in imgs]
     # what about running nuc/inorm without a linear registration step??
 
     full_hierarchy = get_nonlinear_configuration_from_options(nlin_protocol=options.mbm.nlin.nlin_protocol,

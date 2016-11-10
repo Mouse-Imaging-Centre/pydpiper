@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 
 import hashlib
+import threading
+
 import networkx as nx  # type: ignore
 import os
 import sys
@@ -581,16 +583,16 @@ class Pipeline(object):
         # happening, so trying this to see whether it solves the issue.
         num_retries = self.stages[index].getNumberOfRetries()
         if num_retries < 2:
-            # without a sleep statement, the stage will be retried within 
+            # without a sleep statement, the stage will be retried within
             # a handful of milliseconds, that won't solve anything...
-            # this sleep command will block the server for a small amount 
+            # this sleep command will block the server for a small amount
             # of time, but should happen only sporadically
             #time.sleep(STAGE_RETRY_INTERVAL)
             self.removeFromRunning(index, clientURI, new_status = None)
             self.stages[index].incrementNumberOfRetries()
-            logger.info("RETRYING: ERROR in Stage " + str(index) + ": " + str(self.stages[index]))
-            logger.info("RETRYING: adding this stage back to the runnable set.")
-            logger.info("RETRYING: Logfile for Stage " + str(self.stages[index].logFile))
+            logger.info("RETRYING: ERROR in Stage " + str(index) + ": " + str(self.stages[index] + "\n")
+                        + "RETRYING: adding this stage back to the runnable set.\n"
+                        + "RETRYING: Logfile for Stage " + str(self.stages[index].logFile) + "\n")
             self.enqueue(index)
         else:
             self.removeFromRunning(index, clientURI, new_status = "failed")
@@ -666,19 +668,25 @@ class Pipeline(object):
             return False
 
         # TODO combine with above clause?
-        elif ((len(self.runnable) > 0) and
+        else:
+          highest_mem_stage = self.highest_memory_stage(self.runnable)
+          max_memory_required = highest_mem_stage.mem
+          if ((len(self.runnable) > 0) and
           # require no running jobs rather than no clients
           # since in some configurations (e.g., currently SciNet config has
           # the server-local executor shut down only when the server does)
           # the latter choice might lead to the system
           # running indefinitely with no jobs
-          (self.number_launched_and_waiting_clients + len(self.clients) == 0 and
-          self.max_memory_required(self.runnable) > self.memAvail)):
-            msg = "Shutting down due to jobs which require more memory (%.2fG) than available anywhere. Please use the --mem argument to increase the amount of memory that executors can request." % self.max_memory_required(self.runnable)
-            print(msg)
-            logger.warning(msg)
-            return False
-        else:
+            (self.number_launched_and_waiting_clients + len(self.clients) == 0 and
+            max_memory_required > self.memAvail)):
+            #self.max_memory_required(self.runnable) > self.memAvail)):
+              msg = ("Shutting down due to jobs (e.g. `%s`) which require more memory (%.2fG) than available anywhere. "
+                     "Please use the --mem argument to increase the amount of memory that executors can request."
+                     % (str(highest_mem_stage)[:1000], max_memory_required))
+              print(msg)
+              logger.warning(msg)
+              return False
+          else:
             return True
 
     #@Pyro4.oneway
@@ -695,10 +703,13 @@ class Pipeline(object):
 
     # requires: stages != []
     # a better interface might be (self, [stage]) -> { MemAmount : (NumStages, [Stage]) }
-    # or maybe the same in a heap (to facilitate getting N stages with most memory)
-    def max_memory_required(self, stages):
+    # or maybe the same using a heap (to facilitate getting N stages with most memory)
+    def highest_memory_stage(self, stages):
         s = max(stages, key=lambda i: self.stages[i].mem)
-        return self.stages[s].mem
+        return self.stages[s]
+
+    def max_memory_required(self, stages):
+        return self.highest_memory_stage(stages).mem  # TODO don't use below, propagate stage # ....
 
     # this can't be a loop since we call it via sockets and don't want to block the socket forever
     def manageExecutors(self):
@@ -706,16 +717,17 @@ class Pipeline(object):
         executors_to_launch = self.numberOfExecutorsToLaunch()
         if executors_to_launch > 0:
             # RAM needed to run a single job:
-            memNeeded = self.max_memory_required(self.runnable)
+            max_memory_stage = self.highest_memory_stage(self.runnable)
+            memNeeded = max_memory_stage.mem  # self.max_memory_required(self.runnable)
             # RAM needed to run `proc` most expensive jobs (not the ideal choice):
             memWanted = sum(sorted([self.stages[i].mem for i in self.runnable],
                                    key = lambda x: -x)[0:self.exec_options.proc])
             logger.debug("wanted: %s", memWanted)
             logger.debug("needed: %s", memNeeded)
-                
+
             if memNeeded > self.memAvail:
-                msg = "A stage requires %.2fG of memory to run, but max allowed is %.2fG" \
-                        % (memNeeded, self.memAvail)
+                msg = "A stage (%s) requires %.2fG of memory to run, but max allowed is %.2fG" \
+                        % (str(max_memory_stage)[:1000], memNeeded, self.memAvail)
                 logger.error(msg)
                 print(msg)
             else:
@@ -918,7 +930,10 @@ def launchPipelineExecutors(options, mem_needed, number, uri_file):
                                     uri_file=uri_file,
                                     #pipeline_name=options.application.pipeline_name,
                                     memNeeded=mem_needed)
-            pe.launchExecutor(e)
+            # since launchPipelineExecutors can be called from server,
+            # need some concurrency or pe.launchExecutor will hang server ....
+            threading.Thread(target=pe.launchExecutor, args=(e,)).start()
+            #pe.launchExecutor(e)
     else:
         pipelineExecutor = pe.pipelineExecutor(options=options.execution,
                                                uri_file=uri_file,

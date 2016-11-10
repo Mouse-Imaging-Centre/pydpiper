@@ -3,7 +3,7 @@ import os
 from setuptools import setup
 
 setup(name='pydpiper',
-      version='2.0.1',
+      version='2.0.2',
       license='Modified BSD',
       description='Python code for flexible pipeline control',
       long_description='Python code for flexible pipeline control',
@@ -37,5 +37,6 @@ setup(name='pydpiper',
                 ['asymmetry.py', 'LSQ12.py', 'LSQ6.py', 'MAGeT.py', 'MBM.py', 'NLIN.py',
                  'registration_chain.py', 'twolevel_model_building.py']]),
                  #'stats.py',
-      tests_require=['pytest']
+      tests_require=['pytest'],
+      zip_safe=False  # since we want the data files to be installed on disk for the moment ...
       )
