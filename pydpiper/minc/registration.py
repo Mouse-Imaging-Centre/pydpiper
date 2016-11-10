@@ -2804,11 +2804,8 @@ def create_quality_control_images(imgs: List[MincAtom],
         img_verification_convert = img.newname_with_suffix("_QC_image_labeled",
                                                            subdir="tmp",
                                                            ext=".png")
-        # FIXME: the memory and procs are set to 0 to ensure that
-        # these stages finish soonish. No other stages depend on
+        # FIXME: no other stages depend on
         # these, but we do want them to finish as soon as possible
-        # (Note that this may lead to large memory consumption by individual executors,
-        # particularly for large pipelines, and seems unlikely to work at all on the HPF)
         # -- perhaps we could instead return the montage stage (or, if no montage is to be created,
         # an empty stage) from this whole procedure and add it as in input (or better, a non-input dependency,
         # which isn't currently supported) to succeeding stages as desired?
