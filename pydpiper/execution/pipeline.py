@@ -682,7 +682,7 @@ class Pipeline(object):
             #self.max_memory_required(self.runnable) > self.memAvail)):
               msg = ("Shutting down due to jobs (e.g. `%s`) which require more memory (%.2fG) than available anywhere. "
                      "Please use the --mem argument to increase the amount of memory that executors can request."
-                     % (("%s" % highest_mem_stage)[:1000], max_memory_required))
+                     % (str(highest_mem_stage)[:1000], max_memory_required))
               print(msg)
               logger.warning(msg)
               return False
@@ -717,17 +717,17 @@ class Pipeline(object):
         executors_to_launch = self.numberOfExecutorsToLaunch()
         if executors_to_launch > 0:
             # RAM needed to run a single job:
-            max_memory_stage = self.highest_memory_stage(self.stages)
+            max_memory_stage = self.highest_memory_stage(self.runnable)
             memNeeded = max_memory_stage.mem  # self.max_memory_required(self.runnable)
             # RAM needed to run `proc` most expensive jobs (not the ideal choice):
             memWanted = sum(sorted([self.stages[i].mem for i in self.runnable],
                                    key = lambda x: -x)[0:self.exec_options.proc])
             logger.debug("wanted: %s", memWanted)
             logger.debug("needed: %s", memNeeded)
-                
+
             if memNeeded > self.memAvail:
                 msg = "A stage (%s) requires %.2fG of memory to run, but max allowed is %.2fG" \
-                        % (("%s" % max_memory_stage)[:1000], memNeeded, self.memAvail)
+                        % (str(max_memory_stage)[:1000], memNeeded, self.memAvail)
                 logger.error(msg)
                 print(msg)
             else:
