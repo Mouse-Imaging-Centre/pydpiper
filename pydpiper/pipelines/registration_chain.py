@@ -455,18 +455,22 @@ def get_closest_model_from_pride_of_models(pride_of_models_dict,
         sorted_keys[i] = float(sorted_keys[i])
 
     index_on_the_right = bisect.bisect(sorted_keys, time_point_float)
-    diff_with_smaller_timepoint = time_point_float - float(sorted(pride_of_models_dict.keys())[index_on_the_right - 1])
-    diff_with_larger_timepoint = float(sorted(pride_of_models_dict.keys())[index_on_the_right]) - time_point_float
+
+    # because otherwise index_on_the_right - 1 < 0, which causes weird indexing ...
+    if index_on_the_right == 0:
+        return pride_of_models_dict[sorted_keys[0]]
+
+    diff_with_smaller_timepoint = time_point_float - float(sorted_keys[index_on_the_right - 1])
+    diff_with_larger_timepoint = float(sorted_keys[index_on_the_right]) - time_point_float
 
     if diff_with_smaller_timepoint >= diff_with_larger_timepoint:
-        print("Using initial model of time point: " + str(sorted(pride_of_models_dict.keys())[index_on_the_right]) +
+        print("Using initial model of time point: " + str(sorted_keys[index_on_the_right]) +
               " for file with actual time point: " + str(time_point_float))
-        return pride_of_models_dict[sorted(pride_of_models_dict.keys())[index_on_the_right]]
+        return pride_of_models_dict[sorted_keys[index_on_the_right]]
     else:
-        print("Using initial model of time point: " + str(sorted(pride_of_models_dict.keys())[index_on_the_right - 1]) +
+        print("Using initial model of time point: " + str(sorted_keys[index_on_the_right - 1]) +
               " for file with actual time point: " + str(time_point_float))
-        return pride_of_models_dict[sorted(pride_of_models_dict.keys())[index_on_the_right - 1]]
-
+        return pride_of_models_dict[sorted_keys[index_on_the_right - 1]]
 
 
 def map_with_index_over_time_pt_dict_in_Subject(f : Callable[[T], U],
