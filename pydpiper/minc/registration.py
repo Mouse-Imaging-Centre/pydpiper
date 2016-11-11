@@ -2824,7 +2824,7 @@ def create_quality_control_images(imgs: List[MincAtom],
 
     # if montageOutput is specified, create the overview image
     if create_montage:
-        montage_output_fileatom = FileAtom(montage_output)
+        montage_output_fileatom = FileAtom("%s.png" % montage_output)
 
         montage_stage = CmdStage(
             inputs=tuple(individualImagesLabeled),
@@ -2834,20 +2834,11 @@ def create_quality_control_images(imgs: List[MincAtom],
                 [montage_output_fileatom.path],
             memory=1,
             procs=1)
-        if montage_dir:
-            montage_stage.set_log_file(os.path.join(montage_dir,
-                                                    "log",
-                                                    "montage_" + montage_output_fileatom.filename_wo_ext + ".log"))
-        else:
-            montage_stage.set_log_file(os.path.join(montage_output_fileatom.pipeline_sub_dir,
-                                                    montage_output_fileatom.output_sub_dir,
-                                                    "log",
-                                                    "montage_" + montage_output_fileatom.filename_wo_ext + ".log"))
-        message_to_print = "\n* * * * * * *\nPlease consider the following verification "
-        message_to_print += "image, showing "
-        message_to_print += "%s. " % message
-        message_to_print += "\n%s\n" % montage_output
-        message_to_print += "* * * * * * *\n"
+        montage_stage.set_log_file(os.path.join(os.path.dirname(montage_output_fileatom.path),
+                                                "log",
+                                                montage_output_fileatom.filename_wo_ext + ".log"))
+        message_to_print = ("\n* * * * * * *\nPlease consider the following verification "
+                            "image, showing %s. \n%s\n* * * * * * *\n" % (message, montage_output_fileatom.path))
 
         montage_stage.when_finished_hooks.append(
             lambda _: print(message_to_print))
