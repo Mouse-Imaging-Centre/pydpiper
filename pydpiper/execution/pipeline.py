@@ -590,7 +590,7 @@ class Pipeline(object):
             #time.sleep(STAGE_RETRY_INTERVAL)
             self.removeFromRunning(index, clientURI, new_status = None)
             self.stages[index].incrementNumberOfRetries()
-            logger.info("RETRYING: ERROR in Stage " + str(index) + ": " + str(self.stages[index] + "\n")
+            logger.info("RETRYING: ERROR in Stage " + str(index) + ": " + str(self.stages[index]) + "\n"
                         + "RETRYING: adding this stage back to the runnable set.\n"
                         + "RETRYING: Logfile for Stage " + str(self.stages[index].logFile) + "\n")
             self.enqueue(index)
@@ -618,6 +618,7 @@ class Pipeline(object):
         if self.stages[i].mem < self.exec_options.default_job_mem:
             self.stages[i].setMem(self.exec_options.default_job_mem)
         # scale everything by the memory_factor
+        # FIXME this may run several times ... weird !!
         self.stages[i].setMem(self.stages[i].mem * self.exec_options.memory_factor)
         # keep track of the memory requirements of the runnable jobs
         self.mem_req_for_runnable.append(self.stages[i].mem)
@@ -656,7 +657,7 @@ class Pipeline(object):
         # return False if all executors have died but not spawning new ones:
         # 1) there are stages that can be run, and
         # 2) there are no running nor waiting executors, and
-        # 3) the number of lost executors has exceeded the number of allowed failed execturs
+        # 3) the number of lost executors has exceeded the number of allowed failed executors
         elif (len(self.runnable) > 0 and 
               (self.number_launched_and_waiting_clients + len(self.clients)) == 0 and 
               self.failed_executors > self.exec_options.max_failed_executors):
@@ -669,8 +670,9 @@ class Pipeline(object):
 
         # TODO combine with above clause?
         else:
-          highest_mem_stage = self.highest_memory_stage(self.runnable)
-          max_memory_required = highest_mem_stage.mem
+          if len(self.runnable) > 0:
+            highest_mem_stage = self.highest_memory_stage(self.runnable)
+            max_memory_required = highest_mem_stage.mem
           if ((len(self.runnable) > 0) and
           # require no running jobs rather than no clients
           # since in some configurations (e.g., currently SciNet config has
@@ -679,7 +681,6 @@ class Pipeline(object):
           # running indefinitely with no jobs
             (self.number_launched_and_waiting_clients + len(self.clients) == 0 and
             max_memory_required > self.memAvail)):
-            #self.max_memory_required(self.runnable) > self.memAvail)):
               msg = ("Shutting down due to jobs (e.g. `%s`) which require more memory (%.2fG) than available anywhere. "
                      "Please use the --mem argument to increase the amount of memory that executors can request."
                      % (str(highest_mem_stage)[:1000], max_memory_required))
