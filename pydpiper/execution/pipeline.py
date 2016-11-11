@@ -669,8 +669,9 @@ class Pipeline(object):
 
         # TODO combine with above clause?
         else:
-          highest_mem_stage = self.highest_memory_stage(self.runnable)
-          max_memory_required = highest_mem_stage.mem
+          if len(self.runnable) > 0:
+            highest_mem_stage = self.highest_memory_stage(self.runnable)
+            max_memory_required = highest_mem_stage.mem
           if ((len(self.runnable) > 0) and
           # require no running jobs rather than no clients
           # since in some configurations (e.g., currently SciNet config has
@@ -679,7 +680,6 @@ class Pipeline(object):
           # running indefinitely with no jobs
             (self.number_launched_and_waiting_clients + len(self.clients) == 0 and
             max_memory_required > self.memAvail)):
-            #self.max_memory_required(self.runnable) > self.memAvail)):
               msg = ("Shutting down due to jobs (e.g. `%s`) which require more memory (%.2fG) than available anywhere. "
                      "Please use the --mem argument to increase the amount of memory that executors can request."
                      % (str(highest_mem_stage)[:1000], max_memory_required))
