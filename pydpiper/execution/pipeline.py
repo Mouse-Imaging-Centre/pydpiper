@@ -618,6 +618,7 @@ class Pipeline(object):
         if self.stages[i].mem < self.exec_options.default_job_mem:
             self.stages[i].setMem(self.exec_options.default_job_mem)
         # scale everything by the memory_factor
+        # FIXME this may run several times ... weird !!
         self.stages[i].setMem(self.stages[i].mem * self.exec_options.memory_factor)
         # keep track of the memory requirements of the runnable jobs
         self.mem_req_for_runnable.append(self.stages[i].mem)
@@ -656,7 +657,7 @@ class Pipeline(object):
         # return False if all executors have died but not spawning new ones:
         # 1) there are stages that can be run, and
         # 2) there are no running nor waiting executors, and
-        # 3) the number of lost executors has exceeded the number of allowed failed execturs
+        # 3) the number of lost executors has exceeded the number of allowed failed executors
         elif (len(self.runnable) > 0 and 
               (self.number_launched_and_waiting_clients + len(self.clients)) == 0 and 
               self.failed_executors > self.exec_options.max_failed_executors):
