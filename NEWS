@@ -1,3 +1,9 @@
+New in Version 2.0.3
+====================
+* better montage file locations/naming
+* bugfix in "pride of models" association of models to timepoints
+* execution bugfixes
+
 New in Version 2.0.2
 ====================
 * automatically set MAGeT's protocols based off model building LSQ12/nlin protocols when possible
