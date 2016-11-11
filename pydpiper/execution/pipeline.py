@@ -590,7 +590,7 @@ class Pipeline(object):
             #time.sleep(STAGE_RETRY_INTERVAL)
             self.removeFromRunning(index, clientURI, new_status = None)
             self.stages[index].incrementNumberOfRetries()
-            logger.info("RETRYING: ERROR in Stage " + str(index) + ": " + str(self.stages[index] + "\n")
+            logger.info("RETRYING: ERROR in Stage " + str(index) + ": " + str(self.stages[index]) + "\n"
                         + "RETRYING: adding this stage back to the runnable set.\n"
                         + "RETRYING: Logfile for Stage " + str(self.stages[index].logFile) + "\n")
             self.enqueue(index)
