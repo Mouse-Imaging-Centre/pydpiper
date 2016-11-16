@@ -458,6 +458,8 @@ def get_closest_model_from_pride_of_models(pride_of_models_dict,
 
     # because otherwise index_on_the_right - 1 < 0, which causes weird indexing ...
     if index_on_the_right == 0:
+        print("Using initial model of time point: %d for file with actual time point: %s"
+              % (sorted_keys[0], str(time_point_float)))
         return pride_of_models_dict[sorted_keys[0]]
 
     diff_with_smaller_timepoint = time_point_float - float(sorted_keys[index_on_the_right - 1])
