@@ -605,10 +605,10 @@ class Pipeline(object):
             for i in nx.dfs_successors(self.G, index).keys():
                 self.failedStages.append(i)
 
-    def enqueue(self, i):
-        """Update pipeline data structures and run relevant hooks when a stage becomes runnable."""
-        #logger.debug("Queueing stage %d", i)
-        self.runnable.add(i)
+    @functools.lru_cache(maxsize=None)  # must cache *all* results!
+    def prepare_to_run(self, i):
+        """Some pre-run tasks that must only run once
+        (in the current model, `enqueue` may run arbitrarily many times!)"""
         for f in self.stages[i]._runnable_hooks:
             f(self.stages[i])
         # the easiest place to ensure that all stages request at least
@@ -620,6 +620,12 @@ class Pipeline(object):
         # scale everything by the memory_factor
         # FIXME this may run several times ... weird !!
         self.stages[i].setMem(self.stages[i].mem * self.exec_options.memory_factor)
+
+    def enqueue(self, i):
+        """Update pipeline data structures and run relevant hooks when a stage becomes runnable."""
+        #logger.debug("Queueing stage %d", i)
+        self.runnable.add(i)
+        self.prepare_to_run(i)
         # keep track of the memory requirements of the runnable jobs
         self.mem_req_for_runnable.append(self.stages[i].mem)
 
