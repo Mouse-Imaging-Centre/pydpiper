@@ -606,11 +606,7 @@ class pipelineExecutor(object):
             raise Exception("Got invalid cmd from server: %s" % cmd)
                 
 
-
-##########     ---     Start of program     ---     ##########   
-
 def main():
-
     # command line option handling
     # use an environment variable to look for a default config file
     # Alternately, we could use a default location for the file
@@ -632,7 +628,6 @@ def main():
     # when constructing the executor shell command
     options, _ = parser.parse_known_args()
 
-    #Check to make sure some executors have been specified. 
     ensure_exec_specified(options.num_exec)
 
     def local_launch(options):
@@ -655,8 +650,8 @@ def main():
                                                time=q.timestr_to_secs(options.time))
     elif options.queue_type is not None:
         for i in range(options.num_exec):
-            pe = pipelineExecutor(options=options)   #, pipeline_name=pipeline_name)
-            pe.submitToQueue()
+            pe = pipelineExecutor(options=options, uri_file=options.urifile)   #, pipeline_name=pipeline_name)
+            pe.submitToQueue(1)  # TODO is there a reason why we have logic for submitting `i` executors again here?
     else:
         local_launch(options)
 
