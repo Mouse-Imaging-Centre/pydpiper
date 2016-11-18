@@ -20,6 +20,8 @@ from pydpiper.minc.containers import XfmHandler
 
 from pyminc.volumes.factory import volumeFromFile  # type: ignore
 
+# TODO push down into lsq12_pairwise?
+gen = random.Random(137)  # seed must be a small int; see #291
 
 
 R3 = Tuple[float, float, float]
@@ -1905,9 +1907,7 @@ def multilevel_pairwise_minctracc(imgs: List[MincAtom],
     if max_pairs is None or max_pairs >= len(imgs):
         avg_xfms = [avg_xfm_from(img, target_imgs=imgs) for img in imgs]
     else:
-        # FIXME this will be the same across all runs of the program, but also across calls with the same inputs ...
-        random.seed(tuple((img.path for img in imgs)))
-        avg_xfms = [avg_xfm_from(img, target_imgs=random.sample(imgs, max_pairs)) for img in imgs]
+        avg_xfms = [avg_xfm_from(img, target_imgs=gen.sample(imgs, max_pairs)) for img in imgs]
                       # FIXME might use one fewer image than `max_pairs`...
 
     final_avg = s.defer(mincaverage([xfm.resampled for xfm in avg_xfms], avg_file=final_avg))
