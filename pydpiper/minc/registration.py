@@ -288,21 +288,55 @@ default_pmincaverage_mem_cfg = PMincAverageMemCfg(base_mem=0.5, mem_per_voxel=17
 def pmincaverage(imgs: List[MincAtom],
                  name_wo_ext: str = "average",
                  output_dir: str = '.',
+                 avg_file: Optional[MincAtom] = None,
                  copy_header_from_first_input: bool = False):
+
+    ## TODO this now basically duplicates `mincaverage` with a few differences ... refactor! ...
+
+    if len(imgs) == 0:
+        raise ValueError("`mincaverage` arg `imgs` is empty (can't average zero files)")
+
     if copy_header_from_first_input:
         # TODO: should be logged, not just printed?
         warnings.warn("Warning: pmincaverage doesn't implement copy_header; use mincaverage instead")
-    avg = MincAtom(name=os.path.join(output_dir, "%s.mnc" % name_wo_ext), orig_name=None)
-    s = CmdStage(inputs=tuple(imgs), outputs=(avg,),
-                 cmd=["pmincaverage", "--clobber"] + sorted([img.path for img in imgs]) + [avg.path])
+
+    s = Stages()
+
+    avg = avg_file or MincAtom(name=os.path.join(output_dir, '%s.mnc' % name_wo_ext),
+                               orig_name=None,
+                               pipeline_sub_dir=output_dir)
+
+    avg_cmd = CmdStage(inputs=tuple(imgs), outputs=(avg,),
+                       cmd=["pmincaverage", "--clobber"] + sorted([img.path for img in imgs]) + [avg.path])
+
+
+    # if all input files have masks associated with them, add the combined mask to the average:
+    all_inputs_have_masks = all((img.mask for img in imgs))
+
+    if all_inputs_have_masks:
+        combined_mask = (MincAtom(name=os.path.join(avg_file.dir, '%s_mask.mnc' % avg_file.filename_wo_ext),
+                                  orig_name=None,
+                                  pipeline_sub_dir=avg_file.pipeline_sub_dir)
+                         if avg_file else
+                         MincAtom(name=os.path.join(output_dir, '%s_mask.mnc' % name_wo_ext),
+                                  orig_name=None,
+                                  pipeline_sub_dir=output_dir))
+        s.defer(mincmath(op='max',
+                         # set comprehension loses order (OK as max is associative, commutative)
+                         # but removes duplicates; 'sorted' preserved determinism:
+                         vols=sorted({img_inst.mask for img_inst in imgs}),
+                         out_atom=combined_mask))
+        avg.mask = combined_mask
 
     def set_memory(st, cfg):
-        voxels_per_file = reduce(mul, volumeFromFile(imgs[0]).getSizes())
+        voxels_per_file = reduce(mul, volumeFromFile(imgs[0].path).getSizes())
         st.setMem(cfg.base_mem + voxels_per_file * cfg.mem_per_voxel * len(imgs))
 
-    s.when_runnable_hooks.append(lambda st: set_memory(st, default_pmincaverage_mem_cfg))
+    avg_cmd.when_runnable_hooks.append(lambda st: set_memory(st, default_pmincaverage_mem_cfg))
 
-    return Result(stages=Stages([s]), output=avg)
+    s.add(avg_cmd)
+
+    return Result(stages=s, output=avg)
 
 
 def mincreshape(img : MincAtom, args : List[str]):
