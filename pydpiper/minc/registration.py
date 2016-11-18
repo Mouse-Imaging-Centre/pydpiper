@@ -1567,7 +1567,8 @@ class WithAvgImgs(Generic[T]):
 def minctracc_NLIN_build_model(imgs: List[MincAtom],
                                initial_target: MincAtom,
                                conf: MultilevelMinctraccConf,
-                               nlin_dir: str) -> Result[WithAvgImgs[List[XfmHandler]]]:
+                               nlin_dir: str,
+                               mincaverage = pmincaverage) -> Result[WithAvgImgs[List[XfmHandler]]]:
     if len(conf.confs) == 0:
         raise ValueError("No configurations supplied ...")
     s = Stages()
@@ -1586,7 +1587,7 @@ def mincANTS_NLIN_build_model(imgs: List[MincAtom],
                               conf: MultilevelMincANTSConf,
                               nlin_dir: str,
                               nlin_prefix : str = "",
-                              mincaverage = mincaverage) -> Result[WithAvgImgs[List[XfmHandler]]]:
+                              mincaverage = pmincaverage) -> Result[WithAvgImgs[List[XfmHandler]]]:
     """
     This functions runs a hierarchical mincANTS registration on the input
     images (imgs) creating an unbiased average.
@@ -1963,7 +1964,7 @@ def lsq12_pairwise(imgs: List[MincAtom],
                    lsq12_dir: str,
                    create_qc_images: bool = True,
                    like: MincAtom = None,
-                   mincaverage = mincaverage) -> Result[WithAvgImgs[List[XfmHandler]]]:
+                   mincaverage = pmincaverage) -> Result[WithAvgImgs[List[XfmHandler]]]:
 
     minctracc_conf = get_linear_configuration_from_options(conf=lsq12_conf,
                                                            transform_type=LinearTransType.lsq12,
