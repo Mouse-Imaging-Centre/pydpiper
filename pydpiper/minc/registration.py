@@ -1,12 +1,9 @@
 import csv
-import os.path
 import os
 import random
 import shlex
 import subprocess
 import sys
-import inspect
-import re
 import warnings
 from operator import mul
 
@@ -39,7 +36,7 @@ class LinearTransType(AutoEnum):
 
 
 class LinearObjectiveFn(AutoEnum):
-    # named so that <...>.name return the appropriate string to pass to minctracc
+    # named so that <...>.name returns the appropriate string to pass to minctracc
     xcorr = zscore = ssc = vr = mi = nmi = ()
 
 
@@ -2799,7 +2796,7 @@ def create_quality_control_images(imgs: List[MincAtom],
 
 
         # add a label to each of the individual images
-        # so it will be easier for the user to identify what
+        # so it will be easier for the user to identify
         # which images potentially fail
         img_verification_convert = img.newname_with_suffix("_QC_image_labeled",
                                                            subdir="tmp",
