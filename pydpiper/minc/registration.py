@@ -242,15 +242,13 @@ def mincaverage(imgs: List[MincAtom],
 
     # if all input files have masks associated with them, add the combined mask to
     # the average:
-    all_inputs_have_masks = True
-    for img_inst in imgs:
-        if not img_inst.mask:
-            all_inputs_have_masks = False
+    all_inputs_have_masks = all((img.mask for img in imgs))
 
     if all_inputs_have_masks:
         combined_mask = (MincAtom(name=os.path.join(avg_file.dir, '%s_mask.mnc' % avg_file.filename_wo_ext),
                                   orig_name=None,
-                                  pipeline_sub_dir=avg_file.pipeline_sub_dir) if avg_file else
+                                  pipeline_sub_dir=avg_file.pipeline_sub_dir)
+                         if avg_file else
                          MincAtom(name=os.path.join(output_dir, '%s_mask.mnc' % name_wo_ext),
                                   orig_name=None,
                                   pipeline_sub_dir=output_dir))
@@ -260,8 +258,6 @@ def mincaverage(imgs: List[MincAtom],
                          vols=sorted({img_inst.mask for img_inst in imgs}),
                          out_atom=combined_mask))
         avg.mask = combined_mask
-
-
 
     # if the average was provided as a MincAtom there is probably a output_sub_dir
     # set. However, this is something we only really use for input files. All averages
