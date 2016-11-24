@@ -1921,9 +1921,26 @@ def multilevel_pairwise_minctracc(imgs: List[MincAtom],
         # TODO to save creation of lots of duplicate blurs, could use multilevel_minctracc_all,
         # being careful not to register the img against itself
         # FIXME: do something about the configuration, currently it all seems a bit broken...
+        # Interestingly it seems like it's actually quite important to include the registration
+        # between the input image and itself. Imagine this toy example:
+        # file 1: volume 1
+        # file 2: volume 8
+        # file 3: volume 64
+        # if you only align file 1 to 2 and 3, it will end up having volume size 22.4
+        # after averaging the scaling vectors (2,2,2) and (4,4,4) to be (2.82843,2.82843,2.82843)
+        # but if we include the registration to itself, i.e. (1,1,1) we end up with a (2,2,2)
+        # average transform and its volume will be 8. The same holds for all the other files.
+        # --> volumes after alignment and averaging using only the other targets:
+        # file 1: volume 22.4
+        # file 2: volume 8
+        # file 3: volume 2.7
+        # --> volumes after alignment using other targets and itself:
+        # file 1: volume 8
+        # file 2: volume 8
+        # file 3: volume 8
         xfms = [s.defer(multilevel_minctracc(src_img, target_img,
                                              conf=conf))
-                for target_img in target_imgs if src_img != target_img]  # TODO src_img.name != ....name ??
+                for target_img in target_imgs]  # TODO src_img.name != ....name ??
 
         avg_xfm = s.defer(xfmaverage([xfm.xfm for xfm in xfms],
                                      output_filename_wo_ext="%s_avg_lsq12" % src_img.filename_wo_ext))
