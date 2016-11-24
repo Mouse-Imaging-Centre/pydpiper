@@ -1,12 +1,9 @@
 import csv
-import os.path
 import os
 import random
 import shlex
 import subprocess
 import sys
-import inspect
-import re
 import warnings
 from operator import mul
 
@@ -23,6 +20,8 @@ from pydpiper.minc.containers import XfmHandler
 
 from pyminc.volumes.factory import volumeFromFile  # type: ignore
 
+# TODO push down into lsq12_pairwise?
+gen = random.Random(137)  # seed must be a small int; see #291
 
 
 R3 = Tuple[float, float, float]
@@ -39,7 +38,7 @@ class LinearTransType(AutoEnum):
 
 
 class LinearObjectiveFn(AutoEnum):
-    # named so that <...>.name return the appropriate string to pass to minctracc
+    # named so that <...>.name returns the appropriate string to pass to minctracc
     xcorr = zscore = ssc = vr = mi = nmi = ()
 
 
@@ -243,25 +242,22 @@ def mincaverage(imgs: List[MincAtom],
 
     # if all input files have masks associated with them, add the combined mask to
     # the average:
-    all_inputs_have_masks = True
-    for img_inst in imgs:
-        if not img_inst.mask:
-            all_inputs_have_masks = False
+    all_inputs_have_masks = all((img.mask for img in imgs))
 
     if all_inputs_have_masks:
         combined_mask = (MincAtom(name=os.path.join(avg_file.dir, '%s_mask.mnc' % avg_file.filename_wo_ext),
                                   orig_name=None,
-                                  pipeline_sub_dir=avg_file.pipeline_sub_dir) if avg_file else
+                                  pipeline_sub_dir=avg_file.pipeline_sub_dir)
+                         if avg_file else
                          MincAtom(name=os.path.join(output_dir, '%s_mask.mnc' % name_wo_ext),
                                   orig_name=None,
                                   pipeline_sub_dir=output_dir))
         s.defer(mincmath(op='max',
-                         # set comprehension loses order but removes duplicates:
-                         vols=list({img_inst.mask for img_inst in imgs}),
+                         # set comprehension loses order (OK as max is associative, commutative)
+                         # but removes duplicates; 'sorted' preserved determinism:
+                         vols=sorted({img_inst.mask for img_inst in imgs}),
                          out_atom=combined_mask))
         avg.mask = combined_mask
-
-
 
     # if the average was provided as a MincAtom there is probably a output_sub_dir
     # set. However, this is something we only really use for input files. All averages
@@ -292,21 +288,55 @@ default_pmincaverage_mem_cfg = PMincAverageMemCfg(base_mem=0.5, mem_per_voxel=17
 def pmincaverage(imgs: List[MincAtom],
                  name_wo_ext: str = "average",
                  output_dir: str = '.',
+                 avg_file: Optional[MincAtom] = None,
                  copy_header_from_first_input: bool = False):
+
+    ## TODO this now basically duplicates `mincaverage` with a few differences ... refactor! ...
+
+    if len(imgs) == 0:
+        raise ValueError("`mincaverage` arg `imgs` is empty (can't average zero files)")
+
     if copy_header_from_first_input:
         # TODO: should be logged, not just printed?
         warnings.warn("Warning: pmincaverage doesn't implement copy_header; use mincaverage instead")
-    avg = MincAtom(name=os.path.join(output_dir, "%s.mnc" % name_wo_ext), orig_name=None)
-    s = CmdStage(inputs=tuple(imgs), outputs=(avg,),
-                 cmd=["pmincaverage", "--clobber"] + sorted([img.path for img in imgs]) + [avg.path])
+
+    s = Stages()
+
+    avg = avg_file or MincAtom(name=os.path.join(output_dir, '%s.mnc' % name_wo_ext),
+                               orig_name=None,
+                               pipeline_sub_dir=output_dir)
+
+    avg_cmd = CmdStage(inputs=tuple(imgs), outputs=(avg,),
+                       cmd=["pmincaverage", "--clobber"] + sorted([img.path for img in imgs]) + [avg.path])
+
+
+    # if all input files have masks associated with them, add the combined mask to the average:
+    all_inputs_have_masks = all((img.mask for img in imgs))
+
+    if all_inputs_have_masks:
+        combined_mask = (MincAtom(name=os.path.join(avg_file.dir, '%s_mask.mnc' % avg_file.filename_wo_ext),
+                                  orig_name=None,
+                                  pipeline_sub_dir=avg_file.pipeline_sub_dir)
+                         if avg_file else
+                         MincAtom(name=os.path.join(output_dir, '%s_mask.mnc' % name_wo_ext),
+                                  orig_name=None,
+                                  pipeline_sub_dir=output_dir))
+        s.defer(mincmath(op='max',
+                         # set comprehension loses order (OK as max is associative, commutative)
+                         # but removes duplicates; 'sorted' preserved determinism:
+                         vols=sorted({img_inst.mask for img_inst in imgs}),
+                         out_atom=combined_mask))
+        avg.mask = combined_mask
 
     def set_memory(st, cfg):
-        voxels_per_file = reduce(mul, volumeFromFile(imgs[0]).getSizes())
+        voxels_per_file = reduce(mul, volumeFromFile(imgs[0].path).getSizes())
         st.setMem(cfg.base_mem + voxels_per_file * cfg.mem_per_voxel * len(imgs))
 
-    s.when_runnable_hooks.append(lambda st: set_memory(st, default_pmincaverage_mem_cfg))
+    avg_cmd.when_runnable_hooks.append(lambda st: set_memory(st, default_pmincaverage_mem_cfg))
 
-    return Result(stages=Stages([s]), output=avg)
+    s.add(avg_cmd)
+
+    return Result(stages=s, output=avg)
 
 
 def mincreshape(img : MincAtom, args : List[str]):
@@ -1537,7 +1567,8 @@ class WithAvgImgs(Generic[T]):
 def minctracc_NLIN_build_model(imgs: List[MincAtom],
                                initial_target: MincAtom,
                                conf: MultilevelMinctraccConf,
-                               nlin_dir: str) -> Result[WithAvgImgs[List[XfmHandler]]]:
+                               nlin_dir: str,
+                               mincaverage = pmincaverage) -> Result[WithAvgImgs[List[XfmHandler]]]:
     if len(conf.confs) == 0:
         raise ValueError("No configurations supplied ...")
     s = Stages()
@@ -1556,7 +1587,7 @@ def mincANTS_NLIN_build_model(imgs: List[MincAtom],
                               conf: MultilevelMincANTSConf,
                               nlin_dir: str,
                               nlin_prefix : str = "",
-                              mincaverage = mincaverage) -> Result[WithAvgImgs[List[XfmHandler]]]:
+                              mincaverage = pmincaverage) -> Result[WithAvgImgs[List[XfmHandler]]]:
     """
     This functions runs a hierarchical mincANTS registration on the input
     images (imgs) creating an unbiased average.
@@ -1890,9 +1921,26 @@ def multilevel_pairwise_minctracc(imgs: List[MincAtom],
         # TODO to save creation of lots of duplicate blurs, could use multilevel_minctracc_all,
         # being careful not to register the img against itself
         # FIXME: do something about the configuration, currently it all seems a bit broken...
+        # Interestingly it seems like it's actually quite important to include the registration
+        # between the input image and itself. Imagine this toy example:
+        # file 1: volume 1
+        # file 2: volume 8
+        # file 3: volume 64
+        # if you only align file 1 to 2 and 3, it will end up having volume size 22.4
+        # after averaging the scaling vectors (2,2,2) and (4,4,4) to be (2.82843,2.82843,2.82843)
+        # but if we include the registration to itself, i.e. (1,1,1) we end up with a (2,2,2)
+        # average transform and its volume will be 8. The same holds for all the other files.
+        # --> volumes after alignment and averaging using only the other targets:
+        # file 1: volume 22.4
+        # file 2: volume 8
+        # file 3: volume 2.7
+        # --> volumes after alignment using other targets and itself:
+        # file 1: volume 8
+        # file 2: volume 8
+        # file 3: volume 8
         xfms = [s.defer(multilevel_minctracc(src_img, target_img,
                                              conf=conf))
-                for target_img in target_imgs if src_img != target_img]  # TODO src_img.name != ....name ??
+                for target_img in target_imgs]  # TODO src_img.name != ....name ??
 
         avg_xfm = s.defer(xfmaverage([xfm.xfm for xfm in xfms],
                                      output_filename_wo_ext="%s_avg_lsq12" % src_img.filename_wo_ext))
@@ -1908,9 +1956,7 @@ def multilevel_pairwise_minctracc(imgs: List[MincAtom],
     if max_pairs is None or max_pairs >= len(imgs):
         avg_xfms = [avg_xfm_from(img, target_imgs=imgs) for img in imgs]
     else:
-        # FIXME this will be the same across all runs of the program, but also across calls with the same inputs ...
-        random.seed(tuple((img.path for img in imgs)))
-        avg_xfms = [avg_xfm_from(img, target_imgs=random.sample(imgs, max_pairs)) for img in imgs]
+        avg_xfms = [avg_xfm_from(img, target_imgs=gen.sample(imgs, max_pairs)) for img in imgs]
                       # FIXME might use one fewer image than `max_pairs`...
 
     final_avg = s.defer(mincaverage([xfm.resampled for xfm in avg_xfms], avg_file=final_avg))
@@ -1935,7 +1981,7 @@ def lsq12_pairwise(imgs: List[MincAtom],
                    lsq12_dir: str,
                    create_qc_images: bool = True,
                    like: MincAtom = None,
-                   mincaverage = mincaverage) -> Result[WithAvgImgs[List[XfmHandler]]]:
+                   mincaverage = pmincaverage) -> Result[WithAvgImgs[List[XfmHandler]]]:
 
     minctracc_conf = get_linear_configuration_from_options(conf=lsq12_conf,
                                                            transform_type=LinearTransType.lsq12,
@@ -2799,7 +2845,7 @@ def create_quality_control_images(imgs: List[MincAtom],
 
 
         # add a label to each of the individual images
-        # so it will be easier for the user to identify what
+        # so it will be easier for the user to identify
         # which images potentially fail
         img_verification_convert = img.newname_with_suffix("_QC_image_labeled",
                                                            subdir="tmp",

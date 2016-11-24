@@ -74,6 +74,9 @@ def two_level(grouped_files_df, options : TwoLevelConf):
     """  # TODO weird naming since the grouped_files_df isn't a GroupBy object?  just files_df?
     s = Stages()
 
+    if grouped_files_df.isnull().values.any():
+        raise ValueError("NaN values in input dataframe; can't go")
+
     if options.mbm.lsq6.target_type == TargetType.bootstrap:
         # won't work since the second level part tries to get the resolution of *its* "first input file", which
         # hasn't been created.  We could instead pass in a resolution to the `mbm` function,

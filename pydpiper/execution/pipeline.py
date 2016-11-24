@@ -371,13 +371,6 @@ class Pipeline(object):
         return loc
 
     def printStages(self, name):
-        """Prints stages to a file, stage info to stdout"""
-
-        fileForPrinting = os.path.abspath(os.curdir + "/" + str(name) + "_pipeline_stages.txt")
-        pf = open(fileForPrinting, "w")
-        for i in range(len(self.stages)):
-            pf.write(str(i) + "  " + str(self.stages[i]) + "\n")
-        pf.close()
         print("Total number of stages in the pipeline: ", len(self.stages))
                  
     def printNumberProcessedStages(self):
