@@ -1092,6 +1092,7 @@ def minctracc(source: MincAtom,
               transform_name_wo_ext: Optional[str] = None,
               transform_info: Optional[List[str]] = None,
               generation: Optional[int] = None,
+              subdir: Optional[str] = None,
               resample_source: bool = False) -> Result[XfmHandler]:
     """
     source -- "raw", blurring will happen here
@@ -1119,6 +1120,8 @@ def minctracc(source: MincAtom,
     lin_conf = conf.linear_conf  # type: LinearMinctraccConf
     nlin_conf = conf.nonlinear_conf  # type: NonlinearMinctraccConf
 
+    subdir = subdir if subdir is not None else 'transforms'
+
     if lin_conf is None and nlin_conf is None:
         raise ValueError("minctracc: no linear or nonlinear configuration specified")
 
@@ -1126,7 +1129,7 @@ def minctracc(source: MincAtom,
         raise ValueError("minctracc: invalid transform type %s" % lin_conf.transform_type)
     # TODO: probably not needed since we're using an enum
     if transform_name_wo_ext:
-        out_xfm = XfmAtom(name=os.path.join(source.pipeline_sub_dir, source.output_sub_dir, 'transforms',
+        out_xfm = XfmAtom(name=os.path.join(source.pipeline_sub_dir, source.output_sub_dir, subdir,
                                             "%s.xfm" % (transform_name_wo_ext)),
                           pipeline_sub_dir=source.pipeline_sub_dir,
                           output_sub_dir=source.output_sub_dir)
@@ -1138,7 +1141,7 @@ def minctracc(source: MincAtom,
         else:
             trans_type = "nlin"
 
-        out_xfm = XfmAtom(name=os.path.join(source.pipeline_sub_dir, source.output_sub_dir, 'transforms',
+        out_xfm = XfmAtom(name=os.path.join(source.pipeline_sub_dir, source.output_sub_dir, subdir,
                                             "%s_mt_to_%s_%s_%s.xfm" %
                                             (source.filename_wo_ext,
                                              target.filename_wo_ext,
@@ -1147,7 +1150,7 @@ def minctracc(source: MincAtom,
                           pipeline_sub_dir=source.pipeline_sub_dir,
                           output_sub_dir=source.output_sub_dir)
     else:
-        out_xfm = XfmAtom(name=os.path.join(source.pipeline_sub_dir, source.output_sub_dir, 'transforms',
+        out_xfm = XfmAtom(name=os.path.join(source.pipeline_sub_dir, source.output_sub_dir, subdir,
                                             "%s_mt_to_%s.xfm" % (
                                             source.filename_wo_ext, target.filename_wo_ext)),
                           pipeline_sub_dir=source.pipeline_sub_dir,
@@ -1841,11 +1844,12 @@ def multilevel_minctracc(source: MincAtom,
         raise ValueError("No configurations supplied")
     s = Stages()
     last_resampled = None
-    for idx, conf in enumerate(conf.confs):
-        transform_handler = s.defer(minctracc(source, target, conf=conf,
+    for idx, conf_ in enumerate(conf.confs):
+        transform_handler = s.defer(minctracc(source, target, conf=conf_,
                                               transform=transform,
                                               transform_info=transform_info if idx == 0 else None,
                                               generation=idx,
+                                              subdir='tmp' if idx < len(conf.confs) - 1 else None,
                                               resample_source=resample_source))
         transform = transform_handler.xfm
         # why potentially throw away the resampled image?
