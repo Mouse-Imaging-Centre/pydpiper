@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-
+import copy
 import glob
 from collections import defaultdict
 from configargparse import ArgParser
@@ -69,20 +69,37 @@ def process_atlas_files(filenames : List[str], pipeline_sub_dir) -> List[MincAto
     return pd.Series(list(grouped_atlas_files.values()))
 
 
-def maget_mask(imgs : List[MincAtom], atlases, options):
+def maget_mask(imgs : List[MincAtom], maget_options, resolution : float, pipeline_sub_dir : str, atlases=None):
 
     s = Stages()
 
     resample  = np.vectorize(mincresample_new, excluded={"extra_flags"})
     defer     = np.vectorize(s.defer)
 
-    lsq12_conf = get_linear_configuration_from_options(options.maget.lsq12,
-                                                       LinearTransType.lsq12,
-                                                       options.registration.resolution)
+    original_imgs = imgs
+    imgs = copy.deepcopy(imgs)
+    original_imgs = pd.Series(original_imgs, index=[img.path for img in original_imgs])
+    for img in imgs:
+        img.output_sub_dir = os.path.join(img.output_sub_dir, "masking")
 
-    masking_nlin_hierarchy = get_nonlinear_configuration_from_options(options.maget.maget.masking_nlin_protocol,
-                                                                      options.maget.maget.mask_method,
-                                                                      options.registration.resolution)
+    # TODO dereference maget_options -> maget_options.maget outside maget_mask call?
+    if atlases is None:
+        atlases =  atlases_from_dir(atlas_lib=maget_options.maget.atlas_lib,
+                                    max_templates=maget_options.maget.max_templates,
+                                    pipeline_sub_dir=pipeline_sub_dir)
+
+    lsq12_conf = get_linear_configuration_from_options(maget_options.lsq12,
+                                                       LinearTransType.lsq12,
+                                                       resolution)
+
+    masking_nlin_hierarchy = get_nonlinear_configuration_from_options(maget_options.maget.masking_nlin_protocol,
+                                                                      maget_options.maget.mask_method,
+                                                                      resolution)
+
+    # TODO lift outside then delete
+    #masking_imgs = copy.deepcopy(imgs)
+    #for img in masking_imgs:
+    #    img.pipeline_sub_dir = os.path.join(img.pipeline_sub_dir, "masking")
 
     masking_alignments = pd.DataFrame({ 'img'   : img,
                                         'atlas' : atlas,
@@ -91,6 +108,7 @@ def maget_mask(imgs : List[MincAtom], atlases, options):
                                                                      nlin_conf=masking_nlin_hierarchy,
                                                                      resample_source=False))}
                                       for img in imgs for atlas in atlases)
+
     # propagate a mask to each image using the above `alignments` as follows:
     # - for each image, voxel_vote on the masks propagated to that image to get a suitable mask
     # - run mincmath -clobber -mult <img> <voted_mask> to apply the mask to the files
@@ -119,38 +137,41 @@ def maget_mask(imgs : List[MincAtom], atlases, options):
                                                                     name="%s_voted_mask" % row.img.filename_wo_ext,
                                                                     output_dir=os.path.join(row.img.output_sub_dir,
                                                                                             "tmp")))))
-        .assign(masked_img=lambda df:
-          df.apply(axis=1,
-                 func=lambda row:
-                   s.defer(mincmath(op="mult",
-                                    # img must precede mask here
-                                    # for output image range to be correct:
-                                    vols=[row.img, row.voted_mask],
-                                    new_name="%s_masked" % row.img.filename_wo_ext,
-                                    subdir="resampled")))))  #['img']
+        .apply(axis=1, func=lambda row: row.img._replace(mask=row.voted_mask)))
+        #.assign(img=lambda df: df.apply(axis=1,
+        #                                func=lambda row:
+        #                                       row.img._replace(mask=row.voted_mask))))
 
     # resample the atlas images back to the input images:
     # (note: this doesn't modify `masking_alignments`, but only stages additional outputs)
     masking_alignments.assign(resampled_img=lambda df:
-    defer(resample(img=df.atlas,
-                   xfm=df.xfm.apply(lambda x: x.xfm),
-                   subdir="tmp",
-                   # TODO delete this stupid hack:
-                   #new_name_wo_ext=df.apply(lambda row:
-                   #  "%s_to_%s-resampled" % (row.atlas.filename_wo_ext,
-                   #                          row.img.filename_wo_ext),
-                   #                          axis=1),
-                   like=df.img, invert=True)))
+      defer(resample(img=df.atlas,
+                     xfm=df.xfm.apply(lambda x: x.xfm),
+                     subdir="tmp",
+                     # TODO delete this stupid hack:
+                     #new_name_wo_ext=df.apply(lambda row:
+                     #  "%s_to_%s-resampled" % (row.atlas.filename_wo_ext,
+                     #                          row.img.filename_wo_ext),
+                     #                          axis=1),
+                     like=df.img, invert=True)))
 
     # replace the table of alignments with a new one with masked images
-    masking_alignments = (pd.merge(left=masking_alignments.assign(unmasked_img=lambda df: df.img),
-                                   right=masked_img,
-                                   on=["img"], how="right", sort=False)
-                          .assign(img=lambda df: df.masked_img))
+    #masking_alignments = (pd.merge(left=masking_alignments.assign(unmasked_img=lambda df: df.img),
+    #                               right=masked_img,
+    #                               on=["img"], how="right", sort=False)
+    #                      .assign(img=lambda df: df.masked_img))
 
-    return Result(stages=s, output=masking_alignments)
+    # put the output_sub_dirs of the images (but not masks?  TODO) back to their original locations ...
+    #masked_img.apply(lambda x: x._replace(output_sub_dir=original_imgs.ix[x.path].output_sub_dir))
+
+    for img in masked_img:
+        img.output_sub_dir = original_imgs.ix[img.path].output_sub_dir
+
+    return Result(stages=s, output=masked_img)
 
 
+# TODO make a non-destructive version of this that creates a new options object ... it should take an overall options
+# object, copy it, and put the maget options at top level.
 def fixup_maget_options(lsq12_options, nlin_options, maget_options):
 
     if maget_options.lsq12.protocol is None:
@@ -169,6 +190,21 @@ def fixup_maget_options(lsq12_options, nlin_options, maget_options):
             raise ValueError("I'd use the MAGeT nlin protocol for masking as well but different programs are specified")
 
 
+def atlases_from_dir(atlas_lib : str, max_templates : int, pipeline_sub_dir : str):
+
+    atlas_library = read_atlas_dir(atlas_lib=atlas_lib, pipeline_sub_dir=pipeline_sub_dir)
+
+    if len(atlas_library) == 0:
+        raise ValueError("No atlases found in specified directory '%s' ..." % atlas_lib)
+
+    num_atlases_needed = min(max_templates, len(atlas_library))
+
+    # TODO issue a warning if not all atlases used or if more atlases requested than available?
+    # TODO also, doesn't slicing with a higher number (i.e., if max_templates > n) go to the end of the list anyway?
+    # TODO arbitrary; could choose atlases better ...
+    return atlas_library[:num_atlases_needed]
+
+
 # TODO support LSQ6 registrations??
 def maget(imgs : List[MincAtom], options, prefix, output_dir):     # FIXME prefix, output_dir aren't used !!
 
@@ -176,69 +212,51 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir):     # FIXME prefi
 
     maget_options = options.maget.maget
 
+    resolution = options.registration.resolution  # TODO or get_resolution_from_file(...) -- only if file always exists!
+
     pipeline_sub_dir = os.path.join(options.application.output_directory,
                                     options.application.pipeline_name + "_atlases")
 
     if maget_options.atlas_lib is None:
         raise ValueError("Need some atlases ...")
 
-    #atlas_dir = os.path.join(output_dir, "input_atlases") ???
-
     # TODO should alternately accept a CSV file ...
-    atlas_library = read_atlas_dir(atlas_lib=maget_options.atlas_lib, pipeline_sub_dir=pipeline_sub_dir)
-
-    if len(atlas_library) == 0:
-        raise ValueError("No atlases found in specified directory '%s' ..." % options.maget.maget.atlas_lib)
-
-    num_atlases_needed = min(maget_options.max_templates, len(atlas_library))
-    # TODO arbitrary; could choose atlases better ...
-    atlases = atlas_library[:num_atlases_needed]
-    # TODO issue a warning if not all atlases used or if more atlases requested than available?
-    # TODO also, doesn't slicing with a higher number (i.e., if max_templates > n) go to the end of the list anyway?
+    atlases = atlases_from_dir(atlas_lib=maget_options.atlas_lib,
+                               max_templates=maget_options.max_templates,
+                               pipeline_sub_dir=pipeline_sub_dir)
 
     lsq12_conf = get_linear_configuration_from_options(options.maget.lsq12,
-                                                       LinearTransType.lsq12,
-                                                       options.registration.resolution)
-
-    masking_nlin_hierarchy = get_nonlinear_configuration_from_options(options.maget.maget.masking_nlin_protocol,
-                                                                      options.maget.maget.mask_method,
-                                                                      options.registration.resolution)
+                                                       transform_type=LinearTransType.lsq12,
+                                                       file_resolution=resolution)
 
     nlin_hierarchy = get_nonlinear_configuration_from_options(options.maget.nlin.nlin_protocol,
-                                                              options.maget.nlin.reg_method,
-                                                              options.registration.resolution)
+                                                              reg_method=options.maget.nlin.reg_method,
+                                                              file_resolution=resolution)
 
     resample  = np.vectorize(mincresample_new, excluded={"extra_flags"})
     defer     = np.vectorize(s.defer)
 
-    # plan the basic registrations between all image-atlas pairs; store the result paths in a table
-    masking_alignments = pd.DataFrame({ 'img'   : img,
-                                        'atlas' : atlas,
-                                        'xfm'   : s.defer(lsq12_nlin(source=img, target=atlas,
-                                                                     lsq12_conf=lsq12_conf,
-                                                                     nlin_conf=masking_nlin_hierarchy,
-                                                                     resample_source=False))}
-                                      for img in imgs for atlas in atlases)
-
     if maget_options.mask or maget_options.mask_only:
 
-        masking_alignments = s.defer(maget_mask(imgs, atlases, options))
-
-        masked_atlases = atlases.apply(lambda atlas:
-                           s.defer(mincmath(op='mult', vols=[atlas, atlas.mask], subdir="resampled",
-                                            new_name="%s_masked" % atlas.filename_wo_ext)))
+        # this used to return alignments but doesn't currently do so
+        masked_img = s.defer(maget_mask(imgs=imgs,
+                                        maget_options=options.maget, atlases=atlases,
+                                        pipeline_sub_dir=pipeline_sub_dir + "_masking", # FIXME repeats all alignments!!!
+                                        resolution=resolution))
 
         # now propagate only the masked form of the images and atlases:
-        imgs    = masking_alignments.img
-        atlases = masked_atlases  # TODO is this needed?
+        imgs    = masked_img
+        #atlases = masked_atlases  # TODO is this needed?
 
     if maget_options.mask_only:
         # register each input to each atlas, creating a mask
-        return Result(stages=s, output=masking_alignments)   # TODO rename `alignments` to `registrations`??
+        return Result(stages=s, output=masked_img)   # TODO rename `alignments` to `registrations`??
     else:
-        del masking_alignments
-        # this `del` is just to verify that we don't accidentally use this later, since my intent is that these
-        # coarser alignments shouldn't be re-used, just the masked images they create; can be removed later
+        if maget_options.mask:
+            del masked_img
+        # this `del` is just to verify that we don't accidentally use this later, since these potentially
+        # coarser alignments shouldn't be re-used (but if the protocols for masking and alignment are the same,
+        # hash-consing will take care of things), just the masked images they create; can be removed later
         # if a sensible use is found
 
         if maget_options.pairwise:
@@ -405,8 +423,11 @@ def _mk_maget_parser(parser : ArgParser):
                        help="""If specified, only register inputs to atlases in library.""")
     parser.set_defaults(pairwise=True)
     group.add_argument("--mask", dest="mask",
-                       action="store_true", default=False,
+                       action="store_true", default=True,
                        help="Create a mask for all images prior to handling labels. [Default = %(default)s]")
+    group.add_argument("--no-mask", dest="mask",
+                       action="store_false", default=True,
+                       help="Opposite of --mask.")
     group.add_argument("--mask-only", dest="mask_only",
                        action="store_true", default=False,
                        help="Create a mask for all images only, do not run full algorithm. [Default = %(default)s]")

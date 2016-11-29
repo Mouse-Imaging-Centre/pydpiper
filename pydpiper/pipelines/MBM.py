@@ -11,7 +11,7 @@ from pydpiper.minc.containers import XfmHandler
 
 from pydpiper.core.files import FileAtom
 from pydpiper.minc.thickness import cortical_thickness
-from pydpiper.pipelines.MAGeT import maget, maget_parser, maget_parsers, fixup_maget_options
+from pydpiper.pipelines.MAGeT import maget, maget_parser, maget_parsers, fixup_maget_options, maget_mask
 from pydpiper.core.util import NamedTuple, maybe_deref_path
 from pydpiper.core.stages       import Result, Stages
 
@@ -44,11 +44,9 @@ def mbm_pipeline(options : MBMConf):
 
     check_MINC_input_files([img.path for img in imgs])
 
-    prefix = options.application.pipeline_name
-
     mbm_result = s.defer(mbm(imgs=imgs, options=options,
-                         prefix=prefix,
-                         output_dir=options.application.output_directory))
+                             prefix=options.application.pipeline_name,
+                             output_dir=options.application.output_directory))
 
     # create useful CSVs (note the files listed therein won't yet exist ...)
     for filename, dataframe in (("transforms.csv", mbm_result.xfms),
@@ -56,26 +54,33 @@ def mbm_pipeline(options : MBMConf):
         with open(filename, 'w') as f:
             f.write(dataframe.applymap(maybe_deref_path).to_csv(index=False))
 
-    # TODO moved here from inside `mbm` for now ... does this make most sense?
-    if options.mbm.segmentation.run_maget:
-        import copy
-        maget_options = copy.deepcopy(options)  #Namespace(maget=options)
-        #maget_options
-        #maget_options.maget = maget_options.mbm
-        #maget_options.execution = options.execution
-        #maget_options.application = options.application
-        maget_options.application.output_directory = os.path.join(options.application.output_directory, "segmentation")
-        maget_options.maget = options.mbm.maget
-
-        fixup_maget_options(maget_options=maget_options.maget,
-                            nlin_options=maget_options.mbm.nlin,
-                            lsq12_options=maget_options.mbm.lsq12)
-        del maget_options.mbm
-
-        s.defer(maget([xfm.resampled for _ix, xfm in mbm_result.xfms.rigid_xfm.iteritems()],
-                       options=maget_options,
-                       prefix="%s_MAGeT" % prefix,
-                       output_dir=os.path.join(options.application.output_directory, prefix + "_processed")))
+    # # TODO moved here from inside `mbm` for now ... does this make most sense?
+    # if options.mbm.segmentation.run_maget:
+    #     import copy
+    #     maget_options = copy.deepcopy(options)  #Namespace(maget=options)
+    #     #maget_options
+    #     #maget_options.maget = maget_options.mbm
+    #     #maget_options.execution = options.execution
+    #     #maget_options.application = options.application
+    #     maget_options.application.output_directory = os.path.join(options.application.output_directory, "segmentation")
+    #     maget_options.maget = options.mbm.maget
+    #
+    #     fixup_maget_options(maget_options=maget_options.maget,
+    #                         nlin_options=maget_options.mbm.nlin,
+    #                         lsq12_options=maget_options.mbm.lsq12)
+    #     del maget_options.mbm
+    #
+    #
+    #     #def with_new_output_dir(img : MincAtom):
+    #         #img = copy.copy(img)
+    #         #img.pipeline_sub_dir = img.pipeline_sub_dir + img.output_dir
+    #         #img.
+    #         #return img.newname_with_suffix(suffix="", subdir="segmentation")
+    #
+    #     s.defer(maget([xfm.resampled for _ix, xfm in mbm_result.xfms.rigid_xfm.iteritems()],
+    #                    options=maget_options,
+    #                    prefix="%s_MAGeT" % prefix,
+    #                    output_dir=os.path.join(options.application.output_directory, prefix + "_processed")))
 
     return Result(stages=s, output=mbm_result)
 
@@ -106,6 +111,30 @@ def mbm(imgs : List[MincAtom], options : MBMConf, prefix : str, output_dir : str
                   get_resolution_from_file(targets.registration_standard.path))
     options.registration = options.registration.replace(resolution=resolution)
 
+
+    # FIXME: this needs to go outside of the `mbm` function to avoid being run from within other pipelines (or
+    # those other pipelines need to turn off this option)
+    if options.mbm.segmentation.run_maget or options.mbm.maget.maget.mask:
+        import copy
+        maget_options = copy.deepcopy(options)  #Namespace(maget=options)
+        #maget_options
+        #maget_options.maget = maget_options.mbm
+        #maget_options.execution = options.execution
+        #maget_options.application = options.application
+        #maget_options.application.output_directory = os.path.join(options.application.output_directory, "segmentation")
+        maget_options.maget = options.mbm.maget
+
+        fixup_maget_options(maget_options=maget_options.maget,
+                            nlin_options=maget_options.mbm.nlin,
+                            lsq12_options=maget_options.mbm.lsq12)
+        del maget_options.mbm
+
+        #def with_new_output_dir(img : MincAtom):
+            #img = copy.copy(img)
+            #img.pipeline_sub_dir = img.pipeline_sub_dir + img.output_dir
+            #img.
+            #return img.newname_with_suffix(suffix="", subdir="segmentation")
+
     # FIXME it probably makes most sense if the lsq6 module itself (even within lsq6_nuc_inorm) handles the run_lsq6
     # setting (via use of the identity transform) since then this doesn't have to be implemented for every pipeline
     if options.mbm.lsq6.run_lsq6:
@@ -115,7 +144,10 @@ def mbm(imgs : List[MincAtom], options : MBMConf, prefix : str, output_dir : str
                                              lsq6_dir=lsq6_dir,
                                              lsq6_options=options.mbm.lsq6))
     else:
-        # TODO don't actually do this resampling if not required (i.e., if the imgs already have the same grids)
+        # FIXME the code shouldn't branch here based on run_lsq6 (which should probably
+        # be part of the lsq6 options rather than the MBM ones; see comments on #287.
+        # TODO don't actually do this resampling if not required (i.e., if the imgs already have the same grids)??
+        # however, for now need to add the masks:
         identity_xfm = s.defer(param2xfm(out_xfm=FileAtom(name="identity.xfm")))
         lsq6_result  = [XfmHandler(source=img, target=img, xfm=identity_xfm,
                                    resampled=s.defer(mincresample_new(img=img,
@@ -123,6 +155,32 @@ def mbm(imgs : List[MincAtom], options : MBMConf, prefix : str, output_dir : str
                                                                       xfm=identity_xfm)))
                         for img in imgs]
     # what about running nuc/inorm without a linear registration step??
+
+    if options.mbm.maget.maget.mask:
+
+        #lsq6_result_with_original_masks = copy.deepcopy(lsq6_result)
+
+        #for img in [xfm.resampled for xfm in lsq6_result]:  # lsq6_result_with_original_masks]:
+        #    img.output_sub_dir = os.path.join(img.output_sub_dir, "masking")
+        masking_imgs = copy.deepcopy([xfm.resampled for xfm in lsq6_result])
+        #for img in masking_imgs:
+        #    img.output_sub_dir = os.path.join(img.output_sub_dir, "masking")
+        masked_img = (s.defer(maget_mask(imgs=masking_imgs,
+                                         resolution=resolution,
+                                         maget_options=maget_options.maget,
+                                         pipeline_sub_dir=os.path.join(options.application.output_directory,
+                                                                       "%s_atlases" % prefix))))
+
+        #masked_img = masked_img.set_index(masked_img.apply(lambda x: x.path))
+        masked_img.index = masked_img.apply(lambda x: x.path)
+
+        # replace any masks of the resampled images with the newly created masks:
+        for xfm in lsq6_result:
+            xfm.resampled = masked_img.ix[xfm.resampled.path]
+            #xfm.resampled.output_sub_dir = os.path.join(xfm.resampled.output_sub_dir, "unmasking")
+    else:
+        warnings.warn("Not masking your images from atlas masks after LSQ6 alignment ... probably not what you want "
+                      "(this can have negative effects on your registration and statistics)")
 
     full_hierarchy = get_nonlinear_configuration_from_options(nlin_protocol=options.mbm.nlin.nlin_protocol,
                                                               reg_method=options.mbm.nlin.reg_method,
@@ -161,8 +219,20 @@ def mbm(imgs : List[MincAtom], options : MBMConf, prefix : str, output_dir : str
     #output.determinants = determinants   # TODO temporary - remove once incorporated properly into `output` proper
     # TODO add more of lsq12_nlin_result?
 
-    # FIXME: this needs to go outside of the `mbm` function to avoid being run from within other pipelines (or
-    # those other pipelines need to turn off this option)
+
+    # FIXME moved above rest of registration for debugging ... shouldn't use and destructively modify lsq6_result!!!
+    if options.mbm.segmentation.run_maget:
+        maget_options = copy.deepcopy(maget_options)
+        maget_options.maget.maget.mask = maget_options.maget.maget.mask_only = False   # already done above
+        # use the original masks here otherwise the masking step will be re-run due to the previous masking run's
+        # masks having been applied to the input images:
+        s.defer(maget([xfm.resampled for xfm in lsq6_result],
+                       #[xfm.resampled for _ix, xfm in mbm_result.xfms.rigid_xfm.iteritems()],
+                       options=maget_options,
+                       prefix="%s_MAGeT" % prefix,
+                       output_dir=os.path.join(output_dir, prefix + "_processed")))
+
+
     # TODO return some MAGeT stuff from MBM function ??
     # if options.mbm.mbm.run_maget:
     #     import copy
