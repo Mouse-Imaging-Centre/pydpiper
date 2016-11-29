@@ -281,7 +281,7 @@ def mincaverage(imgs: List[MincAtom],
 
 
 PMincAverageMemCfg = NamedTuple("PMincAverageMemCfg", [('base_mem', float), ('mem_per_voxel', float)])
-default_pmincaverage_mem_cfg = PMincAverageMemCfg(base_mem=0.5, mem_per_voxel=17.0/(1064*13158000.0))
+default_pmincaverage_mem_cfg = PMincAverageMemCfg(base_mem=0.5, mem_per_voxel=14.0/(430*13158000.0))
 
 # FIXME this doesn't implement the avg_file and other mincaverage stuff (other than copy_header ...)
 # ... maybe there's enough similarity to parametrize over these and maybe others (xfmavg?!)
