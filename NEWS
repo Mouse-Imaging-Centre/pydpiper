@@ -1,3 +1,7 @@
+New in Version 2.0.5
+====================
+* pairwise lsq12 now (correctly) includes a registration to "itself" for each subject.
+
 New in Version 2.0.4
 ====================
 * execution bugfixes
