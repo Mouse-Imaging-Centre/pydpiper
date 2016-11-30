@@ -678,7 +678,8 @@ def inormalize(src: MincAtom,
 
     mask_for_inormalize = mask or src.mask
 
-    cmd = CmdStage(inputs=(src,), outputs=(out,),
+    cmd = CmdStage(inputs=(src, mask_for_inormalize) if mask_for_inormalize else (src,),  # issue a warning if no mask?
+                   outputs=(out,),
                    cmd=shlex.split('inormalize -clobber -const %s -%s' % (conf.const, conf.method.name))
                        + (['-mask', mask_for_inormalize.path] if mask_for_inormalize else [])
                        + [src.path, out.path])
