@@ -388,10 +388,16 @@ def mincresample_simple(img: MincAtom,
              + (['-' + interpolation.name] if interpolation else [])
              + (['-invert'] if invert else [])
              + list(extra_flags)
-             + ['-transform %s' % xfm.path, '-like %s' % like.path, img.path, outf.path]))
+             + (['-transform %s' % xfm.path]) #if xfm is not identity else [])
+             + ['-like %s' % like.path, img.path, outf.path]))
 
     return Result(stages=Stages([stage]), output=outf)
 
+
+#class IdentityXfm(object):
+#    pass
+
+#identity_xfm = IdentityXfm()
 
 # TODO it's probably better to make -keep_real_range its own argument or something to avoid
 #   "-keep_real_rnge" all over the place ...
@@ -2112,14 +2118,18 @@ def check_MINC_input_files(args: List[str]) -> None:
             raise ValueError("\nIssues reading input files.\n")
     # lastly we should check that the actual filenames are distinct, because
     # directories are made based on the basename
+
+    duplicates_exist = False
     seen = set()  # type: Set[str]
     for inputF in args:
         fileBase = os.path.splitext(os.path.basename(inputF))[0]
         if fileBase in seen:
-            raise ValueError("\nThe following name occurs at least twice in the "
-                             "input file list:\n" + str(fileBase) + ".mnc\nPlease provide "
-                                                                    "unique names for all input files.\n")
+            warnings.warn("\nThe following name occurs at least twice in the "
+                          "input file list:\n" + str(fileBase) + ".mnc")
+            duplicates_exist = True
         seen.add(fileBase)
+    if duplicates_exist:
+        raise ValueError("Please provide unique names for all input files")
 
 
 def check_MINC_files_have_equal_dimensions_and_resolution(args: List[str],
@@ -2459,7 +2469,7 @@ def lsq6_nuc_inorm(imgs: List[MincAtom],
                                     for native_img, native_img_mask
                                     in zip(imgs,
                                            masks_in_native_space if masks_in_native_space
-                                           else [None] * len(imgs))]
+                                                                 else [None] * len(imgs))]
 
     inorm_imgs_in_native_space = None  # type: List[MincAtom]
     if lsq6_options.inormalize:
