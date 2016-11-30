@@ -158,26 +158,18 @@ def mbm(imgs : List[MincAtom], options : MBMConf, prefix : str, output_dir : str
 
     if options.mbm.maget.maget.mask:
 
-        #lsq6_result_with_original_masks = copy.deepcopy(lsq6_result)
-
-        #for img in [xfm.resampled for xfm in lsq6_result]:  # lsq6_result_with_original_masks]:
-        #    img.output_sub_dir = os.path.join(img.output_sub_dir, "masking")
         masking_imgs = copy.deepcopy([xfm.resampled for xfm in lsq6_result])
-        #for img in masking_imgs:
-        #    img.output_sub_dir = os.path.join(img.output_sub_dir, "masking")
         masked_img = (s.defer(maget_mask(imgs=masking_imgs,
                                          resolution=resolution,
                                          maget_options=maget_options.maget,
                                          pipeline_sub_dir=os.path.join(options.application.output_directory,
                                                                        "%s_atlases" % prefix))))
 
-        #masked_img = masked_img.set_index(masked_img.apply(lambda x: x.path))
         masked_img.index = masked_img.apply(lambda x: x.path)
 
         # replace any masks of the resampled images with the newly created masks:
         for xfm in lsq6_result:
             xfm.resampled = masked_img.ix[xfm.resampled.path]
-            #xfm.resampled.output_sub_dir = os.path.join(xfm.resampled.output_sub_dir, "unmasking")
     else:
         warnings.warn("Not masking your images from atlas masks after LSQ6 alignment ... probably not what you want "
                       "(this can have negative effects on your registration and statistics)")
