@@ -1931,7 +1931,7 @@ def multilevel_pairwise_minctracc(imgs: List[MincAtom],
         # file 3: volume 8
         xfms = [s.defer(multilevel_minctracc(src_img, target_img,
                                              conf=conf))
-                for target_img in target_imgs]  # TODO src_img.name != ....name ??
+                for target_img in target_imgs]
 
         avg_xfm = s.defer(xfmaverage([xfm.xfm for xfm in xfms],
                                      output_filename_wo_ext="%s_avg_lsq12" % src_img.filename_wo_ext))
