@@ -1877,7 +1877,7 @@ def multilevel_minctracc(source: MincAtom,
 def multilevel_pairwise_minctracc(imgs: List[MincAtom],
                                   conf: MultilevelMinctraccConf,
                                   # transforms : List[] = None,
-                                  max_pairs : int,
+                                  max_pairs : Optional[int],
                                   # max_pairs doesn't even make sense for a non-pairwise MinctraccConf,
                                   # suggesting that the pairwise conf being a list of confs is inappropriate
                                   like: MincAtom = None,
@@ -1894,7 +1894,7 @@ def multilevel_pairwise_minctracc(imgs: List[MincAtom],
     """
     s = Stages()
 
-    if max_pairs < 2:
+    if max_pairs is not None and max_pairs < 2:
         raise ValueError("must register at least two pairs")
 
     if len(imgs) < 2:
