@@ -1862,18 +1862,6 @@ def multilevel_minctracc(source: MincAtom,
                                     resampled=last_resampled))
 
 
-# """Multilevel registration of many images to a single target"""
-# def multilevel_minctracc_all(sources, target, conf, resolutions, transforms=None):
-#    p = Stages()
-#    transforms = transforms or [None] * len(sources)
-#    for res in resolutions:
-#        ss_blurred = (p.add_stages(mincblur(s, res)) for s in sources)
-#        t_blurred  = p.add_stages(mincblur(target, res))
-#        transforms = [p.extract_stages(minctracc(s, t, conf, res, transform=t_blurred))
-#                      for (s,t) in zip(ss_blurred, transforms)]
-#    return Result(stages=p, output=transforms)
-
-
 def multilevel_pairwise_minctracc(imgs: List[MincAtom],
                                   conf: MultilevelMinctraccConf,
                                   # transforms : List[] = None,
@@ -1923,8 +1911,6 @@ def multilevel_pairwise_minctracc(imgs: List[MincAtom],
     def avg_xfm_from(src_img     : MincAtom,
                      target_imgs : List[MincAtom]):
         """Compute xfm from src_img to each target img, average them, and resample along the result"""
-        # TODO to save creation of lots of duplicate blurs, could use multilevel_minctracc_all,
-        # being careful not to register the img against itself
         # FIXME: do something about the configuration, currently it all seems a bit broken...
         # Interestingly it seems like it's actually quite important to include the registration
         # between the input image and itself. Imagine this toy example:
