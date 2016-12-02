@@ -438,7 +438,7 @@ def _mk_maget_parser(parser : ArgParser):
                        help="Maximum number of templates to generate. [Default = %(default)s]")
     group.add_argument("--masking-method", dest="mask_method",
                        default="minctracc", type=str,
-                       help="Specify whether to use minctracc or mincANTS for masking. [Default = %(default)s].")
+                       help="Specify whether to use minctracc or ANTS for masking. [Default = %(default)s].")
     group.add_argument("--masking-nlin-protocol", dest="masking_nlin_protocol",
                        # TODO basically copied from nlin parser
                        type=str, default=None,
