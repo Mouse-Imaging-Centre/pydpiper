@@ -135,7 +135,9 @@ def maget_mask(imgs : List[MincAtom], maget_options, resolution : float, pipelin
                                                func=lambda row:
                                                  s.defer(voxel_vote(label_files=row.resampled_masks,
                                                                     name="%s_voted_mask" % row.img.filename_wo_ext,
-                                                                    output_dir=os.path.join(row.img.output_sub_dir,
+                                                                    # FIXME create and pass a mincatom cloned from row.img instead?
+                                                                    output_dir=os.path.join(row.img.pipeline_sub_dir,
+                                                                                            row.img.output_sub_dir,
                                                                                             "tmp")))))
         .apply(axis=1, func=lambda row: row.img._replace(mask=row.voted_mask)))
         #.assign(img=lambda df: df.apply(axis=1,
