@@ -1524,7 +1524,7 @@ def mincANTS(source: MincAtom,
         subcmd = "'" + "".join([sim_metric_conf.metric, '[', inner, ']']) + "'"
         similarity_cmds.extend(["-m", subcmd])
     stage = CmdStage(
-        inputs=(source, target) + tuple(similarity_inputs) + cast(tuple, ((target.mask,) if target.mask else ())),
+        inputs=(source, target) + tuple(similarity_inputs) + cast(tuple, ((source.mask,) if source.mask else ())),
         # need to cast to tuple due to mypy bug; see mypy/issues/622
         outputs=(out_xfm,),
         cmd=['mincANTS', '3',
@@ -1534,7 +1534,7 @@ def mincANTS(source: MincAtom,
                '-r', conf.regularization,
                '-i', conf.iterations,
                '-o', out_xfm.path]
-            + (['-x', target.mask.path] if conf.use_mask and target.mask else []))
+            + (['-x', source.mask.path] if conf.use_mask and source.mask else []))
 
 
     def set_memory(st, mem_cfg):
