@@ -290,10 +290,10 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir):     # FIXME prefi
                 new_template_to_atlas_alignments
                 .assign(resampled_labels=lambda df: defer(
                                                resample(img=df.atlas.apply(lambda x: x.labels),
-                                                                      xfm=df.xfm.apply(lambda x: x.xfm),
-                                                                      interpolation=Interpolation.nearest_neighbour,
-                                                                      extra_flags=("-keep_real_range",),
-                                                                      like=df.img, invert=True)))
+                                                        xfm=df.xfm.apply(lambda x: x.xfm),
+                                                        interpolation=Interpolation.nearest_neighbour,
+                                                        extra_flags=("-keep_real_range",),
+                                                        like=df.img, invert=True)))
                 .groupby('img', sort=False, as_index=False)
                 .aggregate({'resampled_labels' : lambda labels: list(labels)})
                 .assign(voted_labels=lambda df: df.apply(axis=1,
@@ -306,22 +306,24 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir):     # FIXME prefi
                                                                                   row.img.output_sub_dir,
                                                                                   "labels"))))))
 
+            # FIXME this is a total bug; should just be row.img.labels = row.voted_labels ...
             # TODO write a procedure for this assign-groupby-aggregate-rename...
             # FIXME should be in above algebraic manipulation but MincAtoms don't support flexible immutable updating
             for row in pd.merge(left=new_template_to_atlas_alignments, right=new_templates_labelled,
                                 on=["img"], how="right", sort=False).itertuples():
-                row.img.labels = s.defer(mincresample_new(img=row.voted_labels, xfm=row.xfm.xfm, like=row.img,
-                                                          invert=True, interpolation=Interpolation.nearest_neighbour,
-                                                          #postfix="-input-labels",
-                                                          # this makes names really long ...:
-                                                          # TODO this doesn't work for running MAGeT on the nlin avg:
-                                                          #new_name_wo_ext="%s_on_%s" %
-                                                          #                (row.voted_labels.filename_wo_ext,
-                                                          #                 row.img.filename_wo_ext),
-                                                          #postfix="_labels_via_%s" % row.xfm.xfm.filename_wo_ext,
-                                                          new_name_wo_ext="%s_via_%s" % (row.voted_labels.filename_wo_ext,
-                                                                                         row.xfm.xfm.filename_wo_ext),
-                                                          extra_flags=("-keep_real_range",)))
+                row.img.labels = row.voted_labels
+                #row.img.labels = s.defer(mincresample_new(img=row.voted_labels, xfm=row.xfm.xfm, like=row.img,
+                #                                          invert=True, interpolation=Interpolation.nearest_neighbour,
+                #                                          #postfix="-input-labels",
+                #                                          # this makes names really long ...:
+                #                                          # TODO this doesn't work for running MAGeT on the nlin avg:
+                #                                          #new_name_wo_ext="%s_on_%s" %
+                #                                          #                (row.voted_labels.filename_wo_ext,
+                #                                          #                 row.img.filename_wo_ext),
+                #                                          #postfix="_labels_via_%s" % row.xfm.xfm.filename_wo_ext,
+                #                                          new_name_wo_ext="%s_via_%s" % (row.voted_labels.filename_wo_ext,
+                #                                                                         row.xfm.xfm.filename_wo_ext),
+                #                                          extra_flags=("-keep_real_range",)))
 
             # now that the new templates have been labelled, combine with the atlases:
             # FIXME use the masked atlases created earlier ??
