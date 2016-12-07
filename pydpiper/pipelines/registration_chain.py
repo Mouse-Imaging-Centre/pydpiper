@@ -242,7 +242,7 @@ def chain(options):
                                                 nlin_prefix="common"))
                                                 #, like={atlas_from_init_model_at_this_tp}
     elif options.registration.input_space == InputSpace.lsq12:
-        #TODO: write reader that creates a mincANTS configuration out of an input protocol
+        #TODO: write reader that creates a ANTS configuration out of an input protocol
         # if we're starting with files that are already aligned with an affine transformation
         # (overall scaling is also dealt with), then the target for the non linear registration
         # should be the averge of the current input files.

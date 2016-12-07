@@ -135,7 +135,9 @@ def maget_mask(imgs : List[MincAtom], maget_options, resolution : float, pipelin
                                                func=lambda row:
                                                  s.defer(voxel_vote(label_files=row.resampled_masks,
                                                                     name="%s_voted_mask" % row.img.filename_wo_ext,
-                                                                    output_dir=os.path.join(row.img.output_sub_dir,
+                                                                    # FIXME create and pass a mincatom cloned from row.img instead?
+                                                                    output_dir=os.path.join(row.img.pipeline_sub_dir,
+                                                                                            row.img.output_sub_dir,
                                                                                             "tmp")))))
         .apply(axis=1, func=lambda row: row.img._replace(mask=row.voted_mask)))
         #.assign(img=lambda df: df.apply(axis=1,
@@ -436,7 +438,7 @@ def _mk_maget_parser(parser : ArgParser):
                        help="Maximum number of templates to generate. [Default = %(default)s]")
     group.add_argument("--masking-method", dest="mask_method",
                        default="minctracc", type=str,
-                       help="Specify whether to use minctracc or mincANTS for masking. [Default = %(default)s].")
+                       help="Specify whether to use minctracc or ANTS for masking. [Default = %(default)s].")
     group.add_argument("--masking-nlin-protocol", dest="masking_nlin_protocol",
                        # TODO basically copied from nlin parser
                        type=str, default=None,
