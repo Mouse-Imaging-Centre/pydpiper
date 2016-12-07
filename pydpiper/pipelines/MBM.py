@@ -3,7 +3,9 @@
 import os.path
 import warnings
 
+import numpy as np
 import pandas as pd
+import sys
 from configargparse import Namespace, ArgParser
 from typing import List
 
@@ -38,9 +40,35 @@ MBMConf = NamedTuple('MBMConf', [('lsq6',  LSQ6Conf),
 
 def mbm_pipeline(options : MBMConf):
     s = Stages()
-    imgs = [MincAtom(name, pipeline_sub_dir=os.path.join(options.application.output_directory,
-                                                         options.application.pipeline_name + "_processed"))
-            for name in options.application.files]
+
+    if options.application.csv_file and options.application.files:
+        sys.exit("both --csv-file and --files specified ...")
+
+    if options.application.csv_file:
+        try:
+            csv = pd.read_csv(options.application.csv_file)
+        except:
+            warnings.warn("couldn't read csv ... did you supply `file` column?")
+            raise
+
+        # TODO extract into a function for, e.g., twolevel
+        if hasattr(csv, 'mask_file'):
+            masks = [MincAtom(mask, pipeline_sub_dir=os.path.join(options.application.output_directory,
+                                                                  options.application.pipeline_name + "_processed"))
+                     if not np.isnan(mask) else None
+                     for mask in csv.mask_file]
+        else:
+            masks = [None] * len(csv.files)
+
+        imgs = [MincAtom(name, mask=mask,
+                         pipeline_sub_dir=os.path.join(options.application.output_directory,
+                                                       options.application.pipeline_name + "_processed"))
+                # TODO does anything break if we make imgs a pd.Series?
+                for name, mask in zip(csv.files, masks)]
+    elif options.application.files:
+        imgs = [MincAtom(name, pipeline_sub_dir=os.path.join(options.application.output_directory,
+                                                             options.application.pipeline_name + "_processed"))
+                for name in options.application.files]
 
     check_MINC_input_files([img.path for img in imgs])
 
@@ -223,6 +251,8 @@ def mbm(imgs : List[MincAtom], options : MBMConf, prefix : str, output_dir : str
                        options=maget_options,
                        prefix="%s_MAGeT" % prefix,
                        output_dir=os.path.join(output_dir, prefix + "_processed")))
+        # FIXME add pipeline dir to path and uncomment!
+        #maget.to_csv(path_or_buf="segmentations.csv", columns=['img', 'voted_labels'])
 
 
     # TODO return some MAGeT stuff from MBM function ??

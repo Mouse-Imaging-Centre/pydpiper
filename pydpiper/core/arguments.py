@@ -241,6 +241,9 @@ def _mk_application_parser(p: ArgParser) -> ArgParser:
                    help="Opposite of --verbose [default]")
     g.add_argument("--files", type=str, nargs='*', metavar='file',
                    help='Files to process')
+    g.add_argument("--csv-file", dest="csv_file",
+                   type=str, default=None,
+                   help="CSV file containing application-specific columns. [Default=%(default)s]")
     return p
 
 
