@@ -33,20 +33,21 @@ def get_imgs(options):
             warnings.warn("couldn't read csv ... did you supply `file` column?")
             raise
 
-        # TODO extract into a function for, e.g., twolevel
+        # FIXME check `file` column is present ...
+
         if hasattr(csv, 'mask_file'):
             masks = [MincAtom(mask, pipeline_sub_dir=os.path.join(options.output_directory,
                                                                   options.pipeline_name + "_processed"))
-                     if not np.isnan(mask) else None
+                     if isinstance(mask, str) else None  # better way to handle missing (nan) values?
                      for mask in csv.mask_file]
         else:
-            masks = [None] * len(csv.files)
+            masks = [None] * len(csv.file)
 
         imgs = [MincAtom(name, mask=mask,
                          pipeline_sub_dir=os.path.join(options.output_directory,
                                                        options.pipeline_name + "_processed"))
                 # TODO does anything break if we make imgs a pd.Series?
-                for name, mask in zip(csv.files, masks)]
+                for name, mask in zip(csv.file, masks)]
     elif options.application.files:
         imgs = [MincAtom(name, pipeline_sub_dir=os.path.join(options.output_directory,
                                                              options.pipeline_name + "_processed"))
@@ -434,15 +435,8 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir):     # FIXME prefi
 
 def maget_pipeline(options):
 
-    check_MINC_input_files(options.application.files)
-
-    # FIXME take a .CSV here !!!
-    #imgs = pd.Series({ name : MincAtom(name,
-    #                                   pipeline_sub_dir=os.path.join(options.application.output_directory,
-    #                                                                 options.application.pipeline_name + "_processed"))
-    #                   for name in options.application.files })
     imgs = get_imgs(options.application)
-
+    check_MINC_input_files([img.path for img in imgs])
     # TODO fixup masking protocols ...
 
     return maget(imgs=imgs, options=options,
