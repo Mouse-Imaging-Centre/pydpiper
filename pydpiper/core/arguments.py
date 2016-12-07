@@ -238,7 +238,7 @@ def _mk_application_parser(p: ArgParser) -> ArgParser:
                    help="Be verbose in what is printed to the screen [default = %(default)s]")
     g.add_argument("--no-verbose", dest="verbose",
                    action="store_false",
-                   help="Opposite of --verbose [default]")
+                   help="Opposite of --verbose")
     g.add_argument("--files", type=str, nargs='*', metavar='file',
                    help='Files to process')
     g.add_argument("--csv-file", dest="csv_file",

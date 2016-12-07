@@ -19,6 +19,7 @@ from multiprocessing import Process, Event  # type: ignore
 from configargparse import Namespace
 import logging
 import functools
+import math
 from typing import Any
 
 try:
@@ -267,6 +268,9 @@ class Pipeline(object):
         self.programName = None
         self.skipped_stages = 0
         self.verbose = 0
+        # report back to the user which percentage of the pipeline stages has finished
+        # keep track of the last percentage that was printed
+        self.percent_finished_reported = 0
         # Handle to write out processed stages to
         self.finished_stages_fh = None
         
@@ -474,20 +478,20 @@ class Pipeline(object):
         try:
             self.clients[clientURI].running_stages.add(index)
         except:
-            print("Error: could not find client %s while trying to add running stage" % clientURI)
+            print("\nError: could not find client %s while trying to add running stage" % clientURI)
             raise
 
     def removeRunningStageFromClient(self, clientURI, index):
         try:
             c = self.clients[clientURI]
         except:
-            print("Error: could not find client %s while trying to remove running stage" % clientURI)
+            print("\nError: could not find client %s while trying to remove running stage" % clientURI)
             raise
         else:
             try:
                 c.running_stages.remove(index)
             except:
-                print("Error: unable to remove stage index from registered client: %s" % clientURI)
+                print("\nError: unable to remove stage index from registered client: %s" % clientURI)
                 logger.exception("Could not remove stage index from running stages list")
                 raise
 
@@ -541,6 +545,18 @@ class Pipeline(object):
             for f in s.finished_hooks:
                 f(s)
         self.num_finished_stages += 1
+
+        # do some reporting in terms of how many stages have been completed:
+        roughly_processed = math.floor(self.num_finished_stages / len(self.stages) * 100)
+        if roughly_processed > self.percent_finished_reported:
+            # only report it after we've checked the status of the pipeline
+            if not checking_pipeline_status:
+                print("\n\nStatus update: " + "\n" + str(self.num_finished_stages) +
+                      " out of " + str(len(self.stages)) + " stages finished.\n" + time.ctime() +
+                      "\nFor more detailed information run (in a separate shell with modules loaded):\ncheck_pipeline_status.py "
+                      + str(self.exec_options.urifile) + "\n")
+            self.percent_finished_reported = roughly_processed
+
         # write out the (index, hash) pairs to disk.  We don't actually need the indices
         # for anything (in fact, the restart code in skip_completed_stages is resilient 
         # against an arbitrary renumbering of stages), but a human-readable log is somewhat useful.
@@ -632,6 +648,8 @@ class Pipeline(object):
         the max number of executors it can launch
     """
     def continueLoop(self):
+        if self.verbose:
+            print('.', end="", flush=True)
         # We may be have been called one last time just as the parent thread is exiting
         # (if it wakes us with a signal).  In this case, don't do anything:
         if self.shutdown_ev.is_set():
@@ -660,7 +678,7 @@ class Pipeline(object):
         elif (len(self.runnable) > 0 and 
               (self.number_launched_and_waiting_clients + len(self.clients)) == 0 and 
               self.failed_executors > self.exec_options.max_failed_executors):
-            msg = ("Error: %d executors have died. This is more than the number"
+            msg = ("\nError: %d executors have died. This is more than the number"
                    "(%d) allowed by --max-failed-executors.  No executors remain; exiting..."
                    % (self.failed_executors, self.exec_options.max_failed_executors))
             print(msg)
@@ -680,7 +698,7 @@ class Pipeline(object):
           # running indefinitely with no jobs
             (self.number_launched_and_waiting_clients + len(self.clients) == 0 and
             max_memory_required > self.memAvail)):
-              msg = ("Shutting down due to jobs (e.g. `%s`) which require more memory (%.2fG) than available anywhere. "
+              msg = ("\nShutting down due to jobs (e.g. `%s`) which require more memory (%.2fG) than available anywhere. "
                      "Please use the --mem argument to increase the amount of memory that executors can request."
                      % (str(highest_mem_stage)[:1000], max_memory_required))
               print(msg)
@@ -697,7 +715,7 @@ class Pipeline(object):
             logger.debug("Client %s updated timestamp (tick %d)",
                          clientURI, tick)
         except:
-            print("Error: could not find client %s while updating the time stamp" % clientURI)
+            print("\nError: could not find client %s while updating the time stamp" % clientURI)
             logger.exception("clientURI not found in server client list:")
             raise
 
@@ -726,7 +744,7 @@ class Pipeline(object):
             logger.debug("needed: %s", memNeeded)
 
             if memNeeded > self.memAvail:
-                msg = "A stage (%s) requires %.2fG of memory to run, but max allowed is %.2fG" \
+                msg = "\nA stage (%s) requires %.2fG of memory to run, but max allowed is %.2fG" \
                         % (str(max_memory_stage)[:1000], memNeeded, self.memAvail)
                 logger.error(msg)
                 print(msg)
@@ -739,6 +757,8 @@ class Pipeline(object):
                     mem = self.memAvail  #memNeeded?
                 try:
                     self.launchExecutorsFromServer(executors_to_launch, mem)
+                    print("\nSubmitted " + str(executors_to_launch) + " executors (clients) to the queue."
+                          "\nWaiting for them to register with the server...")
                 except pe.SubmitError:
                     logger.exception("Failed to submit executors; will retry")
 
@@ -824,7 +844,7 @@ class Pipeline(object):
             self.number_launched_and_waiting_clients -= 1
         logger.debug("Client registered (Eh!): %s", clientURI)
         if self.verbose:
-            print("Client registered (Eh!): %s" % clientURI)
+            print("\nClient registered (Eh!): %s" % clientURI, end="")
             
     #@Pyro4.oneway
     def unregisterClient(self, clientURI):
@@ -838,11 +858,11 @@ class Pipeline(object):
             del self.clients[clientURI]
         except:
             if self.verbose:
-                print("Unable to un-register client: " + clientURI)
+                print("\nUnable to un-register client: " + clientURI)
             logger.exception("Unable to un-register client: " + clientURI)
         else:
             if self.verbose:
-                print("Client un-registered (Cheers!): " + clientURI)
+                print("\nClient un-registered (Cheers!): " + clientURI, end="")
             logger.info("Client un-registered (Cheers!): " + clientURI)
 
     def incrementLaunchedClients(self):
@@ -1110,7 +1130,7 @@ def pipelineDaemon(pipeline, options, programName=None):
         pipeline.skip_completed_stages()
 
     if len(pipeline.runnable) == 0:
-        print("Pipeline has no runnable stages. Exiting...")
+        print("\nPipeline has no runnable stages. Exiting...")
         sys.exit()
    
     logger.debug("Prior to starting server, total stages %i. Number processed: %i.", 

@@ -5,6 +5,7 @@ import shlex
 import subprocess
 import sys
 import warnings
+import time
 from operator import mul
 
 from configargparse import Namespace
@@ -276,6 +277,13 @@ def mincaverage(imgs: List[MincAtom],
                            ['-sdfile', sdfile.path] +
                            sorted([img.path for img in imgs]) +
                            [avg.path])
+    # averages in a pipeline often indicate important progress. Let's report that back to the user
+    # in terms of a status update:
+    status_update_message = "\n\n* * * * * * *\nStatus update: \nFinished creating the following average:\n" \
+                            + str(avg.path) + "\n" + time.ctime() + "\n* * * * * * *\n"
+
+    avg_cmd.when_finished_hooks.append(lambda _: print(status_update_message))
+
     s.add(avg_cmd)
     return Result(stages=s, output=avg)
 
@@ -333,6 +341,13 @@ def pmincaverage(imgs: List[MincAtom],
         st.setMem(cfg.base_mem + voxels_per_file * cfg.mem_per_voxel * len(imgs))
 
     avg_cmd.when_runnable_hooks.append(lambda st: set_memory(st, default_pmincaverage_mem_cfg))
+
+    # averages in a pipeline often indicate important progress. Let's report that back to the user
+    # in terms of a status update:
+    status_update_message = "\n\n* * * * * * *\nStatus update: \nFinished creating the following average:\n" \
+                            + str(avg.path) + "\n" + time.ctime() + "\n* * * * * * *\n"
+
+    avg_cmd.when_finished_hooks.append(lambda _: print(status_update_message))
 
     s.add(avg_cmd)
 
