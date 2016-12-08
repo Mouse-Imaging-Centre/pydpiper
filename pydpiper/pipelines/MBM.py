@@ -116,6 +116,22 @@ def mbm(imgs : List[MincAtom], options : MBMConf, prefix : str, output_dir : str
     # FIXME: this needs to go outside of the `mbm` function to avoid being run from within other pipelines (or
     # those other pipelines need to turn off this option)
     if options.mbm.segmentation.run_maget or options.mbm.maget.maget.mask:
+
+        # temporary fix...?
+        if options.mbm.maget.maget.mask and not  options.mbm.segmentation.run_maget:
+            # which means that --no-run-maget was specified
+            if options.mbm.maget.maget.atlas_lib == None:
+                # clearly you do not want to run MAGeT at any point in this pipeline
+                err_msg_maget = "\nYou specified not to run MAGeT using the " \
+                                "--no-run-maget flag. However, the code also " \
+                                "wants to use MAGeT to generate masks for your " \
+                                "input files after the 6 parameter alignment (lsq6). " \
+                                "Because you did not specify a MAGeT atlas library " \
+                                "this can not be done. \nTo run the pipeline without " \
+                                "using MAGeT to mask your input files, please also " \
+                                "specify: \n--maget-no-mask\n"
+                raise ValueError(err_msg_maget)
+
         import copy
         maget_options = copy.deepcopy(options)  #Namespace(maget=options)
         #maget_options
