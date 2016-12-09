@@ -175,9 +175,6 @@ def maget_mask(imgs : List[MincAtom], maget_options, resolution : float, pipelin
                                                                                             row.img.output_sub_dir,
                                                                                             "tmp")))))
         .apply(axis=1, func=lambda row: row.img._replace(mask=row.voted_mask)))
-        #.assign(img=lambda df: df.apply(axis=1,
-        #                                func=lambda row:
-        #                                       row.img._replace(mask=row.voted_mask))))
 
     # resample the atlas images back to the input images:
     # (note: this doesn't modify `masking_alignments`, but only stages additional outputs)
@@ -191,15 +188,6 @@ def maget_mask(imgs : List[MincAtom], maget_options, resolution : float, pipelin
                      #                          row.img.filename_wo_ext),
                      #                          axis=1),
                      like=df.img, invert=True)))
-
-    # replace the table of alignments with a new one with masked images
-    #masking_alignments = (pd.merge(left=masking_alignments.assign(unmasked_img=lambda df: df.img),
-    #                               right=masked_img,
-    #                               on=["img"], how="right", sort=False)
-    #                      .assign(img=lambda df: df.masked_img))
-
-    # put the output_sub_dirs of the images (but not masks?  TODO) back to their original locations ...
-    #masked_img.apply(lambda x: x._replace(output_sub_dir=original_imgs.ix[x.path].output_sub_dir))
 
     for img in masked_img:
         img.output_sub_dir = original_imgs.ix[img.path].output_sub_dir
@@ -270,9 +258,6 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir):     # FIXME prefi
                                                               reg_method=options.maget.nlin.reg_method,
                                                               file_resolution=resolution)
 
-    resample  = np.vectorize(mincresample_new, excluded={"extra_flags"})
-    defer     = np.vectorize(s.defer)
-
     if maget_options.mask or maget_options.mask_only:
 
         # this used to return alignments but doesn't currently do so
@@ -296,83 +281,7 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir):     # FIXME prefi
         # hash-consing will take care of things), just the masked images they create; can be removed later
         # if a sensible use is found
 
-        if maget_options.pairwise:
-
-            def choose_new_templates(ts, n):
-                # currently silly, but we might implement a smarter method ...
-                # FIXME what if there aren't enough other imgs around?!  This silently goes weird ...
-                return ts[:n+1]  # n+1 instead of n: choose one more since we won't use image as its own template ...
-
-            new_templates = choose_new_templates(ts=imgs, n=maget_options.max_templates)
-            # note these images are the masked ones if masking was done ...
-
-            # TODO write a function to do these alignments and the image->atlas one above
-            # align the new templates chosen from the images to the initial atlases:
-            new_template_to_atlas_alignments = (
-                pd.DataFrame({ 'img'   : template,
-                               'atlas' : atlas,
-                               'xfm'   : s.defer(lsq12_nlin(source=template, target=atlas,
-                                                            lsq12_conf=lsq12_conf,
-                                                            nlin_conf=nlin_hierarchy,
-                                                            resample_source=False))}
-                             for template in new_templates for atlas in atlases))
-                             # ... and these atlases are multiplied by their masks (but is this necessary?)
-
-            # label the new templates from resampling the atlas labels onto them:
-            # TODO now vote on the labels to be used for the new templates ...
-            # TODO extract into procedure?
-            new_templates_labelled = (
-                new_template_to_atlas_alignments
-                .assign(resampled_labels=lambda df: defer(
-                                               resample(img=df.atlas.apply(lambda x: x.labels),
-                                                        xfm=df.xfm.apply(lambda x: x.xfm),
-                                                        interpolation=Interpolation.nearest_neighbour,
-                                                        extra_flags=("-keep_real_range",),
-                                                        like=df.img, invert=True)))
-                .groupby('img', sort=False, as_index=False)
-                .aggregate({'resampled_labels' : lambda labels: list(labels)})
-                .assign(voted_labels=lambda df: df.apply(axis=1,
-                                                         func=lambda row:
-                                                           s.defer(voxel_vote(label_files=row.resampled_labels,
-                                                                              name="%s_template_labels" %
-                                                                                   row.img.filename_wo_ext,
-                                                                              output_dir=os.path.join(
-                                                                                  row.img.pipeline_sub_dir,
-                                                                                  row.img.output_sub_dir,
-                                                                                  "labels"))))))
-
-            # FIXME this is a total bug; should just be row.img.labels = row.voted_labels ...
-            # TODO write a procedure for this assign-groupby-aggregate-rename...
-            # FIXME should be in above algebraic manipulation but MincAtoms don't support flexible immutable updating
-            for row in pd.merge(left=new_template_to_atlas_alignments, right=new_templates_labelled,
-                                on=["img"], how="right", sort=False).itertuples():
-                row.img.labels = row.voted_labels
-                #row.img.labels = s.defer(mincresample_new(img=row.voted_labels, xfm=row.xfm.xfm, like=row.img,
-                #                                          invert=True, interpolation=Interpolation.nearest_neighbour,
-                #                                          #postfix="-input-labels",
-                #                                          # this makes names really long ...:
-                #                                          # TODO this doesn't work for running MAGeT on the nlin avg:
-                #                                          #new_name_wo_ext="%s_on_%s" %
-                #                                          #                (row.voted_labels.filename_wo_ext,
-                #                                          #                 row.img.filename_wo_ext),
-                #                                          #postfix="_labels_via_%s" % row.xfm.xfm.filename_wo_ext,
-                #                                          new_name_wo_ext="%s_via_%s" % (row.voted_labels.filename_wo_ext,
-                #                                                                         row.xfm.xfm.filename_wo_ext),
-                #                                          extra_flags=("-keep_real_range",)))
-
-            # now that the new templates have been labelled, combine with the atlases:
-            # FIXME use the masked atlases created earlier ??
-            all_templates = pd.concat([new_templates_labelled.img, atlases], ignore_index=True)
-
-            # now take union of the resampled labels from the new templates with labels from the original atlases:
-            #all_alignments = pd.concat([image_to_template_alignments,
-            #                            alignments.rename(columns={ "atlas" : "template" })],
-            #                           ignore_index=True, join="inner")
-
-        else:
-            all_templates = atlases
-
-        # now register each input to each selected template
+        # images with labels from atlases
         # N.B.: Even though we've already registered each image to each initial atlas, this happens again here,
         #       but using `nlin_hierarchy` instead of `masking_nlin_hierarchy` as options.
         #       This is not 'work-efficient' in the sense that this computation happens twice (although
@@ -382,55 +291,81 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir):     # FIXME prefi
         #       This _can_ allow the overall computation to finish more rapidly
         #       (depending on the relative speed of the two alignment methods/parameters,
         #       number of atlases and other templates used, number of cores available, etc.).
-        image_to_template_alignments = (
-            pd.DataFrame({ "img"      : img,
-                           "template" : template_img,
-                           "xfm"      : xfm }
-                         for img in imgs      # TODO use the masked imgs here?
-                         for template_img in
-                             all_templates
-                             # FIXME delete this one alignment
-                             #labelled_templates[labelled_templates.img != img]
-                             # since equality is equality of filepaths (a bit dangerous)
-                             # TODO is there a more direct/faster way just to delete the template?
-                         for xfm in [s.defer(lsq12_nlin(source=img, target=template_img,
-                                                        lsq12_conf=lsq12_conf,
-                                                        nlin_conf=nlin_hierarchy))]
-                         )
+        atlas_labelled_imgs = (
+            pd.DataFrame({ 'img'        : img,
+                           'label_file' : s.defer(  # can't use `label` in a pd.DataFrame index!
+                              mincresample_new(img=atlas.labels,
+                                               xfm=s.defer(lsq12_nlin(source=img,
+                                                                      target=atlas,
+                                                                      lsq12_conf=lsq12_conf,
+                                                                      nlin_conf=nlin_hierarchy,
+                                                                      resample_source=False)).xfm,
+                                               like=img,
+                                               invert=True,
+                                               interpolation=Interpolation.nearest_neighbour,
+                                               extra_flags=('-keep_real_range',)))}
+                         for img in imgs for atlas in atlases)
         )
 
-        # now do a voxel_vote on all resampled template labels, just as earlier with the masks
-        voted = (image_to_template_alignments
-                 .assign(resampled_labels=lambda df:
-                                            defer(resample(img=df.template.apply(lambda x: x.labels),
-                                                           # FIXME bug: at this point templates from template_alignments
-                                                           # don't have associated labels (i.e., `None`s) -- fatal
-                                                           xfm=df.xfm.apply(lambda x: x.xfm),
-                                                           interpolation=Interpolation.nearest_neighbour,
-                                                           extra_flags=("-keep_real_range",),
-                                                           like=df.img, invert=True)))
-                 .groupby('img', sort=False)
-                 # TODO the pattern groupby-aggregate(lambda x: list(x))-reset_index-assign is basically a hack
-                 # to do a groupby-assign with access to the group name;
-                 # see http://stackoverflow.com/a/30224447/849272 for a better solution
-                 # (note this pattern occurs several times in MAGeT and two-level code)
-                 .aggregate({'resampled_labels' : lambda labels: list(labels)})
-                 .reset_index()
-                 .assign(voted_labels=lambda df: defer(np.vectorize(voxel_vote)(label_files=df.resampled_labels,
-                                                                                output_dir=df.img.apply(
-                                                                                    lambda x: os.path.join(
-                                                                                        x.pipeline_sub_dir,
-                                                                                        x.output_sub_dir))))))
+        if maget_options.pairwise:
 
-        # TODO doing mincresample -invert separately for the img->atlas xfm for mask, labels is silly
-        # (when Pydpiper's `mincresample` does both automatically)?
+            def choose_new_templates(ts, n):
+                # currently silly, but we might implement a smarter method ...
+                # FIXME what if there aren't enough other imgs around?!  This silently goes weird ...
+                return pd.Series(ts[:n+1])  # n+1 instead of n: choose one more since we won't use image as its own template ...
 
-        # blargh, another destructive update ...
-        for row in voted.itertuples():
-            row.img.labels = row.voted_labels
+            templates = pd.DataFrame({ 'template' : choose_new_templates(ts=imgs, n=maget_options.max_templates)})
+            # note these images are the masked ones if masking was done ...
 
-        # returning voted_labels as a column is slightly redundant, but possibly useful ...
-        return Result(stages=s, output=voted)  # voted.drop("voted_labels", axis=1))
+            # the templates together with their (multiple) labels from the atlases (this merge just acts as a filter)
+            labelled_templates = pd.merge(left=atlas_labelled_imgs, right=templates,
+                                          left_on="img", right_on="template").drop('img', axis=1)
+
+            # images with new labels from the templates
+            imgs_and_templates = pd.merge(#left=atlas_labelled_imgs,
+                                          left=pd.DataFrame({ "img" : imgs }).assign(fake=1),
+                                          right=labelled_templates.assign(fake=1),
+                                          on='fake')
+                                          #left_on='img', right_on='template')  # TODO do select here instead of below?
+
+            template_labelled_imgs = (
+                imgs_and_templates
+                .rename(columns={ 'label_file' : 'template_label_file' })
+                # don't register template to itself, since otherwise atlases would vote on that template twice
+                .select(lambda ix: imgs_and_templates.img[ix].path
+                                     != imgs_and_templates.template[ix].path)  # TODO hardcoded name
+                .assign(label_file=lambda df: df.apply(axis=1, func=lambda row:
+                           s.defer(mincresample_new(img=row.template_label_file,
+                                                    xfm=s.defer(lsq12_nlin(source=row.img,
+                                                                           target=row.template,
+                                                                           lsq12_conf=lsq12_conf,
+                                                                           nlin_conf=nlin_hierarchy,
+                                                                           resample_source=False)).xfm,
+                                                    like=row.img,
+                                                    invert=True,
+                                                    interpolation=Interpolation.nearest_neighbour,
+                                                    extra_flags=('-keep_real_range',)))))
+            )
+
+            imgs_with_all_labels = pd.concat([atlas_labelled_imgs[['img', 'label_file']],
+                                              template_labelled_imgs[['img', 'label_file']]],
+                                             ignore_index=True)
+        else:
+            imgs_with_all_labels = atlas_labelled_imgs
+
+        segmented_imgs = (
+                imgs_with_all_labels
+                .groupby('img')
+                .aggregate({'label_file' : lambda resampled_label_files: list(resampled_label_files)})
+                .rename(columns={ 'label_file' : 'label_files' })
+                .reset_index()
+                .assign(voted_labels=lambda df: df.apply(axis=1, func=lambda row:
+                          s.defer(voxel_vote(label_files=row.label_files,
+                                             output_dir=os.path.join(row.img.pipeline_sub_dir, row.img.output_sub_dir)))))
+                .apply(axis=1, func=lambda row: row.img._replace(labels=row.voted_labels))
+        )
+
+        return Result(stages=s, output=segmented_imgs)
 
 
 def maget_pipeline(options):
