@@ -219,14 +219,14 @@ def two_level(grouped_files_df, options : TwoLevelConf):
 
 # FIXME: better to replace --files by this for all/most pipelines;
 # then we can enforce presence of metadata in the CSV file ... (pace MINC2)
-def _mk_twolevel_parser(p):
-    p.add_argument("--csv-file", dest="csv_file", type=str, required=True,
-                   help="CSV file containing at least 'group' and 'file' columns")
-    return p
+#def _mk_twolevel_parser(p):
+#    p.add_argument("--csv-file", dest="csv_file", type=str, required=True,
+#                   help="CSV file containing at least 'group' and 'file' columns")
+#    return p
 
 
-_twolevel_parser = BaseParser(_mk_twolevel_parser(ArgParser(add_help=False)), group_name='twolevel')
-twolevel_parser = AnnotatedParser(parser=_twolevel_parser, namespace="twolevel")
+#_twolevel_parser = BaseParser(_mk_twolevel_parser(ArgParser(add_help=False)), group_name='twolevel')
+#twolevel_parser = AnnotatedParser(parser=_twolevel_parser, namespace="twolevel")
 
 
 def main(args):
@@ -234,7 +234,7 @@ def main(args):
           [execution_parser,
            application_parser,
            registration_parser,
-           twolevel_parser,
+           #twolevel_parser,
            AnnotatedParser(parser=mbm_parser, namespace="mbm"),   # TODO use this before 1st-/2nd-level args
            # TODO to combine the information from all three MBM parsers,
            # could use `ConfigArgParse`r `_source_to_settings` (others?) to check whether an option was defaulted
