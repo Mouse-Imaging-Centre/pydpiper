@@ -34,7 +34,7 @@ def two_level_pipeline(options : TwoLevelConf):
 
     if options.application.files:
         warnings.warn("Got extra arguments: '%s'" % options.application.files)
-    with open(options.twolevel.csv_file, 'r') as f:
+    with open(options.application.csv_file, 'r') as f:
         try:
             files_df = (pd.read_csv(
                           filepath_or_buffer=f,
