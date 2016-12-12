@@ -118,7 +118,7 @@ def mbm(imgs : List[MincAtom], options : MBMConf, prefix : str, output_dir : str
     if options.mbm.segmentation.run_maget or options.mbm.maget.maget.mask:
 
         # temporary fix...?
-        if options.mbm.maget.maget.mask and not  options.mbm.segmentation.run_maget:
+        if options.mbm.maget.maget.mask and not options.mbm.segmentation.run_maget:
             # which means that --no-run-maget was specified
             if options.mbm.maget.maget.atlas_lib == None:
                 # clearly you do not want to run MAGeT at any point in this pipeline
@@ -235,11 +235,11 @@ def mbm(imgs : List[MincAtom], options : MBMConf, prefix : str, output_dir : str
         maget_options.maget.maget.mask = maget_options.maget.maget.mask_only = False   # already done above
         # use the original masks here otherwise the masking step will be re-run due to the previous masking run's
         # masks having been applied to the input images:
-        s.defer(maget([xfm.resampled for xfm in lsq6_result],
-                       #[xfm.resampled for _ix, xfm in mbm_result.xfms.rigid_xfm.iteritems()],
-                       options=maget_options,
-                       prefix="%s_MAGeT" % prefix,
-                       output_dir=os.path.join(output_dir, prefix + "_processed")))
+        maget_result = s.defer(maget([xfm.resampled for xfm in lsq6_result],
+                               #[xfm.resampled for _ix, xfm in mbm_result.xfms.rigid_xfm.iteritems()],
+                               options=maget_options,
+                               prefix="%s_MAGeT" % prefix,
+                               output_dir=os.path.join(output_dir, prefix + "_processed")))
         # FIXME add pipeline dir to path and uncomment!
         #maget.to_csv(path_or_buf="segmentations.csv", columns=['img', 'voted_labels'])
 
@@ -330,6 +330,9 @@ def mbm(imgs : List[MincAtom], options : MBMConf, prefix : str, output_dir : str
 
     if options.mbm.common_space.do_common_space_registration:
         output.model_common = model_common
+
+    if options.mbm.segmentation.run_maget:
+        output.maget_result = maget_result
 
     return Result(stages=s, output=output)
 
