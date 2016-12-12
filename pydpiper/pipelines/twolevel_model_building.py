@@ -54,6 +54,7 @@ def two_level_pipeline(options : TwoLevelConf):
 
     pipeline = two_level(grouped_files_df=files_df, options=options)
 
+    # TODO write these into the appropriate subdirectory ...
     with open("overall_determinants.csv", 'w') as overall_csv:
         overall_csv.write(pipeline.output.overall_determinants
                           .drop('inv_xfm', axis=1)
@@ -131,6 +132,9 @@ def two_level(grouped_files_df, options : TwoLevelConf):
     # FIXME right now the same options set is being used for both levels -- use options.first/second_level
     second_level_options = copy.deepcopy(options)
     second_level_options.mbm.lsq6 = second_level_options.mbm.lsq6.replace(run_lsq6=False)
+    second_level_options.mbm.segmentation.run_maget = False
+    second_level_options.mbm.maget.maget.mask_only = False
+    second_level_options.mbm.maget.maget.mask = False
 
     # FIXME this is probably a hack -- instead add a --second-level-init-model option to specify which timepoint should be used
     # as the initial model in the second level ???  (at this point it doesn't matter due to lack of lsq6 ...)
@@ -193,21 +197,24 @@ def two_level(grouped_files_df, options : TwoLevelConf):
     # FIXME running MAGeT from within the `two_level` function has the same problem as running it from within `mbm`:
     # it will now run when this pipeline is called from within another one (e.g., n-level), which will be
     # redundant, create filename clashes, etc. -- this should be moved to `two_level_pipeline`.
-    if options.mbm.segmentation.run_maget:
-        maget_options = copy.deepcopy(options)
-        maget_options.maget = options.mbm.maget
-        fixup_maget_options(maget_options=maget_options.maget,
-                            lsq12_options=maget_options.mbm.lsq12,
-                            nlin_options=maget_options.mbm.nlin)
-        del maget_options.mbm
+    # TODO do we need a `pride of atlases` for MAGeT in this pipeline ??
+    # TODO at the moment MAGeT is run within the MBM code, but it could be disabled there and run here
+    #if options.mbm.segmentation.run_maget:
+    #    maget_options = copy.deepcopy(options)
+    #    maget_options.maget = options.mbm.maget
+    #    fixup_maget_options(maget_options=maget_options.maget,
+    #                        lsq12_options=maget_options.mbm.lsq12,
+    #                        nlin_options=maget_options.mbm.nlin)
+    #    maget_options.maget.maget.mask = maget_options.maget.maget.mask_only = False   # already done above
+    #    del maget_options.mbm
 
         # again using a weird combination of vectorized and loop constructs ...
-        s.defer(maget([xfm.resampled for _ix, m in first_level_results.iterrows()
-                       for xfm in m.build_model.xfms.rigid_xfm],
-                      options=maget_options,
-                      prefix="%s_MAGeT" % options.application.pipeline_name,
-                      output_dir=os.path.join(options.application.output_directory,
-                                              options.application.pipeline_name + "_processed")))
+    #    s.defer(maget([xfm.resampled for _ix, m in first_level_results.iterrows()
+    #                   for xfm in m.build_model.xfms.rigid_xfm],
+    #                  options=maget_options,
+    #                  prefix="%s_MAGeT" % options.application.pipeline_name,
+    #                  output_dir=os.path.join(options.application.output_directory,
+    #                                          options.application.pipeline_name + "_processed")))
 
     # TODO resampling to database model ...
 
