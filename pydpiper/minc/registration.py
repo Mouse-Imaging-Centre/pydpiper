@@ -7,6 +7,7 @@ import sys
 import warnings
 import time
 from operator import mul
+import math
 
 from configargparse import Namespace
 from typing import Any, cast, Dict, Generic, Iterable, List, Optional, Set, Tuple, TypeVar, Union, Callable
@@ -2058,6 +2059,46 @@ def nlin_build_model(imgs           : List[MincAtom],
     else:
         # this should never happen
         raise ValueError("The nonlinear configuration passed to lsq12_nlin_build_model is neither for minctracc nor for ANTS.")
+
+
+
+def tournament_style_model(imgs           : List[MincAtom],
+                           tournament_dir : str):
+    """
+    generate an average of the input files based on a tournament style bracket,
+    for example given 6 input images (1,2,3,4,5,6):
+
+    1 ---|
+         |---|
+    2 ---|   |
+             |---|
+    3 ---|   |   |
+         |---|   |
+    4 ---|       |--- final average
+                 |
+        5 ---|   |
+             |---|
+        6 ---|
+
+
+    :param imgs:
+    :param tournament_dir:
+    :return:
+    """
+    if len(imgs) == 1:
+        # simply return this image:
+        return imgs[0]
+    elif len(imgs) == 2:
+        # perform a nonlinear registration between these two images,
+        # resample each image with half the transform towards the other,
+        # average the result and return
+        return nonlinear_midpoint_average(imgs)
+    else:
+        # split up the list, calculate averages for the sublists and average
+        return mincaverage(tournament_style_model(imgs[: math.floor(len(imgs)/2)]),
+                           tournament_style_model(imgs[math.floor(len(imgs)/2) :]))
+
+
 
 
 def lsq12_nlin_build_model(imgs       : List[MincAtom],
