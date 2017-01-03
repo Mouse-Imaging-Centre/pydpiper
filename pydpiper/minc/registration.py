@@ -2062,8 +2062,9 @@ def nlin_build_model(imgs           : List[MincAtom],
 
 
 
-def tournament_style_model(imgs           : List[MincAtom],
-                           tournament_dir : str):
+def tournament_style_model(imgs                  : List[MincAtom],
+                           tournament_dir        : str,
+                           tournament_name_wo_ext: str = "tournament") -> MincAtom:
     """
     generate an average of the input files based on a tournament style bracket,
     for example given 6 input images (1,2,3,4,5,6):
@@ -2088,17 +2089,66 @@ def tournament_style_model(imgs           : List[MincAtom],
     if len(imgs) == 1:
         # simply return this image:
         return imgs[0]
-    elif len(imgs) == 2:
-        # perform a nonlinear registration between these two images,
-        # resample each image with half the transform towards the other,
-        # average the result and return
-        return nonlinear_midpoint_average(imgs)
     else:
         # split up the list, calculate averages for the sublists and average
-        return mincaverage(tournament_style_model(imgs[: math.floor(len(imgs)/2)]),
-                           tournament_style_model(imgs[math.floor(len(imgs)/2) :]))
+        return nonlinear_midpoint_average(img_A=tournament_style_model(imgs=imgs[: math.floor(len(imgs)/2)],
+                                                                       tournament_dir=tournament_dir,
+                                                                       tournament_name_wo_ext=tournament_name_wo_ext + "_L"),
+                                          img_B=tournament_style_model(imgs=imgs[math.floor(len(imgs)/2) :],
+                                                                       tournament_dir=tournament_dir,
+                                                                       tournament_name_wo_ext=tournament_name_wo_ext + "_R"),
+                                          out_name_wo_ext=tournament_name_wo_ext,
+                                          out_dir=tournament_dir)
 
 
+def nonlinear_midpoint_average(img_A          : MincAtom,
+                               img_B          : MincAtom,
+                               out_name_wo_ext: str,
+                               out_dir        : str) -> MincAtom:
+    """
+    :param img_A:
+    :param img_B:
+    :return: the midway point between img_A and img_B --> img_AB
+    """
+    # start with an antRegistration call between the two files
+    # TODO: hard coded for now...?!? What... craziness!! (it's testing only, if this works, it'll be fixed right away :-))
+
+    # the output file (avg of both files resampled to the midway point)
+    avg_mid_point = MincAtom(name=os.path.join(out_dir, '%s.mnc' % out_name_wo_ext),
+                             orig_name=None,
+                             pipeline_sub_dir=out_dir)
+
+    # temp file A -> B
+    A_to_B = img_A.newname_with_suffix("_to_" + img_B.filename_wo_ext, subdir='tmp')
+    # and the other way around
+    B_to_A = img_B.newname_with_suffix("_to_" + img_A.filename_wo_ext, subdir='tmp')
+
+
+    cmd = CmdStage(inputs=(img_A, img_B, img_A.mask, img_B.mask) if img_A.mask and img_B.mask else (img_A, img_B),
+                   outputs=)
+    #antsRegistration
+    #--dimensionality 3
+    #--verbose
+    #--output [gabe_settings_100x100x100x50x20, B_warped_100x100x100x50x20.mnc, A_warped_100x100x100x50x20.mnc]
+    #--minc
+    #--transform SyN[0.5,3,0]
+    #--convergence [100x100x100x50x20,1e-6,10]
+    #--collapse-output-transforms 1
+    #--write-composite-transform
+    #--winsorize-image-intensities [0.01,0.99]
+    #--use-histogram-matching 1
+    #--metric CC[A.mnc,B.mnc,1,6]
+    #--masks [A_mask.mnc,B.mask.mnc]
+    #--shrink-factors 8x6x4x2x1
+    #--smoothing-sigmas 4x3x2x1x0vox
+    #--float 0
+    #
+    # output -> gabe_settings_100x100x100x50x20.xfm
+    #           gabe_settings_100x100x100x50x20_grid_0.mnc
+    #           gabe_settings_100x100x100x50x20_inverse.xfm
+    #           gabe_settings_100x100x100x50x20_inverse_grid_0.mnc
+
+    # Resample the masks to the half-way point, and add that to the output average
 
 
 def lsq12_nlin_build_model(imgs       : List[MincAtom],
