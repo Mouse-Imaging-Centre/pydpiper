@@ -31,7 +31,8 @@ from pydpiper.core.arguments import (application_parser,
                                      registration_parser,
                                      stats_parser,
                                      parse,
-                                     AnnotatedParser, BaseParser, CompoundParser, LSQ6Method, nlin_parser)
+                                     AnnotatedParser, BaseParser, CompoundParser, LSQ6Method, nlin_parser,
+                                     _chain_parser)
 
 
 # TODO (general for all option records, not just for the registration chain):
@@ -742,7 +743,7 @@ if __name__ == "__main__":
            #AnnotatedParser(parser=BaseParser(addLSQ12ArgumentGroup), namespace='lsq12-inter-subj'),
            #addNLINArgumentGroup,
            stats_parser,
-           chain_parser])
+           AnnotatedParser(parser=_chain_parser, prefix="chain", namespace="chain")])
     
     # TODO could abstract and then parametrize by prefix/ns ??
     options = parse(p, sys.argv[1:])

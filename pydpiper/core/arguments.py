@@ -530,9 +530,6 @@ stats_parser = AnnotatedParser(parser=_stats_parser, namespace="stats")
 
 def _mk_chain_parser():
     p = ArgParser(add_help=False)
-    # p.add_argument("Registration chain options",
-    #               "Options for processing longitudinal data.")
-    #    addGeneralRegistrationArguments(group)
     p.add_argument("--csv-file", dest="csv_file",
                    type=str, required=True,
                    help="The spreadsheet with information about your input data. "
