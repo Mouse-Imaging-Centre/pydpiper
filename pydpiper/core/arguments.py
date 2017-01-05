@@ -509,7 +509,7 @@ def _mk_stats_parser():
     p = ArgParser(add_help=False)
     # p.add_argument_group("Statistics options",
     #                      "Options for calculating statistics.")
-    default_fwhms = "0.5,0.2,0.1"
+    default_fwhms = "0.2"
     p.set_defaults(stats_kernels=default_fwhms)
     p.set_defaults(calc_stats=True)
     p.add_argument("--calc-stats", dest="calc_stats",
