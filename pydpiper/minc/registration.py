@@ -19,7 +19,7 @@ from pydpiper.core.stages import CmdStage, Result, Stages
 from pydpiper.core.util import pairs, AutoEnum, NamedTuple, raise_, flatten
 from pydpiper.minc.files import MincAtom, XfmAtom
 from pydpiper.minc.containers import XfmHandler
-
+from pydpiper.minc.analysis import minc_displacement
 from pyminc.volumes.factory import volumeFromFile  # type: ignore
 
 # TODO push down into lsq12_pairwise?
@@ -2101,6 +2101,35 @@ def tournament_style_model(imgs                  : List[MincAtom],
                                           out_dir=tournament_dir)
 
 
+def generate_halfway_transform(input_xfm_handler: XfmHandler,
+                               like_file:         MincAtom) -> XfmAtom:
+    """
+    This function produces a transformation that moves halfway along
+    the provided transform. It works as follows:
+    1) combine all transforms into a single grid
+    2) multiply the grid by 0.5
+    3) create a .xfm file to point at the created grid file
+    """
+    s = Stages()
+
+    # combine all transformations into a single grid:
+    full_grid = s.defer(minc_displacement(input_xfm_handler))
+
+    # multiply the vectors by 0.5
+    halfway_grid = s.defer(mincmath(op='mult',
+                                    const=0.5,
+                                    vols=[full_grid],
+                                    subdir="tmp",
+                                    new_name=full_grid.filename_wo_ext + "_halfway"))
+
+    # create an XfmAtom for this grid file, and
+    # write its information to disk
+    halfway_xfm = input_xfm_handler.xfm.newname_with_suffix(suffix="_halfway")
+    # write the xfm file:
+    # make_xfm_for_grid.pl ...
+
+
+
 def nonlinear_midpoint_average(img_A          : MincAtom,
                                img_B          : MincAtom,
                                out_name_wo_ext: str,
@@ -2110,13 +2139,20 @@ def nonlinear_midpoint_average(img_A          : MincAtom,
     :param img_B:
     :return: the midway point between img_A and img_B --> img_AB
     """
-    # start with an antRegistration call between the two files
-    # TODO: hard coded for now...?!? What... craziness!! (it's testing only, if this works, it'll be fixed right away :-))
+    s = Stages()
 
-    # temp file A -> B
-    A_to_B = img_A.newname_with_suffix("_to_" + img_B.filename_wo_ext, subdir='tmp')
-    # and the other way around
-    B_to_A = img_B.newname_with_suffix("_to_" + img_A.filename_wo_ext, subdir='tmp')
+    # start with an antRegistration call between the two files
+    xfm_handlers_antsReg = s.defer(antsRegistration(source=img_A,
+                                                    target=img_B,
+                                                    subdir='tmp'))
+
+    # generate halfway transformations
+    xfm_handler_A_to_B = xfm_handlers_antsReg[0]
+    xfm_handler_B_to_A = xfm_handlers_antsReg[1]
+
+    transform_A_to_B_halfway = s.defer(generate_halfway_transform(xfm_handler_A_to_B))
+    transform_B_to_A_halfway = s.defer(generate_halfway_transform(xfm_handler_B_to_A))
+
 
     # Resample the masks to the half-way point, and add that to the output average
 
@@ -2129,13 +2165,14 @@ def nonlinear_midpoint_average(img_A          : MincAtom,
 
 def antsRegistration(source: MincAtom,
                      target: MincAtom,
-                     conf: antsRegistrationConf,
+                     #conf: antsRegistrationConf,
                      transform_source: Optional[XfmAtom] = None,
                      transform_target: Optional[XfmAtom] = None,
                      transform_source_to_target_wo_ext: Optional[XfmAtom] = None,
                      generation: Optional[int] = None,
                      subdir: Optional[str] = None,
-                     resample_source: bool = False):
+                     resample_source_and_target: Optional[bool] = False,
+                     resample_subdir: Optional[str] = 'tmp'):
     """
 
     :param source: fixedImage
@@ -2189,13 +2226,7 @@ def antsRegistration(source: MincAtom,
     # over to a subdirectory of the target file...
     xfm_target_to_source = xfm_source_to_target.newname_with_suffix("_inverse")
 
-
-    # Note: antsRegistration allows for the build-in resampling of the input files
-    # That can be done by specifying two more arguments in the --output field. So instead of
-    # --output [output_prefix]
-    # you can have
-    # --output [output_prefix, B_warped_to_A.mnc, A_warped_to_B.mnc]
-    # perhaps we want to use this functionality?
+    # run full command
 
     # outputs from antRegistration are:
     #   {output_prefix}_grid_0.mnc
@@ -2206,28 +2237,62 @@ def antsRegistration(source: MincAtom,
     # Outputs:
     # 1) transform from source_to_target
     # 2) transform from target_to_source --> need to create an XfmHandler for this one
-    # 3) source_resampled (if True)
-    # 4) target_resampled (if True)
 
+    # TODO: use a proper configuration to set the parameters
     cmd_ants_reg = CmdStage(
-        inputs=(img_A, img_B, img_A.mask, img_B.mask) if img_A.mask and img_B.mask else (img_A, img_B),
-        outputs=)
-    # antsRegistration
-    # --dimensionality 3
-    # --verbose
-    # --output [output_prefix]
-    # --minc
-    # --transform SyN[0.5,3,0]
-    # --convergence [100x100x100x50x20,1e-6,10]
-    # --collapse-output-transforms 1
-    # --write-composite-transform
-    # --winsorize-image-intensities [0.01,0.99]
-    # --use-histogram-matching 1
-    # --metric CC[A.mnc,B.mnc,1,6]
-    # --masks [A_mask.mnc,B.mask.mnc]
-    # --shrink-factors 8x6x4x2x1
-    # --smoothing-sigmas 4x3x2x1x0vox
-    # --float 0
+        inputs=(source, target, source.mask, target.mask) if source.mask and target.mask else (source, target),
+        outputs=(xfm_source_to_target, xfm_target_to_source),
+        cmd=['antsRegistration'] \
+            + ['--dimensionality', 3] \
+            + ['--verbose'] \
+            + ['--minc'] \
+            + ['--collapse-output-transforms', 1] \
+            + ['--write-composite-transform'] \
+            + ['--winsorize-image-intensities', '[0.01,0.99]'] \
+            + ['--use-histogram-matching', 1] \
+            + ['--float', 0] \
+            + ['--output', '[' + xfm_source_to_target.filename_wo_ext + ']'] \
+            + ['--transform', 'SyN[0.5,3,0]'] \
+            + ['--convergence', '[100x100x100x50x20,1e-6,10]'] \
+            + ['--metric', 'CC[' + source.path + ',' + target.path + ',1,6]'] \
+            + (['--masks', '[' + source.mask.path + ',' +
+                target.mask.path + ']'] if source.mask.path and target.mask.path else []) \
+            + ['--shrink-factors', '8x6x4x2x1'] \
+            + ['--smoothing-sigmas', '4x3x2x1x0vox'])
+
+    # TODO: memory estimates... just testing it now, assuming I'll need 16G for the embyro pipeline
+    def set_memory(st):
+        st.setMem(16)
+    stage.when_runnable_hooks.append(lambda st: set_memory(st))
+
+    s.add(cmd_ants_reg)
+
+    # create file names for the two output files. It's better to use our standard
+    # mincresample command for this, because that also deals with any associated
+    # masks, whereas antsRegistration would only resample the input files.
+    resampled_source = (s.defer(mincresample(img=source,
+                                             xfm=xfm_source_to_target,
+                                             like=target,
+                                             interpolation=Interpolation.sinc,
+                                             subdir=resample_subdir))
+                        if resample_source_and_target else None)
+    resampled_target = (s.defer(mincresample(img=target,
+                                             xfm=xfm_target_to_source,
+                                             like=source,
+                                             interpolation=Interpolation.sinc,
+                                             subdir=resample_subdir))
+                        if resample_source_and_target else None)
+
+    # return an XfmHandler for both the forward and the inverse transformations
+    return Result(stages=s,
+                  output=(XfmHandler(source=source,
+                                     target=target,
+                                     xfm=xfm_source_to_target,
+                                     resampled=resampled_source),
+                          XfmHandler(source=target,
+                                     target=source,
+                                     xfm=xfm_target_to_source,
+                                     resampled=resampled_target)))
 
 
 def lsq12_nlin_build_model(imgs       : List[MincAtom],
