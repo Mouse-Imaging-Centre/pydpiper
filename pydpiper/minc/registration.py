@@ -2277,7 +2277,7 @@ def antsRegistration(source: MincAtom,
             + ['--winsorize-image-intensities', '[0.01,0.99]'] \
             + ['--use-histogram-matching', '1'] \
             + ['--float', '0'] \
-            + ['--output', '[' + xfm_source_to_target.filename_wo_ext + ']'] \
+            + ['--output', '[' + xfm_source_to_target.dir + '/' + xfm_source_to_target.filename_wo_ext + ']'] \
             + ['--transform', 'SyN[0.5,3,0]'] \
             + ['--convergence', '[100x100x100x50x20,1e-6,10]'] \
             + ['--metric', 'CC[' + source.path + ',' + target.path + ',1,6]'] \
