@@ -569,6 +569,7 @@ def _mk_lsq12_parser():
     # group = parser.add_argument_group("LSQ12 registration options",
     #                                  "Options for performing a pairwise, affine registration")
     p.set_defaults(run_lsq12=True)
+    p.set_defaults(generate_tournament_style_lsq12_avg=False)
     p.add_argument("--run-lsq12", dest="run_lsq12",
                    action="store_true",
                    help="Actually run the 12 parameter alignment [default = %(default)s]")
@@ -590,6 +591,17 @@ def _mk_lsq12_parser():
                         "Parameters must be specified as in the following example: \n"
                         "applications_testing/test_data/minctracc_example_linear_protocol.csv \n"
                         "[Default = %(default)s].")
+    p.add_argument("--generate-tournament-style-lsq12-avg", dest="generate_tournament_style_lsq12_avg",
+                   action="store_true",
+                   help="Instead of creating the average of the lsq12 resampled files "
+                        "by simply averaging them directly, create an iterative average "
+                        "as follows. Perform a non linear registration between pairs "
+                        "of files. Resample each file halfway along that transformation "
+                        "in order for them to end up in the middle. Average those two files. "
+                        "Then continue on to the next level as in a tournament. [default = %(default)s]")
+    p.add_argument("--no-generate-tournament-style-lsq12-avg", dest="generate_tournament_style_lsq12_avg",
+                   action="store_false",
+                   help="Opposite of --generate-tournament-style-lsq12-avg")
     return p
 
 

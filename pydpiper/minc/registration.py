@@ -17,9 +17,8 @@ from functools import reduce
 from pydpiper.core.files import FileAtom
 from pydpiper.core.stages import CmdStage, Result, Stages
 from pydpiper.core.util import pairs, AutoEnum, NamedTuple, raise_, flatten
-from pydpiper.minc.files import MincAtom, XfmAtom
+from pydpiper.minc.files import MincAtom, XfmAtom, xfmToMinc
 from pydpiper.minc.containers import XfmHandler
-from pydpiper.minc.analysis import minc_displacement
 from pyminc.volumes.factory import volumeFromFile  # type: ignore
 
 # TODO push down into lsq12_pairwise?
@@ -86,7 +85,8 @@ LSQ6Conf = NamedTuple("LSQ6Conf", [("run_lsq6", bool),
 LSQ12Conf = NamedTuple('LSQ12Conf', [('run_lsq12', bool),
                                      ('max_pairs', Optional[int]),  # should these be handles, not strings?
                                      ('like_file', Optional[str]),   # in that case, parser could open the file...
-                                     ('protocol', Optional[str])])
+                                     ('protocol', Optional[str]),
+                                     ('generate_tournament_style_lsq12_avg', Optional[bool])])
 
 
 LinearMinctraccConf = NamedTuple("LinearMinctraccConf",
@@ -167,6 +167,14 @@ MincblurMemCfg = NamedTuple("MincblurMemCfg",
 
 default_mincblur_mem_cfg = MincblurMemCfg(base_mem=1.25e-02, mem_per_voxel=5.9e-9,
                                           tmpdir_factor=2.5, include_tmpdir=True)
+
+def minc_displacement(xfm : XfmHandler) -> Result[MincAtom]:
+    # TODO: add dir argument
+    # TODO: this coercion is lame
+    output_grid = xfmToMinc(xfm.xfm.newname_with_suffix("_displ", ext='.mnc', subdir="tmp"))
+    stage = CmdStage(inputs=(xfm.source, xfm.xfm), outputs=(output_grid,),
+                     cmd=['minc_displacement', '-clobber', xfm.source.path, xfm.xfm.path, output_grid.path])
+    return Result(stages=Stages([stage]), output=output_grid)
 
 
 def mincblur(img: MincAtom,
@@ -2062,47 +2070,8 @@ def nlin_build_model(imgs           : List[MincAtom],
 
 
 
-def tournament_style_model(imgs                  : List[MincAtom],
-                           tournament_dir        : str,
-                           tournament_name_wo_ext: str = "tournament") -> MincAtom:
-    """
-    generate an average of the input files based on a tournament style bracket,
-    for example given 6 input images (1,2,3,4,5,6):
-
-    1 ---|
-         |---|
-    2 ---|   |
-             |---|
-    3 ---|   |   |
-         |---|   |
-    4 ---|       |--- final average
-                 |
-        5 ---|   |
-             |---|
-        6 ---|
-
-
-    :param imgs:
-    :param tournament_dir:
-    :return:
-    """
-    if len(imgs) == 1:
-        # simply return this image:
-        return imgs[0]
-    else:
-        # split up the list, calculate averages for the sublists and average
-        return nonlinear_midpoint_average(img_A=tournament_style_model(imgs=imgs[: math.floor(len(imgs)/2)],
-                                                                       tournament_dir=tournament_dir,
-                                                                       tournament_name_wo_ext=tournament_name_wo_ext + "_L"),
-                                          img_B=tournament_style_model(imgs=imgs[math.floor(len(imgs)/2) :],
-                                                                       tournament_dir=tournament_dir,
-                                                                       tournament_name_wo_ext=tournament_name_wo_ext + "_R"),
-                                          out_name_wo_ext=tournament_name_wo_ext,
-                                          out_dir=tournament_dir)
-
-
 def generate_halfway_transform(input_xfm_handler: XfmHandler,
-                               like_file:         MincAtom) -> XfmAtom:
+                               like_file:         MincAtom) -> Result[XfmAtom]:
     """
     This function produces a transformation that moves halfway along
     the provided transform. It works as follows:
@@ -2126,14 +2095,20 @@ def generate_halfway_transform(input_xfm_handler: XfmHandler,
     # write its information to disk
     halfway_xfm = input_xfm_handler.xfm.newname_with_suffix(suffix="_halfway")
     # write the xfm file:
-    # make_xfm_for_grid.pl ...
+    create_xfm_text_file_cmd = CmdStage(inputs=(halfway_grid,),
+                                        outputs=(halfway_xfm,),
+                                        cmd=(["make_xfm_for_grid.pl",
+                                              halfway_grid.path,
+                                              halfway_xfm.path]))
+    s.add(create_xfm_text_file_cmd)
+    return Result(stages=s, output=halfway_xfm)
 
 
 
-def nonlinear_midpoint_average(img_A          : MincAtom,
-                               img_B          : MincAtom,
+def nonlinear_midpoint_average(img_A: MincAtom,
+                               img_B: MincAtom,
                                out_name_wo_ext: str,
-                               out_dir        : str) -> MincAtom:
+                               out_dir: str) -> Result[MincAtom]:
     """
     :param img_A:
     :param img_B:
@@ -2150,17 +2125,68 @@ def nonlinear_midpoint_average(img_A          : MincAtom,
     xfm_handler_A_to_B = xfm_handlers_antsReg[0]
     xfm_handler_B_to_A = xfm_handlers_antsReg[1]
 
-    transform_A_to_B_halfway = s.defer(generate_halfway_transform(xfm_handler_A_to_B))
-    transform_B_to_A_halfway = s.defer(generate_halfway_transform(xfm_handler_B_to_A))
-
-
-    # Resample the masks to the half-way point, and add that to the output average
+    transform_A_to_B_halfway = s.defer(generate_halfway_transform(input_xfm_handler=xfm_handler_A_to_B,
+                                                                  like_file=img_B))
+    transform_B_to_A_halfway = s.defer(generate_halfway_transform(input_xfm_handler=xfm_handler_B_to_A,
+                                                                  like_file=img_A))
+    # resample A and B halfway:
+    A_halfway_to_B = s.defer(mincresample(img=img_A,
+                                          xfm=transform_A_to_B_halfway,
+                                          like=img_B,
+                                          subdir='tmp'))
+    B_halfway_to_A = s.defer(mincresample(img=img_B,
+                                          xfm=transform_B_to_A_halfway,
+                                          like=img_A,
+                                          subdir='tmp'))
 
     # the output file (avg of both files resampled to the midway point)
-    avg_mid_point = MincAtom(name=os.path.join(out_dir, '%s.mnc' % out_name_wo_ext),
-                             orig_name=None,
-                             pipeline_sub_dir=out_dir)
-    return avg_mid_point
+    avg_mid_point = s.defer(mincaverage(imgs=[A_halfway_to_B, B_halfway_to_A],
+                                        output_dir=out_dir,
+                                        name_wo_ext=out_name_wo_ext))
+
+    return Result(stages=s, output=avg_mid_point)
+
+
+def tournament_style_model(imgs                  : List[MincAtom],
+                           tournament_dir        : str,
+                           tournament_name_wo_ext: Optional[str] = "tournament") -> Result[MincAtom]:
+    """
+    generate an average of the input files based on a tournament style bracket,
+    for example given 6 input images (1,2,3,4,5,6):
+
+    1 ---|
+         |---|
+    2 ---|   |
+             |---|
+    3 ---|   |   |
+         |---|   |
+    4 ---|       |--- final average
+                 |
+        5 ---|   |
+             |---|
+        6 ---|
+
+
+    :param imgs:
+    :param tournament_dir:
+    :return:
+    """
+    s = Stages()
+
+    if len(imgs) == 1:
+        # simply return this image:
+        return Result(stages=s, output=imgs[0])
+    else:
+        # split up the list, calculate averages for the sublists and average
+        midpoint_avg = s.defer(nonlinear_midpoint_average(img_A = s.defer(tournament_style_model(imgs=imgs[: math.floor(len(imgs)/2)],
+                                                                                                 tournament_dir=tournament_dir,
+                                                                                                 tournament_name_wo_ext=tournament_name_wo_ext + "_L")),
+                                                          img_B = s.defer(tournament_style_model(imgs=imgs[math.floor(len(imgs)/2) :],
+                                                                                                 tournament_dir=tournament_dir,
+                                                                                                 tournament_name_wo_ext=tournament_name_wo_ext + "_R")),
+                                                          out_name_wo_ext=tournament_name_wo_ext,
+                                                          out_dir=tournament_dir))
+        return Result(stages=s, output=midpoint_avg)
 
 
 def antsRegistration(source: MincAtom,
@@ -2243,14 +2269,14 @@ def antsRegistration(source: MincAtom,
         inputs=(source, target, source.mask, target.mask) if source.mask and target.mask else (source, target),
         outputs=(xfm_source_to_target, xfm_target_to_source),
         cmd=['antsRegistration'] \
-            + ['--dimensionality', 3] \
+            + ['--dimensionality', '3'] \
             + ['--verbose'] \
             + ['--minc'] \
-            + ['--collapse-output-transforms', 1] \
+            + ['--collapse-output-transforms', '1'] \
             + ['--write-composite-transform'] \
             + ['--winsorize-image-intensities', '[0.01,0.99]'] \
-            + ['--use-histogram-matching', 1] \
-            + ['--float', 0] \
+            + ['--use-histogram-matching', '1'] \
+            + ['--float', '0'] \
             + ['--output', '[' + xfm_source_to_target.filename_wo_ext + ']'] \
             + ['--transform', 'SyN[0.5,3,0]'] \
             + ['--convergence', '[100x100x100x50x20,1e-6,10]'] \
@@ -2259,12 +2285,7 @@ def antsRegistration(source: MincAtom,
                 target.mask.path + ']'] if source.mask.path and target.mask.path else []) \
             + ['--shrink-factors', '8x6x4x2x1'] \
             + ['--smoothing-sigmas', '4x3x2x1x0vox'])
-
-    # TODO: memory estimates... just testing it now, assuming I'll need 16G for the embyro pipeline
-    def set_memory(st):
-        st.setMem(16)
-    stage.when_runnable_hooks.append(lambda st: set_memory(st))
-
+    #TODO: memory estimation
     s.add(cmd_ants_reg)
 
     # create file names for the two output files. It's better to use our standard
@@ -2318,8 +2339,14 @@ def lsq12_nlin_build_model(imgs       : List[MincAtom],
     # extract the resampled lsq12 images
     lsq12_resampled_imgs = [xfm_handler.resampled for xfm_handler in lsq12_result.output]
 
+    if lsq12_conf.generate_tournament_style_lsq12_avg:
+        target_for_nlin_stages = s.defer(tournament_style_model(imgs=lsq12_resampled_imgs,
+                                                                tournament_dir=lsq12_dir[0:len(lsq12_dir)-6] + "_tournament"))
+    else:
+        target_for_nlin_stages = lsq12_result.avg_img
+
     nlin_result = s.defer(nlin_build_model(imgs=lsq12_resampled_imgs,
-                                           initial_target=lsq12_result.avg_img,
+                                           initial_target=target_for_nlin_stages,
                                            conf=nlin_conf,
                                            nlin_dir=nlin_dir,
                                            nlin_prefix=nlin_prefix))
