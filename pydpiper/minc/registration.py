@@ -2250,7 +2250,7 @@ def antsRegistration(source: MincAtom,
     # directory belonging to the source image.
     # TODO: is this what we want? perhaps we actually want to move this transformation
     # over to a subdirectory of the target file...
-    xfm_target_to_source = xfm_source_to_target.newname_with_suffix("_inverse")
+    xfm_target_to_source = xfm_source_to_target.newname_with_suffix("_inverse", subdir='tmp')
 
     # run full command
 
