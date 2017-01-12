@@ -230,7 +230,7 @@ def voxel_vote(label_files : List[MincAtom], output_dir : str, name : str = "vot
     out = MincAtom(name=os.path.join(output_dir, "%s.mnc" % name),
                    output_sub_dir=output_dir)  # FIXME better naming
 
-    s = CmdStage(cmd=["voxel_vote", "--clobber"] + [l.path for l in label_files] + [out.path],
+    s = CmdStage(cmd=["voxel_vote", "--clobber"] + [l.path for l in sorted(label_files)] + [out.path],
                  inputs=tuple(label_files),
                  outputs=(out,))
 
