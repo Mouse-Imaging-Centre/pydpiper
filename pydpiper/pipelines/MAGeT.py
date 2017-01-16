@@ -119,9 +119,9 @@ def maget_mask(imgs : List[MincAtom], maget_options, resolution : float, pipelin
 
     # TODO dereference maget_options -> maget_options.maget outside maget_mask call?
     if atlases is None:
-        atlases =  atlases_from_dir(atlas_lib=maget_options.maget.atlas_lib,
-                                    max_templates=maget_options.maget.max_templates,
-                                    pipeline_sub_dir=pipeline_sub_dir)
+        atlases = atlases_from_dir(atlas_lib=maget_options.maget.atlas_lib,
+                                   max_templates=maget_options.maget.max_templates,
+                                   pipeline_sub_dir=pipeline_sub_dir)
 
     lsq12_conf = get_linear_configuration_from_options(maget_options.lsq12,
                                                        LinearTransType.lsq12,
@@ -314,7 +314,10 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir):     # FIXME prefi
                 # FIXME what if there aren't enough other imgs around?!  This silently goes weird ...
                 return pd.Series(ts[:n+1])  # n+1 instead of n: choose one more since we won't use image as its own template ...
 
-            templates = pd.DataFrame({ 'template' : choose_new_templates(ts=imgs, n=maget_options.max_templates)})
+            # FIXME: the --max-templates flag is ambiguously named ... should be --max-new-templates
+            # (and just use all atlases)
+            templates = pd.DataFrame({ 'template' : choose_new_templates(ts=imgs,
+                                                                         n=maget_options.max_templates - len(atlases))})
             # note these images are the masked ones if masking was done ...
 
             # the templates together with their (multiple) labels from the atlases (this merge just acts as a filter)
