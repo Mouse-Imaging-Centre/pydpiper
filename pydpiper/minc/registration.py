@@ -2133,11 +2133,13 @@ def nonlinear_midpoint_average(img_A: MincAtom,
     A_halfway_to_B = s.defer(mincresample(img=img_A,
                                           xfm=transform_A_to_B_halfway,
                                           like=img_B,
-                                          subdir='tmp'))
+                                          subdir='tmp',
+                                          interpolation=Interpolation.sinc))
     B_halfway_to_A = s.defer(mincresample(img=img_B,
                                           xfm=transform_B_to_A_halfway,
                                           like=img_A,
-                                          subdir='tmp'))
+                                          subdir='tmp',
+                                          interpolation=Interpolation.sinc))
 
     # the output file (avg of both files resampled to the midway point)
     avg_mid_point = s.defer(mincaverage(imgs=[A_halfway_to_B, B_halfway_to_A],
