@@ -2267,6 +2267,7 @@ def antsRegistration(source: MincAtom,
     # 2) transform from target_to_source --> need to create an XfmHandler for this one
 
     # TODO: use a proper configuration to set the parameters
+    # TODO: add a second metric for the gradients (and get gradient files)
     cmd_ants_reg = CmdStage(
         inputs=(source, target, source.mask, target.mask) if source.mask and target.mask else (source, target),
         outputs=(xfm_source_to_target, xfm_target_to_source),
@@ -2281,12 +2282,12 @@ def antsRegistration(source: MincAtom,
             + ['--float', '0'] \
             + ['--output', '[' + xfm_source_to_target.dir + '/' + xfm_source_to_target.filename_wo_ext + ']'] \
             + ['--transform', 'SyN[0.5,3,0]'] \
-            + ['--convergence', '[100x100x100x50x20,1e-6,10]'] \
+            + ['--convergence', '[100x100x100x100x50x10,1e-6,10]'] \
             + ['--metric', 'CC[' + source.path + ',' + target.path + ',1,6]'] \
             + (['--masks', '[' + source.mask.path + ',' +
                 target.mask.path + ']'] if source.mask.path and target.mask.path else []) \
-            + ['--shrink-factors', '8x6x4x2x1'] \
-            + ['--smoothing-sigmas', '4x3x2x1x0vox'])
+            + ['--shrink-factors', '16x8x6x4x2x1'] \
+            + ['--smoothing-sigmas', '8x4x3x2x1x0vox'])
     #TODO: memory estimation
     s.add(cmd_ants_reg)
 
