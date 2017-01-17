@@ -110,8 +110,7 @@ NonlinearMinctraccConf = NamedTuple("NonlinearMinctraccConf",
                                      ("similarity", float),
                                      ("objective", Optional[NonlinearObjectiveFn]),
                                      ("lattice_diameter", R3),
-                                     ("sub_lattice", int),
-                                     ("max_def_magnitude", R3)])
+                                     ("sub_lattice", int)])
 
 MinctraccConf = NamedTuple('MinctraccConf',
                            [("step_sizes", R3),
@@ -948,8 +947,7 @@ default_nonlinear_minctracc_conf = NonlinearMinctraccConf(
     weight=0.8,
     objective=NonlinearObjectiveFn.corrcoeff,
     lattice_diameter=_lattice_diameter,
-    sub_lattice=6,
-    max_def_magnitude=None)
+    sub_lattice=6)
 
 
 # TODO: move to utils?
