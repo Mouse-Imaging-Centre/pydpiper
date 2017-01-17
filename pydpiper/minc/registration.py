@@ -288,8 +288,8 @@ def mincaverage(imgs: List[MincAtom],
                            [avg.path])
     # averages in a pipeline often indicate important progress. Let's report that back to the user
     # in terms of a status update:
-    status_update_message = "\n\n* * * * * * *\nStatus update: \nFinished creating the following average:\n" \
-                            + str(avg.path) + "\n" + time.ctime() + "\n* * * * * * *\n"
+    status_update_message = "\n\n*\n* * *\n* * * * *\n* * * * * * *\nStatus update: \nFinished creating the following average:\n" \
+                            + str(avg.path) + "\n" + time.ctime() + "\n* * * * * * *\n* * * * *\n* * *\n*\n"
 
     avg_cmd.when_finished_hooks.append(lambda _: print(status_update_message))
 
@@ -353,8 +353,8 @@ def pmincaverage(imgs: List[MincAtom],
 
     # averages in a pipeline often indicate important progress. Let's report that back to the user
     # in terms of a status update:
-    status_update_message = "\n\n* * * * * * *\nStatus update: \nFinished creating the following average:\n" \
-                            + str(avg.path) + "\n" + time.ctime() + "\n* * * * * * *\n"
+    status_update_message = "\n\n*\n* * *\n* * * * *\n* * * * * * *\nStatus update: \nFinished creating the following average:\n" \
+                            + str(avg.path) + "\n" + time.ctime() + "\n* * * * * * *\n* * * * *\n* * *\n*\n"
 
     avg_cmd.when_finished_hooks.append(lambda _: print(status_update_message))
 
@@ -3161,8 +3161,8 @@ def create_quality_control_images(imgs: List[MincAtom],
         montage_stage.set_log_file(os.path.join(os.path.dirname(montage_output_fileatom.path),
                                                 "log",
                                                 montage_output_fileatom.filename_wo_ext + ".log"))
-        message_to_print = ("\n* * * * * * *\nPlease consider the following verification "
-                            "image, showing %s. \n%s\n* * * * * * *\n" % (message, montage_output_fileatom.path))
+        message_to_print = ("\n\n*\n* * *\n* * * * *\n* * * * * * *\nPlease consider the following verification "
+                            "image, showing %s. \n%s\n* * * * * * *\n* * * * *\n* * *\n*\n" % (message, montage_output_fileatom.path))
 
         montage_stage.when_finished_hooks.append(
             lambda _: print(message_to_print))
