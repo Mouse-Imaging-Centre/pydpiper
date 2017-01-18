@@ -2021,6 +2021,74 @@ def lsq12_pairwise(imgs: List[MincAtom],
 
     return Result(stages=s, output=avgs_and_xfms)
 
+def pairwise_antsRegistration(imgs: List[MincAtom],
+                              output_dir_for_avg: str = None,
+                              output_name_wo_ext: str = None):
+    s = Stages()
+
+    if len(imgs) < 2:
+        raise ValueError("currently need at least two images")
+
+    if not output_name_wo_ext:
+        output_name_wo_ext = "full_pairwise_nlin_antsRegistration"
+
+    if not output_dir_for_avg:
+        raise ValueError("Please specify an output directory for the final average in pairwise_antsRegistration.")
+
+    final_avg = MincAtom(name=os.path.join(output_dir_for_avg, output_name_wo_ext + ".mnc"),
+                         pipeline_sub_dir=output_dir_for_avg)
+
+    def avg_nlin_xfm_from(src_img: MincAtom,
+                          target_imgs: List[MincAtom]):
+        # antsRegistration returns stages and two XfmHandlers
+        # 1) source -> target, 2) target -> source
+        # we only care about the first one here
+        xfmHs = [s.defer(antsRegistration(source=src_img,
+                                         target=target_img))[0]
+                        for target_img in target_imgs]
+
+        avg_xfm = s.defer(xfmaverage([xfmH.xfm for xfmH in xfmHs],
+                                     output_filename_wo_ext="%s_avg_nlin_antsReg" % src_img.filename_wo_ext))
+
+        res = s.defer(mincresample(img=src_img,
+                                   xfm=avg_xfm,
+                                   like=src_img,
+                                   interpolation=Interpolation.sinc))
+        return XfmHandler(xfm=avg_xfm,
+                          source=src_img,
+                          target=final_avg,
+                          resampled=res)
+
+    avg_xfmHs = [avg_nlin_xfm_from(src_img=img, target_imgs=imgs) for img in imgs]
+
+    final_avg = s.defer(mincaverage(imgs=[xfmH.resampled for xfmH in avg_xfmHs],
+                                    avg_file=final_avg))
+
+    return Result(stages=s, output=WithAvgImgs(avg_imgs=[final_avg], avg_img=final_avg, output=avg_xfmHs))
+
+
+
+def nlin_pairwise(imgs: List[MincAtom],
+                  nlin_dir: str,
+                  create_qc_images: bool = True) -> Result[WithAvgImgs[List[XfmHandler]]]:
+    """
+
+    :param img: a list of minc atoms for which a full pairwise non linear registration will be run
+    :param nlin_dir: the directory that will hold the average non linear file: for each input file,
+                     we compute the average non linear transformation towards all the other input
+                     files. That average transformation is applied to the input, and we average
+                     those files.
+    :param create_qc_images:
+    :return: and array of transformations (avg nlin towards all other files), and the average MincAtom
+    """
+    s = Stages()
+
+    avgs_and_xfms = s.defer(pairwise_antsRegistration(imgs=imgs,
+                                                      output_dir_for_avg=nlin_dir))
+
+    return Result(stages=s, output=avgs_and_xfms)
+
+
 
 K = TypeVar('K')
 
@@ -2066,7 +2134,7 @@ def nlin_build_model(imgs           : List[MincAtom],
         return Result(stages=s, output=nlin_result)
     else:
         # this should never happen
-        raise ValueError("The nonlinear configuration passed to lsq12_nlin_build_model is neither for minctracc nor for ANTS.")
+        raise ValueError("The nonlinear configuration passed to nlin_build_model is neither for minctracc nor for ANTS.")
 
 
 
@@ -2364,6 +2432,57 @@ def lsq12_nlin_build_model(imgs       : List[MincAtom],
     return Result(stages=s, output=WithAvgImgs(output=from_imgs_to_nlin_xfms,
                                                avg_img=nlin_result.avg_img,
                                                avg_imgs=nlin_result.avg_imgs))
+
+def lsq12_nlin_pairwise(imgs       : List[MincAtom],
+                        lsq12_conf : LSQ12Conf,
+                        lsq12_dir  : str,
+                        nlin_dir   : str,
+                        nlin_conf  : Union[MultilevelMinctraccConf, MultilevelMincANTSConf],
+                        resolution : float,
+                        nlin_prefix : str = "") -> Result[WithAvgImgs[List[XfmHandler]]]:
+    """
+    Runs both a pairwise lsq12 registration followed by a non linear
+    registration procedure on the input files.
+    """
+    s = Stages()
+
+    # TODO: make sure that we pass on a correct configuration for lsq12_pairwise
+    # it should be able to get this passed in....
+    lsq12_result = s.defer(lsq12_pairwise(imgs=imgs, like=None,
+                                          resolution=resolution,
+                                          lsq12_conf=lsq12_conf,
+                                          lsq12_dir=lsq12_dir))
+
+    # extract the resampled lsq12 images
+    lsq12_resampled_imgs = [xfm_handler.resampled for xfm_handler in lsq12_result.output]
+
+    if lsq12_conf.generate_tournament_style_lsq12_avg:
+        raise ValueError("You specified both --generate-tournament-style-lsq12-avg and --nlin-pairwise. "
+                         "When the non linear alignment is performed using full pairwise registrations, "
+                         "the lsq12 average is never used as a target. As such it does not make any "
+                         "sense to spend a lot of computation time in building a crisp 12 parameter "
+                         "average. Use either --generate-tournament-style-lsq12-avg together with "
+                         "--no-nlin-pairwise, or if you want to run the full pairwise non linear "
+                         "registrations use --no-generate-tournament-style-lsq12-avg together with "
+                         "--nlin-pairwise")
+
+    nlin_result = s.defer(nlin_pairwise(imgs=lsq12_resampled_imgs,
+                                            nlin_dir=nlin_dir))
+
+    # concatenate the transformations from lsq12 and nlin before returning them
+    from_imgs_to_nlin_xfms = [s.defer(concat_xfmhandlers(xfms=[lsq12_xfmh, nlin_xfmh],
+                                                         name=img.filename_wo_ext + "_lsq12_and_nlin")) for
+                              lsq12_xfmh, nlin_xfmh, img in zip(lsq12_result.output,
+                                                                nlin_result.output,
+                                                                imgs)]
+
+    return Result(stages=s, output=WithAvgImgs(output=from_imgs_to_nlin_xfms,
+                                               avg_img=nlin_result.avg_img,
+                                               avg_imgs=nlin_result.avg_imgs))
+
+
+
+
 
 
 def can_read_MINC_file(filename: str) -> bool:

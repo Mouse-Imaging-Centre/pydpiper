@@ -625,10 +625,18 @@ def _mk_nlin_parser(p: ArgParser):
                             "applications_testing/test_data/minctracc_example_nlin_protocol.csv \n"
                             "applications_testing/test_data/mincANTS_example_nlin_protocol.csv \n"
                             "[Default = %(default)s]")
+    p.set_defaults(nlin_pairwise=False)
+    group.add_argument("--nlin-pairwise", dest="nlin_pairwise",
+                       action='store_true',
+                       help="Run all possible pairwise non linear registrations. [default = %(default)s]")
+    group.add_argument("--no-nlin-pairwise", dest="nlin_pairwise",
+                       action='store_false',
+                       help="Opposite of --nlin-pairwise")
     return p
 
 NLINConf = NamedTuple('NLINConf', [('reg_method', str),  # TODO make this an enumerated type
-                                   ('nlin_protocol', Optional[str])])
+                                   ('nlin_protocol', Optional[str]),
+                                   ('nlin_pairwise', bool)])
 
 def to_nlin_conf(nlin_args : Namespace) -> NLINConf:
     return NLINConf(**nlin_args.__dict__)
@@ -641,7 +649,7 @@ nlin_parser = AnnotatedParser(parser=_nlin_parser, namespace="nlin")  #, cast=to
 def _mk_segmentation_parser(parser : ArgParser, default : bool):
     group = parser.add_argument_group("Segmentation", "Segmentation options.")
     group.add_argument("--run-maget", action='store_true', dest="run_maget",
-                       help="Run MAGeT segmentation.")
+                       help="Run MAGeT segmentation. [default = %(default)s]")
     group.add_argument("--no-run-maget", dest="run_maget",
                        action='store_false', help="Don't run MAGeT segmentation")
     parser.set_defaults(run_maget=True)
