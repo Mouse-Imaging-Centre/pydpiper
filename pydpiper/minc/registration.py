@@ -2047,8 +2047,32 @@ def pairwise_antsRegistration(imgs: List[MincAtom],
                                          target=target_img))[0]
                         for target_img in target_imgs]
 
-        avg_xfm = s.defer(xfmaverage([xfmH.xfm for xfmH in xfmHs],
-                                     output_filename_wo_ext="%s_avg_nlin_antsReg" % src_img.filename_wo_ext))
+        # xfmavg is not well defined on transformations that have
+        # non linear grids associated with them. Turn all transformations
+        # into grid file, average those and make a transformation for
+        # the final average grid
+
+        xfmGrids = [s.defer(minc_displacement(single_xfmH)) for single_xfmH in xfmHs]
+
+        avg_xfmGrid = s.defer(mincaverage(imgs=xfmGrids,
+                                          output_dir=os.path.join(src_img.pipeline_sub_dir,
+                                                                  src_img.output_sub_dir,
+                                                                  "transforms"),
+                                          name_wo_ext="%s_avg_nlin_antsReg_grid" % src_img.filename_wo_ext))
+
+        avg_xfm = XfmAtom(name=os.path.join(src_img.pipeline_sub_dir,
+                                            src_img.output_sub_dir,
+                                            "transforms",
+                                            "%s_avg_nlin_antsReg.xfm" % src_img.filename_wo_ext),
+                          pipeline_sub_dir=src_img.pipeline_sub_dir,
+                          output_sub_dir=src_img.output_sub_dir)
+
+        create_xfm_for_avgGrid = CmdStage(inputs=(avg_xfmGrid,),
+                                          outputs=(avg_xfm,),
+                                          cmd=(["make_xfm_for_grid.pl",
+                                                avg_xfmGrid.path,
+                                                avg_xfm.path]))
+        s.add(create_xfm_for_avgGrid)
 
         res = s.defer(mincresample(img=src_img,
                                    xfm=avg_xfm,
