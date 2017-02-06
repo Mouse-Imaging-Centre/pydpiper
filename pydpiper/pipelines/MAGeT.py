@@ -119,6 +119,8 @@ def maget_mask(imgs : List[MincAtom], maget_options, resolution : float, pipelin
 
     # TODO dereference maget_options -> maget_options.maget outside maget_mask call?
     if atlases is None:
+        if maget_options.maget.atlas_lib is None:
+            raise ValueError("need some atlases for MAGeT-based masking ...")
         atlases = atlases_from_dir(atlas_lib=maget_options.maget.atlas_lib,
                                    max_templates=maget_options.maget.max_templates,
                                    pipeline_sub_dir=pipeline_sub_dir)
