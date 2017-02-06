@@ -168,12 +168,9 @@ def maget_mask(imgs : List[MincAtom], maget_options, resolution : float, pipelin
         .rename(columns={"resampled_mask" : "resampled_masks"})
         .assign(voted_mask=lambda df: df.apply(axis=1,
                                                func=lambda row:
-                                                 s.defer(voxel_vote(label_files=row.resampled_masks,
-                                                                    name="%s_voted_mask" % row.img.filename_wo_ext,
-                                                                    # FIXME create and pass a mincatom cloned from row.img instead?
-                                                                    output_dir=os.path.join(row.img.pipeline_sub_dir,
-                                                                                            row.img.output_sub_dir,
-                                                                                            "tmp")))))
+                                                 s.defer(mincmath(op="max", vols=row.resampled_masks,
+                                                                  new_name="%s_max_mask" % row.img.filename_wo_ext,
+                                                                  subdir="tmp"))))
         .apply(axis=1, func=lambda row: row.img._replace(mask=row.voted_mask)))
 
     # resample the atlas images back to the input images:

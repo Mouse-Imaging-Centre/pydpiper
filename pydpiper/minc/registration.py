@@ -109,7 +109,7 @@ NonlinearMinctraccConf = NamedTuple("NonlinearMinctraccConf",
                                      ("weight", float),
                                      ("similarity", float),
                                      ("objective", Optional[NonlinearObjectiveFn]),
-                                     ("lattice_diameter", R3),
+                                     ("lattice_diameter", Optional[R3]),
                                      ("sub_lattice", int)])
 
 MinctraccConf = NamedTuple('MinctraccConf',
@@ -946,7 +946,7 @@ default_nonlinear_minctracc_conf = NonlinearMinctraccConf(
     stiffness=0.98,
     weight=0.8,
     objective=NonlinearObjectiveFn.corrcoeff,
-    lattice_diameter=_lattice_diameter,
+    lattice_diameter=None,
     sub_lattice=6)
 
 
@@ -1208,7 +1208,10 @@ def minctracc(source: MincAtom,
                              + ['-weight', str(nlin_conf.weight)]
                              + ['-stiffness', str(nlin_conf.stiffness)]
                              + ['-sub_lattice', str(nlin_conf.sub_lattice)]
-                             + ['-lattice_diameter'] + space_sep(nlin_conf.lattice_diameter))
+                             + (['-lattice_diameter']
+                                + (space_sep(nlin_conf.lattice_diameter)
+                                   if nlin_conf.lattice_diameter is not None
+                                   else space_sep((3 * s for s in conf.step_sizes)))))
                             if nlin_conf is not None else [])
                          + (['-nonlinear %s' % (nlin_conf.objective.name if nlin_conf.objective else '')]
                             if nlin_conf else [])
