@@ -165,12 +165,11 @@ def maget_mask(imgs : List[MincAtom], maget_options, resolution : float, pipelin
                                                          #    axis=1),
                                                          extra_flags=("-keep_real_range",))))
         .groupby('img', as_index=False)
-        # sort=False: just for speed (might also need to implement more comparison methods on `MincAtom`s)
         .aggregate({'resampled_mask' : lambda masks: list(masks)})
         .rename(columns={"resampled_mask" : "resampled_masks"})
         .assign(voted_mask=lambda df: df.apply(axis=1,
                                                func=lambda row:
-                                                 s.defer(mincmath(op="max", vols=row.resampled_masks,
+                                                 s.defer(mincmath(op="max", vols=sorted(row.resampled_masks),
                                                                   new_name="%s_max_mask" % row.img.filename_wo_ext,
                                                                   subdir="tmp"))))
         .apply(axis=1, func=lambda row: row.img._replace(mask=row.voted_mask)))
