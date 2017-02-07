@@ -164,7 +164,7 @@ def maget_mask(imgs : List[MincAtom], maget_options, resolution : float, pipelin
                                                          #                             row.img.filename_wo_ext),
                                                          #    axis=1),
                                                          extra_flags=("-keep_real_range",))))
-        .groupby('img', sort=False, as_index=False)
+        .groupby('img', as_index=False)
         # sort=False: just for speed (might also need to implement more comparison methods on `MincAtom`s)
         .aggregate({'resampled_mask' : lambda masks: list(masks)})
         .rename(columns={"resampled_mask" : "resampled_masks"})
