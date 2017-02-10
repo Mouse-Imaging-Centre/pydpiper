@@ -154,4 +154,15 @@ class FileAtom(object):
         'img_2.mnc'
         """
         return self.newname_with_fn(lambda _: name, ext=ext, subdir=subdir)
+
+    def _replace(self, **kwargs):
+        class Nonexistent(object): pass
+        nonexistent = Nonexistent()
+        m = copy.deepcopy(self)
+        for k, v in kwargs.items():
+            if getattr(m, k, nonexistent) != nonexistent:
+                setattr(m, k, v)
+            else:
+                raise ValueError("can't replace nonexistent attribute '%s'" % k)
+        return m
      

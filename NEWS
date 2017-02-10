@@ -1,3 +1,28 @@
+New in Version 2.0.6
+====================
+* fix MAGeT extra resampling of labels along transform from original onto new templates (#304)
+* MAGeT internals rewrite/simplification
+* MBM and MAGeT can read files and masks from csv file containing `file` and optionally `mask_file` columns
+* improved minctracc parameters and defaults for stiffness, weight, and lattice_diameter;
+  max_def_magnitude has been removed (it no longer appears in minctracc's -help)
+* additional determinism to allow restarting pipelines without losing stages
+* --mem-request-attribute can now take a comma-separated list of attributes (e.g., "vmem,mem"),
+  all of which currently get the same values
+* --max-templates now includes the templates from the original library; this might be reverted soon
+* the default blur level for the determinants is now 0.2mm only;
+  specify additional/different levels via --stats-kernels, e.g., '0.1,0.2,0.5' (the old default)
+* switched from mincANTS to ANTS (but symlinking to mincANTS is possible)
+* the installation instructions now require minc-toolkit-v2 rather than minc-toolkit due to use of ANTS
+* ANTS now uses the source ("fixed") instead of target ("moving") mask
+* added some progress information in "verbose" mode
+* improved (too few) filenames and locations
+* some improved error messages
+* numerous internal changes
+
+New in Version 2.0.5
+====================
+* pairwise lsq12 now (correctly) includes a registration to "itself" for each subject.
+
 New in Version 2.0.4
 ====================
 * execution bugfixes

@@ -238,9 +238,12 @@ def _mk_application_parser(p: ArgParser) -> ArgParser:
                    help="Be verbose in what is printed to the screen [default = %(default)s]")
     g.add_argument("--no-verbose", dest="verbose",
                    action="store_false",
-                   help="Opposite of --verbose [default]")
+                   help="Opposite of --verbose")
     g.add_argument("--files", type=str, nargs='*', metavar='file',
                    help='Files to process')
+    g.add_argument("--csv-file", dest="csv_file",
+                   type=str, default=None,
+                   help="CSV file containing application-specific columns. [Default=%(default)s]")
     return p
 
 
@@ -506,7 +509,7 @@ def _mk_stats_parser():
     p = ArgParser(add_help=False)
     # p.add_argument_group("Statistics options",
     #                      "Options for calculating statistics.")
-    default_fwhms = "0.5,0.2,0.1"
+    default_fwhms = "0.2"
     p.set_defaults(stats_kernels=default_fwhms)
     p.set_defaults(calc_stats=True)
     p.add_argument("--calc-stats", dest="calc_stats",
@@ -527,9 +530,6 @@ stats_parser = AnnotatedParser(parser=_stats_parser, namespace="stats")
 
 def _mk_chain_parser():
     p = ArgParser(add_help=False)
-    # p.add_argument("Registration chain options",
-    #               "Options for processing longitudinal data.")
-    #    addGeneralRegistrationArguments(group)
     p.add_argument("--csv-file", dest="csv_file",
                    type=str, required=True,
                    help="The spreadsheet with information about your input data. "
@@ -600,8 +600,8 @@ def _mk_nlin_parser(p: ArgParser):
     group = p.add_argument_group("Nonlinear registration options",
                                  "Options for performing a non-linear registration")
     group.add_argument("--registration-method", dest="reg_method",
-                       default="mincANTS", choices=["mincANTS", "minctracc"],
-                       help="Specify whether to use minctracc or mincANTS for non-linear registrations. "
+                       default="ANTS", choices=["ANTS", "minctracc"],
+                       help="Specify whether to use minctracc or ANTS for non-linear registrations. "
                             "[Default = %(default)s]")
     group.add_argument("--nlin-protocol", dest="nlin_protocol",
                        type=str, default=None,

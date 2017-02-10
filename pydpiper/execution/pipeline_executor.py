@@ -363,7 +363,8 @@ class pipelineExecutor(object):
             os.system("mkdir -p logs")    # FIXME: this really doesn't belong here
             if self.queue_type == "sge":
                 strprocs = str(self.procs)
-                strmem = "%s=%sG" % (self.mem_request_attribute, float(self.mem))
+                strmem = ','.join(["%s=%sG" % (attr, float(self.mem))
+                                   for attr in self.mem_request_attribute.split(',')])
                 queue_opts = (['-V', '-j', 'yes', '-cwd', '-t', '1-%d' % number,
                               '-N', jobname,
                               '-l', strmem,
@@ -406,7 +407,8 @@ class pipelineExecutor(object):
                                     "#PBS -l nodes=1:ppn=1",
                                     # CCM is strict, and doesn't like float values:
                                     "#PBS -l walltime=%s" % (self.time),
-                                    "#PBS -l %s=%dg\n" % (self.mem_request_attribute, m.ceil(self.mem)),
+                                    "#PBS -l %s\n" % ','.join(["%s=%dg" % (attr, m.ceil(self.mem)) for
+                                                              attr in self.mem_request_attribute.split(',')]),
                                     # FIXME add walltime stuff here if specified (and check <= max_walltime ??)
                                     "df /dev/shm >&2",  # FIXME: remove
                                     "cd $PBS_O_WORKDIR",

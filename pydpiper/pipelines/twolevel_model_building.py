@@ -34,7 +34,7 @@ def two_level_pipeline(options : TwoLevelConf):
 
     if options.application.files:
         warnings.warn("Got extra arguments: '%s'" % options.application.files)
-    with open(options.twolevel.csv_file, 'r') as f:
+    with open(options.application.csv_file, 'r') as f:
         try:
             files_df = (pd.read_csv(
                           filepath_or_buffer=f,
@@ -54,6 +54,7 @@ def two_level_pipeline(options : TwoLevelConf):
 
     pipeline = two_level(grouped_files_df=files_df, options=options)
 
+    # TODO write these into the appropriate subdirectory ...
     with open("overall_determinants.csv", 'w') as overall_csv:
         overall_csv.write(pipeline.output.overall_determinants
                           .drop('inv_xfm', axis=1)
@@ -73,6 +74,9 @@ def two_level(grouped_files_df, options : TwoLevelConf):
     grouped_files_df - must contain 'group':<any comparable, sortable type> and 'file':MincAtom columns
     """  # TODO weird naming since the grouped_files_df isn't a GroupBy object?  just files_df?
     s = Stages()
+
+    if grouped_files_df.isnull().values.any():
+        raise ValueError("NaN values in input dataframe; can't go")
 
     if options.mbm.lsq6.target_type == TargetType.bootstrap:
         # won't work since the second level part tries to get the resolution of *its* "first input file", which
@@ -128,6 +132,9 @@ def two_level(grouped_files_df, options : TwoLevelConf):
     # FIXME right now the same options set is being used for both levels -- use options.first/second_level
     second_level_options = copy.deepcopy(options)
     second_level_options.mbm.lsq6 = second_level_options.mbm.lsq6.replace(run_lsq6=False)
+    second_level_options.mbm.segmentation.run_maget = False
+    second_level_options.mbm.maget.maget.mask_only = False
+    second_level_options.mbm.maget.maget.mask = False
 
     # FIXME this is probably a hack -- instead add a --second-level-init-model option to specify which timepoint should be used
     # as the initial model in the second level ???  (at this point it doesn't matter due to lack of lsq6 ...)
@@ -190,21 +197,24 @@ def two_level(grouped_files_df, options : TwoLevelConf):
     # FIXME running MAGeT from within the `two_level` function has the same problem as running it from within `mbm`:
     # it will now run when this pipeline is called from within another one (e.g., n-level), which will be
     # redundant, create filename clashes, etc. -- this should be moved to `two_level_pipeline`.
-    if options.mbm.segmentation.run_maget:
-        maget_options = copy.deepcopy(options)
-        maget_options.maget = options.mbm.maget
-        fixup_maget_options(maget_options=maget_options.maget,
-                            lsq12_options=maget_options.mbm.lsq12,
-                            nlin_options=maget_options.mbm.nlin)
-        del maget_options.mbm
+    # TODO do we need a `pride of atlases` for MAGeT in this pipeline ??
+    # TODO at the moment MAGeT is run within the MBM code, but it could be disabled there and run here
+    #if options.mbm.segmentation.run_maget:
+    #    maget_options = copy.deepcopy(options)
+    #    maget_options.maget = options.mbm.maget
+    #    fixup_maget_options(maget_options=maget_options.maget,
+    #                        lsq12_options=maget_options.mbm.lsq12,
+    #                        nlin_options=maget_options.mbm.nlin)
+    #    maget_options.maget.maget.mask = maget_options.maget.maget.mask_only = False   # already done above
+    #    del maget_options.mbm
 
         # again using a weird combination of vectorized and loop constructs ...
-        s.defer(maget([xfm.resampled for _ix, m in first_level_results.iterrows()
-                       for xfm in m.build_model.xfms.rigid_xfm],
-                      options=maget_options,
-                      prefix="%s_MAGeT" % options.application.pipeline_name,
-                      output_dir=os.path.join(options.application.output_directory,
-                                              options.application.pipeline_name + "_processed")))
+    #    s.defer(maget([xfm.resampled for _ix, m in first_level_results.iterrows()
+    #                   for xfm in m.build_model.xfms.rigid_xfm],
+    #                  options=maget_options,
+    #                  prefix="%s_MAGeT" % options.application.pipeline_name,
+    #                  output_dir=os.path.join(options.application.output_directory,
+    #                                          options.application.pipeline_name + "_processed")))
 
     # TODO resampling to database model ...
 
@@ -216,14 +226,14 @@ def two_level(grouped_files_df, options : TwoLevelConf):
 
 # FIXME: better to replace --files by this for all/most pipelines;
 # then we can enforce presence of metadata in the CSV file ... (pace MINC2)
-def _mk_twolevel_parser(p):
-    p.add_argument("--csv-file", dest="csv_file", type=str, required=True,
-                   help="CSV file containing at least 'group' and 'file' columns")
-    return p
+#def _mk_twolevel_parser(p):
+#    p.add_argument("--csv-file", dest="csv_file", type=str, required=True,
+#                   help="CSV file containing at least 'group' and 'file' columns")
+#    return p
 
 
-_twolevel_parser = BaseParser(_mk_twolevel_parser(ArgParser(add_help=False)), group_name='twolevel')
-twolevel_parser = AnnotatedParser(parser=_twolevel_parser, namespace="twolevel")
+#_twolevel_parser = BaseParser(_mk_twolevel_parser(ArgParser(add_help=False)), group_name='twolevel')
+#twolevel_parser = AnnotatedParser(parser=_twolevel_parser, namespace="twolevel")
 
 
 def main(args):
@@ -231,7 +241,7 @@ def main(args):
           [execution_parser,
            application_parser,
            registration_parser,
-           twolevel_parser,
+           #twolevel_parser,
            AnnotatedParser(parser=mbm_parser, namespace="mbm"),   # TODO use this before 1st-/2nd-level args
            # TODO to combine the information from all three MBM parsers,
            # could use `ConfigArgParse`r `_source_to_settings` (others?) to check whether an option was defaulted

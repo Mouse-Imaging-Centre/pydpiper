@@ -7,6 +7,7 @@ import os
 import sys
 
 import pandas as pd
+from pydpiper.pipelines.MAGeT import get_imgs
 
 from pydpiper.pipelines.MBM import mbm_parser
 from pydpiper.core.stages import Result, Stages
@@ -26,7 +27,12 @@ def asymmetry_pipeline(options):
 
     s = Stages()
 
-    imgs_ = [MincAtom(f, pipeline_sub_dir=processed_dir) for f in options.application.files]
+    #imgs_ = [MincAtom(f, pipeline_sub_dir=processed_dir) for f in options.application.files]
+
+    imgs_ = get_imgs(options.application)
+
+    check_MINC_input_files([img.path for img in imgs_])
+
     imgs  = pd.Series(imgs_, index=[img.filename_wo_ext for img in imgs_])
     flipped_imgs = imgs.apply(lambda img: s.defer(volflip(img)))  # TODO add flags to control flip axis ...
 

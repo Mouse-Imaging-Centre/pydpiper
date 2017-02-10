@@ -31,7 +31,8 @@ from pydpiper.core.arguments import (application_parser,
                                      registration_parser,
                                      stats_parser,
                                      parse,
-                                     AnnotatedParser, BaseParser, CompoundParser, LSQ6Method, nlin_parser)
+                                     AnnotatedParser, BaseParser, CompoundParser, LSQ6Method, nlin_parser,
+                                     _chain_parser)
 
 
 # TODO (general for all option records, not just for the registration chain):
@@ -242,7 +243,7 @@ def chain(options):
                                                 nlin_prefix="common"))
                                                 #, like={atlas_from_init_model_at_this_tp}
     elif options.registration.input_space == InputSpace.lsq12:
-        #TODO: write reader that creates a mincANTS configuration out of an input protocol
+        #TODO: write reader that creates a ANTS configuration out of an input protocol
         # if we're starting with files that are already aligned with an affine transformation
         # (overall scaling is also dealt with), then the target for the non linear registration
         # should be the averge of the current input files.
@@ -742,7 +743,7 @@ if __name__ == "__main__":
            #AnnotatedParser(parser=BaseParser(addLSQ12ArgumentGroup), namespace='lsq12-inter-subj'),
            #addNLINArgumentGroup,
            stats_parser,
-           chain_parser])
+           AnnotatedParser(parser=_chain_parser, prefix="chain", namespace="chain")])
     
     # TODO could abstract and then parametrize by prefix/ns ??
     options = parse(p, sys.argv[1:])

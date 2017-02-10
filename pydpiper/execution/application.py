@@ -36,8 +36,7 @@ def write_stages(stages, name):
     """
     writes all pipeline stages to a file
     """
-    fileForPrinting = os.path.join(os.curdir, "%s_pipeline_stages.txt" % name)
-    with open(fileForPrinting, 'w') as pf:
+    with open(os.path.join(os.curdir, "%s_pipeline_stages.txt" % name), 'w') as pf:
         for i, stage in enumerate(stages):
             # TODO indices of this enumeration only correspond to stage numbers by "coincidence"
             # (a similar iteration is performed elsewhere with the same results) but this is sort of silly/dangerous
