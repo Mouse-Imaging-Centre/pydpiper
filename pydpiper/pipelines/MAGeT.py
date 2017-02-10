@@ -18,7 +18,7 @@ from pydpiper.minc.files            import MincAtom
 from pydpiper.minc.registration     import (check_MINC_input_files, lsq12_nlin,
                                             get_nonlinear_configuration_from_options,
                                             get_linear_configuration_from_options, LinearTransType,
-                                            mincresample_new, mincmath, Interpolation)
+                                            mincresample_new, mincmath, Interpolation, xfmconcat, xfminvert)
 
 
 def get_imgs(options):
@@ -229,7 +229,7 @@ def atlases_from_dir(atlas_lib : str, max_templates : int, pipeline_sub_dir : st
 
 
 # TODO support LSQ6 registrations??
-def maget(imgs : List[MincAtom], options, prefix, output_dir):     # FIXME prefix, output_dir aren't used !!
+def maget(imgs : List[MincAtom], options, prefix, output_dir, build_model_xfms=None):     # FIXME prefix, output_dir aren't used !!
 
     s = Stages()
 
@@ -329,23 +329,34 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir):     # FIXME prefi
                                           on='fake')
                                           #left_on='img', right_on='template')  # TODO do select here instead of below?
 
+            xfm_dict = { x.source : x.xfm for x in build_model_xfms }
+
             template_labelled_imgs = (
                 imgs_and_templates
                 .rename(columns={ 'label_file' : 'template_label_file' })
                 # don't register template to itself, since otherwise atlases would vote on that template twice
                 .select(lambda ix: imgs_and_templates.img[ix].path
-                                     != imgs_and_templates.template[ix].path)  # TODO hardcoded name
+                                     != imgs_and_templates.template[ix].path)  # FIXME hardcoded df name !!
                 .assign(label_file=lambda df: df.apply(axis=1, func=lambda row:
-                           s.defer(mincresample_new(img=row.template_label_file,
-                                                    xfm=s.defer(lsq12_nlin(source=row.img,
-                                                                           target=row.template,
-                                                                           lsq12_conf=lsq12_conf,
-                                                                           nlin_conf=nlin_hierarchy,
-                                                                           resample_source=False)).xfm,
-                                                    like=row.img,
-                                                    invert=True,
-                                                    interpolation=Interpolation.nearest_neighbour,
-                                                    extra_flags=('-keep_real_range',)))))
+                          s.defer(
+                            mincresample_new(
+                              img=row.template_label_file,
+                              xfm=s.defer(
+                                    lsq12_nlin(source=row.img,
+                                               target=row.template,
+                                               lsq12_conf=lsq12_conf,
+                                               nlin_conf=nlin_hierarchy,
+                                               resample_source=False)).xfm
+                                  if build_model_xfms is None
+                                  # use transforms from model building if we have them:
+                                  else s.defer(
+                                         xfmconcat([xfm_dict[row.img],
+                                                   s.defer(xfminvert(xfm_dict[row.template],
+                                                                     subdir="tmp"))])),
+                              like=row.img,
+                              invert=True,
+                              interpolation=Interpolation.nearest_neighbour,
+                              extra_flags=('-keep_real_range',)))))
             )
 
             imgs_with_all_labels = pd.concat([atlas_labelled_imgs[['img', 'label_file']],
