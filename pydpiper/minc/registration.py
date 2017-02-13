@@ -2070,6 +2070,7 @@ def pairwise_antsRegistration(imgs: List[MincAtom],
         create_xfm_for_avgGrid = CmdStage(inputs=(avg_xfmGrid,),
                                           outputs=(avg_xfm,),
                                           cmd=(["make_xfm_for_grid.pl",
+                                                "-clobber",
                                                 avg_xfmGrid.path,
                                                 avg_xfm.path]))
         s.add(create_xfm_for_avgGrid)
