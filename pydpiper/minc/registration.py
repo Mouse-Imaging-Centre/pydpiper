@@ -7,6 +7,7 @@ import sys
 import warnings
 import time
 from operator import mul
+import math
 
 from configargparse import Namespace
 from typing import Any, cast, Dict, Generic, Iterable, List, Optional, Set, Tuple, TypeVar, Union, Callable
@@ -16,9 +17,8 @@ from functools import reduce
 from pydpiper.core.files import FileAtom
 from pydpiper.core.stages import CmdStage, Result, Stages
 from pydpiper.core.util import pairs, AutoEnum, NamedTuple, raise_, flatten
-from pydpiper.minc.files import MincAtom, XfmAtom
+from pydpiper.minc.files import MincAtom, XfmAtom, xfmToMinc
 from pydpiper.minc.containers import XfmHandler
-
 from pyminc.volumes.factory import volumeFromFile  # type: ignore
 
 # TODO push down into lsq12_pairwise?
@@ -85,7 +85,8 @@ LSQ6Conf = NamedTuple("LSQ6Conf", [("run_lsq6", bool),
 LSQ12Conf = NamedTuple('LSQ12Conf', [('run_lsq12', bool),
                                      ('max_pairs', Optional[int]),  # should these be handles, not strings?
                                      ('like_file', Optional[str]),   # in that case, parser could open the file...
-                                     ('protocol', Optional[str])])
+                                     ('protocol', Optional[str]),
+                                     ('generate_tournament_style_lsq12_avg', Optional[bool])])
 
 
 LinearMinctraccConf = NamedTuple("LinearMinctraccConf",
@@ -165,6 +166,14 @@ MincblurMemCfg = NamedTuple("MincblurMemCfg",
 
 default_mincblur_mem_cfg = MincblurMemCfg(base_mem=1.25e-02, mem_per_voxel=5.9e-9,
                                           tmpdir_factor=2.5, include_tmpdir=True)
+
+def minc_displacement(xfm : XfmHandler) -> Result[MincAtom]:
+    # TODO: add dir argument
+    # TODO: this coercion is lame
+    output_grid = xfmToMinc(xfm.xfm.newname_with_suffix("_displ", ext='.mnc', subdir="tmp"))
+    stage = CmdStage(inputs=(xfm.source, xfm.xfm), outputs=(output_grid,),
+                     cmd=['minc_displacement', '-clobber', xfm.source.path, xfm.xfm.path, output_grid.path])
+    return Result(stages=Stages([stage]), output=output_grid)
 
 
 def mincblur(img: MincAtom,
@@ -278,8 +287,8 @@ def mincaverage(imgs: List[MincAtom],
                            [avg.path])
     # averages in a pipeline often indicate important progress. Let's report that back to the user
     # in terms of a status update:
-    status_update_message = "\n\n* * * * * * *\nStatus update: \nFinished creating the following average:\n" \
-                            + str(avg.path) + "\n" + time.ctime() + "\n* * * * * * *\n"
+    status_update_message = "\n\n*\n* * *\n* * * * *\n* * * * * * *\nStatus update: \nFinished creating the following average:\n" \
+                            + str(avg.path) + "\n" + time.ctime() + "\n* * * * * * *\n* * * * *\n* * *\n*\n"
 
     avg_cmd.when_finished_hooks.append(lambda _: print(status_update_message))
 
@@ -343,8 +352,8 @@ def pmincaverage(imgs: List[MincAtom],
 
     # averages in a pipeline often indicate important progress. Let's report that back to the user
     # in terms of a status update:
-    status_update_message = "\n\n* * * * * * *\nStatus update: \nFinished creating the following average:\n" \
-                            + str(avg.path) + "\n" + time.ctime() + "\n* * * * * * *\n"
+    status_update_message = "\n\n*\n* * *\n* * * * *\n* * * * * * *\nStatus update: \nFinished creating the following average:\n" \
+                            + str(avg.path) + "\n" + time.ctime() + "\n* * * * * * *\n* * * * *\n* * *\n*\n"
 
     avg_cmd.when_finished_hooks.append(lambda _: print(status_update_message))
 
@@ -2015,6 +2024,99 @@ def lsq12_pairwise(imgs: List[MincAtom],
 
     return Result(stages=s, output=avgs_and_xfms)
 
+def pairwise_antsRegistration(imgs: List[MincAtom],
+                              output_dir_for_avg: str = None,
+                              output_name_wo_ext: str = None):
+    s = Stages()
+
+    if len(imgs) < 2:
+        raise ValueError("currently need at least two images")
+
+    if not output_name_wo_ext:
+        output_name_wo_ext = "full_pairwise_nlin_antsRegistration"
+
+    if not output_dir_for_avg:
+        raise ValueError("Please specify an output directory for the final average in pairwise_antsRegistration.")
+
+    final_avg = MincAtom(name=os.path.join(output_dir_for_avg, output_name_wo_ext + ".mnc"),
+                         pipeline_sub_dir=output_dir_for_avg)
+
+    def avg_nlin_xfm_from(src_img: MincAtom,
+                          target_imgs: List[MincAtom]):
+        # antsRegistration returns stages and two XfmHandlers
+        # 1) source -> target, 2) target -> source
+        # we only care about the first one here
+        xfmHs = [s.defer(antsRegistration(source=src_img,
+                                         target=target_img))[0]
+                        for target_img in target_imgs]
+
+        # xfmavg is not well defined on transformations that have
+        # non linear grids associated with them. Turn all transformations
+        # into grid file, average those and make a transformation for
+        # the final average grid
+
+        xfmGrids = [s.defer(minc_displacement(single_xfmH)) for single_xfmH in xfmHs]
+
+        avg_xfmGrid = s.defer(mincaverage(imgs=xfmGrids,
+                                          output_dir=os.path.join(src_img.pipeline_sub_dir,
+                                                                  src_img.output_sub_dir,
+                                                                  "transforms"),
+                                          name_wo_ext="%s_avg_nlin_antsReg_grid" % src_img.filename_wo_ext))
+
+        avg_xfm = XfmAtom(name=os.path.join(src_img.pipeline_sub_dir,
+                                            src_img.output_sub_dir,
+                                            "transforms",
+                                            "%s_avg_nlin_antsReg.xfm" % src_img.filename_wo_ext),
+                          pipeline_sub_dir=src_img.pipeline_sub_dir,
+                          output_sub_dir=src_img.output_sub_dir)
+
+        create_xfm_for_avgGrid = CmdStage(inputs=(avg_xfmGrid,),
+                                          outputs=(avg_xfm,),
+                                          cmd=(["make_xfm_for_grid.pl",
+                                                "-clobber",
+                                                avg_xfmGrid.path,
+                                                avg_xfm.path]))
+        s.add(create_xfm_for_avgGrid)
+
+        res = s.defer(mincresample(img=src_img,
+                                   xfm=avg_xfm,
+                                   like=src_img,
+                                   interpolation=Interpolation.sinc))
+        return XfmHandler(xfm=avg_xfm,
+                          source=src_img,
+                          target=final_avg,
+                          resampled=res)
+
+    avg_xfmHs = [avg_nlin_xfm_from(src_img=img, target_imgs=imgs) for img in imgs]
+
+    final_avg = s.defer(mincaverage(imgs=[xfmH.resampled for xfmH in avg_xfmHs],
+                                    avg_file=final_avg))
+
+    return Result(stages=s, output=WithAvgImgs(avg_imgs=[final_avg], avg_img=final_avg, output=avg_xfmHs))
+
+
+
+def nlin_pairwise(imgs: List[MincAtom],
+                  nlin_dir: str,
+                  create_qc_images: bool = True) -> Result[WithAvgImgs[List[XfmHandler]]]:
+    """
+
+    :param img: a list of minc atoms for which a full pairwise non linear registration will be run
+    :param nlin_dir: the directory that will hold the average non linear file: for each input file,
+                     we compute the average non linear transformation towards all the other input
+                     files. That average transformation is applied to the input, and we average
+                     those files.
+    :param create_qc_images:
+    :return: and array of transformations (avg nlin towards all other files), and the average MincAtom
+    """
+    s = Stages()
+
+    avgs_and_xfms = s.defer(pairwise_antsRegistration(imgs=imgs,
+                                                      output_dir_for_avg=nlin_dir))
+
+    return Result(stages=s, output=avgs_and_xfms)
+
+
 
 K = TypeVar('K')
 
@@ -2060,7 +2162,257 @@ def nlin_build_model(imgs           : List[MincAtom],
         return Result(stages=s, output=nlin_result)
     else:
         # this should never happen
-        raise ValueError("The nonlinear configuration passed to lsq12_nlin_build_model is neither for minctracc nor for ANTS.")
+        raise ValueError("The nonlinear configuration passed to nlin_build_model is neither for minctracc nor for ANTS.")
+
+
+
+def generate_halfway_transform(input_xfm_handler: XfmHandler,
+                               like_file:         MincAtom) -> Result[XfmAtom]:
+    """
+    This function produces a transformation that moves halfway along
+    the provided transform. It works as follows:
+    1) combine all transforms into a single grid
+    2) multiply the grid by 0.5
+    3) create a .xfm file to point at the created grid file
+    """
+    s = Stages()
+
+    # combine all transformations into a single grid:
+    full_grid = s.defer(minc_displacement(input_xfm_handler))
+
+    # multiply the vectors by 0.5
+    halfway_grid = s.defer(mincmath(op='mult',
+                                    const=0.5,
+                                    vols=[full_grid],
+                                    subdir="tmp",
+                                    new_name=full_grid.filename_wo_ext + "_halfway"))
+
+    # create an XfmAtom for this grid file, and
+    # write its information to disk
+    halfway_xfm = input_xfm_handler.xfm.newname_with_suffix(suffix="_halfway")
+    # write the xfm file:
+    create_xfm_text_file_cmd = CmdStage(inputs=(halfway_grid,),
+                                        outputs=(halfway_xfm,),
+                                        cmd=(["make_xfm_for_grid.pl",
+                                              halfway_grid.path,
+                                              halfway_xfm.path]))
+    s.add(create_xfm_text_file_cmd)
+    return Result(stages=s, output=halfway_xfm)
+
+
+
+def nonlinear_midpoint_average(img_A: MincAtom,
+                               img_B: MincAtom,
+                               out_name_wo_ext: str,
+                               out_dir: str) -> Result[MincAtom]:
+    """
+    :param img_A:
+    :param img_B:
+    :return: the midway point between img_A and img_B --> img_AB
+    """
+    s = Stages()
+
+    # start with an antRegistration call between the two files
+    xfm_handlers_antsReg = s.defer(antsRegistration(source=img_A,
+                                                    target=img_B,
+                                                    subdir='tmp'))
+
+    # generate halfway transformations
+    xfm_handler_A_to_B = xfm_handlers_antsReg[0]
+    xfm_handler_B_to_A = xfm_handlers_antsReg[1]
+
+    transform_A_to_B_halfway = s.defer(generate_halfway_transform(input_xfm_handler=xfm_handler_A_to_B,
+                                                                  like_file=img_B))
+    transform_B_to_A_halfway = s.defer(generate_halfway_transform(input_xfm_handler=xfm_handler_B_to_A,
+                                                                  like_file=img_A))
+    # resample A and B halfway:
+    A_halfway_to_B = s.defer(mincresample(img=img_A,
+                                          xfm=transform_A_to_B_halfway,
+                                          like=img_B,
+                                          subdir='tmp',
+                                          interpolation=Interpolation.sinc))
+    B_halfway_to_A = s.defer(mincresample(img=img_B,
+                                          xfm=transform_B_to_A_halfway,
+                                          like=img_A,
+                                          subdir='tmp',
+                                          interpolation=Interpolation.sinc))
+
+    # the output file (avg of both files resampled to the midway point)
+    avg_mid_point = s.defer(mincaverage(imgs=[A_halfway_to_B, B_halfway_to_A],
+                                        output_dir=out_dir,
+                                        name_wo_ext=out_name_wo_ext))
+
+    return Result(stages=s, output=avg_mid_point)
+
+
+def tournament_style_model(imgs                  : List[MincAtom],
+                           tournament_dir        : str,
+                           tournament_name_wo_ext: Optional[str] = "tournament") -> Result[MincAtom]:
+    """
+    generate an average of the input files based on a tournament style bracket,
+    for example given 6 input images (1,2,3,4,5,6):
+
+    1 ---|
+         |---|
+    2 ---|   |
+             |---|
+    3 ---|   |   |
+         |---|   |
+    4 ---|       |--- final average
+                 |
+        5 ---|   |
+             |---|
+        6 ---|
+
+
+    :param imgs:
+    :param tournament_dir:
+    :return:
+    """
+    s = Stages()
+
+    if len(imgs) == 1:
+        # simply return this image:
+        return Result(stages=s, output=imgs[0])
+    else:
+        # split up the list, calculate averages for the sublists and average
+        midpoint_avg = s.defer(nonlinear_midpoint_average(img_A = s.defer(tournament_style_model(imgs=imgs[: math.floor(len(imgs)/2)],
+                                                                                                 tournament_dir=tournament_dir,
+                                                                                                 tournament_name_wo_ext=tournament_name_wo_ext + "_L")),
+                                                          img_B = s.defer(tournament_style_model(imgs=imgs[math.floor(len(imgs)/2) :],
+                                                                                                 tournament_dir=tournament_dir,
+                                                                                                 tournament_name_wo_ext=tournament_name_wo_ext + "_R")),
+                                                          out_name_wo_ext=tournament_name_wo_ext,
+                                                          out_dir=tournament_dir))
+        return Result(stages=s, output=midpoint_avg)
+
+
+def antsRegistration(source: MincAtom,
+                     target: MincAtom,
+                     #conf: antsRegistrationConf,
+                     transform_source: Optional[XfmAtom] = None,
+                     transform_target: Optional[XfmAtom] = None,
+                     transform_source_to_target_wo_ext: Optional[XfmAtom] = None,
+                     generation: Optional[int] = None,
+                     subdir: Optional[str] = None,
+                     resample_source_and_target: Optional[bool] = False,
+                     resample_subdir: Optional[str] = 'tmp'):
+    """
+
+    :param source: fixedImage
+    :param target: movingImage
+    :param conf:
+    :param transform_source: for --initial-fixed-transform
+    :param transform_target: for --initial-moving-transform
+    :param transform_source_to_target_wo_ext: name of the target_to_source transform will be based on this
+    :param generation:
+    :param subdir:
+    :param resample_source:
+    :return:
+    """
+    s = Stages()
+
+    source_subdir = subdir if subdir is not None else 'transforms'
+
+    # Deal with the transformations first. This function will return two XfmHandlers. One
+    # from source to target, and one in the other direction.
+    if transform_source_to_target_wo_ext:
+        xfm_source_to_target = XfmAtom(name=os.path.join(source.pipeline_sub_dir,
+                                                         source.output_sub_dir,
+                                                         source_subdir,
+                                                         "%s.xfm" % (transform_source_to_target_wo_ext)),
+                                       pipeline_sub_dir=source.pipeline_sub_dir,
+                                       output_sub_dir=source.output_sub_dir)
+    elif generation is not None:
+        xfm_source_to_target = XfmAtom(name=os.path.join(source.pipeline_sub_dir,
+                                                         source.output_sub_dir,
+                                                         source_subdir,
+                                                         "%s_antsR_to_%s_nlin_%s.xfm" %
+                                                         (source.filename_wo_ext,
+                                                          target.filename_wo_ext,
+                                                          generation)),
+                                       pipeline_sub_dir=source.pipeline_sub_dir,
+                                       output_sub_dir=source.output_sub_dir)
+    else:
+        xfm_source_to_target = XfmAtom(name=os.path.join(source.pipeline_sub_dir,
+                                                         source.output_sub_dir,
+                                                         source_subdir,
+                                                         "%s_antsR_to_%s.xfm" %
+                                                         (source.filename_wo_ext,
+                                                          target.filename_wo_ext)),
+                                       pipeline_sub_dir=source.pipeline_sub_dir,
+                                       output_sub_dir=source.output_sub_dir)
+    # model the target_to_source in a similar manner. Given that
+    # antsRegistration will be passed the "output prefix" for the transform,
+    # being the whole filename with .xfm, this transform will live in a
+    # directory belonging to the source image.
+    # TODO: is this what we want? perhaps we actually want to move this transformation
+    # over to a subdirectory of the target file...
+    xfm_target_to_source = xfm_source_to_target.newname_with_suffix("_inverse", subdir='tmp')
+
+    # run full command
+
+    # outputs from antRegistration are:
+    #   {output_prefix}_grid_0.mnc
+    #   {output_prefix}.xfm
+    #   {output_prefix}_inverse_grid_0.mnc
+    #   {output_prefix}_inverse.xfm
+
+    # Outputs:
+    # 1) transform from source_to_target
+    # 2) transform from target_to_source --> need to create an XfmHandler for this one
+
+    # TODO: use a proper configuration to set the parameters
+    # TODO: add a second metric for the gradients (and get gradient files)
+    cmd_ants_reg = CmdStage(
+        inputs=(source, target, source.mask, target.mask) if source.mask and target.mask else (source, target),
+        outputs=(xfm_source_to_target, xfm_target_to_source),
+        cmd=['antsRegistration'] \
+            + ['--dimensionality', '3'] \
+            + ['--verbose'] \
+            + ['--minc'] \
+            + ['--collapse-output-transforms', '1'] \
+            + ['--write-composite-transform'] \
+            + ['--winsorize-image-intensities', '[0.01,0.99]'] \
+            + ['--use-histogram-matching', '1'] \
+            + ['--float', '0'] \
+            + ['--output', '[' + xfm_source_to_target.dir + '/' + xfm_source_to_target.filename_wo_ext + ']'] \
+            + ['--transform', 'SyN[0.5,3,0]'] \
+            + ['--convergence', '[100x100x100x100x50x10,1e-6,10]'] \
+            + ['--metric', 'CC[' + source.path + ',' + target.path + ',1,6]'] \
+            + (['--masks', '[' + source.mask.path + ',' +
+                target.mask.path + ']'] if source.mask.path and target.mask.path else []) \
+            + ['--shrink-factors', '16x8x6x4x2x1'] \
+            + ['--smoothing-sigmas', '8x4x3x2x1x0vox'])
+    #TODO: memory estimation
+    s.add(cmd_ants_reg)
+
+    # create file names for the two output files. It's better to use our standard
+    # mincresample command for this, because that also deals with any associated
+    # masks, whereas antsRegistration would only resample the input files.
+    resampled_source = (s.defer(mincresample(img=source,
+                                             xfm=xfm_source_to_target,
+                                             like=target,
+                                             interpolation=Interpolation.sinc,
+                                             subdir=resample_subdir))
+                        if resample_source_and_target else None)
+    resampled_target = (s.defer(mincresample(img=target,
+                                             xfm=xfm_target_to_source,
+                                             like=source,
+                                             interpolation=Interpolation.sinc,
+                                             subdir=resample_subdir))
+                        if resample_source_and_target else None)
+
+    # return an XfmHandler for both the forward and the inverse transformations
+    return Result(stages=s,
+                  output=(XfmHandler(source=source,
+                                     target=target,
+                                     xfm=xfm_source_to_target,
+                                     resampled=resampled_source),
+                          XfmHandler(source=target,
+                                     target=source,
+                                     xfm=xfm_target_to_source,
+                                     resampled=resampled_target)))
 
 
 def lsq12_nlin_build_model(imgs       : List[MincAtom],
@@ -2086,8 +2438,14 @@ def lsq12_nlin_build_model(imgs       : List[MincAtom],
     # extract the resampled lsq12 images
     lsq12_resampled_imgs = [xfm_handler.resampled for xfm_handler in lsq12_result.output]
 
+    if lsq12_conf.generate_tournament_style_lsq12_avg:
+        target_for_nlin_stages = s.defer(tournament_style_model(imgs=lsq12_resampled_imgs,
+                                                                tournament_dir=lsq12_dir[0:len(lsq12_dir)-6] + "_tournament"))
+    else:
+        target_for_nlin_stages = lsq12_result.avg_img
+
     nlin_result = s.defer(nlin_build_model(imgs=lsq12_resampled_imgs,
-                                           initial_target=lsq12_result.avg_img,
+                                           initial_target=target_for_nlin_stages,
                                            conf=nlin_conf,
                                            nlin_dir=nlin_dir,
                                            nlin_prefix=nlin_prefix))
@@ -2102,6 +2460,57 @@ def lsq12_nlin_build_model(imgs       : List[MincAtom],
     return Result(stages=s, output=WithAvgImgs(output=from_imgs_to_nlin_xfms,
                                                avg_img=nlin_result.avg_img,
                                                avg_imgs=nlin_result.avg_imgs))
+
+def lsq12_nlin_pairwise(imgs       : List[MincAtom],
+                        lsq12_conf : LSQ12Conf,
+                        lsq12_dir  : str,
+                        nlin_dir   : str,
+                        nlin_conf  : Union[MultilevelMinctraccConf, MultilevelMincANTSConf],
+                        resolution : float,
+                        nlin_prefix : str = "") -> Result[WithAvgImgs[List[XfmHandler]]]:
+    """
+    Runs both a pairwise lsq12 registration followed by a non linear
+    registration procedure on the input files.
+    """
+    s = Stages()
+
+    # TODO: make sure that we pass on a correct configuration for lsq12_pairwise
+    # it should be able to get this passed in....
+    lsq12_result = s.defer(lsq12_pairwise(imgs=imgs, like=None,
+                                          resolution=resolution,
+                                          lsq12_conf=lsq12_conf,
+                                          lsq12_dir=lsq12_dir))
+
+    # extract the resampled lsq12 images
+    lsq12_resampled_imgs = [xfm_handler.resampled for xfm_handler in lsq12_result.output]
+
+    if lsq12_conf.generate_tournament_style_lsq12_avg:
+        raise ValueError("You specified both --generate-tournament-style-lsq12-avg and --nlin-pairwise. "
+                         "When the non linear alignment is performed using full pairwise registrations, "
+                         "the lsq12 average is never used as a target. As such it does not make any "
+                         "sense to spend a lot of computation time in building a crisp 12 parameter "
+                         "average. Use either --generate-tournament-style-lsq12-avg together with "
+                         "--no-nlin-pairwise, or if you want to run the full pairwise non linear "
+                         "registrations use --no-generate-tournament-style-lsq12-avg together with "
+                         "--nlin-pairwise")
+
+    nlin_result = s.defer(nlin_pairwise(imgs=lsq12_resampled_imgs,
+                                            nlin_dir=nlin_dir))
+
+    # concatenate the transformations from lsq12 and nlin before returning them
+    from_imgs_to_nlin_xfms = [s.defer(concat_xfmhandlers(xfms=[lsq12_xfmh, nlin_xfmh],
+                                                         name=img.filename_wo_ext + "_lsq12_and_nlin")) for
+                              lsq12_xfmh, nlin_xfmh, img in zip(lsq12_result.output,
+                                                                nlin_result.output,
+                                                                imgs)]
+
+    return Result(stages=s, output=WithAvgImgs(output=from_imgs_to_nlin_xfms,
+                                               avg_img=nlin_result.avg_img,
+                                               avg_imgs=nlin_result.avg_imgs))
+
+
+
+
 
 
 def can_read_MINC_file(filename: str) -> bool:
@@ -2903,8 +3312,8 @@ def create_quality_control_images(imgs: List[MincAtom],
         montage_stage.set_log_file(os.path.join(os.path.dirname(montage_output_fileatom.path),
                                                 "log",
                                                 montage_output_fileatom.filename_wo_ext + ".log"))
-        message_to_print = ("\n* * * * * * *\nPlease consider the following verification "
-                            "image, showing %s. \n%s\n* * * * * * *\n" % (message, montage_output_fileatom.path))
+        message_to_print = ("\n\n*\n* * *\n* * * * *\n* * * * * * *\nPlease consider the following verification "
+                            "image, showing %s. \n%s\n* * * * * * *\n* * * * *\n* * *\n*\n" % (message, montage_output_fileatom.path))
 
         montage_stage.when_finished_hooks.append(
             lambda _: print(message_to_print))
