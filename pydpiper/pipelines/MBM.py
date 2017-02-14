@@ -21,7 +21,7 @@ from pydpiper.core.stages       import Result, Stages
 from pydpiper.minc.files        import MincAtom, XfmAtom
 from pydpiper.minc.registration import (lsq6_nuc_inorm, lsq12_nlin_build_model, registration_targets,
                                         LSQ6Conf, LSQ12Conf, get_resolution_from_file, concat_xfmhandlers,
-                                        get_nonlinear_configuration_from_options,
+                                        get_nonlinear_configuration_from_options, lsq12_nlin_pairwise,
                                         invert_xfmhandler, check_MINC_input_files, lsq12_nlin, MultilevelMincANTSConf,
                                         LinearTransType, get_linear_configuration_from_options, mincresample_new,
                                         Interpolation, param2xfm)
@@ -195,13 +195,22 @@ def mbm(imgs : List[MincAtom], options : MBMConf, prefix : str, output_dir : str
                                                               reg_method=options.mbm.nlin.reg_method,
                                                               file_resolution=resolution)
 
-    lsq12_nlin_result = s.defer(lsq12_nlin_build_model(imgs=[xfm.resampled for xfm in lsq6_result],
-                                                       resolution=resolution,
-                                                       lsq12_dir=lsq12_dir,
-                                                       nlin_dir=nlin_dir,
-                                                       nlin_prefix=prefix,
-                                                       lsq12_conf=options.mbm.lsq12,
-                                                       nlin_conf=full_hierarchy))
+    if not options.mbm.nlin.nlin_pairwise:
+        lsq12_nlin_result = s.defer(lsq12_nlin_build_model(imgs=[xfm.resampled for xfm in lsq6_result],
+                                                           resolution=resolution,
+                                                           lsq12_dir=lsq12_dir,
+                                                           nlin_dir=nlin_dir,
+                                                           nlin_prefix=prefix,
+                                                           lsq12_conf=options.mbm.lsq12,
+                                                           nlin_conf=full_hierarchy))
+    else:
+        lsq12_nlin_result = s.defer(lsq12_nlin_pairwise(imgs=[xfm.resampled for xfm in lsq6_result],
+                                                        resolution=resolution,
+                                                        lsq12_dir=lsq12_dir,
+                                                        nlin_dir=nlin_dir,
+                                                        nlin_prefix=prefix,
+                                                        lsq12_conf=options.mbm.lsq12,
+                                                        nlin_conf=full_hierarchy))
 
     inverted_xfms = [s.defer(invert_xfmhandler(xfm)) for xfm in lsq12_nlin_result.output]
 

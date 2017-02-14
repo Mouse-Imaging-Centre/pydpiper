@@ -566,6 +566,7 @@ def _mk_lsq12_parser():
     # group = parser.add_argument_group("LSQ12 registration options",
     #                                  "Options for performing a pairwise, affine registration")
     p.set_defaults(run_lsq12=True)
+    p.set_defaults(generate_tournament_style_lsq12_avg=False)
     p.add_argument("--run-lsq12", dest="run_lsq12",
                    action="store_true",
                    help="Actually run the 12 parameter alignment [default = %(default)s]")
@@ -587,6 +588,17 @@ def _mk_lsq12_parser():
                         "Parameters must be specified as in the following example: \n"
                         "applications_testing/test_data/minctracc_example_linear_protocol.csv \n"
                         "[Default = %(default)s].")
+    p.add_argument("--generate-tournament-style-lsq12-avg", dest="generate_tournament_style_lsq12_avg",
+                   action="store_true",
+                   help="Instead of creating the average of the lsq12 resampled files "
+                        "by simply averaging them directly, create an iterative average "
+                        "as follows. Perform a non linear registration between pairs "
+                        "of files. Resample each file halfway along that transformation "
+                        "in order for them to end up in the middle. Average those two files. "
+                        "Then continue on to the next level as in a tournament. [default = %(default)s]")
+    p.add_argument("--no-generate-tournament-style-lsq12-avg", dest="generate_tournament_style_lsq12_avg",
+                   action="store_false",
+                   help="Opposite of --generate-tournament-style-lsq12-avg")
     return p
 
 
@@ -610,10 +622,18 @@ def _mk_nlin_parser(p: ArgParser):
                             "applications_testing/test_data/minctracc_example_nlin_protocol.csv \n"
                             "applications_testing/test_data/mincANTS_example_nlin_protocol.csv \n"
                             "[Default = %(default)s]")
+    p.set_defaults(nlin_pairwise=False)
+    group.add_argument("--nlin-pairwise", dest="nlin_pairwise",
+                       action='store_true',
+                       help="Run all possible pairwise non linear registrations. [default = %(default)s]")
+    group.add_argument("--no-nlin-pairwise", dest="nlin_pairwise",
+                       action='store_false',
+                       help="Opposite of --nlin-pairwise")
     return p
 
 NLINConf = NamedTuple('NLINConf', [('reg_method', str),  # TODO make this an enumerated type
-                                   ('nlin_protocol', Optional[str])])
+                                   ('nlin_protocol', Optional[str]),
+                                   ('nlin_pairwise', bool)])
 
 def to_nlin_conf(nlin_args : Namespace) -> NLINConf:
     return NLINConf(**nlin_args.__dict__)
@@ -626,7 +646,7 @@ nlin_parser = AnnotatedParser(parser=_nlin_parser, namespace="nlin")  #, cast=to
 def _mk_segmentation_parser(parser : ArgParser, default : bool):
     group = parser.add_argument_group("Segmentation", "Segmentation options.")
     group.add_argument("--run-maget", action='store_true', dest="run_maget",
-                       help="Run MAGeT segmentation.")
+                       help="Run MAGeT segmentation. [default = %(default)s]")
     group.add_argument("--no-run-maget", dest="run_maget",
                        action='store_false', help="Don't run MAGeT segmentation")
     parser.set_defaults(run_maget=True)

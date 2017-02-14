@@ -5,9 +5,9 @@ import pandas as pd
 
 from pydpiper.core.stages import Stages, CmdStage, Result
 from pydpiper.core.util   import NamedTuple
-from pydpiper.minc.files  import MincAtom, xfmToMinc
+from pydpiper.minc.files  import MincAtom
 from pydpiper.minc.containers import XfmHandler
-from pydpiper.minc.registration import concat_xfmhandlers, invert_xfmhandler, mincmath
+from pydpiper.minc.registration import concat_xfmhandlers, invert_xfmhandler, mincmath, minc_displacement
 
 
 
@@ -24,16 +24,6 @@ def lin_from_nlin(xfm : XfmHandler) -> Result[XfmHandler]:
     return Result(stages=Stages([stage]),
                   output=XfmHandler(xfm=out_xfm, source=xfm.source,
                                     target=xfm.target))
-
-
-def minc_displacement(xfm : XfmHandler) -> Result[MincAtom]:
-    # TODO: add dir argument
-    # TODO: this coercion is lame
-    output_grid = xfmToMinc(xfm.xfm.newname_with_suffix("_displ", ext='.mnc', subdir="tmp"))
-    stage = CmdStage(inputs=(xfm.source, xfm.xfm), outputs=(output_grid,),
-                     cmd=['minc_displacement', '-clobber', xfm.source.path, xfm.xfm.path, output_grid.path])
-    return Result(stages=Stages([stage]), output=output_grid)
-
 
 def mincblob(op : str, grid : MincAtom, subdir : str = "tmp") -> Result[MincAtom]:
     """
