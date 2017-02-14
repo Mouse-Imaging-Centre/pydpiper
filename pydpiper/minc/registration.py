@@ -290,8 +290,74 @@ def mincaverage(imgs: List[MincAtom],
 PMincAverageMemCfg = NamedTuple("PMincAverageMemCfg", [('base_mem', float), ('mem_per_voxel', float)])
 default_pmincaverage_mem_cfg = PMincAverageMemCfg(base_mem=0.5, mem_per_voxel=14.0/(430*13158000.0))
 
+
+def mincbigaverage(imgs : List[MincAtom],
+                   name_wo_ext: str = "average",
+                   avgnum: Optional[int] = None,
+                   robust: Optional[bool] = None,
+                   output_dir: str = '.',
+                   avg_file: Optional[MincAtom] = None,
+                   sdfile: Optional[str] = None,
+                   tmpdir: Optional[str] = None,
+                   copy_header_from_first_input: bool = False):
+
+
+    if len(imgs) == 0:
+        raise ValueError("`mincbigaverage` arg `imgs` is empty (can't average zero files)")
+
+    if copy_header_from_first_input:
+        # TODO: should be logged, not just printed?
+        warnings.warn("Warning: mincbigaverage doesn't implement copy_header; use mincaverage instead")
+
+    s = Stages()
+
+    avg = avg_file or MincAtom(name=os.path.join(output_dir, '%s.mnc' % name_wo_ext),
+                               orig_name=None,
+                               pipeline_sub_dir=output_dir)
+
+    # TODO use --filelist instead of putting all files on command line?
+    avg_cmd = CmdStage(inputs=tuple(imgs), outputs=(avg,),
+                       cmd=["mincbigaverage"]
+                           + (["--avgnum", avgnum] if avgnum else [])
+                           + (["--robust"] if robust else [])
+                           + (["--tmpdir", tmpdir] if tmpdir else [])
+                           + (["--sdfile", sdfile] if sdfile else [])
+                           + sorted([img.path for img in imgs]) + [avg.path])
+
+    # if all input files have masks associated with them, add the combined mask to the average:
+    all_inputs_have_masks = all((img.mask for img in imgs))
+
+    if all_inputs_have_masks:
+        combined_mask = (MincAtom(name=os.path.join(avg_file.dir, '%s_mask.mnc' % avg_file.filename_wo_ext),
+                                  orig_name=None,
+                                  pipeline_sub_dir=avg_file.pipeline_sub_dir)
+                         if avg_file else
+                         MincAtom(name=os.path.join(output_dir, '%s_mask.mnc' % name_wo_ext),
+                                  orig_name=None,
+                                  pipeline_sub_dir=output_dir))
+        s.defer(mincmath(op='max',
+                         # set comprehension loses order (OK as max is associative, commutative)
+                         # but removes duplicates; 'sorted' preserved determinism:
+                         vols=sorted({img_inst.mask for img_inst in imgs}),
+                         out_atom=combined_mask))
+        avg.mask = combined_mask
+
+    # TODO do we need to set memory?  test!
+
+    # averages in a pipeline often indicate important progress. Let's report that back to the user
+    # in terms of a status update:
+    status_update_message = "\n\n* * * * * * *\nStatus update: \nFinished creating the following average:\n" \
+                            + str(avg.path) + "\n" + time.ctime() + "\n* * * * * * *\n"
+
+    avg_cmd.when_finished_hooks.append(lambda _: print(status_update_message))
+
+    s.add(avg_cmd)
+
+    return Result(stages=s, output=avg)
+
+
 # FIXME this doesn't implement the avg_file and other mincaverage stuff (other than copy_header ...)
-# ... maybe there's enough similarity to parametrize over these and maybe others (xfmavg?!)
+# TODO  maybe there's enough similarity to parametrize over these and maybe others (xfmavg?!)
 def pmincaverage(imgs: List[MincAtom],
                  name_wo_ext: str = "average",
                  output_dir: str = '.',
@@ -1596,7 +1662,7 @@ def minctracc_NLIN_build_model(imgs: List[MincAtom],
                                initial_target: MincAtom,
                                conf: MultilevelMinctraccConf,
                                nlin_dir: str,
-                               mincaverage = pmincaverage) -> Result[WithAvgImgs[List[XfmHandler]]]:
+                               mincaverage = mincbigaverage) -> Result[WithAvgImgs[List[XfmHandler]]]:
     if len(conf.confs) == 0:
         raise ValueError("No configurations supplied ...")
     s = Stages()
@@ -1615,7 +1681,7 @@ def mincANTS_NLIN_build_model(imgs: List[MincAtom],
                               conf: MultilevelMincANTSConf,
                               nlin_dir: str,
                               nlin_prefix : str = "",
-                              mincaverage = pmincaverage) -> Result[WithAvgImgs[List[XfmHandler]]]:
+                              mincaverage = mincbigaverage) -> Result[WithAvgImgs[List[XfmHandler]]]:
     """
     This functions runs a hierarchical ANTS registration on the input
     images (imgs) creating an unbiased average.
@@ -1894,7 +1960,7 @@ def multilevel_pairwise_minctracc(imgs: List[MincAtom],
                                   # suggesting that the pairwise conf being a list of confs is inappropriate
                                   like: MincAtom = None,
                                   output_dir_for_avg: str = ".",
-                                  mincaverage=mincaverage,
+                                  mincaverage=mincbigaverage,
                                   output_name_for_avg: str = None) -> Result[WithAvgImgs[List[XfmHandler]]]:
     """Pairwise registration of all images.
     max_pairs - number of images to register each image against. (Currently we might register against one fewer.)
@@ -1996,7 +2062,7 @@ def lsq12_pairwise(imgs: List[MincAtom],
                    lsq12_dir: str,
                    create_qc_images: bool = True,
                    like: MincAtom = None,
-                   mincaverage = pmincaverage) -> Result[WithAvgImgs[List[XfmHandler]]]:
+                   mincaverage = mincbigaverage) -> Result[WithAvgImgs[List[XfmHandler]]]:
 
     minctracc_conf = get_linear_configuration_from_options(conf=lsq12_conf,
                                                            transform_type=LinearTransType.lsq12,
@@ -2549,8 +2615,13 @@ def lsq6_nuc_inorm(imgs: List[MincAtom],
             resampled_input.mask = mask_to_add
 
     if create_average:
-        s.defer(mincaverage(imgs=final_resampled_lsq6_files,
-                            output_dir=lsq6_dir))
+        if lsq6_options.copy_header_info:
+            s.defer(mincaverage(imgs=final_resampled_lsq6_files,
+                                output_dir=lsq6_dir,
+                                copy_header_from_first_input=True))
+        else:
+            s.defer(mincbigaverage(imgs=final_resampled_lsq6_files,
+                                   output_dir=lsq6_dir))
 
     if create_qc_images:
         s.defer(create_quality_control_images(imgs=final_resampled_lsq6_files,
