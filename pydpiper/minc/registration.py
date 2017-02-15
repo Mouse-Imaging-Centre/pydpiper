@@ -326,7 +326,7 @@ def mincbigaverage(imgs : List[MincAtom],
 
     # TODO use --filelist instead of putting all files on command line?
     avg_cmd = CmdStage(inputs=tuple(imgs), outputs=(avg,),
-                       cmd=["mincbigaverage"]
+                       cmd=["mincbigaverage", "-clobber"]
                            + (["--avgnum", avgnum] if avgnum else [])
                            + (["--robust"] if robust else [])
                            + (["--tmpdir", tmpdir] if tmpdir else [])
@@ -1969,7 +1969,7 @@ def multilevel_pairwise_minctracc(imgs: List[MincAtom],
                                   # suggesting that the pairwise conf being a list of confs is inappropriate
                                   like: MincAtom = None,
                                   output_dir_for_avg: str = ".",
-                                  mincaverage=mincbigaverage,
+                                  mincaverage = mincbigaverage,
                                   output_name_for_avg: str = None) -> Result[WithAvgImgs[List[XfmHandler]]]:
     """Pairwise registration of all images.
     max_pairs - number of images to register each image against. (Currently we might register against one fewer.)
