@@ -2121,13 +2121,27 @@ def pairwise_antsRegistration(imgs: List[MincAtom],
         # into grid file, average those and make a transformation for
         # the final average grid
 
-        xfmGrids = [s.defer(minc_displacement(single_xfmH)) for single_xfmH in xfmHs]
+        #xfmGrids = [s.defer(minc_displacement(single_xfmH)) for single_xfmH in xfmHs]
+        xfms_from_xfmHs = [xfmH.xfm for xfmH in xfmHs]
+        avg_xfmGrid = MincAtom(name=os.path.join(src_img.pipeline_sub_dir,
+                                                 src_img.output_sub_dir,
+                                                 "transforms",
+                                                 "%s_avg_nlin_antsReg_grid.mnc" % src_img.filename_wo_ext),
+                               pipeline_sub_dir=src_img.pipeline_sub_dir)
 
-        avg_xfmGrid = s.defer(mincaverage(imgs=xfmGrids,
-                                          output_dir=os.path.join(src_img.pipeline_sub_dir,
-                                                                  src_img.output_sub_dir,
-                                                                  "transforms"),
-                                          name_wo_ext="%s_avg_nlin_antsReg_grid" % src_img.filename_wo_ext))
+        list_of_grids = [ "%s/%s_grid_0.mnc" % (xfmH.xfm.dir, xfmH.xfm.filename_wo_ext) for xfmH in xfmHs]
+
+        custom_minc_avg = CmdStage(inputs=tuple(xfms_from_xfmHs),
+                                   outputs=(avg_xfmGrid,),
+                                   cmd=['mincaverage', '-clobber'] +
+                                       sorted(list_of_grids) +
+                                       [avg_xfmGrid.path])
+        s.add(custom_minc_avg)
+        #avg_xfmGrid = s.defer(mincaverage(imgs=xfmGrids,
+        #                                  output_dir=os.path.join(src_img.pipeline_sub_dir,
+        #                                                          src_img.output_sub_dir,
+        #                                                          "transforms"),
+        #                                  name_wo_ext="%s_avg_nlin_antsReg_grid" % src_img.filename_wo_ext))
 
         avg_xfm = XfmAtom(name=os.path.join(src_img.pipeline_sub_dir,
                                             src_img.output_sub_dir,
