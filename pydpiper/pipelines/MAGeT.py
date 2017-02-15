@@ -14,13 +14,13 @@ from pydpiper.core.arguments        import (lsq12_parser, nlin_parser, stats_par
 from pydpiper.core.stages import Stages, Result
 from pydpiper.execution.application import mk_application
 from pydpiper.minc.analysis import voxel_vote
-from pydpiper.minc.files            import MincAtom
+from pydpiper.minc.files            import MincAtom, XfmAtom
 from pydpiper.minc.registration     import (check_MINC_input_files, lsq12_nlin,
                                             get_nonlinear_configuration_from_options,
                                             get_linear_configuration_from_options, LinearTransType,
                                             mincresample_new, mincmath, Interpolation, xfmconcat, xfminvert)
 
-
+# TODO move to a more sensible location !!
 def get_imgs(options):
     #options : application_options
     if options.csv_file and options.files:
@@ -35,15 +35,18 @@ def get_imgs(options):
 
         # FIXME check `file` column is present ...
 
+        csv_base = os.path.dirname(options.csv_file)
+
         if hasattr(csv, 'mask_file'):
-            masks = [MincAtom(mask, pipeline_sub_dir=os.path.join(options.output_directory,
-                                                                  options.pipeline_name + "_processed"))
+            masks = [MincAtom(os.path.join(csv_base, mask),
+                              pipeline_sub_dir=os.path.join(options.output_directory,
+                                                            options.pipeline_name + "_processed"))
                      if isinstance(mask, str) else None  # better way to handle missing (nan) values?
                      for mask in csv.mask_file]
         else:
             masks = [None] * len(csv.file)
 
-        imgs = [MincAtom(name, mask=mask,
+        imgs = [MincAtom(os.path.join(csv_base, name), mask=mask,
                          pipeline_sub_dir=os.path.join(options.output_directory,
                                                        options.pipeline_name + "_processed"))
                 # TODO does anything break if we make imgs a pd.Series?
@@ -329,7 +332,9 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir, build_model_xfms=N
                                           on='fake')
                                           #left_on='img', right_on='template')  # TODO do select here instead of below?
 
-            xfm_dict = { x.source : x.xfm for x in build_model_xfms }
+            #if build_model_xfms is not None:
+            #    # use path instead of full mincatom as key in case we're reading these in from a CSV:
+            #    xfm_dict = { x.source.path : x.xfm for x in build_model_xfms }
 
             template_labelled_imgs = (
                 imgs_and_templates
@@ -350,8 +355,8 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir, build_model_xfms=N
                                   if build_model_xfms is None
                                   # use transforms from model building if we have them:
                                   else s.defer(
-                                         xfmconcat([xfm_dict[row.img],
-                                                   s.defer(xfminvert(xfm_dict[row.template],
+                                         xfmconcat([build_model_xfms[row.img.path],
+                                                   s.defer(xfminvert(build_model_xfms[row.template.path],
                                                                      subdir="tmp"))])),
                               like=row.img,
                               invert=True,
@@ -386,9 +391,26 @@ def maget_pipeline(options):
     check_MINC_input_files([img.path for img in imgs])
     # TODO fixup masking protocols ...
 
+    if options.application.csv_file is not None:
+        df = pd.read_csv(options.application.csv_file)
+        # FIXME only works on MBM output, not, e.g., twolevel!
+        if 'lsq12_nlin_xfm' in df.columns:
+            csv_dir = os.path.dirname(options.application.csv_file)
+            build_model_xfms = { row.file :
+                                     XfmAtom(name=os.path.join(csv_dir, row.lsq12_nlin_xfm),
+                                             pipeline_sub_dir=os.path.join(options.application.output_directory,
+                                                                           options.application.pipeline_name
+                                                                             + "_build_model_xfms"))
+                                 for _, row in df.iterrows() }
+        else:
+            build_model_xfms = None
+    else:
+        build_model_xfms = None
+
     return maget(imgs=imgs, options=options,
                  prefix=options.application.pipeline_name,
-                 output_dir=options.application.output_directory)
+                 output_dir=options.application.output_directory,
+                 build_model_xfms=build_model_xfms)
 
 
 def _mk_maget_parser(parser : ArgParser):
