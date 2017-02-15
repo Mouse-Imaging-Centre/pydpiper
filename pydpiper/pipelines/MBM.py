@@ -50,11 +50,13 @@ def mbm_pipeline(options : MBMConf):
                              output_dir=options.application.output_directory))
 
     # create useful CSVs (note the files listed therein won't yet exist ...)
-    for filename, dataframe in (("transforms.csv", mbm_result.xfms),
-                                ("determinants.csv", mbm_result.determinants)):
-        with open(filename, 'w') as f:
-            f.write(dataframe.applymap(maybe_deref_path).to_csv(index=False))
-
+    with open("transforms.csv", 'w') as f:
+        f.write(mbm_result.xfms.assign(file=lambda df: df.lsq12_nlin_xfm.apply(lambda x: x.source),
+                                       mask_file=lambda df:
+                                         df.lsq12_nlin_xfm.apply(lambda x: x.source.mask if x.source.mask else ""))
+                .applymap(maybe_deref_path).to_csv(index=False))
+    with open("determinants.csv", 'w') as f:
+        f.write(mbm_result.determinants.applymap(maybe_deref_path).to_csv(index=False))
     # # TODO moved here from inside `mbm` for now ... does this make most sense?
     # if options.mbm.segmentation.run_maget:
     #     import copy
