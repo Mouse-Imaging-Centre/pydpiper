@@ -2129,14 +2129,25 @@ def pairwise_antsRegistration(imgs: List[MincAtom],
                                                  "%s_avg_nlin_antsReg_grid.mnc" % src_img.filename_wo_ext),
                                pipeline_sub_dir=src_img.pipeline_sub_dir)
 
-        list_of_grids = [ "%s/%s_grid_0.mnc" % (xfmH.xfm.dir, xfmH.xfm.filename_wo_ext) for xfmH in xfmHs]
+        #list_of_grids = [ "%s/%s_grid_0.mnc" % (xfmH.xfm.dir, xfmH.xfm.filename_wo_ext) for xfmH in xfmHs]
 
-        custom_minc_avg = CmdStage(inputs=tuple(xfms_from_xfmHs),
-                                   outputs=(avg_xfmGrid,),
-                                   cmd=['mincaverage', '-clobber'] +
-                                       sorted(list_of_grids) +
-                                       [avg_xfmGrid.path])
-        s.add(custom_minc_avg)
+        #custom_minc_avg = CmdStage(inputs=tuple(xfms_from_xfmHs),
+        #                           outputs=(avg_xfmGrid,),
+        #                           cmd=['mincaverage', '-clobber'] +
+        #                               sorted(list_of_grids) +
+        #                               [avg_xfmGrid.path])
+        # s.add(custom_minc_avg)
+
+        # generate grid files from antsRegistration calls:
+        minc_displacement_grids = [s.defer(minc_displacement(xfmH)) for xfmH in xfmHs]
+        minc_avg_on_minc_displ = CmdStage(inputs=tuple(xfms_from_xfmHs) + tuple(minc_displacement_grids),
+                                          outputs=(avg_xfmGrid,),
+                                          cmd=['mincaverage', '-clobber'] +
+                                              sorted([m_displ_grid.path for m_displ_grid in minc_displacement_grids]) +
+                                              [avg_xfmGrid.path])
+        s.add(minc_avg_on_minc_displ)
+
+
         #avg_xfmGrid = s.defer(mincaverage(imgs=xfmGrids,
         #                                  output_dir=os.path.join(src_img.pipeline_sub_dir,
         #                                                          src_img.output_sub_dir,
