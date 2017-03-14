@@ -41,10 +41,14 @@ files = glob.glob("{datadir}/test-images/*.mnc".format(**vars()))
 subprocess.check_call("""MBM.py
   --pipeline-name={MBM_name}
   --num-executors={num_execs}
-  --verbose --create-graph
+  --verbose
   --init-model={datadir}/Pydpiper-init-model-basket-may-2014/basket_mouse_brain.mnc
   --config-file={config_file}
-  --lsq6-large-rotations""".format(**vars()).split() + files)
+  --lsq6-large-rotations
+  --no-run-maget
+  --maget-no-mask
+  --lsq12-protocol={datadir}/default_linear_MAGeT_prot.csv
+  --files """.format(**vars()).split() + files)
 
 os.chdir(MAGeT_dir)
 MAGeT_name = "MAGeT_test"
@@ -57,7 +61,7 @@ subprocess.check_call("""MAGeT.py
   --config-file={config_file}
   --lsq12-protocol={datadir}/default_linear_MAGeT_prot.csv
   --nlin-protocol={datadir}/default_nlin_MAGeT_minctracc_prot.csv
-  {MBM_dir}/{MBM_name}_nlin/{MBM_name}-nlin-3.mnc""".format(**vars()).split())
+  --files {MBM_dir}/{MBM_name}_nlin/{MBM_name}-nlin-3.mnc""".format(**vars()).split())
 
 # create csv file of determinant files, as per wiki.mouseimaging.ca/display/MICePub/Pydpiper+Virtual+Machine:
 os.chdir(workdir)
