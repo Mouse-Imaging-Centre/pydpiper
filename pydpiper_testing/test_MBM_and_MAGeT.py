@@ -53,7 +53,8 @@ subprocess.check_call("""MBM.py
 os.chdir(MAGeT_dir)
 MAGeT_name = "MAGeT_test"
 subprocess.check_call("""MAGeT.py 
-  --verbose --create-graph
+  --verbose
+  --no-pairwise
   --registration-method=minctracc
   --pipeline-name={MAGeT_name}
   --num-executors={num_execs}
@@ -61,6 +62,7 @@ subprocess.check_call("""MAGeT.py
   --config-file={config_file}
   --lsq12-protocol={datadir}/default_linear_MAGeT_prot.csv
   --nlin-protocol={datadir}/default_nlin_MAGeT_minctracc_prot.csv
+  --masking-nlin-protocol={datadir}/default_nlin_MAGeT_minctracc_prot.csv
   --files {MBM_dir}/{MBM_name}_nlin/{MBM_name}-nlin-3.mnc""".format(**vars()).split())
 
 # create csv file of determinant files, as per wiki.mouseimaging.ca/display/MICePub/Pydpiper+Virtual+Machine:
