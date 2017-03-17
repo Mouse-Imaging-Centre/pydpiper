@@ -75,13 +75,13 @@ with open(os.path.join(workdir, "absolute_jacobians_and_genotypes.csv"), 'w') as
             type="mutant"
         else:
             type="wt"
-        f.write("""{file}/stats-volumes/{base}-final-nlin_with_additional_inverted_absolute_log_determinant.mnc,{type}\n""".format(**vars()))
+        f.write("""{file}/stats-volumes/{base}_N_I_lsq6_lsq12_and_nlin_inverted_displ_log_det_abs.mnc,{type}\n""".format(**vars()))
 
 script = """
   library(RMINC)
   gf <- read.csv("{workdir}/absolute_jacobians_and_genotypes.csv")
   volume_striatum <- anatGetAll(gf$absolute_jacobians,
-                                atlas="{MAGeT_dir}/{MAGeT_name}/{MBM_name}-nlin-3/labels/{MBM_name}-nlin-3_votedlabels.mnc",
+                                atlas="{MAGeT_dir}/{MAGeT_name}_processed/{MBM_name}-nlin-3/voted.mnc",
                                 defs="{datadir}/mapping_for_striatum.csv")
   result <- mapply(mean, split(apply(volume_striatum, 1, sum), gf$genotype))
   result <- as.list(result)
@@ -90,7 +90,7 @@ script = """
   if ((frac < 0.875) || (frac > 0.925)) stop("unexpected result...") else print("succeeded")
 """.format(**vars())
 
-with tempfile.NamedTemporaryFile() as f:
+with tempfile.NamedTemporaryFile(mode='w') as f:
     f.write(script)
     f.flush()
     sys.exit(subprocess.call(['Rscript', f.name]))
