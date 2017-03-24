@@ -102,6 +102,10 @@ class runOnQueueingSystem():
                 t = min(t, self.max_walltime)
             time_remaining -= t
             serverJobId = self.createAndSubmitMainJobFile(time=t, afterany=serverJobId)
+            try:
+                serverJobId = serverJobId.decode('ascii')
+            except AttributeError:
+                pass
             if self.numexec >= 2:
                 for i in range(1, self.numexec):
                     self.createAndSubmitExecutorJobFile(i, time=t, after=serverJobId)
