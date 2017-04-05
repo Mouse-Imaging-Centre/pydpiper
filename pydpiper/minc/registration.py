@@ -782,6 +782,7 @@ def inormalize(src: MincAtom,
     return Result(stages=Stages([cmd]), output=out)
 
 
+# TODO rename to `xfmavg`
 def xfmaverage(xfms: List[XfmAtom],
                output_dir: str = None,
                output_filename_wo_ext: str = None) -> Result[XfmAtom]:
@@ -3469,3 +3470,46 @@ def minc_label_ops(in_labels : MincAtom, op : LabelOp, op_arg : Optional[Union[M
                      + ([op_arg] if op_arg is not None else [])
                      + [in_labels.path, out_labels.path])
     return Result(stages=Stages([s]), output=out_labels)
+
+
+def cp(infile : FileAtom, outfile : Optional[FileAtom] = None,
+    suffix : Optional[str] = None,
+    subdir : Optional[str] = "tmp"):
+    outfile = outfile or infile.newname_with_suffix(suffix or "_cp")
+    return Result(stages=Stages([CmdStage(cmd=["cp", infile.path, outfile.path],
+                  inputs=(infile,), outputs=(outfile,))]),
+                  output=outfile)
+
+
+
+#def safe_minc_modify_header(infile : MincAtom, flags : List[str], outfile : Optional[MincAtom] = None):
+#    # FIXME this is a hack:
+#    #  (1) the finished hooks run slightly too late to be safe;
+#    #  (2) the hook runs a command which doesn't write into the usual logging
+#    # solutions: just run cp ... && minc_modify_header ... ? make another type of hook? (logging?)
+#    s = Stages()
+#    cp_result = cp(infile, outfile=outfile, suffix="_modified")
+#    #cp_stage = cp_result.stages[0]
+#    cp_result.stages[0].when_finished_hooks.append(
+#        lambda s: subprocess.check_call(["minc_modify_header"] + flags + [outfile.path]))
+#    s.defer(cp_result)
+#    return Result(stages=s, output=cp_result.output)
+
+
+# TODO make a generic procedure for generating stages that don't produce new files?
+def safe_minc_modify_header(infile : MincAtom,
+                            flags : List[str],
+                            outfile : Optional[MincAtom] = None,
+                            subdir : str = None):
+    outfile = outfile or infile.newname_with_suffix("_modified", subdir=subdir)
+    s = CmdStage(inputs=(infile,), outputs=(outfile,),
+                 cmd=["cp", infile.path, outfile.path, "&&", "minc_modify_header"] + flags + [outfile.path])
+    return Result(stages=Stages([s]), output=outfile)
+
+# doesn't work since minc_modify_header itself doesn't create a new file, causing Pydpiper's dependency tracking
+# to reject this (since the output file is also the output of the stage that originally produced it).
+#def safe_minc_modify_header(infile : MincAtom, flags : List[str], outfile : Optional[MincAtom] = None):
+#    s = Stages()
+#    outfile = outfile or s.defer(cp(infile))
+#    s.add(CmdStage(cmd=["minc_modify_header"] + flags + [outfile.path], inputs=(infile,), outputs=(outfile,)))
+#    return Result(stages=s, output=outfile)

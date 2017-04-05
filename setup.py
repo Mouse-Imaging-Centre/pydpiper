@@ -34,8 +34,8 @@ setup(name='pydpiper',
       scripts=([os.path.join("pydpiper/execution", script) for script in
                 ['pipeline_executor.py', 'check_pipeline_status.py']] +
                [os.path.join("pydpiper/pipelines", f) for f in
-                ['asymmetry.py', 'LSQ12.py', 'LSQ6.py', 'MAGeT.py', 'MBM.py', 'NLIN.py',
-                 'registration_chain.py', 'twolevel_model_building.py']]),
+                ['asymmetry.py', 'beast_pipeline', 'LSQ12.py', 'LSQ6.py', 'MAGeT.py', 'MBM.py', 'NLIN.py',
+                 'registration_chain.py', 'registration_tamarack.py', 'twolevel_model_building.py']]),
                  #'stats.py',
       tests_require=['pytest'],
       zip_safe=False  # since we want the data files to be installed on disk for the moment ...

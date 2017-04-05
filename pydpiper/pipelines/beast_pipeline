@@ -1,0 +1,50 @@
+#!/usr/bin/env python3
+
+
+import os
+
+from pydpiper.core.arguments import CompoundParser, lsq12_parser, AnnotatedParser
+from pydpiper.core.stages import Stages, Result
+from pydpiper.execution.application import mk_application
+from pydpiper.minc.beast import beast_parser, beast_segment
+from pydpiper.minc.registration import (check_MINC_input_files, get_resolution_from_file,
+                                        get_linear_configuration_from_options, LinearTransType)
+from pydpiper.pipelines.MAGeT import get_imgs
+
+
+#beast_pipeline_parser = CompoundParser([lsq12_parser, beast_parser])
+
+
+def beast_pipeline(options):
+    s = Stages()
+
+    imgs = get_imgs(options.application)
+
+    check_MINC_input_files([img.path for img in imgs])
+
+    resolution = (options.registration.resolution or get_resolution_from_file(imgs[0].path))
+    options.registration = options.registration.replace(resolution=resolution)
+
+    lsq12_conf = get_linear_configuration_from_options(conf=options.lsq12,
+                                                       transform_type=LinearTransType.lsq12,
+                                                       file_resolution=resolution)
+
+    beast_result = s.defer(beast_segment(imgs=imgs, library_dir=options.beast.library_dir,
+                                         linear_conf=lsq12_conf,
+                                         #beast_conf=TODO,
+                                         beast_flags=options.beast.beast_flags.split(),
+                                         #beast_normalize_conf=TODO,'
+                                         pipeline_sub_dir=os.path.join(options.application.output_directory,
+                                                                       options.application.pipeline_name + "_beast"),
+                                         model_path=options.beast.model_path))  #,
+                                         #pipeline_sub_dir=...
+                                         #prefix=options.application.pipeline_name,
+                                         #output_dir=options.application.output_directory))
+
+    return Result(stages=s, output=beast_result)
+
+
+if __name__ == "__main__":
+    mk_application(parsers=#[AnnotatedParser(parser=beast_pipeline_parser, namespace='beast')],
+                     [beast_parser, lsq12_parser],
+                   pipeline=beast_pipeline)()
