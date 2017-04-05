@@ -55,6 +55,8 @@ def get_imgs(options):
         imgs = [MincAtom(name, pipeline_sub_dir=os.path.join(options.output_directory,
                                                              options.pipeline_name + "_processed"))
                 for name in options.files]
+    else:
+        raise ValueError("No images supplied")
     return imgs
 
 
