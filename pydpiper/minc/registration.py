@@ -2974,6 +2974,7 @@ def lsq6_nuc_inorm(imgs: List[MincAtom],
                                                       like=native_img,
                                                       interpolation=Interpolation.nearest_neighbour,
                                                       invert=True))
+                                   if not native_img.mask else native_img.mask
                                  for native_img, xfm_to_lsq6 in zip(imgs, xfms_to_final_target_space)]
 
     # NUC
