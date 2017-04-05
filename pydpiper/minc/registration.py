@@ -2008,51 +2008,67 @@ def multilevel_pairwise_minctracc(imgs: List[MincAtom],
     final_avg = MincAtom(name=os.path.join(output_dir_for_avg, output_name_for_avg + ".mnc"),
                          pipeline_sub_dir=output_dir_for_avg)
 
-    def avg_xfm_from(src_img     : MincAtom,
-                     target_imgs : List[MincAtom]):
-        """Compute xfm from src_img to each target img, average them, and resample along the result"""
-        # FIXME: do something about the configuration, currently it all seems a bit broken...
-        # Interestingly it seems like it's actually quite important to include the registration
-        # between the input image and itself. Imagine this toy example:
-        # file 1: volume 1
-        # file 2: volume 8
-        # file 3: volume 64
-        # if you only align file 1 to 2 and 3, it will end up having volume size 22.4
-        # after averaging the scaling vectors (2,2,2) and (4,4,4) to be (2.82843,2.82843,2.82843)
-        # but if we include the registration to itself, i.e. (1,1,1) we end up with a (2,2,2)
-        # average transform and its volume will be 8. The same holds for all the other files.
-        # --> volumes after alignment and averaging using only the other targets:
-        # file 1: volume 22.4
-        # file 2: volume 8
-        # file 3: volume 2.7
-        # --> volumes after alignment using other targets and itself:
-        # file 1: volume 8
-        # file 2: volume 8
-        # file 3: volume 8
-        xfms = [s.defer(multilevel_minctracc(src_img, target_img,
-                                             conf=conf))
-                for target_img in target_imgs]
-
-        avg_xfm = s.defer(xfmaverage([xfm.xfm for xfm in xfms],
-                                     output_filename_wo_ext="%s_avg_lsq12" % src_img.filename_wo_ext))
-
-        res = s.defer(mincresample(img=src_img,
-                                   xfm=avg_xfm,
-                                   like=like or src_img,
-                                   interpolation=Interpolation.sinc))
-        return XfmHandler(xfm=avg_xfm, source=src_img,
-                          target=final_avg, resampled=res)  ##FIXME the None here borks things interface-wise ...
-        # does putting `target = res` make sense? could a sum be used?
-
     if max_pairs is None or max_pairs >= len(imgs):
-        avg_xfms = [avg_xfm_from(img, target_imgs=imgs) for img in imgs]
+        avg_xfms = [s.defer(avg_xfm_from(conf=conf, like=like,
+                                         output_atom=final_avg,
+                                         src_img=img, target_imgs=imgs))
+                    for img in imgs]
     else:
-        avg_xfms = [avg_xfm_from(img, target_imgs=gen.sample(imgs, max_pairs)) for img in imgs]
+        avg_xfms = [s.defer(avg_xfm_from(conf=conf, like=like,
+                                         output_atom=final_avg,
+                                         src_img=img, target_imgs=gen.sample(imgs, max_pairs)))
+                    for img in imgs]
                       # FIXME might use one fewer image than `max_pairs`...
 
     final_avg = s.defer(mincaverage([xfm.resampled for xfm in avg_xfms], avg_file=final_avg))
 
     return Result(stages=s, output=WithAvgImgs(avg_imgs=[final_avg], avg_img=final_avg, output=avg_xfms))
+
+# TODO rename to `register_to_average_of` or something greater ...
+# TODO this should be generalized to use a more general pairwise registration procedure
+# than `multilevel_pairwise_minctracc` since it could be used for many things ...
+def avg_xfm_from(conf: MultilevelMinctraccConf,
+                 like: MincAtom,
+                 output_atom: MincAtom,
+                 src_img: MincAtom,
+                 target_imgs: List[MincAtom]):
+    """Compute xfm from src_img to each target img, average them, and resample along the result"""
+    # FIXME: do something about the configuration, currently it all seems a bit broken...
+    # Interestingly it seems like it's actually quite important to include the registration
+    # between the input image and itself. Imagine this toy example:
+    # file 1: volume 1
+    # file 2: volume 8
+    # file 3: volume 64
+    # if you only align file 1 to 2 and 3, it will end up having volume size 22.4
+    # after averaging the scaling vectors (2,2,2) and (4,4,4) to be (2.82843,2.82843,2.82843)
+    # but if we include the registration to itself, i.e. (1,1,1) we end up with a (2,2,2)
+    # average transform and its volume will be 8. The same holds for all the other files.
+    # --> volumes after alignment and averaging using only the other targets:
+    # file 1: volume 22.4
+    # file 2: volume 8
+    # file 3: volume 2.7
+    # --> volumes after alignment using other targets and itself:
+    # file 1: volume 8
+    # file 2: volume 8
+    # file 3: volume 8
+    s = Stages()
+
+    xfms = [s.defer(multilevel_minctracc(src_img, target_img,
+                                         conf=conf))
+            for target_img in target_imgs]
+
+    avg_xfm = s.defer(xfmaverage([xfm.xfm for xfm in xfms],
+                                 output_filename_wo_ext="%s_avg_lsq12" % src_img.filename_wo_ext))
+
+    res = s.defer(mincresample(img=src_img,
+                               xfm=avg_xfm,
+                               like=like or src_img,
+                               interpolation=Interpolation.sinc))
+    return Result(stages=s,
+                  output=XfmHandler(xfm=avg_xfm, source=src_img,
+                                    target=output_atom, resampled=res))
+    ##FIXME the None here borks things interface-wise ...
+    # does putting `target = res` make sense? could a sum be used?
 
 
 """ Pairwise lsq12 registration, returning array of transforms and an average image
