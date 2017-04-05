@@ -128,10 +128,8 @@ def process_atlas_files(filenames : List[str], pipeline_sub_dir) -> List[MincAto
     d = defaultdict(dict)  # TODO: rename `d`
     for filename in filenames:
         suffix = find_by(filename.endswith, suffixes)
-        base = filename.rstrip(suffix)
+        base = filename[:-len(suffix)]   # :-l
         d[base][suffix] = filename
-    # TODO in some error situations the last letter of the basename seems to be rstripped for some reason ...
-    # (e.g., supply the 56um-init-model dir in place of an atlas dir)
 
     grouped_atlas_files = {}
     for group, files in d.items():
