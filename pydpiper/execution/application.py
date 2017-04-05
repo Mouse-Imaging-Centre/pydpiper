@@ -203,7 +203,7 @@ def normal_execute(pipeline, options):
     logger.info("Server has stopped.  Quitting...")
 
 def grid_only_execute(pipeline, options):
-    if options.execution.queue_type is not 'pbs':
+    if options.execution.queue_type != 'pbs':
         raise ValueError("currently we only support submitting the server to PBS/Torque systems")
     roq = runOnQueueingSystem(options, sys.argv)
     roq.createAndSubmitPbsScripts()

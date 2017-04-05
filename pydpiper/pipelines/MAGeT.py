@@ -55,6 +55,8 @@ def get_imgs(options):
         imgs = [MincAtom(name, pipeline_sub_dir=os.path.join(options.output_directory,
                                                              options.pipeline_name + "_processed"))
                 for name in options.files]
+    else:
+        raise ValueError("No images supplied")
     return imgs
 
 
@@ -68,8 +70,49 @@ def find_by(f, xs, on_empty=None):  # TODO move to util
         raise ValueError("Nothing in iterable satisfies the predicate")
 
 
-def read_atlas_dir(atlas_lib : str, pipeline_sub_dir : str) -> List[MincAtom]:
-    """Read in atlases from directory specified return them as processed MincAtoms (with masks and labels).
+def get_atlases(maget_options, pipeline_sub_dir : str):
+
+    atlas_dir, atlas_csv = maget_options.atlas_lib, maget_options.atlas_csv
+    max_templates = maget_options.max_templates
+
+    if atlas_dir is not None and atlas_csv is not None:
+        raise ValueError("Atlases specified via both directory and csv; what should I do?")
+
+    if atlas_dir is not None:
+        atlases = atlases_from_dir(atlas_lib=atlas_dir,
+                                   pipeline_sub_dir=pipeline_sub_dir)
+    elif atlas_csv is not None:
+        atlases = atlases_from_csv(atlas_csv, pipeline_sub_dir=pipeline_sub_dir)
+    else:
+        raise ValueError("Need either an atlas_dir or atlas_csv ...")
+
+    if len(atlases) == 0:
+        raise ValueError("Zero atlases found in specified location '%s' ..." % (atlas_dir or atlas_csv))
+
+    # TODO check the atlases exist (known in atlases_from_dir case!)/are readable files?!
+    # TODO issue a warning if not all atlases used or if more atlases requested than available?
+    # TODO also, doesn't slicing with a higher number (i.e., if max_templates > n) go to the end of the list anyway?
+    # TODO arbitrary; could choose atlases better ...
+    # TODO probably the [:max_templates] shouldn't be done here but in the application?
+    return atlases[:max_templates]
+
+
+def atlases_from_csv(atlas_csv : str, pipeline_sub_dir : str) -> pd.Series:
+    d = os.path.dirname(atlas_csv)
+    df = (pd.read_csv(atlas_csv, usecols=["file", "mask_file", "label_file"])
+          .apply(axis=1, func=lambda row:
+                   MincAtom(name=os.path.join(d, row.file), pipeline_sub_dir=pipeline_sub_dir,
+                            mask=MincAtom(os.path.join(d, row.mask_file), pipeline_sub_dir=pipeline_sub_dir),
+                            labels=MincAtom(os.path.join(d, row.label_file), pipeline_sub_dir=pipeline_sub_dir))))
+
+    #if np.isnan(df).any().any():
+    #    raise ValueError("missing values in atlas CSV, currently not supported")
+
+    return df
+
+
+def atlases_from_dir(atlas_lib : str, pipeline_sub_dir : str):
+    """Read in atlases from directory specified and return them as processed MincAtoms (with masks and labels).
     Assumes atlas/label/mask groups have one of the following naming schemes:
     (1) name_average.mnc, name_labels.mnc, name_mask.mnc
     (2) name.mnc, name_labels.mnc, name_mask.mnc
@@ -85,10 +128,8 @@ def process_atlas_files(filenames : List[str], pipeline_sub_dir) -> List[MincAto
     d = defaultdict(dict)  # TODO: rename `d`
     for filename in filenames:
         suffix = find_by(filename.endswith, suffixes)
-        base = filename.rstrip(suffix)
+        base = filename[:-len(suffix)]   # :-l
         d[base][suffix] = filename
-    # TODO in some error situations the last letter of the basename seems to be rstripped for some reason ...
-    # (e.g., supply the 56um-init-model dir in place of an atlas dir)
 
     grouped_atlas_files = {}
     for group, files in d.items():
@@ -122,11 +163,7 @@ def maget_mask(imgs : List[MincAtom], maget_options, resolution : float, pipelin
 
     # TODO dereference maget_options -> maget_options.maget outside maget_mask call?
     if atlases is None:
-        if maget_options.maget.atlas_lib is None:
-            raise ValueError("need some atlases for MAGeT-based masking ...")
-        atlases = atlases_from_dir(atlas_lib=maget_options.maget.atlas_lib,
-                                   max_templates=maget_options.maget.max_templates,
-                                   pipeline_sub_dir=pipeline_sub_dir)
+        atlases = get_atlases(maget_options, pipeline_sub_dir=pipeline_sub_dir)
 
     lsq12_conf = get_linear_configuration_from_options(maget_options.lsq12,
                                                        LinearTransType.lsq12,
@@ -216,21 +253,6 @@ def fixup_maget_options(lsq12_options, nlin_options, maget_options):
             raise ValueError("I'd use the MAGeT nlin protocol for masking as well but different programs are specified")
 
 
-def atlases_from_dir(atlas_lib : str, max_templates : int, pipeline_sub_dir : str):
-
-    atlas_library = read_atlas_dir(atlas_lib=atlas_lib, pipeline_sub_dir=pipeline_sub_dir)
-
-    if len(atlas_library) == 0:
-        raise ValueError("No atlases found in specified directory '%s' ..." % atlas_lib)
-
-    num_atlases_needed = min(max_templates, len(atlas_library))
-
-    # TODO issue a warning if not all atlases used or if more atlases requested than available?
-    # TODO also, doesn't slicing with a higher number (i.e., if max_templates > n) go to the end of the list anyway?
-    # TODO arbitrary; could choose atlases better ...
-    return atlas_library[:num_atlases_needed]
-
-
 # TODO support LSQ6 registrations??
 def maget(imgs : List[MincAtom], options, prefix, output_dir, build_model_xfms=None):     # FIXME prefix, output_dir aren't used !!
 
@@ -243,13 +265,7 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir, build_model_xfms=N
     pipeline_sub_dir = os.path.join(options.application.output_directory,
                                     options.application.pipeline_name + "_atlases")
 
-    if maget_options.atlas_lib is None:
-        raise ValueError("Need some atlases ...")
-
-    # TODO should alternately accept a CSV file ...
-    atlases = atlases_from_dir(atlas_lib=maget_options.atlas_lib,
-                               max_templates=maget_options.max_templates,
-                               pipeline_sub_dir=pipeline_sub_dir)
+    atlases = get_atlases(maget_options, pipeline_sub_dir)
 
     lsq12_conf = get_linear_configuration_from_options(options.maget.lsq12,
                                                        transform_type=LinearTransType.lsq12,
@@ -417,7 +433,10 @@ def _mk_maget_parser(parser : ArgParser):
     group = parser.add_argument_group("MAGeT options", "Options for running MAGeT.")
     group.add_argument("--atlas-library", dest="atlas_lib",  # can't make required=True since may not be using MAGeT :|
                        type=str,                             # TODO: check existence of this dir?
-                       help="Directory of existing atlas/label pairs")
+                       help="Directory of existing atlas/label pairs (alternative to --atlas-csv)")
+    group.add_argument("--atlas-csv", dest="atlas_csv", type=str,
+                       help="CSV containing (at least) `file`, `mask_file`, `label_file` columns "
+                            "(alternative to --atlas-library)")
     group.add_argument("--pairwise", dest="pairwise",
                        action="store_true",
                        help="""If specified, register inputs to each other pairwise. [Default]""")

@@ -2,8 +2,7 @@ import os
 
 import ordered_set
 import shlex
-from typing import Any, Callable, Generic, Iterable, List, Set, Tuple, TypeVar, Union
-
+from typing import Any, Callable, Generic, Iterable, List, Set, Tuple, TypeVar, Union, Optional
 from pydpiper.core.files import FileAtom
 from pydpiper.execution.pipeline import PipelineFile, InputFile, OutputFile
 
@@ -17,11 +16,12 @@ class CmdStage(object):
                  # `List`s don't work here because mutable containers must be _invariant_
                  # (see en.wikipedia.org/wiki/Covariance_and_contravariance_(computer_science));
                  # instead, we abuse variadic tuples to simulate immutable lists:
-                 inputs  : Tuple[FileAtom, ...],
-                 outputs : Tuple[FileAtom, ...],
-                 cmd     : List[str],
-                 memory  : float = None,
-                 procs   : int = 1) -> None:
+                 inputs   : Tuple[FileAtom, ...],
+                 outputs  : Tuple[FileAtom, ...],
+                 cmd      : List[str],
+                 memory   : float = None,
+                 procs    : int = 1,
+                 log_file : Optional[str] = None) -> None:
         # TODO: rather than having separate cmd_stage fn, might want to make inputs/outputs optional here
         self.inputs  = inputs          # type: Tuple[FileAtom, ...]
         # TODO: might be better to dereference inputs -> inputs.path here to save mem
@@ -38,10 +38,10 @@ class CmdStage(object):
         # access this directory by using its "dir" and adding "../log". This is not true for files that live in the
         # _nlin or _lsq12 directories though. They live in their own top level directory, so we should just create
         # a log directory in there
-        self.log_file = (os.path.join(self.outputs[0].dir,
-                                      ".." if self.outputs[0].dir != self.outputs[0].pipeline_sub_dir else "" ,
-                                      "log",
-                                      cmd[0], "%s.log" % self.outputs[0].filename_wo_ext)
+        self.log_file = log_file or (os.path.join(self.outputs[0].dir,
+                                       ".." if self.outputs[0].dir != self.outputs[0].pipeline_sub_dir else "" ,
+                                       "log",
+                                       cmd[0], "%s.log" % self.outputs[0].filename_wo_ext)
                          if len(self.outputs) >= 1 else None)  # FIXME: for |self.outputs| > 1, this is a fragile hack
     # NB: __hash__ and __eq__ ignore hooks, memory
     # Also, we assume cmd determines inputs, outputs so ignore it in hash/eq calculations

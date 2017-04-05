@@ -46,21 +46,21 @@ class runOnQueueingSystem():
         #Options MUST also include standard pydpiper options
         # self.options = options would be easier than this manual unpacking
         # for vars that don't have much 'logic' associated with them ...
-        self.job_lifetime = timestr_to_secs(options.time or '48:00:00')
-        self.mem = options.mem
-        self.max_walltime = options.max_walltime
-        self.min_walltime = options.min_walltime
-        self.procs = options.proc
-        self.ppn = options.ppn
-        self.queue_name = options.queue_name or options.queue
-        self.queue_type = options.queue_type
-        self.executor_start_delay = options.executor_start_delay
+        self.job_lifetime = timestr_to_secs(options.execution.time or '48:00:00')
+        self.mem = options.execution.mem
+        self.max_walltime = options.execution.max_walltime
+        self.min_walltime = options.execution.min_walltime
+        self.procs = options.execution.proc
+        self.ppn = options.execution.ppn
+        self.queue_name = options.execution.queue_name or options.execution.queue
+        self.queue_type = options.execution.queue_type
+        self.executor_start_delay = options.execution.executor_start_delay
         # TODO use self.time to compute better time_to_accept_jobs?
-        self.time_to_accept_jobs = options.time_to_accept_jobs
+        self.time_to_accept_jobs = options.execution.time_to_accept_jobs
         self.arguments = sysArgs #sys.argv in calling program
-        self.numexec = options.num_exec 
-        self.ns = options.use_ns
-        self.uri_file = options.urifile
+        self.numexec = options.execution.num_exec
+        self.ns = options.execution.use_ns
+        self.uri_file = options.execution.urifile
         if self.uri_file is None:
             self.uri_file = os.path.abspath(os.path.join(os.curdir, "uri"))
         self.jobDir = os.path.abspath(os.path.join(os.curdir, "pbs-jobs"))
@@ -71,7 +71,7 @@ class runOnQueueingSystem():
         else:
             executablePath = os.path.abspath(self.arguments[0])
             self.jobName = basename(executablePath)
-        self.prologue_file = options.prologue_file
+        self.prologue_file = options.execution.prologue_file
     def buildMainCommand(self):
         """Re-construct main command to be called in pbs script, adding --local flag"""
         reconstruct = ""
@@ -102,6 +102,10 @@ class runOnQueueingSystem():
                 t = min(t, self.max_walltime)
             time_remaining -= t
             serverJobId = self.createAndSubmitMainJobFile(time=t, afterany=serverJobId)
+            try:
+                serverJobId = serverJobId.decode('ascii')
+            except AttributeError:
+                pass
             if self.numexec >= 2:
                 for i in range(1, self.numexec):
                     self.createAndSubmitExecutorJobFile(i, time=t, after=serverJobId)
