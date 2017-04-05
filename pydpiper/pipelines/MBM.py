@@ -22,7 +22,7 @@ from pydpiper.minc.files        import MincAtom, XfmAtom
 from pydpiper.minc.registration import (lsq6_nuc_inorm, lsq12_nlin_build_model, registration_targets,
                                         LSQ6Conf, LSQ12Conf, get_resolution_from_file, concat_xfmhandlers,
                                         get_nonlinear_configuration_from_options, lsq12_nlin_pairwise,
-                                        invert_xfmhandler, check_MINC_input_files, lsq12_nlin, MultilevelMincANTSConf,
+                                        invert_xfmhandler, check_MINC_input_files, lsq12_nlin, MultilevelANTSConf,
                                         LinearTransType, get_linear_configuration_from_options, mincresample_new,
                                         Interpolation, param2xfm)
 from pydpiper.minc.analysis     import determinants_at_fwhms, StatsConf
@@ -303,7 +303,7 @@ def mbm(imgs : List[MincAtom], options : MBMConf, prefix : str, output_dir : str
                                                          options.application.pipeline_name + "_processed"))
         # TODO allow different lsq12/nlin config params than the ones used in MBM ...
         # WEIRD ... see comment in lsq12_nlin code ...
-        nlin_conf  = full_hierarchy.confs[-1] if isinstance(full_hierarchy, MultilevelMincANTSConf) else full_hierarchy
+        nlin_conf  = full_hierarchy.confs[-1] if isinstance(full_hierarchy, MultilevelANTSConf) else full_hierarchy
         # also weird that we need to call get_linear_configuration_from_options here ... ?
         lsq12_conf = get_linear_configuration_from_options(conf=options.mbm.lsq12,
                                                            transform_type=LinearTransType.lsq12,
