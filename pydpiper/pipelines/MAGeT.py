@@ -163,7 +163,7 @@ def maget_mask(imgs : List[MincAtom], maget_options, resolution : float, pipelin
 
     # TODO dereference maget_options -> maget_options.maget outside maget_mask call?
     if atlases is None:
-        atlases = get_atlases(maget_options, pipeline_sub_dir=pipeline_sub_dir)
+        atlases = get_atlases(maget_options.maget, pipeline_sub_dir=pipeline_sub_dir)
 
     lsq12_conf = get_linear_configuration_from_options(maget_options.lsq12,
                                                        LinearTransType.lsq12,
@@ -265,7 +265,7 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir, build_model_xfms=N
     pipeline_sub_dir = os.path.join(options.application.output_directory,
                                     options.application.pipeline_name + "_atlases")
 
-    atlases = get_atlases(maget_options, pipeline_sub_dir)
+    atlases = get_atlases(maget_options, pipeline_sub_dir=pipeline_sub_dir)
 
     lsq12_conf = get_linear_configuration_from_options(options.maget.lsq12,
                                                        transform_type=LinearTransType.lsq12,
