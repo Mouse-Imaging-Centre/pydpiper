@@ -618,7 +618,7 @@ def _mk_nlin_parser(p: ArgParser):
     group.add_argument("--nlin-protocol", dest="nlin_protocol",
                        type=str, default=None,
                        help="Can optionally specify a registration protocol that is different from defaults. "
-                            "Parameters must be specified as in either or the following examples: \n"
+                            "Parameters must be specified as in either of the following examples: \n"
                             "applications_testing/test_data/minctracc_example_nlin_protocol.csv \n"
                             "applications_testing/test_data/mincANTS_example_nlin_protocol.csv \n"
                             "[Default = %(default)s]")
@@ -649,7 +649,10 @@ def _mk_segmentation_parser(parser : ArgParser, default : bool):
                        help="Run MAGeT segmentation. [default = %(default)s]")
     group.add_argument("--no-run-maget", dest="run_maget",
                        action='store_false', help="Don't run MAGeT segmentation")
+    group.add_argument("--run-beast", action='store_true', dest="run_beast",
+                       help="Run BEaST segmentation. [default = %(default)s]")
     parser.set_defaults(run_maget=True)
+    parser.set_defaults(run_beast=False)  # for now
     return parser
 
 
