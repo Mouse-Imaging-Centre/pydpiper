@@ -1,6 +1,6 @@
 import os
 
-from configargparse import ArgParser
+from configargparse import ArgParser, Namespace
 import pandas as pd
 from typing import Optional, List, Tuple
 from pyminc.volumes.factory import volumeFromFile
@@ -9,8 +9,8 @@ from pydpiper.core.arguments import AnnotatedParser, BaseParser
 from pydpiper.core.stages import CmdStage, Stages, Result
 from pydpiper.core.util import NamedTuple, AutoEnum, flatten
 from pydpiper.minc.files import MincAtom, XfmAtom
-from pydpiper.minc.registration import (MultilevelMinctraccConf, multilevel_minctracc, safe_minc_modify_header,
-                                        xfmaverage, mincresample_new)
+from pydpiper.minc.registration import (MultilevelMinctraccConf, multilevel_minctracc, minc_modify_header_safe,
+                                        xfmavg, mincresample_new)
 
 
 class BeastFilter(AutoEnum):
@@ -48,13 +48,13 @@ def mincbeast(img : MincAtom,
     """Run mincbeast on the input file after an LSQ12 alignment, resampling, etc.  Note we assume the mincbeast
     library files have already been generated prior to the start of the pipeline and so these aren't tracked in the
     input/output files of the Pydpiper `CmdStage`."""
-    segmentation = img.newname_with_suffix(segmentation_name if segmentation_name else "segmentation", subdir=subdir)
+    segmentation = img.newname_with_suffix(segmentation_name if segmentation_name else "_segmentation", subdir=subdir)
 
     s = CmdStage(inputs=(img,), outputs=(segmentation,),
                  cmd=["mincbeast", "-clobber"] + extra_flags + [library_dir, img.path, segmentation.path])
 
     # hack ... need to look at config file, # of voxels, ...
-    s.when_runnable_hooks.append(lambda s: s.setMemory(20))
+    s.when_runnable_hooks.append(lambda s: s.setMem(20))
 
     return Result(stages=Stages([s]), output=segmentation)
 
@@ -73,25 +73,26 @@ default_beast_normalize_conf = BeastNormalizeConf(noreg=False, non3=False, inorm
 
 def beast_normalize(img        : MincAtom,
                     model_path : str,  # could be MincAtom
-                    outfile    : Optional[MincAtom] = None,  # just include in XfmHandler?
-                    #outxfm     : Optional[XfmAtom],
+                    out_mnc    : Optional[MincAtom] = None,  # just include in XfmHandler?
+                    #outxfm    : Optional[XfmAtom],
                     conf       : BeastNormalizeConf = default_beast_normalize_conf,
                     subdir     : str = None,
                     init_xfm   : Optional[XfmAtom] = None):
 
-    outfile = outfile or img.newname_with_suffix("normalized", subdir=subdir)
+    out_mnc = out_mnc or img.newname_with_suffix("_normalized", subdir=subdir)
 
-    outxfm  = img.newname_with_suffix("_")
+    out_xfm  = img.newname_with_suffix("_to_beast_model")
 
-    s = CmdStage(cmd=["beast_normalize"]
-                     + ["-modeldir", os.path.dirname(model_path), "-modelname", os.path.basename(model_path)]
+    s = CmdStage(cmd=["bash", "beast_normalize"]
+                     + ["-modeldir", os.path.dirname(model_path),
+                        "-modelname", os.path.splitext(os.path.basename(model_path))[0]]
                      + (["-noreg"] if conf.noreg else [])
                      + (["-non3"] if conf.non3 else [])
                      + (["-intensity_norm", str(conf.inorm)] if conf.inorm is not None else [])
-                     + [img.path, outfile.path, outxfm.path],
+                     + [img.path, out_mnc.path, out_xfm.path],
                  inputs=(img,),  # could include model:MincAtom if we wanted to create beast models in pydpiper
-                 outputs=(outfile, outxfm))
-    return Result(stages=Stages([s]), output=outxfm)
+                 outputs=(out_mnc, out_xfm))
+    return Result(stages=Stages([s]), output=Namespace(out_mnc=out_mnc, out_xfm=out_xfm))
 
 
 def beast_segment(imgs : List[MincAtom],
@@ -139,12 +140,12 @@ def beast_segment(imgs : List[MincAtom],
                                                                         conf=linear_conf))}
                                for img in imgs for atlas in atlases)
                   .groupby('img')
-                  .aggregate({'xfm' : lambda xfms: s.defer(xfmaverage([xfm.xfm for xfm in xfms]))})
+                  .aggregate({'xfm' : lambda xfms: s.defer(xfmavg([xfm.xfm for xfm in xfms]))})
                   .reset_index()
                   .assign(resampled=lambda df: df.apply(axis=1, func=lambda row:
                             s.defer(mincresample_new(img=row.img, xfm=row.xfm, like=atlases[0]))))
                   .assign(modified=lambda df: df.apply(axis=1, func=lambda row:
-                            s.defer(safe_minc_modify_header(infile=row.resampled,
+                            s.defer(minc_modify_header_safe(infile=row.resampled,
                                                             subdir="tmp",
                                                             flags=["-dinsert", "xspace:step=1",
                                                                    "-dinsert", "yspace:step=1",
@@ -155,14 +156,14 @@ def beast_segment(imgs : List[MincAtom],
                                                     conf=beast_normalize_conf.replace(noreg=True),
                                                     subdir="tmp"))))
                   .assign(segmented=lambda df: df.apply(axis=1, func=lambda row:
-                            s.defer(mincbeast(img=row.normalized,
+                            s.defer(mincbeast(img=row.normalized.out_mnc,
                                               library_dir=library_dir,
                                               extra_flags=beast_flags,
                                               subdir="tmp"))))
                   # just restoring the original header is fine since we didn't transform in the fake-resolution space:
                   # TODO what if the dimnames are weird/vectorial ?! hopefully things have already failed noisily ...
                   .assign(segmented=lambda df: df.apply(axis=1, func=lambda row: s.defer(
-                            safe_minc_modify_header(
+                            minc_modify_header_safe(
                                 infile=row.segmented,
                                 flags=flatten(*(["-dinsert", "%s:step=%s" % (dimname, step)]
                                                 for dimname, step in

@@ -794,31 +794,31 @@ def xfmaverage(xfms: List[XfmAtom],
     correctly
     """
     if len(xfms) == 0:
-        raise ValueError("`xfmaverage` arg `xfms` is empty (can't average zero files)")
+        raise ValueError("`xfmavg` arg `xfms` is empty (can't average zero files)")
 
     # if all transformations belong to the same subject, we should place the average
     # transformation in the directories belonging to that file
     all_from_same_sub = atoms_from_same_subject(xfms)
 
     # TODO: the path here is probably not right...
-    if not output_filename_wo_ext:
-        output_filename_wo_ext= "average_xfm"
-    if all_from_same_sub:
-        outf = xfms[0].newname(name=output_filename_wo_ext, subdir="transforms", ext=".xfm")
-    else:
-        # it's actually not very clear at this point what to do... will this ever
-        # be used? Hope not... :-)
-        raise NotImplementedError("Aha... you are trying to use xfmaverage on "
-                                  "a list of transformations that are located "
-                                  "in several directories. We currently have not "
-                                  "implemented the code to deal with this.")
+    if out_xfm is None:
+      if not output_filename_wo_ext:
+          output_filename_wo_ext= "average_xfm"
+      if all_from_same_sub:
+          out_xfm = xfms[0].newname(name=output_filename_wo_ext, subdir="transforms", ext=".xfm")
+      else:
+          # it's actually not very clear at this point what to do... will this ever
+          # be used? Hope not... :-)
+          raise NotImplementedError("Aha... you are trying to use xfmavg on "
+                                    "a list of transformations that are located "
+                                    "in several directories. To do this, please supply an `out_xfm`.")
     #else:
     #    outf = XfmAtom(name=os.path.join(output_dir, 'transforms', output_filename), orig_name=None)
 
-    stage = CmdStage(inputs=tuple(xfms), outputs=(outf,),
-                     cmd=["xfmavg", "-clobber"] + sorted([x.path for x in xfms]) + [outf.path])
+    stage = CmdStage(inputs=tuple(xfms), outputs=(out_xfm,),
+                     cmd=["xfmavg", "-clobber"] + sorted([x.path for x in xfms]) + [out_xfm.path])
 
-    return Result(stages=Stages([stage]), output=outf)
+    return Result(stages=Stages([stage]), output=out_xfm)
 
 
 def xfminvert(xfm: XfmAtom,
@@ -3526,19 +3526,22 @@ def cp(infile : FileAtom, outfile : Optional[FileAtom] = None,
 
 
 # TODO make a generic procedure for generating stages that don't produce new files?
-def safe_minc_modify_header(infile : MincAtom,
-                            flags : List[str],
-                            outfile : Optional[MincAtom] = None,
-                            subdir : str = None):
-    outfile = outfile or infile.newname_with_suffix("_modified", subdir=subdir)
-    s = CmdStage(inputs=(infile,), outputs=(outfile,),
-                 cmd=["cp", infile.path, outfile.path, "&&", "minc_modify_header"] + flags + [outfile.path])
-    return Result(stages=Stages([s]), output=outfile)
+#def safe_minc_modify_header(infile : MincAtom,
+#                            flags : List[str],
+#                            outfile : Optional[MincAtom] = None,
+#                            subdir : str = None):
+#    outfile = outfile or infile.newname_with_suffix("_modified", subdir=subdir)
+#    s = CmdStage(inputs=(infile,), outputs=(outfile,),
+#                 cmd=["cp", infile.path, outfile.path, "&&", "minc_modify_header"] + flags + [outfile.path])
+#    return Result(stages=Stages([s]), output=outfile)
 
-# doesn't work since minc_modify_header itself doesn't create a new file, causing Pydpiper's dependency tracking
-# to reject this (since the output file is also the output of the stage that originally produced it).
-#def safe_minc_modify_header(infile : MincAtom, flags : List[str], outfile : Optional[MincAtom] = None):
-#    s = Stages()
-#    outfile = outfile or s.defer(cp(infile))
-#    s.add(CmdStage(cmd=["minc_modify_header"] + flags + [outfile.path], inputs=(infile,), outputs=(outfile,)))
-#    return Result(stages=s, output=outfile)
+# TODO make a generic procedure for generating stages that don't produce new files?
+# we now have a minc_modify_header_safe script, but that's a bit tedious ...
+def minc_modify_header_safe(infile  : MincAtom,
+                            flags   : List[str],
+                            outfile : Optional[MincAtom] = None,
+                            subdir  : str = None):
+    outfile = outfile or infile.newname_with_suffix("_modified", subdir=subdir)
+    s = CmdStage(cmd=["minc_modify_header_safe"] + flags + [infile.path, outfile.path],
+                 inputs=(infile,), outputs=(outfile,))
+    return Result(stages=Stages([s]), output=outfile)
