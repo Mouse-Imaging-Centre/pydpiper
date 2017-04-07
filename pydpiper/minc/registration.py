@@ -782,10 +782,10 @@ def inormalize(src: MincAtom,
     return Result(stages=Stages([cmd]), output=out)
 
 
-# TODO rename to `xfmavg`
-def xfmaverage(xfms: List[XfmAtom],
-               output_dir: str = None,
-               output_filename_wo_ext: str = None) -> Result[XfmAtom]:
+def xfmavg(xfms: List[XfmAtom],
+           output_dir: str = None,
+           output_filename_wo_ext: str = None,
+           out_xfm : Optional[XfmAtom] = None) -> Result[XfmAtom]:
     """
     Currently the only thing that this function can deal with is
     a list of XfmAtoms that all come from the same subject.
@@ -2058,8 +2058,8 @@ def avg_xfm_from(conf: MultilevelMinctraccConf,
                                          conf=conf))
             for target_img in target_imgs]
 
-    avg_xfm = s.defer(xfmaverage([xfm.xfm for xfm in xfms],
-                                 output_filename_wo_ext="%s_avg_lsq12" % src_img.filename_wo_ext))
+    avg_xfm = s.defer(xfmavg([xfm.xfm for xfm in xfms],
+                             output_filename_wo_ext="%s_avg_lsq12" % src_img.filename_wo_ext))
 
     res = s.defer(mincresample(img=src_img,
                                xfm=avg_xfm,

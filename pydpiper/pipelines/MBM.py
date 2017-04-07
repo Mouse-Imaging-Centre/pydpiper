@@ -24,7 +24,7 @@ from pydpiper.minc.registration import (lsq6_nuc_inorm, lsq12_nlin_build_model, 
                                         get_nonlinear_configuration_from_options, lsq12_nlin_pairwise,
                                         invert_xfmhandler, check_MINC_input_files, lsq12_nlin, MultilevelANTSConf,
                                         LinearTransType, get_linear_configuration_from_options, mincresample_new,
-                                        Interpolation, param2xfm)
+                                        Interpolation, param2xfm, xfmavg)
 from pydpiper.minc.analysis     import determinants_at_fwhms, StatsConf
 from pydpiper.minc.thickness    import thickness_parser
 from pydpiper.core.arguments    import (lsq6_parser, lsq12_parser, nlin_parser, stats_parser, CompoundParser,
