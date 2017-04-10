@@ -1392,11 +1392,14 @@ def get_linear_configuration_from_options(conf, transform_type : LinearTransType
                                           # minctracc config uses factors, so should be OK.
                          )
     else:
-        warnings.warn("No %s protocol specified -- using the defaults, which might not be what you want"
-                      % transform_type)
-        minctracc_conf = default_lsq12_multilevel_minctracc #.replace(...)
+        error_message = "\nError while retrieving the linear (" + transform_type.name + ") minctracc configuration. " \
+                        "(Flag: .......) No protocol was specified and no defaults are currently in place. "
+
+        #warnings.warn("No %s protocol specified (flag: .....) -- using the defaults, which might not be what you want"
+        #              % transform_type.name)
+        #minctracc_conf = default_lsq12_multilevel_minctracc #.replace(...)
         # FIXME `replace` the resolution (<-> step factors, etc.), transform_type, etc.!!  Also print a warning?
-        raise NotImplementedError("You need to supply a protocol at the moment.  Sorry!")
+        raise NotImplementedError(error_message)
 
     return minctracc_conf
 
