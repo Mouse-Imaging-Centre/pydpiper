@@ -175,7 +175,7 @@ def mk_application(parsers: List[AnnotatedParser], pipeline: Callable[[Any], Res
 
 
 def backend(options):
-    return grid_only_execute if options.execution.submit_server else normal_execute
+    return grid_only_execute if options.execution.submit_server and not options.execution.local else normal_execute
 
 # TODO: should create_directories be added as a method to Pipeline?
 def create_directories(stages):
