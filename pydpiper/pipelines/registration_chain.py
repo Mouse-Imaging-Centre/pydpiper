@@ -11,15 +11,15 @@ import re
 from typing import Callable, Dict, List, TypeVar, Iterator
 from pydpiper.minc.analysis import determinants_at_fwhms, invert_xfmhandler
 from pydpiper.core.stages import Result
-from pydpiper.minc.registration import (Subject, Stages, mincANTS_NLIN_build_model, mincANTS_default_conf,
+from pydpiper.minc.registration import (Subject, Stages, ANTS_NLIN_build_model, ANTS_default_conf,
                                         intrasubject_registrations, mincaverage,
                                         concat_xfmhandlers, check_MINC_input_files, registration_targets,
                                         lsq6_nuc_inorm, get_resolution_from_file, XfmHandler, LSQ6Conf,
                                         RegistrationConf, InputSpace, LSQ12Conf, lsq12_nlin_build_model, TargetType,
-                                        MultilevelMincANTSConf, create_quality_control_images,
+                                        MultilevelANTSConf, create_quality_control_images,
                                         check_MINC_files_have_equal_dimensions_and_resolution,
                                         default_lsq12_multilevel_minctracc, get_pride_of_models_mapping,
-                                        get_default_multi_level_mincANTS, parse_mincANTS_protocol_file,
+                                        get_default_multi_level_ANTS, parse_ANTS_protocol_file,
                                         parse_minctracc_nonlinear_protocol, get_nonlinear_configuration_from_options,
                                         mincresample)
 from pydpiper.minc.files import MincAtom
@@ -250,10 +250,10 @@ def chain(options):
         first_nlin_target = s.defer(mincaverage(imgs=list(s_id_to_intersubj_img_dict.values()),
                                                 name_wo_ext="avg_of_input_files",
                                                 output_dir=pipeline_nlin_common_dir))
-        intersubj_xfms = s.defer(mincANTS_NLIN_build_model(imgs=list(s_id_to_intersubj_img_dict.values()),
-                                                   initial_target=first_nlin_target,
-                                                   nlin_dir=pipeline_nlin_common_dir,
-                                                   conf=nonlinear_configuration))
+        intersubj_xfms = s.defer(ANTS_NLIN_build_model(imgs=list(s_id_to_intersubj_img_dict.values()),
+                                                       initial_target=first_nlin_target,
+                                                       nlin_dir=pipeline_nlin_common_dir,
+                                                       conf=nonlinear_configuration))
 
 
     intersubj_img_to_xfm_to_common_avg_dict = { xfm.source : xfm for xfm in intersubj_xfms.output }
@@ -324,7 +324,7 @@ def chain(options):
     chain_xfms = { s_id : s.defer(intrasubject_registrations(
                                     subj=subj,
                                     linear_conf=default_lsq12_multilevel_minctracc,
-                                    nlin_conf=mincANTS_default_conf.replace(
+                                    nlin_conf=ANTS_default_conf.replace(
                                         file_resolution=options.registration.resolution,
                                         iterations="100x100x100x50")))
                    for s_id, subj in subj_id_to_Subjec_for_within_dict.items() }

@@ -1338,31 +1338,31 @@ default_similarity_metric_conf = SimilarityMetricConf(
     radius_or_bins=3,
     use_gradient_image=False)
 
-MincANTSConf = NamedTuple("MincANTSConf",
-                          [("file_resolution", float),
+ANTSConf = NamedTuple("ANTSConf",
+                      [("file_resolution", float),
                            ("iterations", str),
                            ("transformation_model", str), # TODO make an enumeration so, e.g., users don't type "Syn"
                            ("regularization", str),
                            ("use_mask", bool),
                            ("sim_metric_confs", List[SimilarityMetricConf])])
 
-class MultilevelMincANTSConf(object):
-    def __init__(self, confs: List[MincANTSConf]):
+class MultilevelANTSConf(object):
+    def __init__(self, confs: List[ANTSConf]):
         self.confs = confs
 
 # we don't supply a resolution default here because it's preferable
 # to take resolution from initial target instead
-mincANTS_default_conf = MincANTSConf(
+ANTS_default_conf = ANTSConf(
     iterations="100x100x100x150",
     transformation_model="'SyN[0.1]'",
     regularization="'Gauss[2,1]'",
     use_mask=True,
     file_resolution=None,
     sim_metric_confs=[default_similarity_metric_conf,
-                      default_similarity_metric_conf.replace(use_gradient_image=True)])  # type: MincANTSConf
+                      default_similarity_metric_conf.replace(use_gradient_image=True)])  # type: ANTSConf
 
 
-def get_default_multi_level_mincANTS(file_resolution: float) -> MultilevelMincANTSConf:
+def get_default_multi_level_ANTS(file_resolution: float) -> MultilevelANTSConf:
     """
     Create a multilevel ANTS configuration based on the provided file resolution.
     The iterations are:
@@ -1370,13 +1370,13 @@ def get_default_multi_level_mincANTS(file_resolution: float) -> MultilevelMincAN
     100x100x100x20
     100x100x100x100
     """
-    conf1 = mincANTS_default_conf.replace(file_resolution=file_resolution,
-                                          iterations="100x100x100x0")
-    conf2 = mincANTS_default_conf.replace(file_resolution=file_resolution,
-                                          iterations="100x100x100x20")
-    conf3 = mincANTS_default_conf.replace(file_resolution=file_resolution,
-                                          iterations="100x100x100x100")
-    return MultilevelMincANTSConf([conf1,conf2,conf3])
+    conf1 = ANTS_default_conf.replace(file_resolution=file_resolution,
+                                      iterations="100x100x100x0")
+    conf2 = ANTS_default_conf.replace(file_resolution=file_resolution,
+                                      iterations="100x100x100x20")
+    conf3 = ANTS_default_conf.replace(file_resolution=file_resolution,
+                                      iterations="100x100x100x100")
+    return MultilevelANTSConf([conf1, conf2, conf3])
 
 
 def get_linear_configuration_from_options(conf, transform_type : LinearTransType, file_resolution : float) \
@@ -1401,14 +1401,14 @@ def get_linear_configuration_from_options(conf, transform_type : LinearTransType
     return minctracc_conf
 
 
-def get_nonlinear_configuration_from_options(nlin_protocol : Union[MincANTSConf, MinctraccConf],
+def get_nonlinear_configuration_from_options(nlin_protocol : Union[ANTSConf, MinctraccConf],
                                              reg_method : str,
                                              file_resolution : float):
     """
     :param nlin_protocol: path to the protocol on the system (can be None)
     :param reg_method: the registration method (currently ANTS or minctracc)
     :param file_resolution: resolution at which registrations are performed
-    :return:  MultilevelMincANTSConf or MultilevelMinctraccConf
+    :return:  MultilevelANTSConf or MultilevelMinctraccConf
     """
 
     # TODO maybe just take the whole nlin_conf as a param to save typing at the call site?
@@ -1417,7 +1417,7 @@ def get_nonlinear_configuration_from_options(nlin_protocol : Union[MincANTSConf,
     if nlin_protocol:
         # actually parse it:
         if reg_method == "ANTS":
-            non_linear_configuration = parse_mincANTS_protocol_file(nlin_protocol, file_resolution)
+            non_linear_configuration = parse_ANTS_protocol_file(nlin_protocol, file_resolution)
         elif reg_method == "minctracc":
             non_linear_configuration = parse_minctracc_nonlinear_protocol_file(nlin_protocol)
         else:
@@ -1425,7 +1425,7 @@ def get_nonlinear_configuration_from_options(nlin_protocol : Union[MincANTSConf,
     else:
         # get one of the default configurations
         if reg_method == "ANTS":
-            non_linear_configuration = get_default_multi_level_mincANTS(file_resolution=file_resolution)
+            non_linear_configuration = get_default_multi_level_ANTS(file_resolution=file_resolution)
         elif reg_method == "minctracc":
             #TODO: this. Still TODO.
             raise ValueError("Error.. we do not have proper minctracc nonlinear defaults yet. ")
@@ -1450,9 +1450,10 @@ def parse_nullable(parser):
 
 class ParseError(ValueError): pass
 
-def parse_mincANTS_protocol_file(config_file,
-                                 file_resolution,
-                                 mincANTS_conf=mincANTS_default_conf) -> MultilevelMincANTSConf:
+
+def parse_ANTS_protocol_file(config_file,
+                             file_resolution,
+                             ANTS_conf=ANTS_default_conf) -> MultilevelANTSConf:
     """
     config_file -- path to file on the system that contains the ANTS configuration
 
@@ -1519,7 +1520,7 @@ def parse_mincANTS_protocol_file(config_file,
     l = len(vs[0])
 
     # convert a mapping of options to _single_ values to a single-generation ANTS configuration object:
-    def convert_single_gen(single_gen_params, file_resolution) -> MincANTSConf:  # TODO name this better ...
+    def convert_single_gen(single_gen_params, file_resolution) -> ANTSConf:  # TODO name this better ...
         # TODO check for/catch IndexError ... a bit hard to use zip since some params may not be defined ...
         sim_metric_names = {"use_gradient_image", "metric", "weight", "radius_or_bins"}
         # TODO duplication; e.g., parsers = sim_metric_parsers U <...>
@@ -1535,12 +1536,12 @@ def parse_mincANTS_protocol_file(config_file,
         else:
             sim_metric_confs = []
 
-        return mincANTS_default_conf.replace(sim_metric_confs=sim_metric_confs,
-                                             file_resolution=file_resolution,
-                                             **other_attrs)
+        return ANTS_default_conf.replace(sim_metric_confs=sim_metric_confs,
+                                         file_resolution=file_resolution,
+                                         **other_attrs)
 
-    full_configuration = MultilevelMincANTSConf([convert_single_gen({ key : vs[j] for key, vs in d.items() },
-                                                                    file_resolution) for j in range(l)])
+    full_configuration = MultilevelANTSConf([convert_single_gen({key : vs[j] for key, vs in d.items()},
+                                                                file_resolution) for j in range(l)])
 
     return full_configuration
 
@@ -1549,17 +1550,17 @@ def all_equal(xs, by=lambda x: x):
     return len(set((by(x) for x in xs))) == 1
 
 
-MincANTSMemCfg = NamedTuple("MincANTSMemCfg",
-                            [('base_mem', float),
+ANTSMemCfg = NamedTuple("ANTSMemCfg",
+                        [('base_mem', float),
                              ('mem_per_voxel_coarse', float),
                              ('mem_per_voxel_fine', bool)])
 
-default_mincANTS_mem_cfg = MincANTSMemCfg(base_mem=0.177, mem_per_voxel_coarse=1.385e-7, mem_per_voxel_fine=2.1e-7)
+default_ANTS_mem_cfg = ANTSMemCfg(base_mem=0.177, mem_per_voxel_coarse=1.385e-7, mem_per_voxel_fine=2.1e-7)
 
 
 def ANTS(source: MincAtom,
          target: MincAtom,
-         conf: MincANTSConf,
+         conf: ANTSConf,
          transform_name_wo_ext: str = None,
          generation: int = None,
          resample_source: bool = False,
@@ -1639,7 +1640,7 @@ def ANTS(source: MincAtom,
         st.setMem(mem_cfg.base_mem + voxels * mem_per_voxel)
 
     # see comments re: mincblur memory configuration
-    stage.when_runnable_hooks.append(lambda st: set_memory(st, default_mincANTS_mem_cfg))
+    stage.when_runnable_hooks.append(lambda st: set_memory(st, default_ANTS_mem_cfg))
 
     s.add(stage)
     resampled = (s.defer(mincresample(img=source, xfm=out_xfm, like=target,
@@ -1666,7 +1667,7 @@ class WithAvgImgs(Generic[T]):
         self.avg_img = avg_img
 
 
-# TODO expand parameter list to be similar to mincANTS_NLIN_build_model, possible add resolution parameter?
+# TODO expand parameter list to be similar to ANTS_NLIN_build_model, possible add resolution parameter?
 def minctracc_NLIN_build_model(imgs: List[MincAtom],
                                initial_target: MincAtom,
                                conf: MultilevelMinctraccConf,
@@ -1685,12 +1686,12 @@ def minctracc_NLIN_build_model(imgs: List[MincAtom],
     return Result(stages=s, output=WithAvgImgs(output=xfms, avg_img=avg, avg_imgs=avg_imgs))
 
 
-def mincANTS_NLIN_build_model(imgs: List[MincAtom],
-                              initial_target: MincAtom,
-                              conf: MultilevelMincANTSConf,
-                              nlin_dir: str,
-                              nlin_prefix : str = "",
-                              mincaverage = mincbigaverage) -> Result[WithAvgImgs[List[XfmHandler]]]:
+def ANTS_NLIN_build_model(imgs: List[MincAtom],
+                          initial_target: MincAtom,
+                          conf: MultilevelANTSConf,
+                          nlin_dir: str,
+                          nlin_prefix : str = "",
+                          mincaverage = mincbigaverage) -> Result[WithAvgImgs[List[XfmHandler]]]:
     """
     This functions runs a hierarchical ANTS registration on the input
     images (imgs) creating an unbiased average.
@@ -1727,7 +1728,7 @@ def mincANTS_NLIN_build_model(imgs: List[MincAtom],
 def lsq12_nlin(source: MincAtom,
                target: MincAtom,
                lsq12_conf: MinctraccConf,
-               nlin_conf: Union[MultilevelMinctraccConf, MultilevelMincANTSConf, MincANTSConf],  # sigh ... ...
+               nlin_conf: Union[MultilevelMinctraccConf, MultilevelANTSConf, ANTSConf],  # sigh ... ...
                resample_source: bool = True):
     """
     Runs a 12 parameter (or really any) linear registration followed by a nonlinear registration
@@ -1743,18 +1744,18 @@ def lsq12_nlin(source: MincAtom,
     # one would hope this function would similarly to the model-building version in being able to dispatch
     # on the configuration passed in (and in the same way, to avoid extra logic).
 
-    if isinstance(nlin_conf, MultilevelMincANTSConf):
+    if isinstance(nlin_conf, MultilevelANTSConf):
         # if only a sinle level is specified inside this multilevel configuration, all is fine:
         if len(nlin_conf.confs) == 1:
             # and we can just extract that single level
             nlin_conf = nlin_conf.confs[0]
         else:
-            raise ValueError("The function lsq12_nlin was provided with a MultilevelMincANTSConf with more than 1 "
+            raise ValueError("The function lsq12_nlin was provided with a MultilevelANTSConf with more than 1 "
                              "level. This is a function performing a source to target registration, and thus should "
                              "only run a single level of ANTS (with its internal iterations option).")
 
 
-    if isinstance(nlin_conf, MincANTSConf):
+    if isinstance(nlin_conf, ANTSConf):
         lsq12_transform_handler = s.defer(multilevel_minctracc(source=source,
                                                                target=target,
                                                                conf=lsq12_conf,
@@ -1765,7 +1766,7 @@ def lsq12_nlin(source: MincAtom,
                                               resample_source=resample_source))
         full_transform = s.defer(concat_xfmhandlers(xfms=[lsq12_transform_handler, nlin_transform_handler],
                                                     name=source.filename_wo_ext + "_to_" +
-                                                      target.filename_wo_ext + "_lsq12_mincANTS_nlin",
+                                                      target.filename_wo_ext + "_lsq12_ANTS_nlin",
                                                     resample_source=resample_source))
     elif isinstance(nlin_conf, MultilevelMinctraccConf):
         lsq12_transform_handler = s.defer(multilevel_minctracc(source=source,
@@ -1780,18 +1781,18 @@ def lsq12_nlin(source: MincAtom,
                                                               resample_source=resample_source))
         full_transform = nlin_transform_handler
     else:
-        raise ValueError("Expected one of the following 3 options: 1) a MultilevelMincANTSConf with a single "
-                         "level inside of it, 2) a MincANTSConf, or 3) a MultilevelMinctraccConf. The nlin_conf "
+        raise ValueError("Expected one of the following 3 options: 1) a MultilevelANTSConf with a single "
+                         "level inside of it, 2) a ANTSConf, or 3) a MultilevelMinctraccConf. The nlin_conf "
                          "that we got has type: " + type(nlin_conf))
 
     return Result(stages=s, output=full_transform)
 
 
 # TODO obsolete...remove uses and definition?
-def LSQ12_mincANTS_nlin(source: MincAtom,
-                        target: MincAtom,
-                        linear_conf: MinctraccConf,
-                        nlin_conf: MincANTSConf):
+def LSQ12_ANTS_nlin(source: MincAtom,
+                    target: MincAtom,
+                    linear_conf: MinctraccConf,
+                    nlin_conf: ANTSConf):
     """
     Runs a 12 parameter registration followed by a non linear ANTS registration
     from the source to the target. This is a *non* model building function, which
@@ -1816,7 +1817,7 @@ def LSQ12_mincANTS_nlin(source: MincAtom,
     full_transform = s.defer(concat_xfmhandlers([lsq12_transform_handler,
                                                  nlin_transform_handler],
                                                 name=source.filename_wo_ext + "_to_" +
-                                                target.filename_wo_ext + "_lsq12_mincANTS_nlin"))
+                                                target.filename_wo_ext + "_lsq12_ANTS_nlin"))
     return Result(stages=s, output=full_transform)
 
 
@@ -1860,7 +1861,7 @@ class Subject(Generic[V]):
 
 def intrasubject_registrations(subj: Subject,
                                linear_conf: MinctraccConf,
-                               nlin_conf: MincANTSConf) \
+                               nlin_conf: ANTSConf) \
         -> Result[Tuple[List[Tuple[int, int, XfmHandler]], int]]:
     """
     
@@ -2007,51 +2008,67 @@ def multilevel_pairwise_minctracc(imgs: List[MincAtom],
     final_avg = MincAtom(name=os.path.join(output_dir_for_avg, output_name_for_avg + ".mnc"),
                          pipeline_sub_dir=output_dir_for_avg)
 
-    def avg_xfm_from(src_img     : MincAtom,
-                     target_imgs : List[MincAtom]):
-        """Compute xfm from src_img to each target img, average them, and resample along the result"""
-        # FIXME: do something about the configuration, currently it all seems a bit broken...
-        # Interestingly it seems like it's actually quite important to include the registration
-        # between the input image and itself. Imagine this toy example:
-        # file 1: volume 1
-        # file 2: volume 8
-        # file 3: volume 64
-        # if you only align file 1 to 2 and 3, it will end up having volume size 22.4
-        # after averaging the scaling vectors (2,2,2) and (4,4,4) to be (2.82843,2.82843,2.82843)
-        # but if we include the registration to itself, i.e. (1,1,1) we end up with a (2,2,2)
-        # average transform and its volume will be 8. The same holds for all the other files.
-        # --> volumes after alignment and averaging using only the other targets:
-        # file 1: volume 22.4
-        # file 2: volume 8
-        # file 3: volume 2.7
-        # --> volumes after alignment using other targets and itself:
-        # file 1: volume 8
-        # file 2: volume 8
-        # file 3: volume 8
-        xfms = [s.defer(multilevel_minctracc(src_img, target_img,
-                                             conf=conf))
-                for target_img in target_imgs]
-
-        avg_xfm = s.defer(xfmaverage([xfm.xfm for xfm in xfms],
-                                     output_filename_wo_ext="%s_avg_lsq12" % src_img.filename_wo_ext))
-
-        res = s.defer(mincresample(img=src_img,
-                                   xfm=avg_xfm,
-                                   like=like or src_img,
-                                   interpolation=Interpolation.sinc))
-        return XfmHandler(xfm=avg_xfm, source=src_img,
-                          target=final_avg, resampled=res)  ##FIXME the None here borks things interface-wise ...
-        # does putting `target = res` make sense? could a sum be used?
-
     if max_pairs is None or max_pairs >= len(imgs):
-        avg_xfms = [avg_xfm_from(img, target_imgs=imgs) for img in imgs]
+        avg_xfms = [s.defer(avg_xfm_from(conf=conf, like=like,
+                                         output_atom=final_avg,
+                                         src_img=img, target_imgs=imgs))
+                    for img in imgs]
     else:
-        avg_xfms = [avg_xfm_from(img, target_imgs=gen.sample(imgs, max_pairs)) for img in imgs]
+        avg_xfms = [s.defer(avg_xfm_from(conf=conf, like=like,
+                                         output_atom=final_avg,
+                                         src_img=img, target_imgs=gen.sample(imgs, max_pairs)))
+                    for img in imgs]
                       # FIXME might use one fewer image than `max_pairs`...
 
     final_avg = s.defer(mincaverage([xfm.resampled for xfm in avg_xfms], avg_file=final_avg))
 
     return Result(stages=s, output=WithAvgImgs(avg_imgs=[final_avg], avg_img=final_avg, output=avg_xfms))
+
+# TODO rename to `register_to_average_of` or something greater ...
+# TODO this should be generalized to use a more general pairwise registration procedure
+# than `multilevel_pairwise_minctracc` since it could be used for many things ...
+def avg_xfm_from(conf: MultilevelMinctraccConf,
+                 like: MincAtom,
+                 output_atom: MincAtom,
+                 src_img: MincAtom,
+                 target_imgs: List[MincAtom]):
+    """Compute xfm from src_img to each target img, average them, and resample along the result"""
+    # FIXME: do something about the configuration, currently it all seems a bit broken...
+    # Interestingly it seems like it's actually quite important to include the registration
+    # between the input image and itself. Imagine this toy example:
+    # file 1: volume 1
+    # file 2: volume 8
+    # file 3: volume 64
+    # if you only align file 1 to 2 and 3, it will end up having volume size 22.4
+    # after averaging the scaling vectors (2,2,2) and (4,4,4) to be (2.82843,2.82843,2.82843)
+    # but if we include the registration to itself, i.e. (1,1,1) we end up with a (2,2,2)
+    # average transform and its volume will be 8. The same holds for all the other files.
+    # --> volumes after alignment and averaging using only the other targets:
+    # file 1: volume 22.4
+    # file 2: volume 8
+    # file 3: volume 2.7
+    # --> volumes after alignment using other targets and itself:
+    # file 1: volume 8
+    # file 2: volume 8
+    # file 3: volume 8
+    s = Stages()
+
+    xfms = [s.defer(multilevel_minctracc(src_img, target_img,
+                                         conf=conf))
+            for target_img in target_imgs]
+
+    avg_xfm = s.defer(xfmaverage([xfm.xfm for xfm in xfms],
+                                 output_filename_wo_ext="%s_avg_lsq12" % src_img.filename_wo_ext))
+
+    res = s.defer(mincresample(img=src_img,
+                               xfm=avg_xfm,
+                               like=like or src_img,
+                               interpolation=Interpolation.sinc))
+    return Result(stages=s,
+                  output=XfmHandler(xfm=avg_xfm, source=src_img,
+                                    target=output_atom, resampled=res))
+    ##FIXME the None here borks things interface-wise ...
+    # does putting `target = res` make sense? could a sum be used?
 
 
 """ Pairwise lsq12 registration, returning array of transforms and an average image
@@ -2233,7 +2250,7 @@ def lsq12_pairwise_on_dictionaries(imgs: Dict[K, MincAtom],
 
 def nlin_build_model(imgs           : List[MincAtom],
                      initial_target : MincAtom,
-                     conf           : Union[MultilevelMinctraccConf, MultilevelMincANTSConf],
+                     conf           : Union[MultilevelMinctraccConf, MultilevelANTSConf],
                      nlin_dir       : str,
                      nlin_prefix    : str = ""):
     s = Stages()
@@ -2244,12 +2261,12 @@ def nlin_build_model(imgs           : List[MincAtom],
                                                          conf=conf,
                                                          nlin_dir=nlin_dir))
         return Result(stages=s, output=nlin_result)
-    elif isinstance(conf, MultilevelMincANTSConf):
-        nlin_result = s.defer(mincANTS_NLIN_build_model(imgs=imgs,
-                                                        initial_target=initial_target,
-                                                        conf=conf,
-                                                        nlin_prefix=nlin_prefix,
-                                                        nlin_dir=nlin_dir))
+    elif isinstance(conf, MultilevelANTSConf):
+        nlin_result = s.defer(ANTS_NLIN_build_model(imgs=imgs,
+                                                    initial_target=initial_target,
+                                                    conf=conf,
+                                                    nlin_prefix=nlin_prefix,
+                                                    nlin_dir=nlin_dir))
         return Result(stages=s, output=nlin_result)
     else:
         # this should never happen
@@ -2510,7 +2527,7 @@ def lsq12_nlin_build_model(imgs       : List[MincAtom],
                            lsq12_conf : LSQ12Conf,
                            lsq12_dir  : str,
                            nlin_dir   : str,
-                           nlin_conf  : Union[MultilevelMinctraccConf, MultilevelMincANTSConf],
+                           nlin_conf  : Union[MultilevelMinctraccConf, MultilevelANTSConf],
                            resolution : float,
                            nlin_prefix : str = "") -> Result[WithAvgImgs[List[XfmHandler]]]:
     """
@@ -2556,7 +2573,7 @@ def lsq12_nlin_pairwise(imgs       : List[MincAtom],
                         lsq12_conf : LSQ12Conf,
                         lsq12_dir  : str,
                         nlin_dir   : str,
-                        nlin_conf  : Union[MultilevelMinctraccConf, MultilevelMincANTSConf],
+                        nlin_conf  : Union[MultilevelMinctraccConf, MultilevelANTSConf],
                         resolution : float,
                         nlin_prefix : str = "") -> Result[WithAvgImgs[List[XfmHandler]]]:
     """
@@ -2968,6 +2985,7 @@ def lsq6_nuc_inorm(imgs: List[MincAtom],
                                                       like=native_img,
                                                       interpolation=Interpolation.nearest_neighbour,
                                                       invert=True))
+                                   if not native_img.mask else native_img.mask
                                  for native_img, xfm_to_lsq6 in zip(imgs, xfms_to_final_target_space)]
 
     # NUC
