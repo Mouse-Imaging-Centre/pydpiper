@@ -250,7 +250,18 @@ def fixup_maget_options(lsq12_options, nlin_options, maget_options):
         if maget_options.maget.mask_method == maget_options.nlin.reg_method:
             maget_options.maget.masking_nlin_protocol = maget_options.nlin.nlin_protocol
         else:
-            raise ValueError("I'd use the MAGeT nlin protocol for masking as well but different programs are specified")
+            error_string = "\n\nThe MAGeT non-linear masking protocol (--maget-masking-nlin-protocol) " \
+                           "was not specified. Tried to use the non-linear protocol for the main part of " \
+                           "MAGeT (--maget-nlin-protocol), but the registration methods for masking (--maget-masking-method) " \
+                           "and the main MAGeT procedure (--maget-registration-method) are different. (" +\
+                           maget_options.maget.mask_method + " vs " + maget_options.nlin.reg_method + ")\n\nDefaults are:\n" \
+                           "--maget-masking-method=minctracc\n--maget-registration-method=minctracc\n" \
+                           "--maget-masking-nlin-protocol=default_nlin_MAGeT_minctracc_prot.csv\n" \
+                           "--maget-nlin-protocol=default_nlin_MAGeT_minctracc_prot.csv\n\nWhich can be " \
+                           "found in either of these two locations:\n" \
+                           "/hpf/largeprojects/MICe/tools/protocols/nonlinear/\n" \
+                           "/axiom2/projects/software/non-linear-protocol/\n\n"
+            raise ValueError(format(error_string))
 
 
 # TODO support LSQ6 registrations??
