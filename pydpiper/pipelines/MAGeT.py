@@ -72,8 +72,8 @@ def find_by(f, xs, on_empty=None):  # TODO move to util
 
 def get_atlases(maget_options, pipeline_sub_dir : str):
 
-    atlas_dir, atlas_csv = maget_options.atlas_lib, maget_options.atlas_csv
-    max_templates = maget_options.max_templates
+    atlas_dir, atlas_csv = maget_options.maget.atlas_lib, maget_options.maget.atlas_csv
+    max_templates = maget_options.maget.max_templates
 
     if atlas_dir is not None and atlas_csv is not None:
         raise ValueError("Atlases specified via both directory and csv; what should I do?")
