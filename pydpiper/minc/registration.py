@@ -1392,8 +1392,8 @@ def get_linear_configuration_from_options(conf, transform_type : LinearTransType
                                           # minctracc config uses factors, so should be OK.
                          )
     else:
-        error_message = "\nError while retrieving the linear (" + transform_type.name + ") minctracc configuration. " \
-                        "(Flag: .......) No protocol was specified and no defaults are currently in place. "
+        error_message = "\n\nError while retrieving the linear (" + transform_type.name + ") minctracc configuration. " \
+                        "(Flag: .......) No protocol was specified and no defaults are currently in place.\n"
 
         #warnings.warn("No %s protocol specified (flag: .....) -- using the defaults, which might not be what you want"
         #              % transform_type.name)
@@ -1753,9 +1753,9 @@ def lsq12_nlin(source: MincAtom,
             # and we can just extract that single level
             nlin_conf = nlin_conf.confs[0]
         else:
-            raise ValueError("The function lsq12_nlin was provided with a MultilevelANTSConf with more than 1 "
+            raise ValueError("\n\nThe function lsq12_nlin was provided with a MultilevelANTSConf with more than 1 "
                              "level. This is a function performing a source to target registration, and thus should "
-                             "only run a single level of ANTS (with its internal iterations option).")
+                             "only run a single level of ANTS (with its internal iterations option).\n")
 
 
     if isinstance(nlin_conf, ANTSConf):
