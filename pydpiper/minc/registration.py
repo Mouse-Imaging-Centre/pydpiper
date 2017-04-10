@@ -21,6 +21,11 @@ from pydpiper.minc.files import MincAtom, XfmAtom, xfmToMinc
 from pydpiper.minc.containers import XfmHandler
 from pyminc.volumes.factory import volumeFromFile  # type: ignore
 
+def custom_formatwarning(msg, cat, filename, lineno, line=None):
+    # change the order of how the warning is printed
+    return "Warning: " + str(msg) + " " + str(filename) + ":" + str(lineno) + "\n"
+warnings.formatwarning = custom_formatwarning
+
 # TODO push down into lsq12_pairwise?
 gen = random.Random(137)  # seed must be a small int; see #291
 
@@ -1428,6 +1433,9 @@ def get_nonlinear_configuration_from_options(nlin_protocol : Union[ANTSConf, Min
     else:
         # get one of the default configurations
         if reg_method == "ANTS":
+            warn_message = "The non-linear protocol for flag ...... was not set. Using" \
+                           "the default ANTS protocol."
+            warnings.warn(warn_message)
             non_linear_configuration = get_default_multi_level_ANTS(file_resolution=file_resolution)
         elif reg_method == "minctracc":
             #TODO: this. Still TODO.

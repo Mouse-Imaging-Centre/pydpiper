@@ -20,6 +20,12 @@ from pydpiper.minc.registration     import (check_MINC_input_files, lsq12_nlin,
                                             get_linear_configuration_from_options, LinearTransType,
                                             mincresample_new, mincmath, Interpolation, xfmconcat, xfminvert)
 
+def custom_formatwarning(msg, cat, filename, lineno, line=None):
+    # change the order of how the warning is printed
+    return "Warning: " + str(msg) + " " + str(filename) + ":" + str(lineno) + "\n"
+warnings.formatwarning = custom_formatwarning
+
+
 # TODO move to a more sensible location !!
 def get_imgs(options):
     #options : application_options
