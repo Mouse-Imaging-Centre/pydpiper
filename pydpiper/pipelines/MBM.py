@@ -9,6 +9,7 @@ import sys
 from configargparse import Namespace, ArgParser
 from typing import List
 
+from pydpiper.minc.beast import beast_parser, beast_segment
 from pydpiper.minc.containers import XfmHandler
 
 from pydpiper.core.files import FileAtom
@@ -175,6 +176,18 @@ def mbm(imgs : List[MincAtom], options : MBMConf, prefix : str, output_dir : str
                         for img in imgs]
     # what about running nuc/inorm without a linear registration step??
 
+    if options.mbm.maget.maget.mask and options.mbm.segmentation.run_beast:
+        if options.mbm.maget.maget.atlas_lib:
+            options.mbm.segmentation.run_beast = False
+            method = "maget"
+        else:
+            options.mbm.maget.maget.mask = False
+            method = "beast"
+        warnings.warn("You want registration-based AND patch-based segmentation!?  Seriously ... "
+                      "going with %s for now "
+                      "(maybe you want one for model building and the other for segmenting - "
+                      "unfortunately I'm not yet that sophisticated)" % method)
+
     if options.mbm.maget.maget.mask:
 
         masking_imgs = copy.deepcopy([xfm.resampled for xfm in lsq6_result])
@@ -189,8 +202,23 @@ def mbm(imgs : List[MincAtom], options : MBMConf, prefix : str, output_dir : str
         # replace any masks of the resampled images with the newly created masks:
         for xfm in lsq6_result:
             xfm.resampled = masked_img.ix[xfm.resampled.path]
+    elif options.mbm.segmentation.run_beast:
+        masking_imgs = copy.deepcopy([xfm.resampled for xfm in lsq6_result])
+        masked_img = (s.defer(beast_segment(imgs=masking_imgs,
+                                            library_dir=options.beast.library_dir,
+                                            linear_conf=get_linear_configuration_from_options(
+                                                conf=options.mbm.lsq12,
+                                                transform_type=LinearTransType.lsq12,
+                                                file_resolution=resolution),
+                                            model_path=options.beast.model_path,
+                                            pipeline_sub_dir=os.path.join(options.application.output_directory,
+                                                                          "%s_segmentation" % prefix),
+                                            beast_flags=options.beast.extra_flags)))
+        masked_img.index = masked_img.apply(lambda x: x.path)
+        for xfm in lsq6_result:
+            xfm.resampled = masked_img.ix[xfm.resampled.path]
     else:
-        warnings.warn("Not masking your images from atlas masks after LSQ6 alignment ... probably not what you want "
+        warnings.warn("Not masking your images after LSQ6 alignment ... probably not what you want "
                       "(this can have negative effects on your registration and statistics)")
 
     full_hierarchy = get_nonlinear_configuration_from_options(nlin_protocol=options.mbm.nlin.nlin_protocol,
@@ -367,6 +395,7 @@ mbm_parser = CompoundParser(
                 nlin_parser,
                 stats_parser,
                 common_space_parser,
+                beast_parser,
                 #thickness_parser,
                 AnnotatedParser(parser=maget_parsers, namespace="maget", prefix="maget"),
                 # TODO note that the maget-specific flags (--mask, --masking-method, etc., also get the "maget-" prefix)
