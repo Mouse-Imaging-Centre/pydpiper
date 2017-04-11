@@ -37,8 +37,25 @@ class AutoEnum(Enum):
 
 def NamedTuple(name : str, fields : List[Tuple[str, Callable[[Any], Any]]]):
     """Like typing.NamedTuple, but with some extra functions for (non-destructively) updating fields."""
-    F = typing.NamedTuple(name, fields)
+    F = typing.NamedTuple(name, fields + [("flags_", set)])
     F.replace = F._replace
+    def foo(f):
+        def g(*args, **kwargs):
+            # this doesn't work for some slightly unclear reason - perhaps one NamedTuple is inheriting from another,
+            # causing `foo` to be called multiple times on `__new__`:
+            #return f(*args, flags_=set(), **kwargs)
+            # this works:
+            l = len(args) + len(kwargs)
+            if l == len(fields) + 1:  # the extra 1 is for the class name
+                print(l, args)
+                return f(*args, flags_=set(), **kwargs)
+            elif l == len(fields) + 2:
+                print(l, args)
+                return f(*args, **kwargs)
+            else:
+                raise ValueError("!?")
+        return g
+    F.__new__ = foo(F.__new__)
     F.maybe_replace = lambda self, **kwargs: F._replace(self, **{k:v for (k,v) in kwargs.items() if v is not None})
     return F
 

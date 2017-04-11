@@ -1,6 +1,7 @@
 """
 TODO write some useful documentation
 """
+from collections import defaultdict
 
 from pkg_resources import get_distribution  # type: ignore
 import copy
@@ -156,8 +157,17 @@ def parse(parser: Parser, args: List[str]) -> Namespace:
                     new_a.option_strings = ss
                 new_p._add_action(new_a)
             _used_args, _rest = new_p.parse_known_args(args, namespace=current_ns)
+            # add a "_flags" field to each object so we know what flags caused a certain option to be set:
+            # (however, note that post-parsing we may munge around ...)
+            flags_dict = defaultdict(set)
+            for action in new_p._actions:
+                for opt in action.option_strings:
+                    flags_dict[action.dest].add(opt)
+            current_ns.flags_ = Namespace(**flags_dict)
             # TODO: could continue parsing from `_rest` instead of original `args`
         elif isinstance(p, CompoundParser):
+            current_ns.flags_ = set()  # could also check for the CompoundParser case and not set flags there,
+                                       # since there will never be any
             for q in p.parsers:
                 ns = Namespace()
                 if q.namespace in current_ns.__dict__:
@@ -174,8 +184,18 @@ def parse(parser: Parser, args: List[str]) -> Namespace:
                      current_ns=ns)
                 # If a cast function is provided, apply it to the namespace, possibly doing dynamic type checking
                 # and also allowing the checker to provide hinting for the types of the fields
-                current_ns.__dict__[q.namespace] = (q.cast(current_ns.__dict__[q.namespace]) #(q.cast(**vars(current_ns.__dict__[q.namespace]))
+                flags = ns.flags_
+                del ns.flags_
+                fixed = (q.cast(current_ns.__dict__[q.namespace]) #(q.cast(**vars(current_ns.__dict__[q.namespace]))
                                                     if q.cast else current_ns.__dict__[q.namespace])
+                if isinstance(fixed, tuple):
+                    fixed = fixed.replace(flags_=flags)
+                elif isinstance(fixed, Namespace):
+                    setattr(fixed, "flags_", flags)
+                else:
+                    raise ValueError("currently only Namespace and NamedTuple objects are supported return types from "
+                                     "parsing; got %s (a %s)" % (fixed, type(fixed)))
+                current_ns.__dict__[q.namespace] = fixed
                 # TODO current_ns or current_namespace or ns or namespace?
         else:
             raise TypeError("parser %s wasn't a %s (%s or %s) but a %s" %
