@@ -30,11 +30,20 @@ class XfmAtom(FileAtom):
     """
     pass
 
-
-# nasty coercion just because newname_with returns an object of the same type
 def xfmToMinc(xfm):
+    """nasty coercion just because newname_with returns an object of the same type;
+    no semantic meaning (no extracting gridfiles, etc.)"""
     mnc = copy.deepcopy(xfm)
     mnc.__class__ = MincAtom
     mnc.mask = None
     mnc.labels = None
     return mnc
+
+def mincToXfm(mnc):
+    if mnc.labels or mnc.mask:
+        raise ValueError("this is a real mincfile; mincToXfm doesn't make sense")
+    xfm = copy.deepcopy(mnc)
+    del xfm.mask
+    del xfm.labels
+    xfm.__class__ = XfmAtom
+    return xfm
