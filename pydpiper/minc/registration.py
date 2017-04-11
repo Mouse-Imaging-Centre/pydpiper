@@ -21,6 +21,11 @@ from pydpiper.minc.files import MincAtom, XfmAtom, xfmToMinc
 from pydpiper.minc.containers import XfmHandler
 from pyminc.volumes.factory import volumeFromFile  # type: ignore
 
+def custom_formatwarning(msg, cat, filename, lineno, line=None):
+    # change the order of how the warning is printed
+    return "Warning: " + str(msg) + " " + str(filename) + ":" + str(lineno) + "\n"
+warnings.formatwarning = custom_formatwarning
+
 # TODO push down into lsq12_pairwise?
 gen = random.Random(137)  # seed must be a small int; see #291
 
@@ -1392,11 +1397,14 @@ def get_linear_configuration_from_options(conf, transform_type : LinearTransType
                                           # minctracc config uses factors, so should be OK.
                          )
     else:
-        warnings.warn("No %s protocol specified -- using the defaults, which might not be what you want"
-                      % transform_type)
-        minctracc_conf = default_lsq12_multilevel_minctracc #.replace(...)
+        error_message = "\n\nError while retrieving the linear (" + transform_type.name + ") minctracc configuration. " \
+                        "(Flag: .......) No protocol was specified and no defaults are currently in place.\n"
+
+        #warnings.warn("No %s protocol specified (flag: .....) -- using the defaults, which might not be what you want"
+        #              % transform_type.name)
+        #minctracc_conf = default_lsq12_multilevel_minctracc #.replace(...)
         # FIXME `replace` the resolution (<-> step factors, etc.), transform_type, etc.!!  Also print a warning?
-        raise NotImplementedError("You need to supply a protocol at the moment.  Sorry!")
+        raise NotImplementedError(error_message)
 
     return minctracc_conf
 
@@ -1425,6 +1433,9 @@ def get_nonlinear_configuration_from_options(nlin_protocol : Union[ANTSConf, Min
     else:
         # get one of the default configurations
         if reg_method == "ANTS":
+            warn_message = "The non-linear protocol for flag ...... was not set. Using" \
+                           "the default ANTS protocol."
+            warnings.warn(warn_message)
             non_linear_configuration = get_default_multi_level_ANTS(file_resolution=file_resolution)
         elif reg_method == "minctracc":
             #TODO: this. Still TODO.
@@ -1750,9 +1761,9 @@ def lsq12_nlin(source: MincAtom,
             # and we can just extract that single level
             nlin_conf = nlin_conf.confs[0]
         else:
-            raise ValueError("The function lsq12_nlin was provided with a MultilevelANTSConf with more than 1 "
+            raise ValueError("\n\nThe function lsq12_nlin was provided with a MultilevelANTSConf with more than 1 "
                              "level. This is a function performing a source to target registration, and thus should "
-                             "only run a single level of ANTS (with its internal iterations option).")
+                             "only run a single level of ANTS (with its internal iterations option).\n")
 
 
     if isinstance(nlin_conf, ANTSConf):

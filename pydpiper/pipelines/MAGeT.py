@@ -20,6 +20,12 @@ from pydpiper.minc.registration     import (check_MINC_input_files, lsq12_nlin,
                                             get_linear_configuration_from_options, LinearTransType,
                                             mincresample_new, mincmath, Interpolation, xfmconcat, xfminvert)
 
+def custom_formatwarning(msg, cat, filename, lineno, line=None):
+    # change the order of how the warning is printed
+    return "Warning: " + str(msg) + " " + str(filename) + ":" + str(lineno) + "\n"
+warnings.formatwarning = custom_formatwarning
+
+
 # TODO move to a more sensible location !!
 def get_imgs(options):
     #options : application_options
@@ -163,7 +169,7 @@ def maget_mask(imgs : List[MincAtom], maget_options, resolution : float, pipelin
 
     # TODO dereference maget_options -> maget_options.maget outside maget_mask call?
     if atlases is None:
-        atlases = get_atlases(maget_options, pipeline_sub_dir=pipeline_sub_dir)
+        atlases = get_atlases(maget_options.maget, pipeline_sub_dir=pipeline_sub_dir)
 
     lsq12_conf = get_linear_configuration_from_options(maget_options.lsq12,
                                                        LinearTransType.lsq12,
@@ -250,7 +256,18 @@ def fixup_maget_options(lsq12_options, nlin_options, maget_options):
         if maget_options.maget.mask_method == maget_options.nlin.reg_method:
             maget_options.maget.masking_nlin_protocol = maget_options.nlin.nlin_protocol
         else:
-            raise ValueError("I'd use the MAGeT nlin protocol for masking as well but different programs are specified")
+            error_string = "\n\nThe MAGeT non-linear masking protocol (--maget-masking-nlin-protocol) " \
+                           "was not specified. Tried to use the non-linear protocol for the main part of " \
+                           "MAGeT (--maget-nlin-protocol), but the registration methods for masking (--maget-masking-method) " \
+                           "and the main MAGeT procedure (--maget-registration-method) are different. (" +\
+                           maget_options.maget.mask_method + " vs " + maget_options.nlin.reg_method + ")\n\nDefaults are:\n" \
+                           "--maget-masking-method=minctracc\n--maget-registration-method=minctracc\n" \
+                           "--maget-masking-nlin-protocol=default_nlin_MAGeT_minctracc_prot.csv\n" \
+                           "--maget-nlin-protocol=default_nlin_MAGeT_minctracc_prot.csv\n\nWhich can be " \
+                           "found in either of these two locations:\n" \
+                           "/hpf/largeprojects/MICe/tools/protocols/nonlinear/\n" \
+                           "/axiom2/projects/software/non-linear-protocol/\n\n"
+            raise ValueError(format(error_string))
 
 
 # TODO support LSQ6 registrations??
