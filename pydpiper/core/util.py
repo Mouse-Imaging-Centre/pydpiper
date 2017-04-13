@@ -39,10 +39,10 @@ def NamedTuple(name : str, fields : List[Tuple[str, Callable[[Any], Any]]]):
     """Like typing.NamedTuple, but with some extra functions for (non-destructively) updating fields."""
     F = typing.NamedTuple(name, fields + [("flags_", set)])
     F.replace = F._replace
-    def foo(f):
+    def with_flags(f):
         def g(*args, **kwargs):
             # this doesn't work for some slightly unclear reason - perhaps one NamedTuple is inheriting from another,
-            # causing `foo` to be called multiple times on `__new__`:
+            # causing `with_flags` to be called multiple times on `__new__`:
             #return f(*args, flags_=set(), **kwargs)
             # this works:
             l = len(args) + len(kwargs)
@@ -53,7 +53,7 @@ def NamedTuple(name : str, fields : List[Tuple[str, Callable[[Any], Any]]]):
             else:
                 raise ValueError("!?")
         return g
-    F.__new__ = foo(F.__new__)
+    F.__new__ = with_flags(F.__new__)
     F.maybe_replace = lambda self, **kwargs: F._replace(self, **{k:v for (k,v) in kwargs.items() if v is not None})
     return F
 
