@@ -194,6 +194,7 @@ def mbm(imgs : List[MincAtom], options : MBMConf, prefix : str, output_dir : str
                       "(this can have negative effects on your registration and statistics)")
 
     full_hierarchy = get_nonlinear_configuration_from_options(nlin_protocol=options.mbm.nlin.nlin_protocol,
+                                                              flag_nlin_protocol=next(iter(options.mbm.nlin.flags_.nlin_protocol)),
                                                               reg_method=options.mbm.nlin.reg_method,
                                                               file_resolution=resolution)
 

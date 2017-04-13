@@ -173,6 +173,7 @@ def maget_mask(imgs : List[MincAtom], maget_options, resolution : float, pipelin
                                                        resolution)
 
     masking_nlin_hierarchy = get_nonlinear_configuration_from_options(maget_options.maget.masking_nlin_protocol,
+                                                                      next(iter(maget_options.maget.flags_.masking_nlin_protocol)),
                                                                       maget_options.maget.mask_method,
                                                                       resolution)
 
@@ -253,14 +254,24 @@ def fixup_maget_options(lsq12_options, nlin_options, maget_options):
         if maget_options.maget.mask_method == maget_options.nlin.reg_method:
             maget_options.maget.masking_nlin_protocol = maget_options.nlin.nlin_protocol
         else:
-            error_string = "\n\nThe MAGeT non-linear masking protocol (--maget-masking-nlin-protocol) " \
+            flag_masking_nlin_protocol = next(iter(maget_options.maget.flags_.masking_nlin_protocol))
+            flag_nlin_part_nlin_protocol = next(iter(maget_options.nlin.flags_.nlin_protocol))
+            flag_masking_method = next(iter(maget_options.maget.flags_.mask_method))
+            flag_nlin_method = next(iter(maget_options.nlin.flags_.reg_method))
+            error_string = "\n\nThe MAGeT non-linear masking protocol (" + \
+                           flag_masking_nlin_protocol + ") " \
                            "was not specified. Tried to use the non-linear protocol for the main part of " \
-                           "MAGeT (--maget-nlin-protocol), but the registration methods for masking (--maget-masking-method) " \
-                           "and the main MAGeT procedure (--maget-registration-method) are different. (" +\
-                           maget_options.maget.mask_method + " vs " + maget_options.nlin.reg_method + ")\n\nDefaults are:\n" \
-                           "--maget-masking-method=minctracc\n--maget-registration-method=minctracc\n" \
-                           "--maget-masking-nlin-protocol=default_nlin_MAGeT_minctracc_prot.csv\n" \
-                           "--maget-nlin-protocol=default_nlin_MAGeT_minctracc_prot.csv\n\nWhich can be " \
+                           "MAGeT (" + flag_nlin_part_nlin_protocol + \
+                           "), but the registration methods for masking (" + \
+                           flag_masking_method + \
+                           ") and the main MAGeT procedure (" + \
+                           flag_nlin_method + \
+                           ") are different. (" + maget_options.maget.mask_method + " vs " + \
+                           maget_options.nlin.reg_method + ")\n\nDefaults are:\n" + \
+                           flag_masking_method + " minctracc\n" + \
+                           flag_nlin_method + " minctracc\n" + \
+                           flag_masking_nlin_protocol + " default_nlin_MAGeT_minctracc_prot.csv\n" + \
+                           flag_nlin_part_nlin_protocol + " default_nlin_MAGeT_minctracc_prot.csv\n\nWhich can be " \
                            "found in either of these two locations:\n" \
                            "/hpf/largeprojects/MICe/tools/protocols/nonlinear/\n" \
                            "/axiom2/projects/software/non-linear-protocol/\n\n"
@@ -286,6 +297,7 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir, build_model_xfms=N
                                                        file_resolution=resolution)
 
     nlin_hierarchy = get_nonlinear_configuration_from_options(options.maget.nlin.nlin_protocol,
+                                                              next(iter(options.maget.nlin.flags_.nlin_protocol)),
                                                               reg_method=options.maget.nlin.reg_method,
                                                               file_resolution=resolution)
 

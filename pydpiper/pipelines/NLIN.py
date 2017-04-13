@@ -44,6 +44,7 @@ def NLIN_pipeline(options):
     initial_target = MincAtom(options.nlin.target, mask=initial_target_mask)
 
     full_hierarchy = get_nonlinear_configuration_from_options(nlin_protocol=options.nlin.nlin_protocol,
+                                                              flag_nlin_protocol=next(iter(options.nlin.flags_.nlin_protocol)),
                                                               reg_method=options.nlin.reg_method,
                                                               file_resolution=resolution)
 
