@@ -47,10 +47,8 @@ def NamedTuple(name : str, fields : List[Tuple[str, Callable[[Any], Any]]]):
             # this works:
             l = len(args) + len(kwargs)
             if l == len(fields) + 1:  # the extra 1 is for the class name
-                print(l, args)
                 return f(*args, flags_=set(), **kwargs)
             elif l == len(fields) + 2:
-                print(l, args)
                 return f(*args, **kwargs)
             else:
                 raise ValueError("!?")
