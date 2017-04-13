@@ -23,7 +23,7 @@ from pyminc.volumes.factory import volumeFromFile  # type: ignore
 
 def custom_formatwarning(msg, cat, filename, lineno, line=None):
     # change the order of how the warning is printed
-    return "Warning: " + str(msg) + " " + str(filename) + ":" + str(lineno) + "\n"
+    return "\nWarning: " + str(msg) + " " + str(filename) + ":" + str(lineno) + "\n\n"
 warnings.formatwarning = custom_formatwarning
 
 # TODO push down into lsq12_pairwise?
@@ -1078,6 +1078,7 @@ def parse_minctracc_protocol(f, base_minctracc_conf, parsers, names,
                              modify : Callable[[MinctraccConf, Any], MinctraccConf]):
     params = list(parsers.keys())
 
+    registration_type = "linear" if type(base_minctracc_conf) == LinearMinctraccConf else "non-linear"
     # build a mapping from (Python, not file) field names to a list of values (one for each generation)
     d = {}
     for l in f:
@@ -1102,7 +1103,7 @@ def parse_minctracc_protocol(f, base_minctracc_conf, parsers, names,
         raise ParseError("Empty file ...")   # TODO should this really be an error?
     for k in d.copy():  # otherwise d changes size during iteration ...
         if is_ignored_key(k):
-            print("Warning: don't currently use '%s'..." % k)  # doesn't have to be same length -> can crash code below
+            print("Note: the '%s' parameter is not used for %s minctracc registrations. It's specified in the protocol, but won't have any effect." % (k, registration_type))  # doesn't have to be same length -> can crash code below
             del d[k]
 
     vs = list(d.values())
