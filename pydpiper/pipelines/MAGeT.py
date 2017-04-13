@@ -241,6 +241,29 @@ def maget_mask(imgs : List[MincAtom], maget_options, resolution : float, pipelin
 # object, copy it, and put the maget options at top level.
 def fixup_maget_options(lsq12_options, nlin_options, maget_options):
 
+    # This function is used by programs that want to incorporate MAGeT
+    # into a larger pipeline (for instance MBM or the twolevel code).
+    # The lsq12 alignment is often performed twice. Once in order to
+    # create masks (for MAGeT) and then for the actual pipeline.
+    # The naming convention we use (naming the different stages of
+    # the lsq12 alignment _lsq12_0.xfm, _lsq12_1.xfm etc.) conflicts
+    # when the lsq12 protocols are different for the different stages.
+    # So for now we won't allow it, and indicate that here
+    if maget_options.lsq12.protocol and lsq12_options.protocol and \
+        (maget_options.lsq12.protocol != lsq12_options.protocol):
+        flag_maget = next(iter(maget_options.lsq12.flags_.protocol))
+        flag_lsq12 = next(iter(lsq12_options.flags_.protocol))
+        error_msg = "\n\nYou have specified a different lsq12 protocol " \
+                    "for MAGeT as compared to the lsq12 protocol for the " \
+                    "main registration: \n\n" + flag_maget + " " + \
+                    maget_options.lsq12.protocol + "\n" + flag_lsq12 + " " + \
+                    lsq12_options.protocol + "\n\nOne lsq12 protocol can be used " \
+                    "for both parts of the pipeline. Please decide which of the two " \
+                    "you want to use, and specify only that one using the " + flag_lsq12 \
+                    + " flag.\n\n"
+        raise ValueError(error_msg)
+
+    # if both the maget_options.lsq12.protocol and the lsq12_options
     if maget_options.lsq12.protocol is None:
         maget_options.lsq12.protocol = lsq12_options.protocol
 
