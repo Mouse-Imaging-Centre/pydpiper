@@ -6,6 +6,9 @@ from os import mkdir
 import os
 import subprocess
 
+def create_uri_filename_from_options(pipeline_name : str) -> str:
+    return os.path.abspath(os.path.join(os.curdir, pipeline_name + "_uri"))
+
 # FIXME huge hack around not being able to pretty-print
 # flags back out of a parsed representation
 # fix: form the parser from an iterable data structure of args
@@ -62,7 +65,7 @@ class runOnQueueingSystem():
         self.ns = options.execution.use_ns
         self.uri_file = options.execution.urifile
         if self.uri_file is None:
-            self.uri_file = os.path.abspath(os.path.join(os.curdir, "uri"))
+            self.uri_file = create_uri_filename_from_options(options.application.pipeline_name)
         self.jobDir = os.path.abspath(os.path.join(os.curdir, "pbs-jobs"))
         if not isdir(self.jobDir):
             mkdir(self.jobDir) 
