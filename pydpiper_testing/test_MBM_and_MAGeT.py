@@ -86,8 +86,8 @@ script = """
   result <- mapply(mean, split(apply(volume_striatum, 1, sum), gf$genotype))
   result <- as.list(result)
   frac   <- result$mutant/result$wt
-  print(frac)
-  if ((frac < 0.875) || (frac > 0.925)) stop("unexpected result...") else print("succeeded")
+  print(paste("In these test data, we've introduced a 10% decrease in the volume of the striatum in the mutants. The difference we found using the image registration software is: ", format((frac - 1) * 100,digits=3), "%.", sep=""))
+  if ((frac < 0.875) || (frac > 0.925)) stop("Failed: unexpected result... We expect the volume difference as estimated by the registration software to lie between -12.5% and -7.5%.") else print("Succeeded! We expect the registration procedure to underestimate the true underlying change (see https://www.ncbi.nlm.nih.gov/pubmed/23756204). The difference found lies within our acceptance boundaries: -12.5% and -7.5%.")
 """.format(**vars())
 
 with tempfile.NamedTemporaryFile(mode='w') as f:

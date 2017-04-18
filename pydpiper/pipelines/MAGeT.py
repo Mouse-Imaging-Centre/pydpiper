@@ -15,14 +15,11 @@ from pydpiper.core.stages import Stages, Result
 from pydpiper.execution.application import mk_application
 from pydpiper.minc.analysis import voxel_vote
 from pydpiper.minc.files            import MincAtom, XfmAtom
-from pydpiper.minc.registration     import (check_MINC_input_files, lsq12_nlin,
+from pydpiper.minc.registration     import (check_MINC_input_files, lsq12_nlin, custom_formatwarning,
                                             get_nonlinear_configuration_from_options,
                                             get_linear_configuration_from_options, LinearTransType,
                                             mincresample_new, mincmath, Interpolation, xfmconcat, xfminvert)
 
-def custom_formatwarning(msg, cat, filename, lineno, line=None):
-    # change the order of how the warning is printed
-    return "Warning: " + str(msg) + " " + str(filename) + ":" + str(lineno) + "\n"
 warnings.formatwarning = custom_formatwarning
 
 
@@ -176,6 +173,7 @@ def maget_mask(imgs : List[MincAtom], maget_options, resolution : float, pipelin
                                                        resolution)
 
     masking_nlin_hierarchy = get_nonlinear_configuration_from_options(maget_options.maget.masking_nlin_protocol,
+                                                                      next(iter(maget_options.maget.flags_.masking_nlin_protocol)),
                                                                       maget_options.maget.mask_method,
                                                                       resolution)
 
@@ -243,6 +241,29 @@ def maget_mask(imgs : List[MincAtom], maget_options, resolution : float, pipelin
 # object, copy it, and put the maget options at top level.
 def fixup_maget_options(lsq12_options, nlin_options, maget_options):
 
+    # This function is used by programs that want to incorporate MAGeT
+    # into a larger pipeline (for instance MBM or the twolevel code).
+    # The lsq12 alignment is often performed twice. Once in order to
+    # create masks (for MAGeT) and then for the actual pipeline.
+    # The naming convention we use (naming the different stages of
+    # the lsq12 alignment _lsq12_0.xfm, _lsq12_1.xfm etc.) conflicts
+    # when the lsq12 protocols are different for the different stages.
+    # So for now we won't allow it, and indicate that here
+    if maget_options.lsq12.protocol and lsq12_options.protocol and \
+        (maget_options.lsq12.protocol != lsq12_options.protocol):
+        flag_maget = next(iter(maget_options.lsq12.flags_.protocol))
+        flag_lsq12 = next(iter(lsq12_options.flags_.protocol))
+        error_msg = "\n\nYou have specified a different lsq12 protocol " \
+                    "for MAGeT as compared to the lsq12 protocol for the " \
+                    "main registration: \n\n" + flag_maget + " " + \
+                    maget_options.lsq12.protocol + "\n" + flag_lsq12 + " " + \
+                    lsq12_options.protocol + "\n\nOne lsq12 protocol can be used " \
+                    "for both parts of the pipeline. Please decide which of the two " \
+                    "you want to use, and specify only that one using the " + flag_lsq12 \
+                    + " flag.\n\n"
+        raise ValueError(error_msg)
+
+    # if both the maget_options.lsq12.protocol and the lsq12_options
     if maget_options.lsq12.protocol is None:
         maget_options.lsq12.protocol = lsq12_options.protocol
 
@@ -256,14 +277,24 @@ def fixup_maget_options(lsq12_options, nlin_options, maget_options):
         if maget_options.maget.mask_method == maget_options.nlin.reg_method:
             maget_options.maget.masking_nlin_protocol = maget_options.nlin.nlin_protocol
         else:
-            error_string = "\n\nThe MAGeT non-linear masking protocol (--maget-masking-nlin-protocol) " \
+            flag_masking_nlin_protocol = next(iter(maget_options.maget.flags_.masking_nlin_protocol))
+            flag_nlin_part_nlin_protocol = next(iter(maget_options.nlin.flags_.nlin_protocol))
+            flag_masking_method = next(iter(maget_options.maget.flags_.mask_method))
+            flag_nlin_method = next(iter(maget_options.nlin.flags_.reg_method))
+            error_string = "\n\nThe MAGeT non-linear masking protocol (" + \
+                           flag_masking_nlin_protocol + ") " \
                            "was not specified. Tried to use the non-linear protocol for the main part of " \
-                           "MAGeT (--maget-nlin-protocol), but the registration methods for masking (--maget-masking-method) " \
-                           "and the main MAGeT procedure (--maget-registration-method) are different. (" +\
-                           maget_options.maget.mask_method + " vs " + maget_options.nlin.reg_method + ")\n\nDefaults are:\n" \
-                           "--maget-masking-method=minctracc\n--maget-registration-method=minctracc\n" \
-                           "--maget-masking-nlin-protocol=default_nlin_MAGeT_minctracc_prot.csv\n" \
-                           "--maget-nlin-protocol=default_nlin_MAGeT_minctracc_prot.csv\n\nWhich can be " \
+                           "MAGeT (" + flag_nlin_part_nlin_protocol + \
+                           "), but the registration methods for masking (" + \
+                           flag_masking_method + \
+                           ") and the main MAGeT procedure (" + \
+                           flag_nlin_method + \
+                           ") are different. (" + maget_options.maget.mask_method + " vs " + \
+                           maget_options.nlin.reg_method + ")\n\nDefaults are:\n" + \
+                           flag_masking_method + " minctracc\n" + \
+                           flag_nlin_method + " minctracc\n" + \
+                           flag_masking_nlin_protocol + " default_nlin_MAGeT_minctracc_prot.csv\n" + \
+                           flag_nlin_part_nlin_protocol + " default_nlin_MAGeT_minctracc_prot.csv\n\nWhich can be " \
                            "found in either of these two locations:\n" \
                            "/hpf/largeprojects/MICe/tools/protocols/nonlinear/\n" \
                            "/axiom2/projects/software/non-linear-protocol/\n\n"
@@ -289,6 +320,7 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir, build_model_xfms=N
                                                        file_resolution=resolution)
 
     nlin_hierarchy = get_nonlinear_configuration_from_options(options.maget.nlin.nlin_protocol,
+                                                              next(iter(options.maget.nlin.flags_.nlin_protocol)),
                                                               reg_method=options.maget.nlin.reg_method,
                                                               file_resolution=resolution)
 

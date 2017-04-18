@@ -41,6 +41,7 @@ logger.basicConfig(filename="pipeline.log", level=os.getenv("PYDPIPER_LOGLEVEL",
                 
 import Pyro4  # type: ignore
 from . import pipeline_executor as pe
+from pydpiper.execution.queueing import create_uri_filename_from_options
 
 Pyro4.config.SERVERTYPE = pe.Pyro4.config.SERVERTYPE
 
@@ -211,7 +212,7 @@ class ThinGraph(nx.DiGraph):
     def single_edge_dict(self):
         return self.all_edge_dict
     edge_attr_dict_factory = single_edge_dict
-    
+
 class Pipeline(object):
     # TODO the way we initialize a pipeline is currently a bit gross, e.g.,
     # setting a bunch of instance variables after __init__ - the presence of a method
@@ -1127,7 +1128,7 @@ def pipelineDaemon(pipeline, options, programName=None):
     """Launches Pyro server and (if specified by options) pipeline executors"""
 
     if options.execution.urifile is None:
-        options.execution.urifile = os.path.abspath(os.path.join(os.curdir, options.application.pipeline_name + "_uri"))
+        options.execution.urifile = create_uri_filename_from_options(options.application.pipeline_name)
 
     if options.application.restart:
         pipeline.skip_completed_stages()

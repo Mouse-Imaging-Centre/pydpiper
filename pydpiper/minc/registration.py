@@ -23,7 +23,7 @@ from pyminc.volumes.factory import volumeFromFile  # type: ignore
 
 def custom_formatwarning(msg, cat, filename, lineno, line=None):
     # change the order of how the warning is printed
-    return "Warning: " + str(msg) + " " + str(filename) + ":" + str(lineno) + "\n"
+    return "\nWarning: " + str(msg) + " " + str(filename) + ":" + str(lineno) + "\n\n"
 warnings.formatwarning = custom_formatwarning
 
 # TODO push down into lsq12_pairwise?
@@ -1078,6 +1078,7 @@ def parse_minctracc_protocol(f, base_minctracc_conf, parsers, names,
                              modify : Callable[[MinctraccConf, Any], MinctraccConf]):
     params = list(parsers.keys())
 
+    registration_type = "linear" if type(base_minctracc_conf) == LinearMinctraccConf else "non-linear"
     # build a mapping from (Python, not file) field names to a list of values (one for each generation)
     d = {}
     for l in f:
@@ -1102,7 +1103,7 @@ def parse_minctracc_protocol(f, base_minctracc_conf, parsers, names,
         raise ParseError("Empty file ...")   # TODO should this really be an error?
     for k in d.copy():  # otherwise d changes size during iteration ...
         if is_ignored_key(k):
-            print("Warning: don't currently use '%s'..." % k)  # doesn't have to be same length -> can crash code below
+            print("Note: the '%s' parameter is not used for %s minctracc registrations. It's specified in the protocol, but won't have any effect." % (k, registration_type))  # doesn't have to be same length -> can crash code below
             del d[k]
 
     vs = list(d.values())
@@ -1397,8 +1398,9 @@ def get_linear_configuration_from_options(conf, transform_type : LinearTransType
                                           # minctracc config uses factors, so should be OK.
                          )
     else:
-        error_message = "\n\nError while retrieving the linear (" + transform_type.name + ") minctracc configuration. " \
-                        "(Flag: .......) No protocol was specified and no defaults are currently in place.\n"
+        error_message = "\n\nError while retrieving the linear (" + transform_type.name + ") minctracc configuration " \
+                        "(flag: " + next(iter(conf.flags_.protocol)) + "). No protocol was specified and no defaults " \
+                        "are currently in place.\n"
 
         #warnings.warn("No %s protocol specified (flag: .....) -- using the defaults, which might not be what you want"
         #              % transform_type.name)
@@ -1410,6 +1412,7 @@ def get_linear_configuration_from_options(conf, transform_type : LinearTransType
 
 
 def get_nonlinear_configuration_from_options(nlin_protocol : Union[ANTSConf, MinctraccConf],
+                                             flag_nlin_protocol : str,
                                              reg_method : str,
                                              file_resolution : float):
     """
@@ -1433,10 +1436,12 @@ def get_nonlinear_configuration_from_options(nlin_protocol : Union[ANTSConf, Min
     else:
         # get one of the default configurations
         if reg_method == "ANTS":
-            warn_message = "The non-linear protocol for flag ...... was not set. Using" \
-                           "the default ANTS protocol."
-            warnings.warn(warn_message)
             non_linear_configuration = get_default_multi_level_ANTS(file_resolution=file_resolution)
+            note_message = "Note: the non-linear protocol (" + flag_nlin_protocol + \
+                           ") was not set. Using the default ANTS protocol:\n"
+            for conf in non_linear_configuration.confs:
+                note_message += conf.transformation_model + ", " + conf.regularization + ", " + conf.iterations + "\n"
+            print(note_message)
         elif reg_method == "minctracc":
             #TODO: this. Still TODO.
             raise ValueError("Error.. we do not have proper minctracc nonlinear defaults yet. ")
@@ -1761,9 +1766,17 @@ def lsq12_nlin(source: MincAtom,
             # and we can just extract that single level
             nlin_conf = nlin_conf.confs[0]
         else:
-            raise ValueError("\n\nThe function lsq12_nlin was provided with a MultilevelANTSConf with more than 1 "
-                             "level. This is a function performing a source to target registration, and thus should "
-                             "only run a single level of ANTS (with its internal iterations option).\n")
+            # we can take the last configuration, and return a warning to the user that
+            # potentially they want to specify a custom protocol
+            nlin_conf = nlin_conf.confs[len(nlin_conf.confs) - 1]
+            warning_msg = "The function lsq12_nlin was provided with a MultilevelANTSConf with more than 1 " \
+                          "level. This is a function performing a source to target registration, and thus should " \
+                          "only run a single level of ANTS (with its internal iterations option). We will use the " \
+                          "last configuration from the protocol:\n" + \
+                          nlin_conf.transformation_model + ", " + \
+                          nlin_conf.regularization  + ", " + \
+                          nlin_conf.iterations
+            warnings.warn(warning_msg)
 
 
     if isinstance(nlin_conf, ANTSConf):

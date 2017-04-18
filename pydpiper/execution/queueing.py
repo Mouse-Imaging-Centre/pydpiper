@@ -6,6 +6,9 @@ from os import mkdir
 import os
 import subprocess
 
+def create_uri_filename_from_options(pipeline_name : str) -> str:
+    return os.path.abspath(os.path.join(os.curdir, pipeline_name + "_uri"))
+
 # FIXME huge hack around not being able to pretty-print
 # flags back out of a parsed representation
 # fix: form the parser from an iterable data structure of args
@@ -62,7 +65,7 @@ class runOnQueueingSystem():
         self.ns = options.execution.use_ns
         self.uri_file = options.execution.urifile
         if self.uri_file is None:
-            self.uri_file = os.path.abspath(os.path.join(os.curdir, "uri"))
+            self.uri_file = create_uri_filename_from_options(options.application.pipeline_name)
         self.jobDir = os.path.abspath(os.path.join(os.curdir, "pbs-jobs"))
         if not isdir(self.jobDir):
             mkdir(self.jobDir) 
@@ -165,7 +168,9 @@ class runOnQueueingSystem():
         if launchExecs:
             self.jobFile.write("sleep %s\n" %
                                self.executor_start_delay)
-            cmd = "pipeline_executor.py --local --num-executors=1 "
+            # provide the pipeline_executor with the uri_file that
+            # the server will use
+            cmd = "pipeline_executor.py --local --num-executors=1 --uri-file " + self.uri_file + " "
             cmd += ' '.join(remove_flags(['--num-exec'], self.arguments[1:]))
             cmd += ' &\n\n'
             self.jobFile.write(cmd)

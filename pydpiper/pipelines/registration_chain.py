@@ -230,6 +230,7 @@ def chain(options):
 
     # determine what configuration to use for the non linear registration
     nonlinear_configuration = get_nonlinear_configuration_from_options(options.nlin.nlin_protocol,
+                                                                       next(iter(options.nlin.flags_.nlin_protocol)),
                                                                        options.nlin.reg_method,
                                                                        options.registration.resolution)
 
