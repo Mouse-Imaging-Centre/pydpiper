@@ -168,7 +168,9 @@ class runOnQueueingSystem():
         if launchExecs:
             self.jobFile.write("sleep %s\n" %
                                self.executor_start_delay)
-            cmd = "pipeline_executor.py --local --num-executors=1 "
+            # provide the pipeline_executor with the uri_file that
+            # the server will use
+            cmd = "pipeline_executor.py --local --num-executors=1 --uri-file " + self.uri_file + " "
             cmd += ' '.join(remove_flags(['--num-exec'], self.arguments[1:]))
             cmd += ' &\n\n'
             self.jobFile.write(cmd)
