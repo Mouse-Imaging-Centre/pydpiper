@@ -6,7 +6,7 @@ import subprocess
 import sys
 import warnings
 import time
-from operator import mul
+from operator import mul, xor
 import math
 
 from configargparse import Namespace
@@ -2628,17 +2628,11 @@ def lsq12_nlin_pairwise(imgs       : List[MincAtom],
                                                avg_imgs=nlin_result.avg_imgs))
 
 
-
-
-
-
 def can_read_MINC_file(filename: str) -> bool:
     """Can the MINC file `filename` with be read with `mincinfo`?"""
-    # FIXME: opening and closing this file many times might be quite slow on some platforms ...
-    # better to change to can_read_MINC_files.
-    with open(os.devnull, 'w') as dev_null:
-        ok = subprocess.call(["mincinfo", filename], stdout=dev_null, stderr=dev_null) == 0
-    return ok
+    # FIXME is DEVNULL open/closed separately here (could be very slow)?!  investigate...
+    # if s(l)o(w), better to change to `can_read_MINC_files`?
+    return subprocess.call(["mincinfo", filename], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) == 0
 
 
 def check_MINC_input_files(args: List[str]) -> None:
@@ -2653,18 +2647,19 @@ def check_MINC_input_files(args: List[str]) -> None:
     """
     if len(args) < 1:
         raise ValueError("\nNo input files are provided.\n")
-    else:
-        # here we should also check that the input files can be read
-        issuesWithInputs = False
-        for inputF in args:
-            if not can_read_MINC_file(inputF):  # FIXME this will be quite slow on SciNet, etc.
-                print("\nError: can not read input file: " + str(inputF) + "\n", file=sys.stderr)
-                issuesWithInputs = True
-        if issuesWithInputs:
-            raise ValueError("\nIssues reading input files.\n")
+    # this part is disabled for now since `check_inputs` in `application.py` automatically checks _input_ minc files:
+    #else:
+    #    # here we should also check that the input files can be read
+    #    issuesWithInputs = False
+    #    for inputF in args:
+    #        if not can_read_MINC_file(inputF):  # FIXME this will be quite slow on SciNet, etc.
+    #            print("\nError: can not read input file: " + str(inputF) + "\n", file=sys.stderr)
+    #            issuesWithInputs = True
+    #    if issuesWithInputs:
+    #        raise ValueError("\nIssues reading input files.\n")
+
     # lastly we should check that the actual filenames are distinct, because
     # directories are made based on the basename
-
     duplicates_exist = False
     seen = set()  # type: Set[str]
     for inputF in args:

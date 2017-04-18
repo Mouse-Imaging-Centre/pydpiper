@@ -1,8 +1,9 @@
-
+import concurrent.futures
 from collections import defaultdict
 import pkg_resources
 import logging
 import networkx as nx
+import pandas as pd
 import os
 import sys
 import shutil
@@ -18,6 +19,7 @@ from pydpiper.execution.queueing import runOnQueueingSystem
 from pydpiper.execution.pipeline_executor import ensure_exec_specified
 from pydpiper.core.util import output_directories
 from pydpiper.core.conversion import convertCmdStage
+from pydpiper.minc.registration import can_read_MINC_file
 
 PYDPIPER_VERSION = pkg_resources.get_distribution("pydpiper").version  # pylint: disable=E1101
 
@@ -148,6 +150,26 @@ def execute(stages, options):
     if not options.application.execute:
         print("Not executing the command (--no-execute is specified).\nDone.")
         return
+
+    def check_inputs():
+        # TODO: probably inefficient to reconstruct inputs from graph here instead of once and for all ...
+        # TODO: or check inputs to unfinished stages lying outside the unfinished set, instead of the 'overall' inputs!
+        inputs = [ i for s in pipeline.G
+                   for i in pipeline.stages[s].inputFiles
+                   if len(pipeline.G.predecessors(s)) == 0 ]
+
+        def input_ok(input_file):
+            # TODO: the `.endswith` call here is because in the old code the inputs/outputs are strings, not `Stage`s
+            minc_ok = can_read_MINC_file(input_file) if input_file.endswith(".mnc") else True
+            # TODO: check non-MINC files somehow!  (So far we usually don't encounter this case ...)
+            return minc_ok
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:  # is 8 a good value?
+            bad_inputs = [input_file for input_file, ok in zip(inputs, executor.map(input_ok, inputs)) if not ok]
+            if len(bad_inputs) > 0:
+                raise ValueError("bad inputs: %s" % bad_inputs)
+
+    check_inputs()
 
     # TODO: why is this needed now that --version is also handled automatically?
     # --num-executors=0 (<=> --no-execute) could be the default, and you could

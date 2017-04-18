@@ -287,6 +287,9 @@ class Pipeline(object):
 
         self.createEdges()
         # could also set this on G itself ...
+        # TODO the name "unfinished" here is probably misleading since nothing is marked "finished";
+        # even though the "graph heads" are enqueued here, this will be changed later when completed stages
+        # are skipped :D
         self.unfinished_pred_counts = [ len([i for i in self.G.predecessors(n)
                                              if not self.stages[i].isFinished()])
                                         for n in range(self.G.order()) ]
