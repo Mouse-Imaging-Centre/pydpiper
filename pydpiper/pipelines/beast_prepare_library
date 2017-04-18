@@ -1,0 +1,119 @@
+#!/usr/bin/env python3
+
+import os
+import pandas as pd
+from configargparse import Namespace
+
+from pydpiper.core.arguments import AnnotatedParser, lsq12_parser
+from pydpiper.core.stages import Stages, Result, CmdStage
+from pydpiper.core.util import flatten
+from pydpiper.execution.application import mk_application
+from pydpiper.minc.analysis import voxel_vote
+from pydpiper.minc.beast_cp import beast_parser
+from pydpiper.minc.files import MincAtom
+from pydpiper.minc.registration import (check_MINC_input_files, minc_modify_header_safe, minc_downsample, mincmath,
+                                        mincmorph, Dilation, Erosion, mincbigaverage)
+from pydpiper.pipelines.MAGeT import maget_parsers, get_imgs
+
+
+def bootstrap_pipeline(options):
+    s = Stages()
+
+    imgs = get_imgs(options.application)
+
+    library_dir = options.beast.library_dir
+
+    all_resolutions = (1, 2, 4)
+    downsampled_resolutions = (2, 4)
+
+    img_df = pd.DataFrame({ 'img_file' : imgs, 'mask_file' : [img.mask for img in imgs] })
+    for img in imgs:
+        img.mask = None
+
+    # currently doesn't work since often the input `voted.mnc` files all have the same name ...
+    #check_MINC_input_files([img.path for img in img_df.img_file] + [mask.path for mask in img_df.mask_file])
+
+    imgs_1mm = pd.DataFrame(
+        { col + "_1mm" : img_df.apply(axis=1, func=lambda row:
+            s.defer(minc_modify_header_safe(infile=field(row),
+                                            outfile=MincAtom(os.path.join(library_dir, d, "1mm",
+                                                                          # this is on purpose to avoid name clashes
+                                                                          # as all label files are named "voted.mnc":
+                                                                          row.img_file.filename_wo_ext + "_1mm.mnc"),
+                                                             output_sub_dir=os.path.join(library_dir, d)),
+                                            flags=flatten(*[["-sinsert", "%sspace:step=1" % space]
+                                                             for space in ("x", "y", "z")]))))
+                 for (col, field, d) in (("img",  lambda row: row.img_file,  "stx"),
+                                         ("mask", lambda row: row.mask_file, "masks")) })
+
+    imgs_downsampled = pd.DataFrame(
+        { col + "_%dmm" % factor : imgs_1mm.apply(axis=1, func=lambda row:
+            s.defer(minc_downsample(infile=field(row),
+                                    outfile=field(row).newname_with_suffix("_%dmm" % factor, subdir="%dmm" % factor),
+                                    subdir=os.path.join(d, "%dmm" % factor),
+                                    flags=["--3dfactor", str(factor)])))
+          for (col, field, d) in (("img",  lambda row: row.img_1mm,  "stx"),
+                                  ("mask", lambda row: row.mask_1mm, "masks"))
+          for factor in downsampled_resolutions })
+
+    imgs_df = pd.concat([imgs_1mm, imgs_downsampled], axis=1)
+
+    union_mask = s.defer(mincmorph(
+                   infile=s.defer(mincmath(op='max', vols=imgs_df.mask_1mm, new_name="union_mask.mnc")),
+                   ops=[Dilation()] * 5,  # TODO add no. of Dilation/Erosion voxels to options
+                   outfile=MincAtom(os.path.join(library_dir, "union_mask.mnc"))))
+    intersection_mask = s.defer(mincmorph(
+                          infile=s.defer(mincmath(op='min', vols=imgs_df.mask_1mm, new_name="intersection_mask.mnc")),
+                          ops=[Erosion()] * 5,
+                          outfile=MincAtom(os.path.join(library_dir, "intersection_mask.mnc"))))
+    margin_mask = s.defer(mincmath(op='sub', vols=[union_mask, intersection_mask],
+                                   out_atom=MincAtom(os.path.join(library_dir, "margin_mask.mnc"))))
+
+    c = CmdStage(cmd=["echo", "creating library.* files... (via a Python hook)"],
+                 # a rather artificial dependency, just in case the library_dir is changed
+                 # TODO: (suggesting we should be allowed to depend on other variables, not just filenames):
+                 inputs=(margin_mask,), outputs=(),
+                 # TODO doesn't this suggest CmdStages should (once again) have descriptive names?
+                 log_file=os.path.join(library_dir, "log", "create_CSVs.log"))
+
+    def csv_hook(s):
+      for factor in all_resolutions:
+        for field, filename in (("img", "stx"), ("mask", "masks")):
+          (imgs_df["%s_%dmm" % (field, factor)]
+           .apply(lambda x: os.path.relpath(x.path, start=library_dir))
+           .to_csv(os.path.join(library_dir, "library.%s.%dmm" % (filename, factor)), index=False))
+
+    c.when_finished_hooks.append(csv_hook)
+    s.add(c)
+
+    # create a (bad) beast_model ... could also base this on the (presumably) existing lsq12/nonlinear average
+    beast_model = (
+      s.defer(minc_modify_header_safe(
+        s.defer(mincbigaverage(imgs=img_df.img_file,
+                               avg_file=MincAtom(os.path.join(library_dir, "beast_model", "model.mnc")))),
+        outfile=MincAtom(os.path.join(library_dir, "beast_model", "model_1mm.mnc")),
+        flags=flatten(*[["-sinsert", "%sspace:step=1" % space]
+                       for space in ("x", "y", "z")]))))
+
+    beast_model.mask = (
+      s.defer(minc_modify_header_safe(
+        s.defer(voxel_vote(label_files=img_df.mask_file, output_dir=os.path.join(library_dir, "beast_model"),
+                           name="model_mask")),
+        outfile=MincAtom(os.path.join(library_dir, "beast_model", "model_1mm_mask.mnc")),
+        flags=flatten(*[["-sinsert", "%sspace:step=1" % space]
+                       for space in ("x", "y", "z")]))))
+
+    return Result(stages=s, output=Namespace(imgs=imgs_df, model=beast_model,
+                                             masks=Namespace(intersection=intersection_mask,
+                                                             union=union_mask,
+                                                             margin=margin_mask)))
+
+
+bootstrap_application = mk_application(parsers=[AnnotatedParser(parser=maget_parsers,
+                                                                namespace="maget")],
+                                       pipeline=bootstrap_pipeline)
+
+
+if __name__ == "__main__":
+    mk_application(parsers=[lsq12_parser, beast_parser],
+                   pipeline=bootstrap_pipeline)()

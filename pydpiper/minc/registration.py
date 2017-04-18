@@ -3540,8 +3540,115 @@ def cp(infile : FileAtom, outfile : Optional[FileAtom] = None,
 def minc_modify_header_safe(infile  : MincAtom,
                             flags   : List[str],
                             outfile : Optional[MincAtom] = None,
-                            subdir  : str = None):
+                            subdir  : Optional[str] = None):
     outfile = outfile or infile.newname_with_suffix("_modified", subdir=subdir)
     s = CmdStage(cmd=["minc_modify_header_safe"] + flags + [infile.path, outfile.path],
                  inputs=(infile,), outputs=(outfile,))
     return Result(stages=Stages([s]), output=outfile)
+
+
+def minc_downsample(infile  : MincAtom,
+                    flags   : List[str],
+                    outfile : Optional[MincAtom] = None,
+                    subdir  : Optional[str] = None):
+
+    outfile = outfile or infile.newname_with_suffix("_ds", subdir=subdir)
+    s = CmdStage(cmd=["minc_downsample"] + flags + [infile.path, outfile.path], inputs=(infile,), outputs=(outfile,))
+    return Result(stages=Stages([s]), output=outfile)
+
+
+class Kernel(AutoEnum):
+    _2d04 = _2d08 = _3d06 = _3d26 = ()
+
+class MincMorphOp(object):
+    def __init__(self):
+        self.inputs = self.outputs = ()
+    def render(self):
+        raise NotImplemented
+class Binarise(MincMorphOp):
+    def __init__(self, floor : float, ceil : float, fg_and_bg : Optional[Tuple[float, float]] = None):
+        super(self.__class__, self).__init__()
+        self.floor = floor
+        self.ceil  = ceil
+        self.fg_and_bg = fg_and_bg
+    def render(self):
+        if self.fg_and_bg is None:
+            return "B[%s:%s]" % (self.floor, self.ceil)
+        else:
+            fg, bg = self.fg_and_bg
+            return "B[%s:%s:%s:%s]" % (self.floor, self.ceil, fg, bg)
+class Clamp(MincMorphOp):
+    def __init__(self, floor : float, ceil : float, bg : Optional[float] = None):
+        super(self.__class__, self).__init__()
+        self.floor = floor
+        self.ceil = ceil
+        self.bg = bg
+    def render(self):
+        return (("C[%s:%s:%s]" % (self.floor, self.ceil, self.bg))
+                if self.bg is not None else ("C[%s:%s]" % (self.floor, self.ceil)) )
+class Pad(MincMorphOp):
+    def __init__(self, bg : Optional[float] = None):
+        super(self.__class__, self).__init__()
+        self.bg = bg
+        self.inputs  = ()
+        self.outputs = ()
+    def render(self):
+        return ("P[%s]" % self.bg) if self.bg is not None else "P"
+class Erosion(MincMorphOp):
+    def render(self): return "E"
+class Dilation(MincMorphOp):
+    def render(self): return "D"
+class MedianDilation(MincMorphOp):
+    def render(self): return "M"
+class Open(MincMorphOp):
+    def render(self): return "O"
+class Close(MincMorphOp):
+    def render(self): return "C"
+class LowpassFilter(MincMorphOp):
+    def render(self): return "L"
+class HighpassFilter(MincMorphOp):
+    def render(self): return "H"
+class Convolve(MincMorphOp):
+    def render(self): return "X"
+class DistanceTransform(MincMorphOp):
+    def render(self): return "F"
+class LabelGroups(MincMorphOp):
+    def render(self): return "G"
+class ReadKernel(MincMorphOp):
+    def __init__(self, kernel : Optional[Kernel] = None, kernel_file : Optional[FileAtom] = None):
+        super(self.__class__, self).__init__()
+        assert(xor(kernel is None, kernel_file is not None))
+        self.kernel = kernel
+        self.kernel_file = kernel_file
+        if kernel_file is not None:
+            self.inputs = (kernel_file,)
+    def render(self):
+        return "R[%s]" % (self.kernel or self.kernel_file.path)
+class WriteFile(MincMorphOp):
+    def __init__(self, f : MincAtom):
+        super(self.__class__, self).__init__()
+        self.f = f
+        self.outputs = (f,)
+    def render(self):
+        return "W[%s]" % self.f.path
+class LocalXcorr(MincMorphOp):
+    def __init__(self, f2 : MincAtom):
+        super(self.__class__, self).__init__()
+        self.f2 = f2
+        self.inputs = (f2,)
+    def render(self):
+        return "I[%s]" % self.f2.path
+
+def mincmorph(infile : MincAtom,
+              #ops : str,  # TODO: obviously this won't work if the successive operations contain file dependencies !!
+              ops : List[MincMorphOp],
+              filetype : Optional[str] = None,
+              suffix  : Optional[str] = None,
+              outfile : Optional[MincAtom] = None):
+    outfile = outfile or infile.newname_with_suffix(suffix or "_morph")
+    c = CmdStage(cmd=["mincmorph", "-clobber", "-successive"]
+                     + ["'" + ''.join([op.render() for op in ops]) + "'"]
+                     + [infile.path, outfile.path],
+                 inputs=(infile,) + tuple(flatten(*[list(op.inputs) for op in ops])),
+                 outputs=(outfile,) + tuple(flatten(*[list(op.outputs) for op in ops])))
+    return Result(stages=Stages([c]), output=outfile)
