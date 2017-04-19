@@ -427,7 +427,8 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir, build_model_xfms=N
                               invert=True,
                               interpolation=Interpolation.nearest_neighbour,
                               extra_flags=('-keep_real_range',)))))
-            )
+            ) if len(imgs) > 1 else pd.DataFrame({ 'img' : [], 'label_file' : [] })
+              # ... as no distinct templates to align if only one image supplied (#320)
 
             imgs_with_all_labels = pd.concat([atlas_labelled_imgs[['img', 'label_file']],
                                               template_labelled_imgs[['img', 'label_file']]],
