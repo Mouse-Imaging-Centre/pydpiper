@@ -45,17 +45,19 @@ def mbm_pipeline(options : MBMConf):
 
     check_MINC_input_files([img.path for img in imgs])
 
+    output_dir = options.application.output_directory
+
     mbm_result = s.defer(mbm(imgs=imgs, options=options,
                              prefix=options.application.pipeline_name,
-                             output_dir=options.application.output_directory))
+                             output_dir=output_dir))
 
     # create useful CSVs (note the files listed therein won't yet exist ...)
-    with open("transforms.csv", 'w') as f:
+    with open(os.path.join(output_dir, "transforms.csv"), 'w') as f:
         f.write(mbm_result.xfms.assign(file=lambda df: df.lsq12_nlin_xfm.apply(lambda x: x.source),
                                        mask_file=lambda df:
                                          df.lsq12_nlin_xfm.apply(lambda x: x.source.mask if x.source.mask else ""))
                 .applymap(maybe_deref_path).to_csv(index=False))
-    with open("determinants.csv", 'w') as f:
+    with open(os.path.join(output_dir, "determinants.csv"), 'w') as f:
         f.write(mbm_result.determinants.applymap(maybe_deref_path).to_csv(index=False))
     # # TODO moved here from inside `mbm` for now ... does this make most sense?
     # if options.mbm.segmentation.run_maget:
