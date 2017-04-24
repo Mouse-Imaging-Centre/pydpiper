@@ -473,10 +473,18 @@ def maget_pipeline(options):
     else:
         build_model_xfms = None
 
-    return maget(imgs=imgs, options=options,
-                 prefix=options.application.pipeline_name,
-                 output_dir=options.application.output_directory,
-                 build_model_xfms=build_model_xfms)
+    result = maget(imgs=imgs, options=options,
+                   prefix=options.application.pipeline_name,
+                   output_dir=options.application.output_directory,
+                   build_model_xfms=build_model_xfms)
+
+    (pd.DataFrame({ 'img_file'   : result.output.apply(lambda row: row.path),
+                    'label_file' : result.output.apply(lambda row: row.labels.path),
+                    #'mask_file'  : result.output.apply(lambda row: row.mask.path if row.mask else "NA")
+                  })
+        .to_csv(os.path.join(options.application.output_directory, "segmentations.csv"), index=False))
+
+    return result
 
 
 def _mk_maget_parser(parser : ArgParser):
