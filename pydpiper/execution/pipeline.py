@@ -554,7 +554,7 @@ class Pipeline(object):
         roughly_processed = math.floor(self.num_finished_stages / len(self.stages) * 100)
         if roughly_processed > self.percent_finished_reported:
             # only report it after we've checked the status of the pipeline
-            if not checking_pipeline_status:
+            if self.verbose and not checking_pipeline_status:
                 print("\n\nStatus update: " + "\n" + str(self.num_finished_stages) +
                       " out of " + str(len(self.stages)) + " stages finished.\n" + time.ctime() +
                       "\nFor more detailed information run (in a separate shell with modules loaded):\ncheck_pipeline_status.py "
