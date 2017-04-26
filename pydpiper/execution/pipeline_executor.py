@@ -421,11 +421,8 @@ class pipelineExecutor(object):
 
             script = header + '\n' + ' '.join(cmd) + '\n'
             #print(script)
-            # TODO change to use subprocess.run(qsub_cmd, input=...) (Python >= 3.5)
-            p = subprocess.Popen(qsub_cmd, stdin=subprocess.PIPE, shell=False, env=env)
-            _out_data, _err_data = p.communicate(script.encode('ascii'))
-            #print(out_data)
-            #print(err_data, file=sys.stderr)
+            #print(' '.join(qsub_cmd))
+            p = subprocess.run(qsub_cmd, input=script.encode('ascii'), env=env)
             if p.returncode != 0:
                 raise SubmitError({ 'return' : p.returncode, 'failed_command' : qsub_cmd })
 
