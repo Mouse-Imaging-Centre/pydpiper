@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
+
 import os
+import sys
+
 from setuptools import setup
+
+if sys.version_info < (3, 5):
+    raise ValueError("Minimum Python version supported is 3.5")
 
 setup(name='pydpiper',
       version='2.0.6',
