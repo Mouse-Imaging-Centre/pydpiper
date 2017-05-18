@@ -55,16 +55,14 @@ def two_level_pipeline(options : TwoLevelConf):
     pipeline = two_level(grouped_files_df=files_df, options=options)
 
     # TODO write these into the appropriate subdirectory ...
-    with open("overall_determinants.csv", 'w') as overall_csv:
-        overall_csv.write(pipeline.output.overall_determinants
-                          .drop('inv_xfm', axis=1)
-                          .applymap(maybe_deref_path)
-                          .to_csv(index=False))
-    with open("resampled_determinants.csv", 'w') as resampled_csv:
-        resampled_csv.write(pipeline.output.resampled_determinants
-                            .drop(['inv_xfm', 'full_det', 'nlin_det'], axis=1)
-                            .applymap(maybe_deref_path)
-                            .to_csv(index=False))
+    (pipeline.output.overall_determinants
+       .drop('inv_xfm', axis=1)
+       .applymap(maybe_deref_path)
+       .to_csv("overall_determinants.csv", index=False))
+    (pipeline.output.resampled_determinants
+       .drop(['inv_xfm', 'full_det', 'nlin_det'], axis=1)
+       .applymap(maybe_deref_path)
+       .to_csv("resampled_determinants.csv", index=False))
 
     return pipeline
 
