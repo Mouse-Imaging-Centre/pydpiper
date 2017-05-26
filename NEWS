@@ -1,3 +1,8 @@
+New in Version 2.0.7
+====================
+* this release fixes only one issue: minctracc-based model building didn't use previously computed transforms
+  as initial transforms in the next level of registrations
+
 New in Version 2.0.6
 ====================
 * fix MAGeT extra resampling of labels along transform from original onto new templates (#304)
