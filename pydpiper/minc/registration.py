@@ -1602,9 +1602,12 @@ def minctracc_NLIN_build_model(imgs: List[MincAtom],
     s = Stages()
     avg = initial_target
     avg_imgs = []
+    xfms = [None] * len(imgs)
     for i, conf in enumerate(conf.confs, start=1):
-        xfms = [s.defer(minctracc(source=img, target=avg, conf=conf, generation=i, resample_source=True))
-                for img in imgs]
+        xfms = [s.defer(minctracc(source=img, target=avg, conf=conf,
+                                  transform=xfm.xfm if xfm is not None else None,
+                                  generation=i, resample_source=True))
+                for img, xfm in zip(imgs, xfms)]
         avg = s.defer(mincaverage([xfm.resampled for xfm in xfms], name_wo_ext='nlin-%d' % i, output_dir=nlin_dir))
         avg_imgs.append(avg)
     return Result(stages=s, output=WithAvgImgs(output=xfms, avg_img=avg, avg_imgs=avg_imgs))
