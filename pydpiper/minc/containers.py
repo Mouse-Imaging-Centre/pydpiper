@@ -1,6 +1,5 @@
 import copy
-from typing import Optional
-
+from typing import Optional, TypeVar, Generic
 from pydpiper.minc.files import MincAtom, XfmAtom
 
 #TODO: might move elsewhere?
@@ -20,7 +19,11 @@ def ensure_nonnull_return(f):
     return g
 
 
-class XfmHandler(object):
+I = TypeVar('I')
+X = TypeVar('X')
+
+
+class GenericXfmHandler(Generic[I, X]):
     """An xfm together with src/target images and the resampled src image.
     The idea is that a registration stage producing a transform
     will use an XfmHandler containing the transform together with the resampled image produced.
@@ -35,16 +38,19 @@ class XfmHandler(object):
                  then the xfm applied, that file will be stored in resampled.
     """
     def __init__(self,
-                 source    : MincAtom,
-                 xfm       : XfmAtom,
-                 target    : MincAtom,
-                 resampled : Optional[MincAtom] = None) -> None:
+                 source    : I,
+                 xfm       : X,
+                 target    : I,
+                 resampled : Optional[I] = None,
+                 inverse   : Optional['GenericXfmHandler'] = None) -> None:
         self.source     = source
         self.xfm        = xfm
         self.target     = target
         self._resampled = resampled
+        self._inverse   = inverse
     # We thought about including an inverse transform which could be generated automagically (when/how??)
     # although s.defer(XfmHandler(...)) to collect the relevant stages is a bit nasty ...
+    # update: we now include this field!
 
     def __repr__(self) -> str:
         return "%s(xfm=%s)" % (self.__class__, self.xfm.path) 
@@ -55,14 +61,28 @@ class XfmHandler(object):
 
     # accessing a null `resampled` field is almost certainly a programming error; throw an exception:
 
-    def get_resampled(self) -> MincAtom:
+    def get_resampled(self) -> I:
         return ensure_nonnull_return(lambda self: self._resampled)(self)
     #resampled = property(ensure_nonnull_return(lambda self: self._resampled), "`resampled` property")
 
     def set_resampled(self, resampled) -> None:
         self._resampled = resampled
 
+    def has_resampled(self) -> bool:
+        return self._resampled is not None
+
     resampled = property(get_resampled, set_resampled)
+
+    def has_inverse(self) -> bool:
+        return self._inverse is not None
+
+    def get_inverse(self) -> I:
+        return ensure_nonnull_return(lambda self: self._inverse)(self)
+
+    def set_inverse(self, inverse) -> None:
+        self._inverse = inverse
+
+    inverse = property(get_inverse, set_inverse)
 
     def replace(self, **kwargs):
         o = copy.copy(self)
@@ -82,3 +102,5 @@ class XfmHandler(object):
     #     o = copy.copy(self)
     #     o.dest = new_dest
     #     return o
+
+XfmHandler = GenericXfmHandler[MincAtom, XfmAtom]

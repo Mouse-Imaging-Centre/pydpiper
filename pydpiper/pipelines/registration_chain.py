@@ -8,7 +8,9 @@ import sys
 import bisect
 import re
 
-from typing import Callable, Dict, List, TypeVar, Iterator
+from typing import Callable, Dict, List, TypeVar, Iterator, Generic, Optional, Tuple
+
+from pydpiper.core.util import pairs
 from pydpiper.minc.analysis import determinants_at_fwhms, invert_xfmhandler
 from pydpiper.core.stages import Result
 from pydpiper.minc.registration import (Subject, Stages, ANTS_NLIN_build_model, ANTS_default_conf,
@@ -62,10 +64,84 @@ class ChainConf(object):
         self.common_time_point_name = common_time_point_name
         self.pride_of_models = pride_of_models
 
-
     
 class TimePointError(Exception):
     pass
+
+
+V = TypeVar('V')
+
+
+class Subject(Generic[V]):
+    """
+    A Subject contains the intersubject_registration_time_pt and a dictionary
+    that maps timepoints to scans/data of type `V` related to this Subject.
+    (Here V could be - for instance - str, FileAtom/MincAtom or XfmHandler).
+    """
+
+    def __init__(self,
+                 intersubject_registration_time_pt: int,
+                 time_pt_dict: Optional[Dict[int, V]] = None) -> None:
+        # TODO: change the time_pt datatype to decimal or rational to allow, e.g., 18.5?
+        self.intersubject_registration_time_pt = intersubject_registration_time_pt  # type: int
+        self.time_pt_dict = time_pt_dict or dict()  # type: Dict[int, V]
+
+    # compare by fields, not pointer
+    def __eq__(self, other) -> bool:
+        return (self is other or
+                (self.__class__ == other.__class__
+                 and self.intersubject_registration_time_pt == other.intersubject_registration_time_pt
+                 and self.time_pt_dict == other.time_pt_dict))
+
+    # ugh; also, should this be type(self) == ... ?
+
+    # TODO: change name? This might not be an 'image'
+    @property
+    def intersubject_registration_image(self) -> V:
+        return self.time_pt_dict[self.intersubject_registration_time_pt]
+
+    def __repr__(self) -> str:
+        return ("Subject(intersubject_registration_time_pt: %s, time_pt_dict keys: %s ... (values not shown))"
+                % (self.intersubject_registration_time_pt, self.time_pt_dict.keys()))
+
+
+# seems specific enough (at least in its current incarnation) to the registration chain that it lives in this file:
+def intrasubject_registrations(subj: Subject,
+                               linear_conf: MinctraccConf,
+                               nlin_conf: ANTSConf) \
+        -> Result[Tuple[List[Tuple[int, int, XfmHandler]], int]]:
+    """
+
+    subj -- Subject (has a intersubject_registration_time_pt and a time_pt_dict
+            that maps timepoints to individual subjects
+
+    Return:
+    ([ (source_time_pt, target_time_pt, XfmHandler),
+       (...,...,...),(...,...,...)],
+     index_of_common_time_pt)
+     note this is one element smaller than the number of time points.
+    """
+    # TODO: somehow the output of this function should provide us with
+    # easy access from a MincAtom to an XfmHandler from time_pt N to N+1
+    # either here or in the chain() function
+
+    s = Stages()
+    timepts = sorted(subj.time_pt_dict.items())  # type: List[Tuple[int, MincAtom]]
+    timepts_indices = [index for index, _subj_atom in timepts]  # type: List[int]
+    # we need to find the index of the common time point and for that we
+    # should only look at the first element of the tuples stored in timepts
+    index_of_common_time_pt = timepts_indices.index(subj.intersubject_registration_time_pt)  # type: int
+
+    time_pt_to_xfms = [(timepts_indices[source_index],
+                        timepts_indices[source_index + 1],
+                        s.defer(lsq12_nlin(source=src[1],
+                                           target=dest[1],
+                                           lsq12_conf=linear_conf,
+                                           nlin_conf=nlin_conf,
+                                           resample_source=True)))
+                       for source_index, (src, dest) in enumerate(pairs(timepts))]
+    return Result(stages=s, output=(time_pt_to_xfms, index_of_common_time_pt))
+
 
 def chain(options):
     """Create a registration chain pipeline from the given options."""
@@ -498,7 +574,7 @@ def map_with_index_over_time_pt_dict_in_Subject(f : Callable[[T], U],
         new_subj = Subject(intersubject_registration_time_pt = subj.intersubject_registration_time_pt,
                            time_pt_dict = new_time_pt_dict)  # type: Subject[U]
         new_d[s_id] = new_subj
-    return new_d # type: Dict[K, Subject[U]]
+    return new_d
 
 
 def map_over_time_pt_dict_in_Subject(f : Callable[[T], U],
@@ -521,7 +597,7 @@ def map_over_time_pt_dict_in_Subject(f : Callable[[T], U],
         new_subj = Subject(intersubject_registration_time_pt = subj.intersubject_registration_time_pt,
                            time_pt_dict = new_time_pt_dict)  # type: Subject[U]
         new_d[s_id] = new_subj
-    return new_d # type: Dict[K, Subject[U]]
+    return new_d
 
 
 def parse_common(string : str) -> bool:

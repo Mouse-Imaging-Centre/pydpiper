@@ -9,7 +9,7 @@ if sys.version_info < (3, 5):
     raise ValueError("Minimum Python version supported is 3.5")
 
 setup(name='pydpiper',
-      version='2.0.6',
+      version='2.0.8',
       license='Modified BSD',
       description='Python code for flexible pipeline control',
       long_description='Python code for flexible pipeline control',
@@ -33,7 +33,7 @@ setup(name='pydpiper',
       ],
       #extras_require = { 'graphing' : ['pygraphviz']},  # could make pygraphviz optional, but then won't auto-install
       platforms="any",
-      packages=['pydpiper', 'pydpiper.core', 'pydpiper.minc', 'pydpiper.execution', 'pydpiper.pipelines'],
+      packages=['pydpiper', 'pydpiper.core', 'pydpiper.execution', 'pydpiper.itk', 'pydpiper.minc', 'pydpiper.pipelines'],
       data_files=[('config',
                    [os.path.join("config", f)
                     for f in ['CCM_HPF.cfg', 'MICe.cfg', 'MICe_dev.cfg', 'SciNet.cfg', 'SciNet_debug.cfg']])],

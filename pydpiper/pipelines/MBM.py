@@ -7,11 +7,12 @@ import numpy as np
 import pandas as pd
 import sys
 from configargparse import Namespace, ArgParser
-from typing import List
-
+from typing import List, TypeVar
 from pydpiper.minc.containers import XfmHandler
 
 from pydpiper.core.files import FileAtom
+#from pydpiper.minc.nlin import NLIN
+from pydpiper.minc.registration_strategies import get_model_building_procedure
 from pydpiper.minc.thickness import cortical_thickness
 from pydpiper.pipelines.MAGeT import maget, maget_parsers, fixup_maget_options, maget_mask, get_imgs
 from pydpiper.core.util import NamedTuple, maybe_deref_path
@@ -21,10 +22,10 @@ from pydpiper.core.stages       import Result, Stages
 from pydpiper.minc.files        import MincAtom, XfmAtom
 from pydpiper.minc.registration import (lsq6_nuc_inorm, lsq12_nlin_build_model, registration_targets,
                                         LSQ6Conf, LSQ12Conf, get_resolution_from_file, concat_xfmhandlers,
-                                        get_nonlinear_configuration_from_options, lsq12_nlin_pairwise,
-                                        invert_xfmhandler, check_MINC_input_files, lsq12_nlin, MultilevelANTSConf,
+                                        get_nonlinear_configuration_from_options,
+                                        invert_xfmhandler, check_MINC_input_files, lsq12_nlin,
                                         LinearTransType, get_linear_configuration_from_options, mincresample_new,
-                                        Interpolation, param2xfm)
+                                        Interpolation, param2xfm, get_nonlinear_component)
 from pydpiper.minc.analysis     import determinants_at_fwhms, StatsConf
 from pydpiper.minc.thickness    import thickness_parser
 from pydpiper.core.arguments    import (lsq6_parser, lsq12_parser, nlin_parser, stats_parser, CompoundParser,
@@ -52,6 +53,9 @@ def mbm_pipeline(options : MBMConf):
                              output_dir=output_dir))
 
     # create useful CSVs (note the files listed therein won't yet exist ...)
+    (pd.DataFrame({'img' : imgs})  # TODO: add masks?
+     .applymap(maybe_deref_path)
+     .to_csv(os.path.join(output_dir, options.application.pipeline_name + "input_files.csv"), index=False))
     with open(os.path.join(output_dir, "transforms.csv"), 'w') as f:
         f.write(mbm_result.xfms.assign(file=lambda df: df.lsq12_nlin_xfm.apply(lambda x: x.source),
                                        mask_file=lambda df:
@@ -169,7 +173,7 @@ def mbm(imgs : List[MincAtom], options : MBMConf, prefix : str, output_dir : str
         # be part of the lsq6 options rather than the MBM ones; see comments on #287.
         # TODO don't actually do this resampling if not required (i.e., if the imgs already have the same grids)??
         # however, for now need to add the masks:
-        identity_xfm = s.defer(param2xfm(out_xfm=FileAtom(name="identity.xfm")))
+        identity_xfm = s.defer(param2xfm(out_xfm=FileAtom(name="id.xfm")))
         lsq6_result  = [XfmHandler(source=img, target=img, xfm=identity_xfm,
                                    resampled=s.defer(mincresample_new(img=img,
                                                                       like=targets.registration_standard,
@@ -195,27 +199,46 @@ def mbm(imgs : List[MincAtom], options : MBMConf, prefix : str, output_dir : str
         warnings.warn("Not masking your images from atlas masks after LSQ6 alignment ... probably not what you want "
                       "(this can have negative effects on your registration and statistics)")
 
-    full_hierarchy = get_nonlinear_configuration_from_options(nlin_protocol=options.mbm.nlin.nlin_protocol,
-                                                              flag_nlin_protocol=next(iter(options.mbm.nlin.flags_.nlin_protocol)),
-                                                              reg_method=options.mbm.nlin.reg_method,
-                                                              file_resolution=resolution)
+    #full_hierarchy = get_nonlinear_configuration_from_options(nlin_protocol=options.mbm.nlin.nlin_protocol,
+    #                                                          flag_nlin_protocol=next(iter(options.mbm.nlin.flags_.nlin_protocol)),
+    #                                                         reg_method=options.mbm.nlin.reg_method,
+    #                                                          file_resolution=resolution)
 
-    if not options.mbm.nlin.nlin_pairwise:
-        lsq12_nlin_result = s.defer(lsq12_nlin_build_model(imgs=[xfm.resampled for xfm in lsq6_result],
-                                                           resolution=resolution,
-                                                           lsq12_dir=lsq12_dir,
-                                                           nlin_dir=nlin_dir,
-                                                           nlin_prefix=prefix,
-                                                           lsq12_conf=options.mbm.lsq12,
-                                                           nlin_conf=full_hierarchy))
-    else:
-        lsq12_nlin_result = s.defer(lsq12_nlin_pairwise(imgs=[xfm.resampled for xfm in lsq6_result],
-                                                        resolution=resolution,
-                                                        lsq12_dir=lsq12_dir,
-                                                        nlin_dir=nlin_dir,
-                                                        nlin_prefix=prefix,
-                                                        lsq12_conf=options.mbm.lsq12,
-                                                        nlin_conf=full_hierarchy))
+    I = TypeVar("I")
+    X = TypeVar("X")
+    #def wrap_minc(nlin_module: NLIN[I, X]) -> type[NLIN[MincAtom, XfmAtom]]:
+    #    class N(NLIN[MincAtom, XfmAtom]): pass
+
+    # TODO now the user has to call get_nonlinear_component followed by parse_<...>; previously various things
+    # like lsq12_nlin_pairwise all branched on the reg_method so one didn't have to call get_nonlinear_component;
+    # they could still do this if it can be done safety (i.e., not breaking assumptions of various nonlinear units)
+    nlin_module = get_nonlinear_component(reg_method=options.mbm.nlin.reg_method)
+
+    nlin_build_model_component = get_model_building_procedure(options.mbm.nlin.reg_strategy,
+                                                              reg_module=nlin_module)
+
+    # this is wrong since some model building strategies (tournament, pairwise)
+    # don't use a hierarchy of registrations:
+    #nlin_conf = nlin_module.parse_multilevel_protocol_file(options.mbm.nlin.nlin_protocol,
+    #                                                       resolution=resolution)
+
+    # TODO generalize over input type, averaging, resampling ... may require putting this inside another scope
+    # or just wrap_minc all the component registrations??!
+    # TODO don't use name 'x_module' for something that's technically not a module ... perhaps unit/component?
+
+    nlin_conf = (nlin_build_model_component.parse_build_model_protocol(
+                                              options.mbm.nlin.nlin_protocol, resolution=resolution)
+                 if options.mbm.nlin.nlin_protocol is not None
+                 else nlin_build_model_component.get_default_build_model_conf(resolution=resolution))
+
+    lsq12_nlin_result = s.defer(lsq12_nlin_build_model(nlin_module=nlin_build_model_component,
+                                                       imgs=[xfm.resampled for xfm in lsq6_result],
+                                                       lsq12_dir=lsq12_dir,
+                                                       nlin_dir=nlin_dir,
+                                                       nlin_prefix=prefix,
+                                                       resolution=resolution,
+                                                       lsq12_conf=options.mbm.lsq12,
+                                                       nlin_conf=nlin_conf))  #options.mbm.nlin
 
     inverted_xfms = [s.defer(invert_xfmhandler(xfm)) for xfm in lsq12_nlin_result.output]
 

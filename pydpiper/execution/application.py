@@ -68,7 +68,8 @@ def ensure_short_output_paths(stages, max_len=255):  # magic no. for EXT3, EXT4,
     for s in stages:
         for o in [o.filename_wo_ext for o in s.outputs] + [os.path.basename(s.log_file)]:
             if len(o) > max_len:
-                raise ValueError("output filename '%s' too long (more than %s chars)" % (o, max_len))
+                raise ValueError("output filename '%s' of command '%s' too long (more than %s chars)" %
+                                 (o, s.render(), max_len))
 
 
 def ensure_output_paths_in_dir(stages, d):

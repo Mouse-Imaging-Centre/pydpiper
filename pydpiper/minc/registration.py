@@ -4,22 +4,22 @@ import random
 import shlex
 import subprocess
 import sys
-import warnings
 import time
-from operator import mul, xor
-import math
+import warnings
+from functools import reduce
+from operator import mul
+from typing import Any, cast, Dict, Generic, List, Optional, Tuple, TypeVar, Union, Callable
 
 from configargparse import Namespace
-from typing import Any, cast, Dict, Generic, Iterable, List, Optional, Set, Tuple, TypeVar, Union, Callable
-
-from functools import reduce
+from pyminc.volumes.factory import volumeFromFile  # type: ignore
 
 from pydpiper.core.files import FileAtom
-from pydpiper.core.stages import CmdStage, Result, Stages
+from pydpiper.core.stages import CmdStage, Result, Stages, identity_result
 from pydpiper.core.util import pairs, AutoEnum, NamedTuple, raise_, flatten
-from pydpiper.minc.files import MincAtom, XfmAtom, xfmToMinc
 from pydpiper.minc.containers import XfmHandler
-from pyminc.volumes.factory import volumeFromFile  # type: ignore
+from pydpiper.minc.files import MincAtom, XfmAtom, xfmToMinc, IdMinc
+from pydpiper.minc.nlin import NLIN, NLIN_BUILD_MODEL, Algorithms
+
 
 def custom_formatwarning(msg, cat, filename, lineno, line=None):
     # change the order of how the warning is printed
@@ -126,9 +126,163 @@ MinctraccConf = NamedTuple('MinctraccConf',
                             ("linear_conf", Optional[LinearMinctraccConf]),
                             ("nonlinear_conf", Optional[NonlinearMinctraccConf])])
 
+
 class MultilevelMinctraccConf(object):
     def __init__(self, confs: List[MinctraccConf]):
         self.confs = confs
+
+
+MinctraccMemCfg = NamedTuple("MinctraccMemCfg",
+                             [('base_mem', float),
+                              ('mem_per_voxel', float)])
+
+default_minctracc_mem_cfg = MinctraccMemCfg(base_mem=3e-1, mem_per_voxel=6e-7)
+
+
+# TODO: add memory estimation hook
+def minctracc(source: MincAtom,
+              target: MincAtom,
+              conf: MinctraccConf,
+              transform: Optional[XfmAtom] = None,
+              transform_name_wo_ext: Optional[str] = None,
+              transform_info: Optional[List[str]] = None,
+              generation: Optional[int] = None,
+              subdir: Optional[str] = None,
+              resample_source: bool = False) -> Result[XfmHandler]:
+    """
+    source -- "raw", blurring will happen here
+    target -- "raw", blurring will happen here
+    conf
+    transform
+    transform_name_wo_ext -- to use for the output transformation (without the extension)
+    generation            -- if provided, the transformation name will be:
+                             source.filename_wo_ext + "_minctracc_nlin-" + generation
+    resample_source       -- whether or not to resample the source file
+
+
+    minctracc functionality:
+
+    LSQ6 -- conf.nonlinear is None and conf.linear.transform_type == "lsq6"
+    For the 6 parameter alignment we have
+
+    LSQ12 -- conf.nonlinear is None and conf.linear.transform_type == "lsq12"
+
+    NLIN -- conf.linear is None and conf.nonlinear is not None
+    """
+
+    s = Stages()
+
+    lin_conf = conf.linear_conf  # type: LinearMinctraccConf
+    nlin_conf = conf.nonlinear_conf  # type: NonlinearMinctraccConf
+
+    subdir = subdir if subdir is not None else 'transforms'
+
+    if lin_conf is None and nlin_conf is None:
+        raise ValueError("minctracc: no linear or nonlinear configuration specified")
+
+    if lin_conf is not None and lin_conf.transform_type not in LinearTransType.__members__.values():
+        raise ValueError("minctracc: invalid transform type %s" % lin_conf.transform_type)
+    # TODO: probably not needed since we're using an enum
+    if transform_name_wo_ext:
+        out_xfm = XfmAtom(name=os.path.join(source.pipeline_sub_dir, source.output_sub_dir, subdir,
+                                            "%s.xfm" % (transform_name_wo_ext)),
+                          pipeline_sub_dir=source.pipeline_sub_dir,
+                          output_sub_dir=source.output_sub_dir)
+    # the generation provided can be 0 (zero), but that's a proper generation,
+    # so we should explicitly test for "is not None" here.
+    elif generation is not None:
+        if lin_conf:
+            trans_type = lin_conf.transform_type.name
+        else:
+            trans_type = "nlin"
+
+        out_xfm = XfmAtom(name=os.path.join(source.pipeline_sub_dir, source.output_sub_dir, subdir,
+                                            "%s_mt_to_%s_%s_%s.xfm" %
+                                            (source.filename_wo_ext,
+                                             target.filename_wo_ext,
+                                             trans_type,
+                                             generation)),
+                          pipeline_sub_dir=source.pipeline_sub_dir,
+                          output_sub_dir=source.output_sub_dir)
+    else:
+        out_xfm = XfmAtom(name=os.path.join(source.pipeline_sub_dir, source.output_sub_dir, subdir,
+                                            "%s_mt_to_%s.xfm" % (
+                                            source.filename_wo_ext, target.filename_wo_ext)),
+                          pipeline_sub_dir=source.pipeline_sub_dir,
+                          output_sub_dir=source.output_sub_dir)
+
+    source_for_minctracc = source
+    target_for_minctracc = target
+    if conf.blur_resolution is not None:
+        img_or_grad = lambda result: result.gradient if conf.use_gradient else result.img
+        source_for_minctracc = img_or_grad(s.defer(mincblur(source, conf.blur_resolution)))
+        target_for_minctracc = img_or_grad(s.defer(mincblur(target, conf.blur_resolution)))
+
+    # NOTE: this is broken in the presence of unanticipated (vs., e.g., nlin_conf.objective) null fields;
+    # if we're not going to allow these, we should probably wrap this in a try/catch to give a better error
+    # and/or start with a 'default' linear/nonlinear/both minctracc conf as appropriate and `replace` all
+    # fields with the user-supplied ones.
+    stage = CmdStage(cmd=['minctracc', '-clobber', '-debug']
+                         + (['-%s' % lin_conf.objective.name] if lin_conf and lin_conf.objective else [])
+                         + (['-transformation', transform.path] if transform
+                            else (transform_info if transform_info else ["-identity"]))
+                         + (['-' + lin_conf.transform_type.name]
+                            if lin_conf and lin_conf.transform_type else [])
+                         + (['-use_simplex']
+                            if nlin_conf and nlin_conf.use_simplex is not None else [])
+                         + (['-step'] + space_sep(conf.step_sizes))
+                         + ((['-simplex', str(lin_conf.simplex)]
+                             + ['-tol', str(lin_conf.tolerance)]
+                             + ['-w_shear'] + space_sep(lin_conf.w_shear)
+                             + ['-w_scales'] + space_sep(lin_conf.w_scales)
+                             + ['-w_rotations'] + space_sep(lin_conf.w_rotations)
+                             + ['-w_translations'] + space_sep(lin_conf.w_translations))
+                            if lin_conf is not None else [])
+                         + ((['-iterations', str(nlin_conf.iterations)]
+                             + ['-similarity_cost_ratio', str(nlin_conf.similarity)]
+                             + ['-weight', str(nlin_conf.weight)]
+                             + ['-stiffness', str(nlin_conf.stiffness)]
+                             + ['-sub_lattice', str(nlin_conf.sub_lattice)]
+                             + (['-lattice_diameter']
+                                + (space_sep(nlin_conf.lattice_diameter)
+                                   if nlin_conf.lattice_diameter is not None
+                                   else space_sep((3 * s for s in conf.step_sizes)))))
+                            if nlin_conf is not None else [])
+                         + (['-nonlinear %s' % (nlin_conf.objective.name if nlin_conf.objective else '')]
+                            if nlin_conf else [])
+                         + (['-source_mask', source.mask.path]
+                            if source.mask and conf.use_masks else [])
+                         + (['-model_mask', target.mask.path]
+                            if target.mask and conf.use_masks else [])
+                         + ([source_for_minctracc.path, target_for_minctracc.path, out_xfm.path]),
+                     inputs=(source_for_minctracc, target_for_minctracc) +
+                            ((transform,) if transform else ()) +
+                            ((source.mask,) if source.mask and conf.use_masks else ()) +
+                            ((target.mask,) if target.mask and conf.use_masks else ()),
+                     outputs=(out_xfm,))
+
+    if nlin_conf is not None:  # TODO at the moment basically ignore resource requirements for linear stages ...
+        def set_memory(st, cfg):
+            voxels = reduce(mul, volumeFromFile(source.path).getSizes())
+            st.setMem(voxels * cfg.mem_per_voxel + cfg.base_mem)
+            # TODO make a wrapper to generate these set_memory functions?
+
+        stage.when_runnable_hooks.append(lambda st: set_memory(st, default_minctracc_mem_cfg))
+
+    s.add(stage)
+
+    # note accessing a None resampled field from an XfmHandler is an error
+    # (by property magic, but would be similar using getters),
+    # so the possibility of `resampled` being None isn't as annoying as it looks
+    resampled = (s.defer(mincresample(img=source, xfm=out_xfm, like=target,
+                                      interpolation=Interpolation.sinc))
+                 if resample_source else None)
+
+    return Result(stages=s,
+                  output=XfmHandler(source=source,
+                                    target=target,
+                                    xfm=out_xfm,
+                                    resampled=resampled))
 
 
 def atoms_from_same_subject(atoms: List[FileAtom]):
@@ -172,10 +326,12 @@ MincblurMemCfg = NamedTuple("MincblurMemCfg",
 default_mincblur_mem_cfg = MincblurMemCfg(base_mem=1.25e-02, mem_per_voxel=5.9e-9,
                                           tmpdir_factor=2.5, include_tmpdir=True)
 
-def minc_displacement(xfm : XfmHandler) -> Result[MincAtom]:
+def minc_displacement(xfm : XfmHandler, newname_wo_ext : Optional[str] = None) -> Result[MincAtom]:
     # TODO: add dir argument
     # TODO: this coercion is lame
-    output_grid = xfmToMinc(xfm.xfm.newname_with_suffix("_displ", ext='.mnc', subdir="tmp"))
+    output_grid = xfmToMinc(xfm.xfm.newname(newname_wo_ext, ext='.mnc', subdir="tmp")
+                            if newname_wo_ext
+                            else (xfm.xfm.newname_with_suffix("_displ", ext='.mnc', subdir="tmp")))
     stage = CmdStage(inputs=(xfm.source, xfm.xfm), outputs=(output_grid,),
                      cmd=['minc_displacement', '-clobber', xfm.source.path, xfm.xfm.path, output_grid.path])
     return Result(stages=Stages([stage]), output=output_grid)
@@ -198,6 +354,8 @@ def mincblur(img: MincAtom,
     # the -1 is for compatibility with protocol files, while 0/False might make more sense (but is sort of 'in-band');
     # None is converted to NaN in Pandas data frames, which seems annoying
     if fwhm in (-1, 0, None):
+        if gradient:
+            raise ValueError("can't compute gradient without a positive FWHM")
         return Result(stages=Stages(), output=Namespace(img=img))
 
     # suffix   = "_dxyz" if gradient else "_blur"
@@ -504,7 +662,8 @@ def mincresample(img: MincAtom,
                  interpolation: Interpolation = None,
                  extra_flags: Tuple[str] = (),
                  new_name_wo_ext: str = None,
-                 subdir: str = None) -> Result[MincAtom]:
+                 subdir: str = None,
+                 postfix: str = None) -> Result[MincAtom]:
     """
     ...
     new_name_wo_ext -- string indicating a user specified file name (without extension)
@@ -853,13 +1012,19 @@ def invert_xfmhandler(xfm: XfmHandler,
     # TODO: target = src.mnc
     # TODO: xfm    = some_trans_inverted.xfm
     #
-    # TODO: instead of have "final_nlin.mnc" as the source for this XfmHandler... we might
+    # TODO: instead we have "final_nlin.mnc" as the source for this XfmHandler... we might
     # TODO: run into issues here...
+    # TODO: we also discard any resampled field; we might want to use part of the original xfmh
+    # or do resampling here, but that seems like too much functionality to put here ... ??
     s = Stages()
-    inv_xfm = s.defer(xfminvert(xfm.xfm, subdir=subdir))  # type: XfmAtom
+    if xfm.has_inverse():
+        inv_xfm = xfm.inverse.xfm  # type: XfmAtom
+    else:
+        inv_xfm = s.defer(xfminvert(xfm.xfm, subdir=subdir))
     return Result(stages=s,
                   output=XfmHandler(xfm=inv_xfm,
-                                    source=xfm.target, target=xfm.source, resampled=None))
+                                    source=xfm.target, target=xfm.source, resampled=None,
+                                    inverse=xfm))   # TODO is it correct to have the original resampled here?
 
 
 RotationalMinctraccConf = NamedTuple('RotationalMinctraccConf',
@@ -1178,213 +1343,6 @@ def parse_minctracc_linear_protocol(f, transform_type : LinearTransType,
                                     base_minctracc_conf=base_minctracc_conf)
 
 
-MinctraccMemCfg = NamedTuple("MinctraccMemCfg",
-                             [('base_mem', float),
-                              ('mem_per_voxel', float)])
-
-default_minctracc_mem_cfg = MinctraccMemCfg(base_mem=3e-1, mem_per_voxel=6e-7)
-
-
-# TODO: add memory estimation hook
-def minctracc(source: MincAtom,
-              target: MincAtom,
-              conf: MinctraccConf,
-              transform: Optional[XfmAtom] = None,
-              transform_name_wo_ext: Optional[str] = None,
-              transform_info: Optional[List[str]] = None,
-              generation: Optional[int] = None,
-              subdir: Optional[str] = None,
-              resample_source: bool = False) -> Result[XfmHandler]:
-    """
-    source -- "raw", blurring will happen here
-    target -- "raw", blurring will happen here
-    conf
-    transform
-    transform_name_wo_ext -- to use for the output transformation (without the extension)
-    generation            -- if provided, the transformation name will be:
-                             source.filename_wo_ext + "_minctracc_nlin-" + generation
-    resample_source       -- whether or not to resample the source file 
-    
-    
-    minctracc functionality:
-    
-    LSQ6 -- conf.nonlinear is None and conf.linear.transform_type == "lsq6"
-    For the 6 parameter alignment we have 
-    
-    LSQ12 -- conf.nonlinear is None and conf.linear.transform_type == "lsq12"
-    
-    NLIN -- conf.linear is None and conf.nonlinear is not None
-    """
-
-    s = Stages()
-
-    lin_conf = conf.linear_conf  # type: LinearMinctraccConf
-    nlin_conf = conf.nonlinear_conf  # type: NonlinearMinctraccConf
-
-    subdir = subdir if subdir is not None else 'transforms'
-
-    if lin_conf is None and nlin_conf is None:
-        raise ValueError("minctracc: no linear or nonlinear configuration specified")
-
-    if lin_conf is not None and lin_conf.transform_type not in LinearTransType.__members__.values():
-        raise ValueError("minctracc: invalid transform type %s" % lin_conf.transform_type)
-    # TODO: probably not needed since we're using an enum
-    if transform_name_wo_ext:
-        out_xfm = XfmAtom(name=os.path.join(source.pipeline_sub_dir, source.output_sub_dir, subdir,
-                                            "%s.xfm" % (transform_name_wo_ext)),
-                          pipeline_sub_dir=source.pipeline_sub_dir,
-                          output_sub_dir=source.output_sub_dir)
-    # the generation provided can be 0 (zero), but that's a proper generation,
-    # so we should explicitly test for "is not None" here.
-    elif generation is not None:
-        if lin_conf:
-            trans_type = lin_conf.transform_type.name
-        else:
-            trans_type = "nlin"
-
-        out_xfm = XfmAtom(name=os.path.join(source.pipeline_sub_dir, source.output_sub_dir, subdir,
-                                            "%s_mt_to_%s_%s_%s.xfm" %
-                                            (source.filename_wo_ext,
-                                             target.filename_wo_ext,
-                                             trans_type,
-                                             generation)),
-                          pipeline_sub_dir=source.pipeline_sub_dir,
-                          output_sub_dir=source.output_sub_dir)
-    else:
-        out_xfm = XfmAtom(name=os.path.join(source.pipeline_sub_dir, source.output_sub_dir, subdir,
-                                            "%s_mt_to_%s.xfm" % (
-                                            source.filename_wo_ext, target.filename_wo_ext)),
-                          pipeline_sub_dir=source.pipeline_sub_dir,
-                          output_sub_dir=source.output_sub_dir)
-
-    source_for_minctracc = source
-    target_for_minctracc = target
-    if conf.blur_resolution is not None:
-        img_or_grad = lambda result: result.gradient if conf.use_gradient else result.img
-        source_for_minctracc = img_or_grad(s.defer(mincblur(source, conf.blur_resolution)))
-        target_for_minctracc = img_or_grad(s.defer(mincblur(target, conf.blur_resolution)))
-
-    # NOTE: this is broken in the presence of unanticipated (vs., e.g., nlin_conf.objective) null fields;
-    # if we're not going to allow these, we should probably wrap this in a try/catch to give a better error
-    # and/or start with a 'default' linear/nonlinear/both minctracc conf as appropriate and `replace` all
-    # fields with the user-supplied ones.
-    stage = CmdStage(cmd=['minctracc', '-clobber', '-debug']
-                         + (['-%s' % lin_conf.objective.name] if lin_conf and lin_conf.objective else [])
-                         + (['-transformation', transform.path] if transform
-                            else (transform_info if transform_info else ["-identity"]))
-                         + (['-' + lin_conf.transform_type.name]
-                            if lin_conf and lin_conf.transform_type else [])
-                         + (['-use_simplex']
-                            if nlin_conf and nlin_conf.use_simplex is not None else [])
-                         + (['-step'] + space_sep(conf.step_sizes))
-                         + ((['-simplex', str(lin_conf.simplex)]
-                             + ['-tol', str(lin_conf.tolerance)]
-                             + ['-w_shear'] + space_sep(lin_conf.w_shear)
-                             + ['-w_scales'] + space_sep(lin_conf.w_scales)
-                             + ['-w_rotations'] + space_sep(lin_conf.w_rotations)
-                             + ['-w_translations'] + space_sep(lin_conf.w_translations))
-                            if lin_conf is not None else [])
-                         + ((['-iterations', str(nlin_conf.iterations)]
-                             + ['-similarity_cost_ratio', str(nlin_conf.similarity)]
-                             + ['-weight', str(nlin_conf.weight)]
-                             + ['-stiffness', str(nlin_conf.stiffness)]
-                             + ['-sub_lattice', str(nlin_conf.sub_lattice)]
-                             + (['-lattice_diameter']
-                                + (space_sep(nlin_conf.lattice_diameter)
-                                   if nlin_conf.lattice_diameter is not None
-                                   else space_sep((3 * s for s in conf.step_sizes)))))
-                            if nlin_conf is not None else [])
-                         + (['-nonlinear %s' % (nlin_conf.objective.name if nlin_conf.objective else '')]
-                            if nlin_conf else [])
-                         + (['-source_mask', source.mask.path]
-                            if source.mask and conf.use_masks else [])
-                         + (['-model_mask', target.mask.path]
-                            if target.mask and conf.use_masks else [])
-                         + ([source_for_minctracc.path, target_for_minctracc.path, out_xfm.path]),
-                     inputs=(source_for_minctracc, target_for_minctracc) +
-                            ((transform,) if transform else ()) +
-                            ((source.mask,) if source.mask and conf.use_masks else ()) +
-                            ((target.mask,) if target.mask and conf.use_masks else ()),
-                     outputs=(out_xfm,))
-
-    if nlin_conf is not None:  # TODO at the moment basically ignore resource requirements for linear stages ...
-        def set_memory(st, cfg):
-            voxels = reduce(mul, volumeFromFile(source.path).getSizes())
-            st.setMem(voxels * cfg.mem_per_voxel + cfg.base_mem)   # FIXME hard-coded 7 is a hack ...
-            # TODO make a wrapper to generate these set_memory functions?
-
-        stage.when_runnable_hooks.append(lambda st: set_memory(st, default_minctracc_mem_cfg))
-
-    s.add(stage)
-
-    # note accessing a None resampled field from an XfmHandler is an error
-    # (by property magic, but would be similar using getters),
-    # so the possibility of `resampled` being None isn't as annoying as it looks
-    resampled = (s.defer(mincresample(img=source, xfm=out_xfm, like=target,
-                                      interpolation=Interpolation.sinc))
-                 if resample_source else None)
-
-    return Result(stages=s,
-                  output=XfmHandler(source=source,
-                                    target=target,
-                                    xfm=out_xfm,
-                                    resampled=resampled))
-
-
-SimilarityMetricConf = NamedTuple('SimilarityMetricConf',
-                                  [("metric", str),
-                                   ("weight", float),
-                                   ("radius_or_bins", int),
-                                   ("use_gradient_image", bool)])
-
-
-default_similarity_metric_conf = SimilarityMetricConf(
-    metric="CC",
-    weight=1.0,
-    radius_or_bins=3,
-    use_gradient_image=False)
-
-ANTSConf = NamedTuple("ANTSConf",
-                      [("file_resolution", float),
-                           ("iterations", str),
-                           ("transformation_model", str), # TODO make an enumeration so, e.g., users don't type "Syn"
-                           ("regularization", str),
-                           ("use_mask", bool),
-                           ("sim_metric_confs", List[SimilarityMetricConf])])
-
-class MultilevelANTSConf(object):
-    def __init__(self, confs: List[ANTSConf]):
-        self.confs = confs
-
-# we don't supply a resolution default here because it's preferable
-# to take resolution from initial target instead
-ANTS_default_conf = ANTSConf(
-    iterations="100x100x100x150",
-    transformation_model="'SyN[0.1]'",
-    regularization="'Gauss[2,1]'",
-    use_mask=True,
-    file_resolution=None,
-    sim_metric_confs=[default_similarity_metric_conf,
-                      default_similarity_metric_conf.replace(use_gradient_image=True)])  # type: ANTSConf
-
-
-def get_default_multi_level_ANTS(file_resolution: float) -> MultilevelANTSConf:
-    """
-    Create a multilevel ANTS configuration based on the provided file resolution.
-    The iterations are:
-    100x100x100x0
-    100x100x100x20
-    100x100x100x100
-    """
-    conf1 = ANTS_default_conf.replace(file_resolution=file_resolution,
-                                      iterations="100x100x100x0")
-    conf2 = ANTS_default_conf.replace(file_resolution=file_resolution,
-                                      iterations="100x100x100x20")
-    conf3 = ANTS_default_conf.replace(file_resolution=file_resolution,
-                                      iterations="100x100x100x100")
-    return MultilevelANTSConf([conf1, conf2, conf3])
-
-
 def get_linear_configuration_from_options(conf, transform_type : LinearTransType, file_resolution : float) \
         -> MultilevelMinctraccConf:
 
@@ -1410,45 +1368,71 @@ def get_linear_configuration_from_options(conf, transform_type : LinearTransType
 
     return minctracc_conf
 
+def get_nonlinear_component(reg_method : str):
+    def _ANTS():
+        import pydpiper.minc.ANTS as ANTS
+        return ANTS.ANTS
+    def _antsRegistration():
+        import pydpiper.minc.antsRegistration as antsRegistration
+        return antsRegistration.ANTSRegistration
+    def _DRAMMS():
+        import pydpiper.itk.DRAMMS as DRAMMS
+        return DRAMMS.DRAMMS
+    def _elastix():
+        import pydpiper.itk.elastix as elastix
+        return elastix.Elastix
+    def _minctracc():
+        return MINCTRACC
+    d = { "ANTS"             : _ANTS,
+          "antsRegistration" : _antsRegistration,
+          "DRAMMS"           : _DRAMMS,
+          "elastix"          : _elastix,
+          "minctracc"        : _minctracc }
+    if reg_method in d:
+        return d[reg_method]()
+    else:
+        raise NotImplemented("nonlinear registration via method '%s'" % reg_method)
 
-def get_nonlinear_configuration_from_options(nlin_protocol : Union[ANTSConf, MinctraccConf],
-                                             flag_nlin_protocol : str,
-                                             reg_method : str,
-                                             file_resolution : float):
+
+def get_nonlinear_configuration_from_options(nlin_protocol : str,
+                                             reg_method : str):
+                                             # TODO now missing flag for reg_method/nlin_protocol
+                                             # ... could take nlin_options as arg instead ...
+                                             #file_resolution : float):
     """
     :param nlin_protocol: path to the protocol on the system (can be None)
     :param reg_method: the registration method (currently ANTS or minctracc)
     :param file_resolution: resolution at which registrations are performed
     :return:  MultilevelANTSConf or MultilevelMinctraccConf
     """
+    raise ValueError("deprecated; call <nlin module>.parse_<...> instead")
 
     # TODO maybe just take the whole nlin_conf as a param to save typing at the call site?
-
-    # determine what configuration to use for the non linear registration
-    if nlin_protocol:
-        # actually parse it:
-        if reg_method == "ANTS":
-            non_linear_configuration = parse_ANTS_protocol_file(nlin_protocol, file_resolution)
-        elif reg_method == "minctracc":
-            non_linear_configuration = parse_minctracc_nonlinear_protocol_file(nlin_protocol)
-        else:
-            raise ValueError("?!")
-    else:
-        # get one of the default configurations
-        if reg_method == "ANTS":
-            non_linear_configuration = get_default_multi_level_ANTS(file_resolution=file_resolution)
-            note_message = "Note: the non-linear protocol (" + flag_nlin_protocol + \
-                           ") was not set. Using the default ANTS protocol:\n"
-            for conf in non_linear_configuration.confs:
-                note_message += conf.transformation_model + ", " + conf.regularization + ", " + conf.iterations + "\n"
-            print(note_message)
-        elif reg_method == "minctracc":
-            #TODO: this. Still TODO.
-            raise ValueError("Error.. we do not have proper minctracc nonlinear defaults yet. ")
-        else:
-            raise ValueError("?!")
-
-    return non_linear_configuration
+     # determine what configuration to use for the non linear registration
+#     if nlin_protocol:
+#         # actually parse it:
+#         if reg_method == "ANTS":
+#             non_linear_configuration = parse_ANTS_protocol_file(nlin_protocol, file_resolution)
+#         elif reg_method == "minctracc":
+#             non_linear_configuration = parse_minctracc_nonlinear_protocol_file(nlin_protocol)
+#         else:
+#             raise ValueError("?!")
+#     else:
+#         # get one of the default configurations
+#         if reg_method == "ANTS":
+#             non_linear_configuration = get_default_multi_level_ANTS(file_resolution=file_resolution)
+#             note_message = "Note: the non-linear protocol (" + flag_nlin_protocol + \
+#                            ") was not set. Using the default ANTS protocol:\n"
+#             for conf in non_linear_configuration.confs:
+#                 note_message += conf.transformation_model + ", " + conf.regularization + ", " + conf.iterations + "\n"
+#             print(note_message)
+#         elif reg_method == "minctracc":
+#             #TODO: this. Still TODO.
+#             raise ValueError("Error.. we do not have proper minctracc nonlinear defaults yet. ")
+#         else:
+#             raise ValueError("?!")
+#
+#     return non_linear_configuration
 
 
 def parse_many(parser, sep=','):
@@ -1467,207 +1451,103 @@ def parse_nullable(parser):
 class ParseError(ValueError): pass
 
 
-def parse_ANTS_protocol_file(config_file,
-                             file_resolution,
-                             ANTS_conf=ANTS_default_conf) -> MultilevelANTSConf:
-    """
-    config_file -- path to file on the system that contains the ANTS configuration
-
-    Use the resulting list to `.replace` the default values.
-    """
-
-    # parsers to use for each row of the protocol file
-    parsers = {"blur"               : parse_many(parse_nullable(float)),
-               "gradient"           : parse_many(parse_bool),
-               "similarity_metric"  : parse_many(str),
-               "weight"             : parse_many(float),
-               "radius_or_histo"    : parse_many(int),
-               "transformation"     : str,
-               "regularization"     : str,
-               "iterations"         : str,
-               "useMask"            : bool,
-               "memoryRequired"     : float}
-
-    # mapping from protocol file names to Python field names of the ANTS and similarity metric configurations
-    names = {"blur" : "blur", # not needed since blur is deleted...
-             "gradient" : "use_gradient_image",
-             "similarity_metric" : "metric",
-             "weight" : "weight",
-             "radius_or_histo" : "radius_or_bins",
-             "transformation" : "transformation_model",
-             "regularization" : "regularization",
-             "iterations" : "iterations",
-             "useMask" : "use_mask",
-             "memoryRequired" : "memory_required"}
-    params = list(parsers.keys())
-
-    with open(config_file, 'r') as f:
-        reader = csv.reader(f, delimiter=";")
-        # build a mapping from (Python, not file) field names to a list of values (one for each generation)
-        d = {}
-        for l in reader:
-            k, *vs = l
-            if k not in params:
-                raise ParseError("Unrecognized parameter: %s" % k)
-            else:
-                new_k = names[k]
-                if new_k in d:
-                    raise ParseError("Duplicate key: %s" % k)
-                else:
-                    d[new_k] = [parsers[k](v) for v in vs]
-
-    # some error checking ...
-    if not all_equal(d.values(), by=len):
-        raise ParseError("Invalid ANTS configuration: all params must have the same number of generations.")
-    if len(d) == 0:
-        raise ParseError("Empty file ...")   # TODO should this really be an error?
-    if "blur" in d:
-        print("Warning: no longer using `blur` even though it's specified in the protocol ...")
-        # TODO should be a warnings/logger.warning, not a print
-        # TODO: why is this not being used anymore? It allows you to specify what you want
-        # TODO: to do with the similarity metrics. Not sure whether we should have hard coded
-        # TODO: defaults for this?
-        del d["blur"]
-    if "memory_required" in d:
-        print("Warning: don't currently use the memory ...")  # doesn't have to be same length -> can crash code below
-        del d["memory_required"]
-
-    vs = list(d.values())
-    l = len(vs[0])
-
-    # convert a mapping of options to _single_ values to a single-generation ANTS configuration object:
-    def convert_single_gen(single_gen_params, file_resolution) -> ANTSConf:  # TODO name this better ...
-        # TODO check for/catch IndexError ... a bit hard to use zip since some params may not be defined ...
-        sim_metric_names = {"use_gradient_image", "metric", "weight", "radius_or_bins"}
-        # TODO duplication; e.g., parsers = sim_metric_parsers U <...>
-        sim_metric_params = {k : v for k, v in single_gen_params.items() if k in sim_metric_names}
-        other_attrs       = {k : v for k, v in single_gen_params.items() if k not in sim_metric_names}
-        if len(sim_metric_params) > 0:
-            sim_metric_values = list(sim_metric_params.values())
-            if not all_equal(sim_metric_values, by=len):
-                raise ParseError("All parts of the objective function specification must be the same length ...")
-            sim_metric_params = [{ k : v[j] for k, v in sim_metric_params.items() } for j in range(len(sim_metric_values[0]))]
-            # TODO could warn here if a given param is missing from a given metric specification
-            sim_metric_confs = [default_similarity_metric_conf.replace(**s) for s in sim_metric_params]
-        else:
-            sim_metric_confs = []
-
-        return ANTS_default_conf.replace(sim_metric_confs=sim_metric_confs,
-                                         file_resolution=file_resolution,
-                                         **other_attrs)
-
-    full_configuration = MultilevelANTSConf([convert_single_gen({key : vs[j] for key, vs in d.items()},
-                                                                file_resolution) for j in range(l)])
-
-    return full_configuration
+# def parse_ANTS_protocol_file(config_file,
+#                              file_resolution,
+#                              ANTS_conf=ANTS_default_conf) -> MultilevelANTSConf:
+#     """
+#     config_file -- path to file on the system that contains the ANTS configuration
+#
+#     Use the resulting list to `.replace` the default values.
+#     """
+#
+#     # parsers to use for each row of the protocol file
+#     parsers = {"blur"               : parse_many(parse_nullable(float)),
+#                "gradient"           : parse_many(parse_bool),
+#                "similarity_metric"  : parse_many(str),
+#                "weight"             : parse_many(float),
+#                "radius_or_histo"    : parse_many(int),
+#                "transformation"     : str,
+#                "regularization"     : str,
+#                "iterations"         : str,
+#                "useMask"            : bool,
+#                "memoryRequired"     : float}
+#
+#     # mapping from protocol file names to Python field names of the ANTS and similarity metric configurations
+#     names = {"blur" : "blur", # not needed since blur is deleted...
+#              "gradient" : "use_gradient_image",
+#              "similarity_metric" : "metric",
+#              "weight" : "weight",
+#              "radius_or_histo" : "radius_or_bins",
+#              "transformation" : "transformation_model",
+#              "regularization" : "regularization",
+#              "iterations" : "iterations",
+#              "useMask" : "use_mask",
+#              "memoryRequired" : "memory_required"}
+#     params = list(parsers.keys())
+#
+#     with open(config_file, 'r') as f:
+#         reader = csv.reader(f, delimiter=";")
+#         # build a mapping from (Python, not file) field names to a list of values (one for each generation)
+#         d = {}
+#         for l in reader:
+#             k, *vs = l
+#             if k not in params:
+#                 raise ParseError("Unrecognized parameter: %s" % k)
+#             else:
+#                 new_k = names[k]
+#                 if new_k in d:
+#                     raise ParseError("Duplicate key: %s" % k)
+#                 else:
+#                     d[new_k] = [parsers[k](v) for v in vs]
+#
+#     # some error checking ...
+#     if not all_equal(d.values(), by=len):
+#         raise ParseError("Invalid ANTS configuration: all params must have the same number of generations.")
+#     if len(d) == 0:
+#         raise ParseError("Empty file ...")   # TODO should this really be an error?
+#     if "blur" in d:
+#         print("Warning: no longer using `blur` even though it's specified in the protocol ...")
+#         # TODO should be a warnings/logger.warning, not a print
+#         # TODO: why is this not being used anymore? It allows you to specify what you want
+#         # TODO: to do with the similarity metrics. Not sure whether we should have hard coded
+#         # TODO: defaults for this?
+#         del d["blur"]
+#     if "memory_required" in d:
+#         print("Warning: don't currently use the memory ...")  # doesn't have to be same length -> can crash code below
+#         del d["memory_required"]
+#
+#     vs = list(d.values())
+#     l = len(vs[0])
+#
+#     # convert a mapping of options to _single_ values to a single-generation ANTS configuration object:
+#     def convert_single_gen(single_gen_params, file_resolution) -> ANTSConf:  # TODO name this better ...
+#         # TODO check for/catch IndexError ... a bit hard to use zip since some params may not be defined ...
+#         sim_metric_names = {"use_gradient_image", "metric", "weight", "radius_or_bins"}
+#         # TODO duplication; e.g., parsers = sim_metric_parsers U <...>
+#         sim_metric_params = {k : v for k, v in single_gen_params.items() if k in sim_metric_names}
+#         other_attrs       = {k : v for k, v in single_gen_params.items() if k not in sim_metric_names}
+#         if len(sim_metric_params) > 0:
+#             sim_metric_values = list(sim_metric_params.values())
+#             if not all_equal(sim_metric_values, by=len):
+#                 raise ParseError("All parts of the objective function specification must be the same length ...")
+#             sim_metric_params = [{ k : v[j] for k, v in sim_metric_params.items() } for j in range(len(sim_metric_values[0]))]
+#             # TODO could warn here if a given param is missing from a given metric specification
+#             sim_metric_confs = [default_similarity_metric_conf.replace(**s) for s in sim_metric_params]
+#         else:
+#             sim_metric_confs = []
+#
+#         return ANTS_default_conf.replace(sim_metric_confs=sim_metric_confs,
+#                                          file_resolution=file_resolution,
+#                                          **other_attrs)
+#
+#     full_configuration = MultilevelANTSConf([convert_single_gen({key : vs[j] for key, vs in d.items()},
+#                                                                 file_resolution) for j in range(l)])
+#
+#     return full_configuration
 
 
 def all_equal(xs, by=lambda x: x):
     return len(set((by(x) for x in xs))) == 1
-
-
-ANTSMemCfg = NamedTuple("ANTSMemCfg",
-                        [('base_mem', float),
-                             ('mem_per_voxel_coarse', float),
-                             ('mem_per_voxel_fine', bool)])
-
-default_ANTS_mem_cfg = ANTSMemCfg(base_mem=0.177, mem_per_voxel_coarse=1.385e-7, mem_per_voxel_fine=2.1e-7)
-
-
-def ANTS(source: MincAtom,
-         target: MincAtom,
-         conf: ANTSConf,
-         transform_name_wo_ext: str = None,
-         generation: int = None,
-         resample_source: bool = False,
-         subdir_for_resample: str = "resampled") -> Result[XfmHandler]:
-    """
-    ...
-    transform_name_wo_ext -- to use for the output transformation (without the extension)
-    generation            -- if provided, the transformation name will be:
-                             source.filename_wo_ext + "_ANTS_nlin-" + generation
-    resample_source       -- whether or not to resample the source file   
-    
-    Construct a single call to ANTS.
-    Also does blurring according to the specified options
-    since the cost function might use these.
-    """
-    s = Stages()
-
-    # if we resample the source, and place it in the "tmp" directory, we should do
-    # the same with the transformation that is created:
-    trans_output_dir = "transforms"
-    if resample_source and subdir_for_resample == "tmp":
-        trans_output_dir = "tmp"
-
-    if transform_name_wo_ext:
-        name = os.path.join(source.pipeline_sub_dir, source.output_sub_dir, trans_output_dir,
-                            "%s.xfm" % (transform_name_wo_ext))
-    elif generation is not None:
-        name = os.path.join(source.pipeline_sub_dir, source.output_sub_dir, trans_output_dir,
-                            "%s_ANTS_nlin-%s.xfm" % (source.filename_wo_ext, generation))
-    else:
-        name = os.path.join(source.pipeline_sub_dir, source.output_sub_dir, trans_output_dir,
-                            "%s_ANTS_to_%s.xfm" % (source.filename_wo_ext, target.filename_wo_ext))
-    out_xfm = XfmAtom(name=name, pipeline_sub_dir=source.pipeline_sub_dir, output_sub_dir=source.output_sub_dir)
-
-    similarity_cmds = []       # type: List[str]
-    similarity_inputs = set()  # type: Set[MincAtom]
-    # TODO: similarity_inputs should be a set, but `MincAtom`s aren't hashable
-    for sim_metric_conf in conf.sim_metric_confs:
-        if conf.file_resolution is not None and sim_metric_conf.use_gradient_image:
-            src = s.defer(mincblur(source, fwhm=conf.file_resolution)).gradient
-            dest = s.defer(mincblur(target, fwhm=conf.file_resolution)).gradient
-        elif conf.file_resolution is None and sim_metric_conf.use_gradient_image:
-            # the file resolution is not set, however we want to use the gradients
-            # for this similarity metric...
-            raise ValueError("A similarity metric in the ANTS configuration "
-                            "wants to use the gradients, but the file resolution for the "
-                            "configuration has not been set.")
-        else:
-            src = source
-            dest = target
-        similarity_inputs.add(src)
-        similarity_inputs.add(dest)
-        inner = ','.join([src.path, dest.path,
-                          str(sim_metric_conf.weight), str(sim_metric_conf.radius_or_bins)])
-        subcmd = "'" + "".join([sim_metric_conf.metric, '[', inner, ']']) + "'"
-        similarity_cmds.extend(["-m", subcmd])
-    stage = CmdStage(
-        inputs=(source, target) + tuple(similarity_inputs) + cast(tuple, ((source.mask,) if source.mask else ())),
-        # need to cast to tuple due to mypy bug; see mypy/issues/622
-        outputs=(out_xfm,),
-        cmd=['ANTS', '3',
-             '--number-of-affine-iterations', '0']
-            + similarity_cmds
-            + ['-t', conf.transformation_model,
-               '-r', conf.regularization,
-               '-i', conf.iterations,
-               '-o', out_xfm.path]
-            + (['-x', source.mask.path] if conf.use_mask and source.mask else []))
-
-
-    def set_memory(st, mem_cfg):
-        # see comments re: mincblur memory configuration
-        voxels = reduce(mul, volumeFromFile(source.path).getSizes())
-        mem_per_voxel = (mem_cfg.mem_per_voxel_coarse
-                         if int(conf.iterations.split('x')[-1]) == 0  # yikes ... this parsing should be done earlier
-                         else mem_cfg.mem_per_voxel_fine)
-        st.setMem(mem_cfg.base_mem + voxels * mem_per_voxel)
-
-    # see comments re: mincblur memory configuration
-    stage.when_runnable_hooks.append(lambda st: set_memory(st, default_ANTS_mem_cfg))
-
-    s.add(stage)
-    resampled = (s.defer(mincresample(img=source, xfm=out_xfm, like=target,
-                                      interpolation=Interpolation.sinc,
-                                      subdir=subdir_for_resample))
-                 if resample_source else None)  # type: Optional[MincAtom]
-    return Result(stages=s,
-                  output=XfmHandler(source=source,
-                                    target=target,
-                                    xfm=out_xfm,
-                                    resampled=resampled))
 
 
 T = TypeVar('T')
@@ -1683,68 +1563,13 @@ class WithAvgImgs(Generic[T]):
         self.avg_img = avg_img
 
 
-# TODO expand parameter list to be similar to ANTS_NLIN_build_model, possible add resolution parameter?
-def minctracc_NLIN_build_model(imgs: List[MincAtom],
-                               initial_target: MincAtom,
-                               conf: MultilevelMinctraccConf,
-                               nlin_dir: str,
-                               mincaverage = mincbigaverage) -> Result[WithAvgImgs[List[XfmHandler]]]:
-    if len(conf.confs) == 0:
-        raise ValueError("No configurations supplied ...")
-    s = Stages()
-    avg = initial_target
-    avg_imgs = []
-    for i, conf in enumerate(conf.confs, start=1):
-        xfms = [s.defer(minctracc(source=img, target=avg, conf=conf, generation=i, resample_source=True))
-                for img in imgs]
-        avg = s.defer(mincaverage([xfm.resampled for xfm in xfms], name_wo_ext='nlin-%d' % i, output_dir=nlin_dir))
-        avg_imgs.append(avg)
-    return Result(stages=s, output=WithAvgImgs(output=xfms, avg_img=avg, avg_imgs=avg_imgs))
-
-
-def ANTS_NLIN_build_model(imgs: List[MincAtom],
-                          initial_target: MincAtom,
-                          conf: MultilevelANTSConf,
-                          nlin_dir: str,
-                          nlin_prefix : str = "",
-                          mincaverage = mincbigaverage) -> Result[WithAvgImgs[List[XfmHandler]]]:
-    """
-    This functions runs a hierarchical ANTS registration on the input
-    images (imgs) creating an unbiased average.
-    The ANTS configuration `confs` that is passed in should be
-    a list of configurations for each of the levels/generations.
-    After each round of registrations, an average is created out of the 
-    resampled input files, which is then used as the target for the next
-    round of registrations. 
-    """
-    if len(conf.confs) == 0:
-        raise ValueError("No configurations supplied ...")
-    s = Stages()
-    avg = initial_target
-    avg_imgs = []  # type: List[MincAtom]
-    # changed start=1 to start=0 (and i -> i+1 in average creation) to match old code:
-    for i, conf_inst in enumerate(conf.confs, start=0):
-        # in the following command we resample the output of the ANTS command. This is because
-        # we create an average during each iteration which is used as the target for the next iteration.
-        # However, we should not save all resampled files in the resampled/ directory (default for
-        # the ANTS() call). Do this only for the last iteration:
-        resampled_subdir = "resampled" if i == len(conf.confs) else "tmp"
-        xfms = [s.defer(ANTS(source=img, target=avg, conf=conf_inst, generation=i,
-                             resample_source=True, subdir_for_resample=resampled_subdir))
-                for img in imgs]
-        #  TODO make resampled name 'final-nlin' ?? need another option to ANTS for that, I guess ...
-        # if no nlin_prefix is provided, we should remove the leading dash
-        avg = s.defer(mincaverage([xfm.resampled for xfm in xfms],
-                                  name_wo_ext='%s-nlin-%d' % (nlin_prefix, i+1) if nlin_prefix != "" else 'nlin-%d' % (i+1),
-                                  output_dir=nlin_dir))
-        avg_imgs.append(avg)
-    return Result(stages=s, output=WithAvgImgs(output=xfms, avg_img=avg, avg_imgs=avg_imgs))
-
 # nothing requires the linear conf to specify 12 params, so perhaps this should be called 'lin_nlin' ...
 def lsq12_nlin(source: MincAtom,
                target: MincAtom,
                lsq12_conf: MinctraccConf,
-               nlin_conf: Union[MultilevelMinctraccConf, MultilevelANTSConf, ANTSConf],  # sigh ... ...
+               nlin_module: NLIN,
+               nlin_options,  # nlin_module.Conf,  ??  want an nlin_module.Conf here ...
+               #nlin_conf: Union[MultilevelMinctraccConf, MultilevelANTSConf, ANTSConf],  # sigh ... ...
                resample_source: bool = True):
     """
     Runs a 12 parameter (or really any) linear registration followed by a nonlinear registration
@@ -1760,168 +1585,84 @@ def lsq12_nlin(source: MincAtom,
     # one would hope this function would similarly to the model-building version in being able to dispatch
     # on the configuration passed in (and in the same way, to avoid extra logic).
 
-    if isinstance(nlin_conf, MultilevelANTSConf):
-        # if only a sinle level is specified inside this multilevel configuration, all is fine:
-        if len(nlin_conf.confs) == 1:
-            # and we can just extract that single level
-            nlin_conf = nlin_conf.confs[0]
-        else:
-            # we can take the last configuration, and return a warning to the user that
-            # potentially they want to specify a custom protocol
-            nlin_conf = nlin_conf.confs[len(nlin_conf.confs) - 1]
-            warning_msg = "The function lsq12_nlin was provided with a MultilevelANTSConf with more than 1 " \
-                          "level. This is a function performing a source to target registration, and thus should " \
-                          "only run a single level of ANTS (with its internal iterations option). We will use the " \
-                          "last configuration from the protocol:\n" + \
-                          nlin_conf.transformation_model + ", " + \
-                          nlin_conf.regularization  + ", " + \
-                          nlin_conf.iterations
-            warnings.warn(warning_msg)
+    # TODO it's a bit late to do this parsing (inefficient/poorer error reporting/weird spot for IO)
+    # but it's a bit harder to propagate the types correctly ...
+    nlin_conf = nlin_module.parse_protocol_file(nlin_options)
 
-
-    if isinstance(nlin_conf, ANTSConf):
-        lsq12_transform_handler = s.defer(multilevel_minctracc(source=source,
-                                                               target=target,
-                                                               conf=lsq12_conf,
-                                                               resample_source=True))
-        nlin_transform_handler = s.defer(ANTS(source=lsq12_transform_handler.resampled,
-                                              target=target,
-                                              conf=nlin_conf,
-                                              resample_source=resample_source))
-        full_transform = s.defer(concat_xfmhandlers(xfms=[lsq12_transform_handler, nlin_transform_handler],
-                                                    name=source.filename_wo_ext + "_to_" +
-                                                      target.filename_wo_ext + "_lsq12_ANTS_nlin",
-                                                    resample_source=resample_source))
-    elif isinstance(nlin_conf, MultilevelMinctraccConf):
+    if nlin_module.accepts_initial_transform():
         lsq12_transform_handler = s.defer(multilevel_minctracc(source=source,
                                                                target=target,
                                                                conf=lsq12_conf,
                                                                # TODO allow a transform here?
                                                                resample_source=resample_source))
-        nlin_transform_handler = s.defer(multilevel_minctracc(source=source,
+        nlin_transform_handler = s.defer(nlin_module.register(source=source,
                                                               target=target,
                                                               conf=nlin_conf,
                                                               transform=lsq12_transform_handler.xfm,
                                                               resample_source=resample_source))
         full_transform = nlin_transform_handler
     else:
-        raise ValueError("Expected one of the following 3 options: 1) a MultilevelANTSConf with a single "
-                         "level inside of it, 2) a ANTSConf, or 3) a MultilevelMinctraccConf. The nlin_conf "
-                         "that we got has type: " + type(nlin_conf))
-
+        lsq12_transform_handler = s.defer(multilevel_minctracc(source=source,
+                                                               target=target,
+                                                               conf=lsq12_conf,
+                                                               resample_source=True))
+        nlin_transform_handler = s.defer(nlin_module.register(source=lsq12_transform_handler.resampled,
+                                                              target=target,
+                                                              conf=nlin_conf,
+                                                              resample_source=resample_source))
+        full_transform = s.defer(concat_xfmhandlers(xfms=[lsq12_transform_handler, nlin_transform_handler],
+                                                    name=source.filename_wo_ext + "_to_" +
+                                                      target.filename_wo_ext + "_lsq12_ANTS_nlin",
+                                                    resample_source=resample_source))
     return Result(stages=s, output=full_transform)
-
-
-# TODO obsolete...remove uses and definition?
-def LSQ12_ANTS_nlin(source: MincAtom,
-                    target: MincAtom,
-                    linear_conf: MinctraccConf,
-                    nlin_conf: ANTSConf):
-    """
-    Runs a 12 parameter registration followed by a non linear ANTS registration
-    from the source to the target. This is a *non* model building function, which
-    can be used for intra-subject registrations in the registration_chain, or in
-    MAGeT for instance
-    """
-    # TODO: currently this only works for ANTS for the non linear part
-
-    s = Stages()
-    # we need to resample the source file in this case, because that will
-    # be the input for the non linear stage
-    lsq12_transform_handler = s.defer(multilevel_minctracc(source,
-                                                           target,
-                                                           conf=linear_conf,
-                                                           resample_source=True))
-
-    nlin_transform_handler = s.defer(ANTS(source=lsq12_transform_handler.resampled,
-                                          target=target,
-                                          conf=nlin_conf,
-                                          resample_source=True))
-
-    full_transform = s.defer(concat_xfmhandlers([lsq12_transform_handler,
-                                                 nlin_transform_handler],
-                                                name=source.filename_wo_ext + "_to_" +
-                                                target.filename_wo_ext + "_lsq12_ANTS_nlin"))
-    return Result(stages=s, output=full_transform)
-
-
-# some stuff for the registration chain.
-# The Subject class moved here since `intrasubject_registrations` was also here.
-
-V = TypeVar('V')
-
-class Subject(Generic[V]):
-    """
-    A Subject contains the intersubject_registration_time_pt and a dictionary
-    that maps timepoints to scans/data of type `V` related to this Subject.
-    (Here V could be - for instance - str, FileAtom/MincAtom or XfmHandler).
-    """
-
-    def __init__(self,
-                 intersubject_registration_time_pt: int,
-                 time_pt_dict: Optional[Dict[int, V]] = None) -> None:
-        # TODO: change the time_pt datatype to decimal or rational to allow, e.g., 18.5?
-        self.intersubject_registration_time_pt = intersubject_registration_time_pt  # type: int
-        self.time_pt_dict = time_pt_dict or dict()  # type: Dict[int, V]
-
-    # compare by fields, not pointer
-    def __eq__(self, other) -> bool:
-        return (self is other or
-                (self.__class__ == other.__class__
-                 and self.intersubject_registration_time_pt == other.intersubject_registration_time_pt
-                 and self.time_pt_dict == other.time_pt_dict))
-
-    # ugh; also, should this be type(self) == ... ?
-
-    # TODO: change name? This might not be an 'image'
-    @property
-    def intersubject_registration_image(self) -> V:
-        return self.time_pt_dict[self.intersubject_registration_time_pt]
-
-    def __repr__(self) -> str:
-        return ("Subject(intersubject_registration_time_pt: %s, time_pt_dict keys: %s ... (values not shown))"
-                % (self.intersubject_registration_time_pt, self.time_pt_dict.keys()))
-
-
-def intrasubject_registrations(subj: Subject,
-                               linear_conf: MinctraccConf,
-                               nlin_conf: ANTSConf) \
-        -> Result[Tuple[List[Tuple[int, int, XfmHandler]], int]]:
-    """
-    
-    subj -- Subject (has a intersubject_registration_time_pt and a time_pt_dict 
-            that maps timepoints to individual subjects
-
-    Return:
-    ([ (source_time_pt, target_time_pt, XfmHandler),
-       (...,...,...),(...,...,...)],
-     index_of_common_time_pt)
-     note this is one element smaller than the number of time points.
-    """
-    # TODO: somehow the output of this function should provide us with
-    # easy access from a MincAtom to an XfmHandler from time_pt N to N+1 
-    # either here or in the chain() function
-
-    s = Stages()
-    timepts = sorted(subj.time_pt_dict.items())  # type: List[Tuple[int, MincAtom]]
-    timepts_indices = [index for index, _subj_atom in timepts]  # type: List[int]
-    # we need to find the index of the common time point and for that we
-    # should only look at the first element of the tuples stored in timepts
-    index_of_common_time_pt = timepts_indices.index(subj.intersubject_registration_time_pt)  # type: int
-
-    time_pt_to_xfms = [(timepts_indices[source_index],
-                        timepts_indices[source_index + 1],
-                        s.defer(lsq12_nlin(source=src[1],
-                                           target=dest[1],
-                                           lsq12_conf=linear_conf,
-                                           nlin_conf=nlin_conf,
-                                           resample_source=True)))
-                       for source_index, (src, dest) in enumerate(pairs(timepts))]
-    return Result(stages=s, output=(time_pt_to_xfms, index_of_common_time_pt))
-
-
-# def multilevel_registration(source, target, registration_function, conf, curr_dir, transform=None):
-#    ...
+    # if isinstance(nlin_conf, MultilevelANTSConf):
+    #     # if only a single level is specified inside this multilevel configuration, all is fine:
+    #     if len(nlin_conf.confs) == 1:
+    #         # and we can just extract that single level
+    #         nlin_conf = nlin_conf.confs[0]
+    #     else:
+    #         # we can take the last configuration, and return a warning to the user that
+    #         # potentially they want to specify a custom protocol
+    #         nlin_conf = nlin_conf.confs[len(nlin_conf.confs) - 1]
+    #         warning_msg = "The function lsq12_nlin was provided with a MultilevelANTSConf with more than 1 " \
+    #                       "level. This is a function performing a source to target registration, and thus should " \
+    #                       "only run a single level of ANTS (with its internal iterations option). We will use the " \
+    #                       "last configuration from the protocol:\n" + \
+    #                       nlin_conf.transformation_model + ", " + \
+    #                       nlin_conf.regularization  + ", " + \
+    #                       nlin_conf.iterations
+    #         warnings.warn(warning_msg)
+    #
+    #
+    # if isinstance(nlin_conf, ANTSConf):
+    #     lsq12_transform_handler = s.defer(multilevel_minctracc(source=source,
+    #                                                            target=target,
+    #                                                            conf=lsq12_conf,
+    #                                                            resample_source=True))
+    #     nlin_transform_handler = s.defer(ANTS(source=lsq12_transform_handler.resampled,
+    #                                           target=target,
+    #                                           conf=nlin_conf,
+    #                                           resample_source=resample_source))
+    #     full_transform = s.defer(concat_xfmhandlers(xfms=[lsq12_transform_handler, nlin_transform_handler],
+    #                                                 name=source.filename_wo_ext + "_to_" +
+    #                                                   target.filename_wo_ext + "_lsq12_ANTS_nlin",
+    #                                                 resample_source=resample_source))
+    # elif isinstance(nlin_conf, MultilevelMinctraccConf):
+    #     lsq12_transform_handler = s.defer(multilevel_minctracc(source=source,
+    #                                                            target=target,
+    #                                                            conf=lsq12_conf,
+    #                                                            # TODO allow a transform here?
+    #                                                            resample_source=resample_source))
+    #     nlin_transform_handler = s.defer(multilevel_minctracc(source=source,
+    #                                                           target=target,
+    #                                                           conf=nlin_conf,
+    #                                                           transform=lsq12_transform_handler.xfm,
+    #                                                           resample_source=resample_source))
+    #     full_transform = nlin_transform_handler
+    # else:
+    #     raise ValueError("Expected one of the following 3 options: 1) a MultilevelANTSConf with a single "
+    #                      "level inside of it, 2) a ANTSConf, or 3) a MultilevelMinctraccConf. The nlin_conf "
+    #                      "that we got has type: " + type(nlin_conf))
 
 
 # TODO: this is very static right now, but I just want to get things running
@@ -1964,6 +1705,7 @@ def multilevel_minctracc(source: MincAtom,
                          conf: MultilevelMinctraccConf,
                          transform: Optional[XfmAtom] = None,
                          transform_info: Optional[List[str]] = None,
+                         transform_name_wo_ext: Optional[str] = None,
                          resample_source: bool = False) -> Result[XfmHandler]:
     if len(conf.confs) == 0:  # not a "registration" at all; also, src_blur/target_blur will be undefined ...
         raise ValueError("No configurations supplied")
@@ -1974,6 +1716,7 @@ def multilevel_minctracc(source: MincAtom,
                                               transform=transform,
                                               transform_info=transform_info if idx == 0 else None,
                                               generation=idx,
+                                              transform_name_wo_ext = transform_name_wo_ext,
                                               subdir='tmp' if idx < len(conf.confs) - 1 else None,
                                               resample_source=resample_source))
         transform = transform_handler.xfm
@@ -2042,7 +1785,6 @@ def multilevel_pairwise_minctracc(imgs: List[MincAtom],
                                          output_atom=final_avg,
                                          src_img=img, target_imgs=gen.sample(imgs, max_pairs)))
                     for img in imgs]
-                      # FIXME might use one fewer image than `max_pairs`...
 
     final_avg = s.defer(mincaverage([xfm.resampled for xfm in avg_xfms], avg_file=final_avg))
 
@@ -2131,125 +1873,6 @@ def lsq12_pairwise(imgs: List[MincAtom],
 
     return Result(stages=s, output=avgs_and_xfms)
 
-def pairwise_antsRegistration(imgs: List[MincAtom],
-                              output_dir_for_avg: str = None,
-                              output_name_wo_ext: str = None):
-    s = Stages()
-
-    if len(imgs) < 2:
-        raise ValueError("currently need at least two images")
-
-    if not output_name_wo_ext:
-        output_name_wo_ext = "full_pairwise_nlin_antsRegistration"
-
-    if not output_dir_for_avg:
-        raise ValueError("Please specify an output directory for the final average in pairwise_antsRegistration.")
-
-    final_avg = MincAtom(name=os.path.join(output_dir_for_avg, output_name_wo_ext + ".mnc"),
-                         pipeline_sub_dir=output_dir_for_avg)
-
-    def avg_nlin_xfm_from(src_img: MincAtom,
-                          target_imgs: List[MincAtom]):
-        # antsRegistration returns stages and two XfmHandlers
-        # 1) source -> target, 2) target -> source
-        # we only care about the first one here
-        xfmHs = [s.defer(antsRegistration(source=src_img,
-                                         target=target_img))[0]
-                        for target_img in target_imgs]
-
-        # xfmavg is not well defined on transformations that have
-        # non linear grids associated with them. Turn all transformations
-        # into grid file, average those and make a transformation for
-        # the final average grid
-
-        #xfmGrids = [s.defer(minc_displacement(single_xfmH)) for single_xfmH in xfmHs]
-        xfms_from_xfmHs = [xfmH.xfm for xfmH in xfmHs]
-        avg_xfmGrid = MincAtom(name=os.path.join(src_img.pipeline_sub_dir,
-                                                 src_img.output_sub_dir,
-                                                 "transforms",
-                                                 "%s_avg_nlin_antsReg_grid.mnc" % src_img.filename_wo_ext),
-                               pipeline_sub_dir=src_img.pipeline_sub_dir)
-
-        #list_of_grids = [ "%s/%s_grid_0.mnc" % (xfmH.xfm.dir, xfmH.xfm.filename_wo_ext) for xfmH in xfmHs]
-
-        #custom_minc_avg = CmdStage(inputs=tuple(xfms_from_xfmHs),
-        #                           outputs=(avg_xfmGrid,),
-        #                           cmd=['mincaverage', '-clobber'] +
-        #                               sorted(list_of_grids) +
-        #                               [avg_xfmGrid.path])
-        # s.add(custom_minc_avg)
-
-        # generate grid files from antsRegistration calls:
-        minc_displacement_grids = [s.defer(minc_displacement(xfmH)) for xfmH in xfmHs]
-        minc_avg_on_minc_displ = CmdStage(inputs=tuple(xfms_from_xfmHs) + tuple(minc_displacement_grids),
-                                          outputs=(avg_xfmGrid,),
-                                          cmd=['mincaverage', '-clobber'] +
-                                              sorted([m_displ_grid.path for m_displ_grid in minc_displacement_grids]) +
-                                              [avg_xfmGrid.path])
-        s.add(minc_avg_on_minc_displ)
-
-
-        #avg_xfmGrid = s.defer(mincaverage(imgs=xfmGrids,
-        #                                  output_dir=os.path.join(src_img.pipeline_sub_dir,
-        #                                                          src_img.output_sub_dir,
-        #                                                          "transforms"),
-        #                                  name_wo_ext="%s_avg_nlin_antsReg_grid" % src_img.filename_wo_ext))
-
-        avg_xfm = XfmAtom(name=os.path.join(src_img.pipeline_sub_dir,
-                                            src_img.output_sub_dir,
-                                            "transforms",
-                                            "%s_avg_nlin_antsReg.xfm" % src_img.filename_wo_ext),
-                          pipeline_sub_dir=src_img.pipeline_sub_dir,
-                          output_sub_dir=src_img.output_sub_dir)
-
-        create_xfm_for_avgGrid = CmdStage(inputs=(avg_xfmGrid,),
-                                          outputs=(avg_xfm,),
-                                          cmd=(["make_xfm_for_grid.pl",
-                                                "-clobber",
-                                                avg_xfmGrid.path,
-                                                avg_xfm.path]))
-        s.add(create_xfm_for_avgGrid)
-
-        res = s.defer(mincresample(img=src_img,
-                                   xfm=avg_xfm,
-                                   like=src_img,
-                                   interpolation=Interpolation.sinc))
-        return XfmHandler(xfm=avg_xfm,
-                          source=src_img,
-                          target=final_avg,
-                          resampled=res)
-
-    avg_xfmHs = [avg_nlin_xfm_from(src_img=img, target_imgs=imgs) for img in imgs]
-
-    final_avg = s.defer(mincaverage(imgs=[xfmH.resampled for xfmH in avg_xfmHs],
-                                    avg_file=final_avg))
-
-    return Result(stages=s, output=WithAvgImgs(avg_imgs=[final_avg], avg_img=final_avg, output=avg_xfmHs))
-
-
-
-def nlin_pairwise(imgs: List[MincAtom],
-                  nlin_dir: str,
-                  create_qc_images: bool = True) -> Result[WithAvgImgs[List[XfmHandler]]]:
-    """
-
-    :param img: a list of minc atoms for which a full pairwise non linear registration will be run
-    :param nlin_dir: the directory that will hold the average non linear file: for each input file,
-                     we compute the average non linear transformation towards all the other input
-                     files. That average transformation is applied to the input, and we average
-                     those files.
-    :param create_qc_images:
-    :return: and array of transformations (avg nlin towards all other files), and the average MincAtom
-    """
-    s = Stages()
-
-    avgs_and_xfms = s.defer(pairwise_antsRegistration(imgs=imgs,
-                                                      output_dir_for_avg=nlin_dir))
-
-    return Result(stages=s, output=avgs_and_xfms)
-
-
-
 K = TypeVar('K')
 
 
@@ -2272,286 +1895,40 @@ def lsq12_pairwise_on_dictionaries(imgs: Dict[K, MincAtom],
                                                avg_img=res.avg_img))
 
 
-def nlin_build_model(imgs           : List[MincAtom],
-                     initial_target : MincAtom,
-                     conf           : Union[MultilevelMinctraccConf, MultilevelANTSConf],
-                     nlin_dir       : str,
-                     nlin_prefix    : str = ""):
-    s = Stages()
+#def nlin_build_model(imgs           : List[MincAtom],
+#                     initial_target : MincAtom,
+#                     nlin_impl      : NLIN,  # TODO implement a more specific type!  (could use a class for this)
+#                     #conf           : Union[MultilevelMinctraccConf, MultilevelANTSConf],
+#                     nlin_dir       : str,
+#                     nlin_prefix    : str = ""):
+#    s = Stages()
 
-    if isinstance(conf, MultilevelMinctraccConf):
-        nlin_result = s.defer(minctracc_NLIN_build_model(imgs=imgs,  # TODO add nlin_prefix to this one!!!
-                                                         initial_target=initial_target,
-                                                         conf=conf,
-                                                         nlin_dir=nlin_dir))
-        return Result(stages=s, output=nlin_result)
-    elif isinstance(conf, MultilevelANTSConf):
-        nlin_result = s.defer(ANTS_NLIN_build_model(imgs=imgs,
-                                                    initial_target=initial_target,
-                                                    conf=conf,
-                                                    nlin_prefix=nlin_prefix,
-                                                    nlin_dir=nlin_dir))
-        return Result(stages=s, output=nlin_result)
-    else:
-        # this should never happen
-        raise ValueError("The nonlinear configuration passed to nlin_build_model is neither for minctracc nor for ANTS.")
+    # if isinstance(conf, MultilevelMinctraccConf):
+    #     nlin_result = s.defer(minctracc_NLIN_build_model(imgs=imgs,  # TODO add nlin_prefix to this one!!!
+    #                                                      initial_target=initial_target,
+    #                                                      conf=conf,
+    #                                                      nlin_dir=nlin_dir))
+    #     return Result(stages=s, output=nlin_result)
+    # elif isinstance(conf, MultilevelANTSConf):
+    #     nlin_result = s.defer(ANTS_NLIN_build_model(imgs=imgs,
+    #                                                 initial_target=initial_target,
+    #                                                 conf=conf,
+    #                                                 nlin_prefix=nlin_prefix,
+    #                                                 nlin_dir=nlin_dir))
+    #     return Result(stages=s, output=nlin_result)
+    # else:
+    #     # this should never happen
+    #     raise ValueError("The nonlinear configuration passed to nlin_build_model is neither for minctracc nor for ANTS.")
+    #
 
-
-
-def generate_halfway_transform(input_xfm_handler: XfmHandler,
-                               like_file:         MincAtom) -> Result[XfmAtom]:
-    """
-    This function produces a transformation that moves halfway along
-    the provided transform. It works as follows:
-    1) combine all transforms into a single grid
-    2) multiply the grid by 0.5
-    3) create a .xfm file to point at the created grid file
-    """
-    s = Stages()
-
-    # combine all transformations into a single grid:
-    full_grid = s.defer(minc_displacement(input_xfm_handler))
-
-    # multiply the vectors by 0.5
-    halfway_grid = s.defer(mincmath(op='mult',
-                                    const=0.5,
-                                    vols=[full_grid],
-                                    subdir="tmp",
-                                    new_name=full_grid.filename_wo_ext + "_halfway"))
-
-    # create an XfmAtom for this grid file, and
-    # write its information to disk
-    halfway_xfm = input_xfm_handler.xfm.newname_with_suffix(suffix="_halfway")
-    # write the xfm file:
-    create_xfm_text_file_cmd = CmdStage(inputs=(halfway_grid,),
-                                        outputs=(halfway_xfm,),
-                                        cmd=(["make_xfm_for_grid.pl",
-                                              halfway_grid.path,
-                                              halfway_xfm.path]))
-    s.add(create_xfm_text_file_cmd)
-    return Result(stages=s, output=halfway_xfm)
-
-
-
-def nonlinear_midpoint_average(img_A: MincAtom,
-                               img_B: MincAtom,
-                               out_name_wo_ext: str,
-                               out_dir: str) -> Result[MincAtom]:
-    """
-    :param img_A:
-    :param img_B:
-    :return: the midway point between img_A and img_B --> img_AB
-    """
-    s = Stages()
-
-    # start with an antRegistration call between the two files
-    xfm_handlers_antsReg = s.defer(antsRegistration(source=img_A,
-                                                    target=img_B,
-                                                    subdir='tmp'))
-
-    # generate halfway transformations
-    xfm_handler_A_to_B = xfm_handlers_antsReg[0]
-    xfm_handler_B_to_A = xfm_handlers_antsReg[1]
-
-    transform_A_to_B_halfway = s.defer(generate_halfway_transform(input_xfm_handler=xfm_handler_A_to_B,
-                                                                  like_file=img_B))
-    transform_B_to_A_halfway = s.defer(generate_halfway_transform(input_xfm_handler=xfm_handler_B_to_A,
-                                                                  like_file=img_A))
-    # resample A and B halfway:
-    A_halfway_to_B = s.defer(mincresample(img=img_A,
-                                          xfm=transform_A_to_B_halfway,
-                                          like=img_B,
-                                          subdir='tmp',
-                                          interpolation=Interpolation.sinc))
-    B_halfway_to_A = s.defer(mincresample(img=img_B,
-                                          xfm=transform_B_to_A_halfway,
-                                          like=img_A,
-                                          subdir='tmp',
-                                          interpolation=Interpolation.sinc))
-
-    # the output file (avg of both files resampled to the midway point)
-    avg_mid_point = s.defer(mincaverage(imgs=[A_halfway_to_B, B_halfway_to_A],
-                                        output_dir=out_dir,
-                                        name_wo_ext=out_name_wo_ext))
-
-    return Result(stages=s, output=avg_mid_point)
-
-
-def tournament_style_model(imgs                  : List[MincAtom],
-                           tournament_dir        : str,
-                           tournament_name_wo_ext: Optional[str] = "tournament") -> Result[MincAtom]:
-    """
-    generate an average of the input files based on a tournament style bracket,
-    for example given 6 input images (1,2,3,4,5,6):
-
-    1 ---|
-         |---|
-    2 ---|   |
-             |---|
-    3 ---|   |   |
-         |---|   |
-    4 ---|       |--- final average
-                 |
-        5 ---|   |
-             |---|
-        6 ---|
-
-
-    :param imgs:
-    :param tournament_dir:
-    :return:
-    """
-    s = Stages()
-
-    if len(imgs) == 1:
-        # simply return this image:
-        return Result(stages=s, output=imgs[0])
-    else:
-        # split up the list, calculate averages for the sublists and average
-        midpoint_avg = s.defer(nonlinear_midpoint_average(img_A = s.defer(tournament_style_model(imgs=imgs[: math.floor(len(imgs)/2)],
-                                                                                                 tournament_dir=tournament_dir,
-                                                                                                 tournament_name_wo_ext=tournament_name_wo_ext + "_L")),
-                                                          img_B = s.defer(tournament_style_model(imgs=imgs[math.floor(len(imgs)/2) :],
-                                                                                                 tournament_dir=tournament_dir,
-                                                                                                 tournament_name_wo_ext=tournament_name_wo_ext + "_R")),
-                                                          out_name_wo_ext=tournament_name_wo_ext,
-                                                          out_dir=tournament_dir))
-        return Result(stages=s, output=midpoint_avg)
-
-
-def antsRegistration(source: MincAtom,
-                     target: MincAtom,
-                     #conf: antsRegistrationConf,
-                     transform_source: Optional[XfmAtom] = None,
-                     transform_target: Optional[XfmAtom] = None,
-                     transform_source_to_target_wo_ext: Optional[XfmAtom] = None,
-                     generation: Optional[int] = None,
-                     subdir: Optional[str] = None,
-                     resample_source_and_target: Optional[bool] = False,
-                     resample_subdir: Optional[str] = 'tmp'):
-    """
-
-    :param source: fixedImage
-    :param target: movingImage
-    :param conf:
-    :param transform_source: for --initial-fixed-transform
-    :param transform_target: for --initial-moving-transform
-    :param transform_source_to_target_wo_ext: name of the target_to_source transform will be based on this
-    :param generation:
-    :param subdir:
-    :param resample_source:
-    :return:
-    """
-    s = Stages()
-
-    source_subdir = subdir if subdir is not None else 'transforms'
-
-    # Deal with the transformations first. This function will return two XfmHandlers. One
-    # from source to target, and one in the other direction.
-    if transform_source_to_target_wo_ext:
-        xfm_source_to_target = XfmAtom(name=os.path.join(source.pipeline_sub_dir,
-                                                         source.output_sub_dir,
-                                                         source_subdir,
-                                                         "%s.xfm" % (transform_source_to_target_wo_ext)),
-                                       pipeline_sub_dir=source.pipeline_sub_dir,
-                                       output_sub_dir=source.output_sub_dir)
-    elif generation is not None:
-        xfm_source_to_target = XfmAtom(name=os.path.join(source.pipeline_sub_dir,
-                                                         source.output_sub_dir,
-                                                         source_subdir,
-                                                         "%s_antsR_to_%s_nlin_%s.xfm" %
-                                                         (source.filename_wo_ext,
-                                                          target.filename_wo_ext,
-                                                          generation)),
-                                       pipeline_sub_dir=source.pipeline_sub_dir,
-                                       output_sub_dir=source.output_sub_dir)
-    else:
-        xfm_source_to_target = XfmAtom(name=os.path.join(source.pipeline_sub_dir,
-                                                         source.output_sub_dir,
-                                                         source_subdir,
-                                                         "%s_antsR_to_%s.xfm" %
-                                                         (source.filename_wo_ext,
-                                                          target.filename_wo_ext)),
-                                       pipeline_sub_dir=source.pipeline_sub_dir,
-                                       output_sub_dir=source.output_sub_dir)
-    # model the target_to_source in a similar manner. Given that
-    # antsRegistration will be passed the "output prefix" for the transform,
-    # being the whole filename with .xfm, this transform will live in a
-    # directory belonging to the source image.
-    # TODO: is this what we want? perhaps we actually want to move this transformation
-    # over to a subdirectory of the target file...
-    xfm_target_to_source = xfm_source_to_target.newname_with_suffix("_inverse", subdir='tmp')
-
-    # run full command
-
-    # outputs from antRegistration are:
-    #   {output_prefix}_grid_0.mnc
-    #   {output_prefix}.xfm
-    #   {output_prefix}_inverse_grid_0.mnc
-    #   {output_prefix}_inverse.xfm
-
-    # Outputs:
-    # 1) transform from source_to_target
-    # 2) transform from target_to_source --> need to create an XfmHandler for this one
-
-    # TODO: use a proper configuration to set the parameters
-    # TODO: add a second metric for the gradients (and get gradient files)
-    cmd_ants_reg = CmdStage(
-        inputs=(source, target, source.mask, target.mask) if source.mask and target.mask else (source, target),
-        outputs=(xfm_source_to_target, xfm_target_to_source),
-        cmd=['antsRegistration'] \
-            + ['--dimensionality', '3'] \
-            + ['--verbose'] \
-            + ['--minc'] \
-            + ['--collapse-output-transforms', '1'] \
-            + ['--write-composite-transform'] \
-            + ['--winsorize-image-intensities', '[0.01,0.99]'] \
-            + ['--use-histogram-matching', '1'] \
-            + ['--float', '0'] \
-            + ['--output', '[' + xfm_source_to_target.dir + '/' + xfm_source_to_target.filename_wo_ext + ']'] \
-            + ['--transform', 'SyN[0.5,3,0]'] \
-            + ['--convergence', '[100x100x100x100x50x10,1e-6,10]'] \
-            + ['--metric', 'CC[' + source.path + ',' + target.path + ',1,6]'] \
-            + (['--masks', '[' + source.mask.path + ',' +
-                target.mask.path + ']'] if source.mask.path and target.mask.path else []) \
-            + ['--shrink-factors', '16x8x6x4x2x1'] \
-            + ['--smoothing-sigmas', '8x4x3x2x1x0vox'])
-    #TODO: memory estimation
-    s.add(cmd_ants_reg)
-
-    # create file names for the two output files. It's better to use our standard
-    # mincresample command for this, because that also deals with any associated
-    # masks, whereas antsRegistration would only resample the input files.
-    resampled_source = (s.defer(mincresample(img=source,
-                                             xfm=xfm_source_to_target,
-                                             like=target,
-                                             interpolation=Interpolation.sinc,
-                                             subdir=resample_subdir))
-                        if resample_source_and_target else None)
-    resampled_target = (s.defer(mincresample(img=target,
-                                             xfm=xfm_target_to_source,
-                                             like=source,
-                                             interpolation=Interpolation.sinc,
-                                             subdir=resample_subdir))
-                        if resample_source_and_target else None)
-
-    # return an XfmHandler for both the forward and the inverse transformations
-    return Result(stages=s,
-                  output=(XfmHandler(source=source,
-                                     target=target,
-                                     xfm=xfm_source_to_target,
-                                     resampled=resampled_source),
-                          XfmHandler(source=target,
-                                     target=source,
-                                     xfm=xfm_target_to_source,
-                                     resampled=resampled_target)))
 
 
 def lsq12_nlin_build_model(imgs       : List[MincAtom],
                            lsq12_conf : LSQ12Conf,
                            lsq12_dir  : str,
                            nlin_dir   : str,
-                           nlin_conf  : Union[MultilevelMinctraccConf, MultilevelANTSConf],
+                           nlin_module: NLIN_BUILD_MODEL,
+                           nlin_conf, # options object
                            resolution : float,
                            nlin_prefix : str = "") -> Result[WithAvgImgs[List[XfmHandler]]]:
     """
@@ -2570,53 +1947,15 @@ def lsq12_nlin_build_model(imgs       : List[MincAtom],
     # extract the resampled lsq12 images
     lsq12_resampled_imgs = [xfm_handler.resampled for xfm_handler in lsq12_result.output]
 
-    if lsq12_conf.generate_tournament_style_lsq12_avg:
-        target_for_nlin_stages = s.defer(tournament_style_model(imgs=lsq12_resampled_imgs,
-                                                                tournament_dir=lsq12_dir[0:len(lsq12_dir)-6] + "_tournament"))
-    else:
-        target_for_nlin_stages = lsq12_result.avg_img
+    #if lsq12_conf.generate_tournament_style_lsq12_avg:
+    #    target_for_nlin_stages = s.defer(tournament_style_model(imgs=lsq12_resampled_imgs,
+    #                                                            tournament_dir=lsq12_dir[0:len(lsq12_dir)-6] + "_tournament"))
+    #else:
+    # TODO restore NLIN tournament before, not replacing, regular nlin model building!!
+    target_for_nlin_stages = lsq12_result.avg_img
 
-    nlin_result = s.defer(nlin_build_model(imgs=lsq12_resampled_imgs,
-                                           initial_target=target_for_nlin_stages,
-                                           conf=nlin_conf,
-                                           nlin_dir=nlin_dir,
-                                           nlin_prefix=nlin_prefix))
-
-    # concatenate the transformations from lsq12 and nlin before returning them
-    from_imgs_to_nlin_xfms = [s.defer(concat_xfmhandlers(xfms=[lsq12_xfmh, nlin_xfmh],
-                                                         name=img.filename_wo_ext + "_lsq12_and_nlin")) for
-                              lsq12_xfmh, nlin_xfmh, img in zip(lsq12_result.output,
-                                                                nlin_result.output,
-                                                                imgs)]
-
-    return Result(stages=s, output=WithAvgImgs(output=from_imgs_to_nlin_xfms,
-                                               avg_img=nlin_result.avg_img,
-                                               avg_imgs=nlin_result.avg_imgs))
-
-def lsq12_nlin_pairwise(imgs       : List[MincAtom],
-                        lsq12_conf : LSQ12Conf,
-                        lsq12_dir  : str,
-                        nlin_dir   : str,
-                        nlin_conf  : Union[MultilevelMinctraccConf, MultilevelANTSConf],
-                        resolution : float,
-                        nlin_prefix : str = "") -> Result[WithAvgImgs[List[XfmHandler]]]:
-    """
-    Runs both a pairwise lsq12 registration followed by a non linear
-    registration procedure on the input files.
-    """
-    s = Stages()
-
-    # TODO: make sure that we pass on a correct configuration for lsq12_pairwise
-    # it should be able to get this passed in....
-    lsq12_result = s.defer(lsq12_pairwise(imgs=imgs, like=None,
-                                          resolution=resolution,
-                                          lsq12_conf=lsq12_conf,
-                                          lsq12_dir=lsq12_dir))
-
-    # extract the resampled lsq12 images
-    lsq12_resampled_imgs = [xfm_handler.resampled for xfm_handler in lsq12_result.output]
-
-    if lsq12_conf.generate_tournament_style_lsq12_avg:
+    if False:  #TODO: fix!!!
+    #if lsq12_conf.generate_tournament_style_lsq12_avg and (nlin_build_module == pairwise):  # TODO implement
         raise ValueError("You specified both --generate-tournament-style-lsq12-avg and --nlin-pairwise. "
                          "When the non linear alignment is performed using full pairwise registrations, "
                          "the lsq12 average is never used as a target. As such it does not make any "
@@ -2626,8 +1965,22 @@ def lsq12_nlin_pairwise(imgs       : List[MincAtom],
                          "registrations use --no-generate-tournament-style-lsq12-avg together with "
                          "--nlin-pairwise")
 
-    nlin_result = s.defer(nlin_pairwise(imgs=lsq12_resampled_imgs,
-                                            nlin_dir=nlin_dir))
+    # TODO change name of nlin_options to nlin_conf ?!
+    # TODO change name from '_module' !
+    #nlin_build_model_module = get_model_building_procedure(strategy=nlin_conf.reg_strategy,
+    #                                                       reg_module=nlin_module)
+
+    #nlin_conf = nlin_module.parse_build_model_protocol(nlin_conf.nlin_protocol, resolution=resolution)
+
+    # FIXME why doesn't this accept the lsq12 transforms if the nlin component can use them
+    # and then not concatenate with the lsq12 transforms? (note the cost function is different in this case)
+    nlin_result = s.defer(nlin_module.build_model(imgs=lsq12_resampled_imgs,
+                                                  initial_target=target_for_nlin_stages,
+                                                  #nlin_module=nlin_module,
+                                                  #conf=nlin_conf,
+                                                  conf=nlin_conf,
+                                                  nlin_dir=nlin_dir,
+                                                  nlin_prefix=nlin_prefix))
 
     # concatenate the transformations from lsq12 and nlin before returning them
     from_imgs_to_nlin_xfms = [s.defer(concat_xfmhandlers(xfms=[lsq12_xfmh, nlin_xfmh],
@@ -3388,7 +2741,7 @@ def create_quality_control_images(imgs: List[MincAtom],
     for img in imgs:
         img_verification = img.newname_with_suffix("_QC_image",
                                                    subdir="tmp",
-                                                   ext=".png")
+                                                   ext=".jpg")
         # TODO: the memory and procs are set to 0 to ensure that
         # these stages finish soonish. No other stages depend on
         # these, but we do want them to finish as soon as possible
@@ -3410,7 +2763,7 @@ def create_quality_control_images(imgs: List[MincAtom],
         # which images potentially fail
         img_verification_convert = img.newname_with_suffix("_QC_image_labeled",
                                                            subdir="tmp",
-                                                           ext=".png")
+                                                           ext=".jpg")
         # FIXME: no other stages depend on
         # these, but we do want them to finish as soon as possible
         # -- perhaps we could instead return the montage stage (or, if no montage is to be created,
@@ -3431,7 +2784,7 @@ def create_quality_control_images(imgs: List[MincAtom],
 
     # if montageOutput is specified, create the overview image
     if create_montage:
-        montage_output_fileatom = FileAtom("%s.png" % montage_output)
+        montage_output_fileatom = FileAtom("%s.jpg" % montage_output)
 
         montage_stage = CmdStage(
             inputs=tuple(individualImagesLabeled),
@@ -3517,3 +2870,130 @@ def minc_label_ops(in_labels : MincAtom, op : LabelOp, op_arg : Optional[Union[M
                      + ([op_arg] if op_arg is not None else [])
                      + [in_labels.path, out_labels.path])
     return Result(stages=Stages([s]), output=out_labels)
+
+
+# TODO move?
+class MincAlgorithms(Algorithms):
+    blur     = mincblur
+    average  = mincbigaverage
+    @staticmethod
+    def resample(img,
+                 xfm,  # TODO: update to handler?
+                 like,
+                 invert = False,
+                 use_nn_interpolation = None,
+                 #interpolation = None,   #interpolation: Interpolation = None,
+                 #  TODO fix type for non-minc resampling programs; also, can't import Interpolation here
+                 #extra_flags = (),
+                 new_name_wo_ext = None,
+                 subdir = None,
+                 postfix = None):
+        return mincresample(img=img, xfm=xfm, like=like, invert=invert,
+                            interpolation=Interpolation.nearest_neighbour
+                              if use_nn_interpolation else Interpolation.sinc,
+                            extra_flags=(("-keep_real_range",) if use_nn_interpolation else ()),
+                            new_name_wo_ext=new_name_wo_ext, subdir=subdir, postfix=postfix)
+
+    # TODO XfmHandler -> XfmHandler? XfmAtom, LikeFile -> XfmAtom ?
+    def scale_transform(xfm : XfmHandler, scale : float, newname_wo_ext : str) -> XfmAtom:
+        """
+        This function produces a transformation that moves halfway along
+        the provided transform. It works as follows:
+        1) combine all transforms into a single grid
+        2) multiply the grid by the specified scaling factor
+        3) create a .xfm file to point at the created grid file
+        """
+        s = Stages()
+        # combine all transformations into a single grid:
+        full_grid = s.defer(minc_displacement(xfm,
+                                              newname_wo_ext=newname_wo_ext + "_displ"))
+
+        # scale the transformation by the amount specified
+        scaled_grid = s.defer(mincmath(op='mult',
+                                       const=scale,
+                                       vols=[full_grid],
+                                       subdir="tmp",
+                                       new_name=newname_wo_ext))
+
+        # create an XfmAtom for this grid file, and
+        # write its information to disk
+        scaled_xfm = xfm.xfm.newname_with_suffix(suffix="_halfway")
+        # write the xfm file:
+        s.add(CmdStage(inputs=(scaled_grid,),
+                       outputs=(scaled_xfm,),
+                       cmd=(["make_xfm_for_grid.pl",
+                             scaled_grid.path,
+                             scaled_xfm.path])))
+        return Result(stages=s, output=scaled_xfm)
+
+    @staticmethod
+    def average_transforms(xfms, avg_xfm):
+        s = Stages()
+        avg_grid = xfmToMinc(avg_xfm.newname_with_suffix("_grid", ext=".mnc"))
+
+        minc_displacement_grids = [s.defer(minc_displacement(xfm)) for xfm in xfms]
+        minc_avg_on_minc_displ = CmdStage(inputs=tuple(xfm.xfm for xfm in xfms) + tuple(minc_displacement_grids),
+                                          outputs=(avg_grid,),
+                                          cmd=['mincaverage', '-clobber'] +
+                                              sorted([m_displ_grid.path for m_displ_grid in minc_displacement_grids]) +
+                                              [avg_grid.path])
+        s.add(minc_avg_on_minc_displ)
+
+        create_xfm_for_avg_grid = CmdStage(inputs=(avg_grid,),
+                                           outputs=(avg_xfm,),
+                                           cmd=(["make_xfm_for_grid.pl",
+                                                 "-clobber",
+                                                 avg_grid.path,
+                                                 avg_xfm.path]))
+        s.add(create_xfm_for_avg_grid)
+
+        return Result(stages=s, output=avg_xfm)
+
+
+class MINCTRACC(NLIN):
+    Conf = MultilevelMinctraccConf
+
+    # blech ... does this mean the 'multilevelconf' should be renamed 'hierarchicalconf' or similar? yes ...
+    MultilevelConf = MultilevelMinctraccConf
+
+    ToMinc = IdMinc
+
+    Algorithms = MincAlgorithms
+
+    @staticmethod
+    def hierarchical_to_single(conf): return [MultilevelMinctraccConf([c]) for c in conf.confs]
+
+    @staticmethod
+    def get_default_conf(resolution):
+        raise NotImplementedError("don't have a default conf for minctracc yet, sorry")
+
+    @staticmethod
+    def get_default_multilevel_conf(resolution):
+        raise NotImplementedError("don't have a default hierarchical conf for minctracc yet, sorry")
+
+    @classmethod
+    def parse_protocol_file(cls, filename, resolution):
+        return parse_minctracc_nonlinear_protocol_file(filename)
+
+    @staticmethod
+    def parse_multilevel_protocol_file(filename, resolution):
+        return parse_minctracc_nonlinear_protocol_file(filename)
+
+    @staticmethod
+    def accepts_initial_transform():
+        return True
+
+    @classmethod
+    def register(cls,
+                 source : MincAtom,
+                 target : MincAtom,
+                 conf : Conf,
+                 transform_name_wo_ext = None,
+                 resample_source : bool = False,
+                 resample_subdir : str = "resampled",
+                 initial_source_transform : Optional[MincAtom] = None):
+        return multilevel_minctracc(source=source, target=target, conf=conf,
+                                    transform=initial_source_transform,
+                                    #subdir=resample_subdir,  # TODO broken
+                                    resample_source=resample_source)
+

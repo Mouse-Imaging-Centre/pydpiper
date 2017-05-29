@@ -608,17 +608,17 @@ def _mk_lsq12_parser():
                         "Parameters must be specified as in the following example: \n"
                         "applications_testing/test_data/minctracc_example_linear_protocol.csv \n"
                         "[Default = %(default)s].")
-    p.add_argument("--generate-tournament-style-lsq12-avg", dest="generate_tournament_style_lsq12_avg",
-                   action="store_true",
-                   help="Instead of creating the average of the lsq12 resampled files "
-                        "by simply averaging them directly, create an iterative average "
-                        "as follows. Perform a non linear registration between pairs "
-                        "of files. Resample each file halfway along that transformation "
-                        "in order for them to end up in the middle. Average those two files. "
-                        "Then continue on to the next level as in a tournament. [default = %(default)s]")
-    p.add_argument("--no-generate-tournament-style-lsq12-avg", dest="generate_tournament_style_lsq12_avg",
-                   action="store_false",
-                   help="Opposite of --generate-tournament-style-lsq12-avg")
+    #p.add_argument("--generate-tournament-style-lsq12-avg", dest="generate_tournament_style_lsq12_avg",
+    #               action="store_true",
+    #               help="Instead of creating the average of the lsq12 resampled files "
+    #                    "by simply averaging them directly, create an iterative average "
+    #                    "as follows. Perform a non linear registration between pairs "
+    #                    "of files. Resample each file halfway along that transformation "
+    #                    "in order for them to end up in the middle. Average those two files. "
+    #                    "Then continue on to the next level as in a tournament. [default = %(default)s]")
+    #p.add_argument("--no-generate-tournament-style-lsq12-avg", dest="generate_tournament_style_lsq12_avg",
+    #               action="store_false",
+    #               help="Opposite of --generate-tournament-style-lsq12-avg")
     return p
 
 
@@ -632,9 +632,14 @@ def _mk_nlin_parser(p: ArgParser):
     group = p.add_argument_group("Nonlinear registration options",
                                  "Options for performing a non-linear registration")
     group.add_argument("--registration-method", dest="reg_method",
-                       default="ANTS", choices=["ANTS", "minctracc"],
-                       help="Specify whether to use minctracc or ANTS for non-linear registrations. "
+                       default="ANTS", choices=["ANTS", "antsRegistration", "DRAMMS", "elastix", "minctracc"],
+                       help="Specify algorithm used for non-linear registrations. "
                             "[Default = %(default)s]")
+    # TODO wire up the choices here in reg_method and reg_strategy to the actual ones ...
+    group.add_argument("--registration-strategy", dest="reg_strategy",
+                       default="build_model", choices=['build_model', 'pairwise', 'tournament',
+                                                       'tournament_and_build_model'],
+                       help="Process used for model construction [Default = %(default)s")
     group.add_argument("--nlin-protocol", dest="nlin_protocol",
                        type=str, default=None,
                        help="Can optionally specify a registration protocol that is different from defaults. "
@@ -642,13 +647,6 @@ def _mk_nlin_parser(p: ArgParser):
                             "applications_testing/test_data/minctracc_example_nlin_protocol.csv \n"
                             "applications_testing/test_data/mincANTS_example_nlin_protocol.csv \n"
                             "[Default = %(default)s]")
-    p.set_defaults(nlin_pairwise=False)
-    group.add_argument("--nlin-pairwise", dest="nlin_pairwise",
-                       action='store_true',
-                       help="Run all possible pairwise non linear registrations. [default = %(default)s]")
-    group.add_argument("--no-nlin-pairwise", dest="nlin_pairwise",
-                       action='store_false',
-                       help="Opposite of --nlin-pairwise")
     return p
 
 NLINConf = NamedTuple('NLINConf', [('reg_method', str),  # TODO make this an enumerated type

@@ -143,7 +143,12 @@ def parse(cmd_str : str) -> CmdStage:
     s = CmdStage(inputs = inputs, outputs = outputs, cmd = [c if c[0] not in [',','@'] else c[1:] for c in cmd])
     return s
 
+
 class Result(Generic[T]):
     def __init__(self, stages : Stages, output : T) -> None:
         self.stages = stages # type: Stages
         self.output = output # type: T
+
+
+def identity_result(x : T) -> Result[T]:
+    return Result(stages=Stages(), output=x)
