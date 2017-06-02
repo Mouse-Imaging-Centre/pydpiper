@@ -49,11 +49,21 @@ def mbm_pipeline(options : MBMConf):
                              prefix=options.application.pipeline_name,
                              output_dir=options.application.output_directory))
 
-    # create useful CSVs (note the files listed therein won't yet exist ...)
-    for filename, dataframe in (("transforms.csv", mbm_result.xfms),
-                                ("determinants.csv", mbm_result.determinants)):
-        with open(filename, 'w') as f:
-            f.write(dataframe.applymap(maybe_deref_path).to_csv(index=False))
+    # create useful CSVs (note the files listed therein won't yet exist ...):
+    (mbm_result.xfms.assign(native_file=lambda df: df.rigid_xfm.apply(lambda x: x.source),
+                            lsq6_file=lambda df: df.lsq12_nlin_xfm.apply(lambda x: x.source),
+                            lsq6_mask_file=lambda df:
+                              df.lsq12_nlin_xfm.apply(lambda x: x.source.mask if x.source.mask else ""),
+                            nlin_file=lambda df: df.lsq12_nlin_xfm.apply(lambda x: x.resampled),
+                            common_space_file=lambda df: df.xfm_to_common.apply(lambda x: x.resampled)
+                                                if options.mbm.common_space.do_common_space_registration else None)
+     .applymap(maybe_deref_path)
+     .drop(["common_space_file"] if not options.mbm.common_space.do_common_space_registration else [])
+     .to_csv("transforms.csv", index=False))
+
+    (mbm_result.determinants.drop(["full_det", "nlin_det"], axis=1)
+     .applymap(maybe_deref_path).to_csv("determinants.csv", index=False))
+
 
     # # TODO moved here from inside `mbm` for now ... does this make most sense?
     # if options.mbm.segmentation.run_maget:
@@ -205,10 +215,13 @@ def mbm(imgs : List[MincAtom], options : MBMConf, prefix : str, output_dir : str
 
     inverted_xfms = [s.defer(invert_xfmhandler(xfm)) for xfm in lsq12_nlin_result.output]
 
-    determinants = s.defer(determinants_at_fwhms(
-                             xfms=inverted_xfms,
-                             inv_xfms=lsq12_nlin_result.output,
-                             blur_fwhms=options.mbm.stats.stats_kernels))
+    if options.mbm.stats.stats_kernels:
+        determinants = s.defer(determinants_at_fwhms(
+                                   xfms=inverted_xfms,
+                                   inv_xfms=lsq12_nlin_result.output,
+                                   blur_fwhms=options.mbm.stats.stats_kernels))
+    else:
+        determinants = None
 
     overall_xfms = [s.defer(concat_xfmhandlers([rigid_xfm, lsq12_nlin_xfm]))
                     for rigid_xfm, lsq12_nlin_xfm in zip(lsq6_result, lsq12_nlin_result.output)]
@@ -288,8 +301,15 @@ def mbm(imgs : List[MincAtom], options : MBMConf, prefix : str, output_dir : str
             raise ValueError("No common space template provided!")
         # TODO allow lsq6 registration as well ...
         common_space_model = MincAtom(options.mbm.common_space.common_space_model,
+                                      # TODO fix the subdirectories!
+                                      mask=MincAtom(options.mbm.common_space.common_space_mask,
+                                                    pipeline_sub_dir=os.path.join(
+                                                        options.application.output_directory,
+                                                        options.application.pipeline_name + "_processed"))
+                                           if options.mbm.common_space.common_space_mask else None,
                                       pipeline_sub_dir=os.path.join(options.application.output_directory,
-                                                         options.application.pipeline_name + "_processed"))
+                                                                    options.application.pipeline_name + "_processed"))
+
         # TODO allow different lsq12/nlin config params than the ones used in MBM ...
         # WEIRD ... see comment in lsq12_nlin code ...
         nlin_conf  = full_hierarchy.confs[-1] if isinstance(full_hierarchy, MultilevelMincANTSConf) else full_hierarchy
@@ -297,34 +317,35 @@ def mbm(imgs : List[MincAtom], options : MBMConf, prefix : str, output_dir : str
         lsq12_conf = get_linear_configuration_from_options(conf=options.mbm.lsq12,
                                                            transform_type=LinearTransType.lsq12,
                                                            file_resolution=resolution)
-        xfm_to_common = s.defer(lsq12_nlin(source=lsq12_nlin_result.avg_img, target=common_space_model,
+        model_to_common = s.defer(lsq12_nlin(source=lsq12_nlin_result.avg_img, target=common_space_model,
                                            lsq12_conf=lsq12_conf, nlin_conf=nlin_conf,
                                            resample_source=True))
 
         model_common = s.defer(mincresample_new(img=lsq12_nlin_result.avg_img,
-                                                xfm=xfm_to_common.xfm, like=common_space_model,
+                                                xfm=model_to_common.xfm, like=common_space_model,
                                                 postfix="_common"))
 
-        overall_xfms_common = [s.defer(concat_xfmhandlers([rigid_xfm, nlin_xfm, xfm_to_common]))
+        overall_xfms_to_common = [s.defer(concat_xfmhandlers([rigid_xfm, nlin_xfm, model_to_common]))
                                for rigid_xfm, nlin_xfm in zip(lsq6_result, lsq12_nlin_result.output)]
 
-        xfms_common = [s.defer(concat_xfmhandlers([nlin_xfm, xfm_to_common]))
+        xfms_to_common = [s.defer(concat_xfmhandlers([nlin_xfm, model_to_common]))
                        for nlin_xfm in lsq12_nlin_result.output]
 
-        output_xfms = output_xfms.assign(xfm_common=xfms_common, overall_xfm_common=overall_xfms_common)
+        output_xfms = output_xfms.assign(xfm_to_common=xfms_to_common,
+                                         overall_xfm_to_common=overall_xfms_to_common)
 
-        log_nlin_det_common, log_full_det_common = [dets.map(lambda d:
-                                                      s.defer(mincresample_new(
-                                                        img=d,
-                                                        xfm=xfm_to_common.xfm,
-                                                        like=common_space_model,
-                                                        postfix="_common",
-                                                        extra_flags=("-keep_real_range",),
-                                                        interpolation=Interpolation.nearest_neighbour)))
-                                                    for dets in (determinants.log_nlin_det, determinants.log_full_det)]
+        if options.mbm.stats.calc_stats:
+            log_nlin_det_common, log_full_det_common = (
+                [dets.map(lambda d:
+                            s.defer(mincresample_new(
+                                      img=d,
+                                      xfm=model_to_common.xfm,
+                                      like=common_space_model,
+                                      postfix="_common")))
+                 for dets in (determinants.log_nlin_det, determinants.log_full_det)])
 
-        determinants = determinants.assign(log_nlin_det_common=log_nlin_det_common,
-                                           log_full_det_common=log_full_det_common)
+            determinants = determinants.assign(log_nlin_det_common=log_nlin_det_common,
+                                               log_full_det_common=log_full_det_common)
 
     output = Namespace(avg_img=lsq12_nlin_result.avg_img, xfms=output_xfms, determinants=determinants)
 
@@ -342,8 +363,10 @@ def _mk_common_space_parser(parser : ArgParser):
     group = parser.add_argument_group("Common space options", "Options for registration/resampling to common (db) space.")
     group.add_argument("--common-space-model", dest="common_space_model",
                        type=str, help="Run MAGeT segmentation on the images.")
+    group.add_argument("--common-space-mask", dest="common_space_mask",
+                       type=str, help="Mask for common space model")
     group.add_argument("--no-common-space-registration", dest="do_common_space_registration",
-                       default=False, action="store_false", help="Skip registration to common (db) space.")
+                       default=True, action="store_false", help="Skip registration to common (db) space.")
     return parser
 
 common_space_parser = AnnotatedParser(parser=BaseParser(_mk_common_space_parser(ArgParser(add_help=False)),
