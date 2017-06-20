@@ -350,66 +350,7 @@ def mbm(imgs : List[MincAtom], options : MBMConf, prefix : str, output_dir : str
     #                                           atlas_fwhm=0.56, thickness_fwhm=0.56))  # TODO magic fwhms
     #    # TODO write CSV -- should `cortical_thickness` do this/return a table?
 
-
-    # FIXME: this needs to go outside of the `mbm` function to avoid being run from within other pipelines (or
-    # those other pipelines need to turn off this option)
-    # if options.mbm.common_space.do_common_space_registration:
-    #     if not options.mbm.common_space.common_space_model:
-    #         raise ValueError("No common space template provided!")
-    #     if not options.mbm.common_space.common_space_mask:
-    #         warnings.warn("No common space mask provided ... might be OK if your consensus average mask is OK")
-    #     # TODO allow lsq6 registration as well ...
-    #     common_space_model = MincAtom(options.mbm.common_space.common_space_model,
-    #                                   # TODO fix the subdirectories!
-    #                                   mask=MincAtom(options.mbm.common_space.common_space_mask,
-    #                                                 pipeline_sub_dir=os.path.join(
-    #                                                     options.application.output_directory,
-    #                                                     options.application.pipeline_name + "_processed"))
-    #                                        if options.mbm.common_space.common_space_mask else None,
-    #                                   pipeline_sub_dir=os.path.join(options.application.output_directory,
-    #                                                                 options.application.pipeline_name + "_processed"))
-    #
-    #     # TODO allow different lsq12/nlin config params than the ones used in MBM ...
-    #     # WEIRD ... see comment in lsq12_nlin code ...
-    #     nlin_conf  = full_hierarchy.confs[-1] if isinstance(full_hierarchy, MultilevelMincANTSConf) else full_hierarchy
-    #     # also weird that we need to call get_linear_configuration_from_options here ... ?
-    #     lsq12_conf = get_linear_configuration_from_options(conf=options.mbm.lsq12,
-    #                                                        transform_type=LinearTransType.lsq12,
-    #                                                        file_resolution=resolution)
-    #     model_to_common = s.defer(lsq12_nlin(source=lsq12_nlin_result.avg_img, target=common_space_model,
-    #                                        lsq12_conf=lsq12_conf, nlin_conf=nlin_conf,
-    #                                        resample_source=True))
-    #
-    #     model_common = s.defer(mincresample_new(img=lsq12_nlin_result.avg_img,
-    #                                             xfm=model_to_common.xfm, like=common_space_model,
-    #                                             postfix="_common"))
-    #
-    #     overall_xfms_to_common = [s.defer(concat_xfmhandlers([rigid_xfm, nlin_xfm, model_to_common]))
-    #                            for rigid_xfm, nlin_xfm in zip(lsq6_result, lsq12_nlin_result.output)]
-    #
-    #     xfms_to_common = [s.defer(concat_xfmhandlers([nlin_xfm, model_to_common]))
-    #                    for nlin_xfm in lsq12_nlin_result.output]
-    #
-    #     output_xfms = output_xfms.assign(xfm_to_common=xfms_to_common,
-    #                                      overall_xfm_to_common=overall_xfms_to_common)
-    #
-    #     if options.mbm.stats.calc_stats:
-    #         log_nlin_det_common, log_full_det_common = (
-    #             [dets.map(lambda d:
-    #                         s.defer(mincresample_new(
-    #                                   img=d,
-    #                                   xfm=model_to_common.xfm,
-    #                                   like=common_space_model,
-    #                                   postfix="_common")))
-    #              for dets in (determinants.log_nlin_det, determinants.log_full_det)])
-    #
-    #         determinants = determinants.assign(log_nlin_det_common=log_nlin_det_common,
-    #                                            log_full_det_common=log_full_det_common)
-
     output = Namespace(avg_img=lsq12_nlin_result.avg_img, xfms=output_xfms, determinants=determinants)
-
-    # if options.mbm.common_space.do_common_space_registration:
-    #     output.model_common = model_common
 
     if options.mbm.segmentation.run_maget:
         output.maget_result = maget_result
