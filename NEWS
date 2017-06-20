@@ -1,3 +1,11 @@
+New in Version 2.0.8
+====================
+* add option to perform atlas-to-atlas registration of the study model to a 'common space model' and resample images
+  and determinants into this common space (MBM.py only).  The relevant flags are --(no-)common-space-registration,
+  --common-space-model, --common-space-mask.  At the moment the registration parameters are automatically taken from the
+  model-building LSQ12 and (final generation of) nonlinear registration settings
+* add extra columns to output CSVs: common space images/transforms/determinants if created; input images in various 'spaces'
+
 New in Version 2.0.7
 ====================
 * this release fixes only one issue: minctracc-based model building didn't use previously computed transforms

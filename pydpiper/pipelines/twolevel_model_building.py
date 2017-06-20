@@ -16,7 +16,7 @@ from pydpiper.minc.files import MincAtom
 from pydpiper.minc.registration import (concat_xfmhandlers, invert_xfmhandler, mincresample_new, check_MINC_input_files,
                                         TargetType, get_pride_of_models_mapping, get_resolution_from_file,
                                         registration_targets)
-from pydpiper.pipelines.MBM import mbm, mbm_parser, MBMConf
+from pydpiper.pipelines.MBM import mbm, MBMConf, mk_mbm_parser
 from pydpiper.execution.application import execute
 from pydpiper.core.util import NamedTuple, maybe_deref_path
 from pydpiper.core.stages import Stages, Result
@@ -109,6 +109,8 @@ def two_level(grouped_files_df, options : TwoLevelConf):
         resolution = (options.registration.resolution
                         or get_resolution_from_file(targets.registration_standard.path))
         options.registration = options.registration.replace(resolution=resolution)
+        # no need to check common space settings here since they're turned off at the parser level
+        # (a bit strange)
         return options
 
     first_level_results = (
@@ -242,7 +244,7 @@ def main(args):
            application_parser,
            registration_parser,
            #twolevel_parser,
-           AnnotatedParser(parser=mbm_parser, namespace="mbm"),   # TODO use this before 1st-/2nd-level args
+           AnnotatedParser(parser=mk_mbm_parser(with_common_space=False), namespace="mbm"),   # TODO use this before 1st-/2nd-level args
            # TODO to combine the information from all three MBM parsers,
            # could use `ConfigArgParse`r `_source_to_settings` (others?) to check whether an option was defaulted
            # or user-specified, allowing the first/second-level options to override the general mbm settings
