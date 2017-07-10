@@ -2882,9 +2882,6 @@ class MincAlgorithms(Algorithms):
                  like,
                  invert = False,
                  use_nn_interpolation = None,
-                 #interpolation = None,   #interpolation: Interpolation = None,
-                 #  TODO fix type for non-minc resampling programs; also, can't import Interpolation here
-                 #extra_flags = (),
                  new_name_wo_ext = None,
                  subdir = None,
                  postfix = None):

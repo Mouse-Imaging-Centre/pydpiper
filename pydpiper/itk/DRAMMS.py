@@ -138,13 +138,12 @@ def dramms_warp_simple(img: NiiAtom,
 
     return Result(stages=Stages([stage]), output=outf)
 
+
 def dramms_warp(img: NiiAtom,  # TODO change to ITKAtom ?!
                 xfm: XfmAtom,  # TODO: update to handler?
                 like: NiiAtom,
                 invert: bool = False,
                 use_nn_interpolation = None,
-                #interpolation: Interpolation = None,
-                #extra_flags: Tuple[str] = (),
                 new_name_wo_ext: str = None,
                 subdir: str = None,
                 postfix: str = None) -> Result[NiiAtom]:
@@ -171,15 +170,11 @@ def dramms_warp(img: NiiAtom,  # TODO change to ITKAtom ?!
                                          new_name_wo_ext=new_name_wo_ext,
                                          subdir=subdir))
     new_img.mask = s.defer(dramms_warp_simple(img=img.mask, xfm=xfm, like=like,
-                                              #extra_flags=extra_flags,
-                                              #interpolation=Interpolation.nearest_neighbour,
                                               use_nn_interpolation=True,
                                               invert=invert,
                                               new_name_wo_ext=new_name_wo_ext + "_mask",
                                               subdir=subdir)) if img.mask is not None else None
     new_img.labels = s.defer(dramms_warp_simple(img=img.labels, xfm=xfm, like=like,
-                                                #extra_flags=label_extra_flags,
-                                                #interpolation=Interpolation.nearest_neighbour,
                                                 use_nn_interpolation=True,
                                                 invert=invert,
                                                 new_name_wo_ext=new_name_wo_ext + "_labels",
@@ -194,11 +189,10 @@ def dramms_warp(img: NiiAtom,  # TODO change to ITKAtom ?!
 
 class DRAMMSAlgorithms(itk.Algorithms):
     @staticmethod
-    def scale_transform(xfm : XfmHandler, scale, newname_wo_ext) -> XfmAtom:
-        raise NotImplementedError
+    def scale_transform(xfm, scale, newname_wo_ext):  raise NotImplementedError
     resample = dramms_warp
     @staticmethod
-    def average_transforms(xfms, avg_xfm): raise NotImplementedError
+    def average_transforms(xfms, avg_xfm):  raise NotImplementedError
 
 
 class DRAMMS(NLIN[NiiAtom, DrammsXfmAtom]):

@@ -25,7 +25,7 @@ def build_model(reg_module : Type[NLIN]) -> Type[NLIN_BUILD_MODEL]:
           nlin_prefix: str,
           #algorithms : Type[Algorithms]
           ) -> Result[WithAvgImgs[List[XfmHandler]]]:
-        confs = reg_module.hierarchical_to_single(conf)
+        confs = reg_module.hierarchical_to_single(conf) if conf is not None else None
         if len(confs) == 0:
             raise ValueError("No configurations supplied ...")
         s = Stages()
@@ -108,14 +108,12 @@ def nonlinear_midpoint_xfm(nlin_algorithm : Type[NLIN],
                                                  xfm=transform_A_to_B_halfway,
                                                  like=img_B,
                                                  subdir='tmp',
-                                                 new_name_wo_ext=out_name_wo_ext + "_AtoB",
-                                                 interpolation=Interpolation.sinc))
+                                                 new_name_wo_ext=out_name_wo_ext + "_AtoB"))
     B_halfway_to_A = s.defer(algorithms.resample(img=img_B,
                                                  xfm=transform_B_to_A_halfway,
                                                  like=img_A,
                                                  subdir='tmp',
-                                                 new_name_wo_ext=out_name_wo_ext + "_BtoA",
-                                                 interpolation=Interpolation.sinc))
+                                                 new_name_wo_ext=out_name_wo_ext + "_BtoA"))
 
     # the output file (avg of both files resampled to the midway point)
     avg_mid_point = s.defer(algorithms.average(imgs=[A_halfway_to_B, B_halfway_to_A],
@@ -296,14 +294,13 @@ def tournament_and_build_model(nlin_module : Type[NLIN]):
           conf: nlin_module.MultilevelConf,
           initial_target: MincAtom,
           nlin_prefix: str,
-          #algorithms: Type[Algorithms],
           #output_dir_for_avg: str = None,
           #output_name_wo_ext: str = None
           ):
         s = Stages()
 
         tournament_result = s.defer(tournament(nlin_module).build_model(
-            imgs=imgs, nlin_dir=nlin_dir, conf=nlin_module.hierarchical_to_single(conf)[-1],
+            imgs=imgs, nlin_dir=nlin_dir, conf=nlin_module.hierarchical_to_single(conf)[-1] if conf else None,
             initial_target=initial_target, nlin_prefix=nlin_prefix
             #, output_name_wo_ext=output_name_wo_ext  #, algorithms=nlin_module.algorithms
         ))

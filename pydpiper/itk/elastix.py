@@ -26,21 +26,18 @@ class Algorithms(itk.Algorithms):
     @staticmethod
     def scale_transform(xfm): raise NotImplementedError
 
-    def resample(img: I,
-                 xfm: X,  # TODO: update to handler?
-                 like: I,
-                 invert: bool = False,
-                 interpolation = None,   #interpolation: Interpolation = None,
-                 #  TODO fix type for non-minc resampling programs; also, can't import Interpolation here
-                 extra_flags: Sequence[str] = (),
+    def resample(img,
+                 xfm,  # TODO: update to handler?
+                 like,
+                 invert = False,
+                 use_nn_interpolation = None,
                  new_name_wo_ext: str = None,
                  subdir: str = None,
-                 postfix: str = None) -> Result[I]:
+                 postfix: str = None):
         raise NotImplementedError("use antsApplyTransform !")
 
-
-    #@staticmethod
-    #def
+    @staticmethod
+    def average_transforms(xfms, avg_xfm): raise NotImplementedError
 
 
 class Elastix(NLIN):
@@ -65,9 +62,14 @@ class Elastix(NLIN):
   @classmethod
   def parse_protocol_file(cls, filename, resolution):
       p = cls.parse_multilevel_protocol_file(filename, resolution)
+      # # TODO should just hierarchical_to_single(p) instead of p[-1] since using multiple confs
+      # # makes sense for a single registration ??
+      if p is None:   # silly hack
+          return None
       if p.length() > 1:
           warnings.warn("too many confs")
       return p[-1]
+      #return p
       # the protocol is a list of elastix parameter files to pass (via -p <f1> -p <f2> ... -p <fn>)
       #with open(filename, 'r') as f:
       #    return f.readlines()# return filename
@@ -78,7 +80,7 @@ class Elastix(NLIN):
   def parse_multilevel_protocol_file(cls, filename, resolution):
       # a list of single level protocol files (each containing a list of elastix parameter files)
       with open(filename, 'r') as f:
-          return [l.split(',') for l in f]
+          return [l.strip().split(',') for l in f if len(l.strip()) > 0]
 
   @staticmethod
   def accepts_initial_transform(): return True
@@ -92,6 +94,9 @@ class Elastix(NLIN):
                generation: int = None,  # not used; remove from API (fix ANTS)
                resample_source: bool = False,
                resample_subdir: str = "resampled") -> Result[XfmHandler]:
+      if conf is None:
+          raise ValueError("no configuration supplied")
+
       out_dir = os.path.join(source.pipeline_sub_dir, source.output_sub_dir,
                              "%s_elastix_to_%s" % (source.filename_wo_ext, target.filename_wo_ext))
 
