@@ -194,7 +194,7 @@ def mbm(imgs : List[MincAtom], options : MBMConf, prefix : str, output_dir : str
 
         # replace any masks of the resampled images with the newly created masks:
         for xfm in lsq6_result:
-            xfm.resampled = masked_img.ix[xfm.resampled.path]
+            xfm.resampled = masked_img.loc[xfm.resampled.path]
     else:
         warnings.warn("Not masking your images from atlas masks after LSQ6 alignment ... probably not what you want "
                       "(this can have negative effects on your registration and statistics)")
@@ -214,16 +214,9 @@ def mbm(imgs : List[MincAtom], options : MBMConf, prefix : str, output_dir : str
     # they could still do this if it can be done safety (i.e., not breaking assumptions of various nonlinear units)
     nlin_module = get_nonlinear_component(reg_method=options.mbm.nlin.reg_method)
 
-    nlin_build_model_component = get_model_building_procedure(options.mbm.nlin.reg_strategy,
+    nlin_build_model_component = get_model_building_procedure(options.mbm.model_building.reg_strategy,
                                                               reg_module=nlin_module)
 
-    # this is wrong since some model building strategies (tournament, pairwise)
-    # don't use a hierarchy of registrations:
-    #nlin_conf = nlin_module.parse_multilevel_protocol_file(options.mbm.nlin.nlin_protocol,
-    #                                                       resolution=resolution)
-
-    # TODO generalize over input type, averaging, resampling ... may require putting this inside another scope
-    # or just wrap_minc all the component registrations??!
     # TODO don't use name 'x_module' for something that's technically not a module ... perhaps unit/component?
 
     nlin_conf = (nlin_build_model_component.parse_build_model_protocol(
@@ -329,7 +322,8 @@ def mbm(imgs : List[MincAtom], options : MBMConf, prefix : str, output_dir : str
                                                          options.application.pipeline_name + "_processed"))
         # TODO allow different lsq12/nlin config params than the ones used in MBM ...
         # WEIRD ... see comment in lsq12_nlin code ...
-        nlin_conf  = full_hierarchy.confs[-1] if isinstance(full_hierarchy, MultilevelANTSConf) else full_hierarchy
+        nlin_conf  = full_hierarchy.confs[-1] if isinstance(full_hierarchy, MultilevelANTSConf)\
+            else full_hierarchy
         # also weird that we need to call get_linear_configuration_from_options here ... ?
         lsq12_conf = get_linear_configuration_from_options(conf=options.mbm.lsq12,
                                                            transform_type=LinearTransType.lsq12,
@@ -387,10 +381,24 @@ common_space_parser = AnnotatedParser(parser=BaseParser(_mk_common_space_parser(
                                                         "common_space"),
                                       namespace="common_space")
 
+def _mk_model_building_parser(parser : ArgParser):
+    group = parser.add_argument_group("Model building options",
+                                      "Options specific to consensus model building")
+    group.add_argument("--registration-strategy", dest="reg_strategy",
+                       default="build_model", choices=['build_model', 'pairwise', 'tournament',
+                                                       'tournament_and_build_model', 'pairwise_and_build_model'],
+                       help="Process used for model construction [Default = %(default)s")
+    return parser
+
+model_building_parser = AnnotatedParser(parser=BaseParser(_mk_model_building_parser(ArgParser(add_help=False)),
+                                                          "model_building"),
+                                        namespace="model_building")
+
 mbm_parser = CompoundParser(
                [lsq6_parser,
                 lsq12_parser,
                 nlin_parser,
+                model_building_parser,
                 stats_parser,
                 common_space_parser,
                 #thickness_parser,

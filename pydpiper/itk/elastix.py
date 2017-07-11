@@ -66,8 +66,8 @@ class Elastix(NLIN):
       # # makes sense for a single registration ??
       if p is None:   # silly hack
           return None
-      if p.length() > 1:
-          warnings.warn("too many confs")
+      if len(p) > 1:
+          warnings.warn("too many confs; using the last one")
       return p[-1]
       #return p
       # the protocol is a list of elastix parameter files to pass (via -p <f1> -p <f2> ... -p <fn>)

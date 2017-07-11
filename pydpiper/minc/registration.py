@@ -25,6 +25,7 @@ def custom_formatwarning(msg, cat, filename, lineno, line=None):
     # change the order of how the warning is printed
     return "\nWarning: " + str(msg) + " " + str(filename) + ":" + str(lineno) + "\n\n"
 warnings.formatwarning = custom_formatwarning
+warnings.simplefilter("once")
 
 # TODO push down into lsq12_pairwise?
 gen = random.Random(137)  # seed must be a small int; see #291
@@ -211,12 +212,14 @@ def minctracc(source: MincAtom,
                           pipeline_sub_dir=source.pipeline_sub_dir,
                           output_sub_dir=source.output_sub_dir)
 
-    source_for_minctracc = source
-    target_for_minctracc = target
-    if conf.blur_resolution is not None:
+
+    if conf.blur_resolution not in (-1, 0, None):
         img_or_grad = lambda result: result.gradient if conf.use_gradient else result.img
         source_for_minctracc = img_or_grad(s.defer(mincblur(source, conf.blur_resolution)))
         target_for_minctracc = img_or_grad(s.defer(mincblur(target, conf.blur_resolution)))
+    else:
+        source_for_minctracc = source
+        target_for_minctracc = target
 
     # NOTE: this is broken in the presence of unanticipated (vs., e.g., nlin_conf.objective) null fields;
     # if we're not going to allow these, we should probably wrap this in a try/catch to give a better error
@@ -1268,7 +1271,8 @@ def parse_minctracc_protocol(f, base_minctracc_conf, parsers, names,
         raise ParseError("Empty file ...")   # TODO should this really be an error?
     for k in d.copy():  # otherwise d changes size during iteration ...
         if is_ignored_key(k):
-            print("Note: the '%s' parameter is not used for %s minctracc registrations. It's specified in the protocol, but won't have any effect." % (k, registration_type))  # doesn't have to be same length -> can crash code below
+            # TODO change to warn once:
+            warnings.warn("Note: the '%s' parameter is not used for %s minctracc registrations. It's specified in the protocol, but won't have any effect." % (k, registration_type))  # doesn't have to be same length -> can crash code below
             del d[k]
 
     vs = list(d.values())
@@ -1568,6 +1572,7 @@ def lsq12_nlin(source: MincAtom,
                target: MincAtom,
                lsq12_conf: MinctraccConf,
                nlin_module: NLIN,
+               resolution: float,
                nlin_options,  # nlin_module.Conf,  ??  want an nlin_module.Conf here ...
                #nlin_conf: Union[MultilevelMinctraccConf, MultilevelANTSConf, ANTSConf],  # sigh ... ...
                resample_source: bool = True):
@@ -1587,7 +1592,8 @@ def lsq12_nlin(source: MincAtom,
 
     # TODO it's a bit late to do this parsing (inefficient/poorer error reporting/weird spot for IO)
     # but it's a bit harder to propagate the types correctly ...
-    nlin_conf = nlin_module.parse_protocol_file(nlin_options)
+    nlin_conf = (nlin_module.parse_protocol_file(nlin_options, resolution=resolution)
+                  if nlin_options is not None else nlin_module.get_default_conf(resolution=resolution))
 
     if nlin_module.accepts_initial_transform():
         lsq12_transform_handler = s.defer(multilevel_minctracc(source=source,
@@ -1598,7 +1604,7 @@ def lsq12_nlin(source: MincAtom,
         nlin_transform_handler = s.defer(nlin_module.register(source=source,
                                                               target=target,
                                                               conf=nlin_conf,
-                                                              transform=lsq12_transform_handler.xfm,
+                                                              initial_source_transform=lsq12_transform_handler.xfm,
                                                               resample_source=resample_source))
         full_transform = nlin_transform_handler
     else:

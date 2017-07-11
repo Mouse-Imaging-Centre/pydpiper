@@ -1,4 +1,5 @@
 import os
+import warnings
 from argparse import Namespace
 from typing import List, Type, Sequence, Optional, NamedTuple, Tuple
 import math
@@ -224,7 +225,7 @@ def mk_build_model_class(nlin : Type[NLIN],
     return BUILD_MODEL_CLASS
 
 
-def pairwise(nlin_module: NLIN):
+def pairwise(nlin_module: NLIN, max_pairs: Optional[int] = None):
   def f(imgs: List[MincAtom],
         nlin_dir: str,
         conf: nlin_module.Conf,
@@ -272,12 +273,25 @@ def pairwise(nlin_module: NLIN):
                           target=final_avg,
                           resampled=res)
 
-    avg_xfmHs = [avg_nlin_xfm_from(src_img=img, target_imgs=imgs) for img in imgs]
 
-    final_avg = s.defer(nlin_module.Algorithms.average(imgs=[xfmH.resampled for xfmH in avg_xfmHs],
+    if max_pairs is None or max_pairs >= len(imgs):
+        avg_xfms = [avg_nlin_xfm_from(#conf=conf, like=like,
+                                               #output_atom=final_avg,
+                                               src_img=img, target_imgs=imgs)
+                     for img in imgs]
+    else:
+        warnings.warn("nonlinear max_pairs is set; this should NOT be generating your consensus average!")
+        avg_xfms = [avg_nlin_xfm_from(#conf=conf, like=like,
+                                               #output_atom=final_avg,
+                                               src_img=img, target_imgs=gen.sample(imgs, max_pairs))
+                     for img in imgs]
+
+    # avg_xfmHs = [avg_nlin_xfm_from(src_img=img, target_imgs=imgs) for img in imgs]
+
+    final_avg = s.defer(nlin_module.Algorithms.average(imgs=[xfm.resampled for xfm in avg_xfms],
                                                        avg_file=final_avg))
 
-    return Result(stages=s, output=WithAvgImgs(avg_imgs=[final_avg], avg_img=final_avg, output=avg_xfmHs))
+    return Result(stages=s, output=WithAvgImgs(avg_imgs=[final_avg], avg_img=final_avg, output=avg_xfms))
   return mk_build_model_class(build_model_conf_type=nlin_module.Conf,
                               build_model=f,
                               nlin=nlin_module,
@@ -320,6 +334,37 @@ def tournament_and_build_model(nlin_module : Type[NLIN]):
                                 parse_build_model_protocol=nlin_module.parse_multilevel_protocol_file)
 
 
+def pairwise_and_build_model(nlin_module : Type[NLIN]):
+    def f(imgs: List[MincAtom],
+          nlin_dir: str,
+          conf: nlin_module.MultilevelConf,
+          initial_target: MincAtom,
+          nlin_prefix: str,
+          #output_dir_for_avg: str = None,
+          #output_name_wo_ext: str = None
+          ):
+        s = Stages()
+
+        pairwise_result = s.defer(pairwise(nlin_module, max_pairs=15).build_model(
+            imgs=imgs, nlin_dir=nlin_dir, conf=nlin_module.hierarchical_to_single(conf)[-1] if conf else None,
+            initial_target=initial_target, nlin_prefix=nlin_prefix
+            #, output_name_wo_ext=output_name_wo_ext  #, algorithms=nlin_module.algorithms
+        ))
+
+        build_model_result = s.defer(build_model(nlin_module).build_model(
+            imgs=imgs, nlin_dir=nlin_dir, conf=conf, initial_target=pairwise_result.avg_img,
+            nlin_prefix=nlin_prefix
+            #, output_name_wo_ext=output_name_wo_ext  #, algorithms=algorithms
+        ))
+
+        return Result(stages=s, output=build_model_result)
+    # TODO we'll just use the last conf for the pairwise registration;
+    #   could modify to take 2 protocols instead
+    return mk_build_model_class(build_model_conf_type=nlin_module.MultilevelConf,
+                                build_model=f,
+                                nlin=nlin_module,
+                                get_default_build_model_conf=nlin_module.get_default_multilevel_conf,
+                                parse_build_model_protocol=nlin_module.parse_multilevel_protocol_file)
 
 
 # is there any point to mincifying an NLIN module by itself ??  unsure ...
@@ -404,12 +449,14 @@ def mincify_build_model(base_build_model : Type[NLIN_BUILD_MODEL]) -> Type[NLIN_
     return C
 
 
-# TODO don't use str ?
 def get_model_building_procedure(strategy : str, reg_module : Type[NLIN]) -> Type[NLIN_BUILD_MODEL]:
-    d = { 'build_model' : build_model,
+    d = {
+          'build_model' : build_model,
           'tournament'  : tournament,
           'pairwise'    : pairwise,
-          'tournament_and_build_model' : tournament_and_build_model}
+          'tournament_and_build_model' : tournament_and_build_model,
+          'pairwise_and_build_model'   : pairwise_and_build_model
+        }
     try:
         f = mincify_build_model(d[strategy](reg_module))
     except KeyError:

@@ -19,7 +19,8 @@ from pydpiper.minc.files            import MincAtom, XfmAtom
 from pydpiper.minc.registration     import (check_MINC_input_files, lsq12_nlin, custom_formatwarning,
                                             get_nonlinear_configuration_from_options,
                                             get_linear_configuration_from_options, LinearTransType,
-                                            mincresample_new, mincmath, Interpolation, xfmconcat, xfminvert)
+                                            mincresample_new, mincmath, Interpolation, xfmconcat, xfminvert,
+                                            get_nonlinear_component)
 
 warnings.formatwarning = custom_formatwarning
 
@@ -152,7 +153,8 @@ def process_atlas_files(filenames : List[str], pipeline_sub_dir) -> List[MincAto
     return pd.Series(list(grouped_atlas_files.values()))
 
 
-def maget_mask(imgs : List[MincAtom], maget_options, resolution : float, pipeline_sub_dir : str, atlases=None):
+def maget_mask(imgs : List[MincAtom], maget_options, resolution : float,
+               pipeline_sub_dir : str, atlases=None):
 
     s = Stages()
 
@@ -173,10 +175,19 @@ def maget_mask(imgs : List[MincAtom], maget_options, resolution : float, pipelin
                                                        LinearTransType.lsq12,
                                                        resolution)
 
-    masking_nlin_hierarchy = get_nonlinear_configuration_from_options(maget_options.maget.masking_nlin_protocol,
-                                                                      next(iter(maget_options.maget.flags_.masking_nlin_protocol)),
-                                                                      maget_options.maget.mask_method,
-                                                                      resolution)
+    #nlin_module = get_nonlinear_component(reg_method=options.mbm.nlin.reg_method)
+
+    #masking_nlin_hierarchy = get_nonlinear_configuration_from_options(maget_options.maget.masking_nlin_protocol,
+    #                                                                  next(iter(maget_options.maget.flags_.masking_nlin_protocol)),
+    #                                                                  maget_options.maget.mask_method,
+    #                                                                  resolution)
+
+    masking_nlin_component = get_nonlinear_component(reg_method=maget_options.maget.mask_method)
+
+    masking_nlin_conf = (masking_nlin_component.parse_protocol_file(
+                           maget_options.maget.masking_nlin_protocol, resolution=resolution)
+                         if maget_options.maget.masking_nlin_protocol is not None
+                         else masking_nlin_component.get_default_conf(resolution=resolution))
 
     # TODO lift outside then delete
     #masking_imgs = copy.deepcopy(imgs)
@@ -185,10 +196,14 @@ def maget_mask(imgs : List[MincAtom], maget_options, resolution : float, pipelin
 
     masking_alignments = pd.DataFrame({ 'img'   : img,
                                         'atlas' : atlas,
-                                        'xfm'   : s.defer(lsq12_nlin(source=img, target=atlas,
-                                                                     lsq12_conf=lsq12_conf,
-                                                                     nlin_conf=masking_nlin_hierarchy,
-                                                                     resample_source=False))}
+                                        'xfm'   : s.defer(
+                                          lsq12_nlin(source=img, target=atlas,
+                                                     lsq12_conf=lsq12_conf,
+                                                     nlin_options=maget_options.maget.masking_nlin_protocol,
+                                                     #masking_nlin_conf,
+                                                     resolution=resolution,
+                                                     nlin_module=masking_nlin_component,
+                                                     resample_source=False))}
                                       for img in imgs for atlas in atlases)
 
     # propagate a mask to each image using the above `alignments` as follows:
@@ -233,7 +248,7 @@ def maget_mask(imgs : List[MincAtom], maget_options, resolution : float, pipelin
                      like=df.img, invert=True)))
 
     for img in masked_img:
-        img.output_sub_dir = original_imgs.ix[img.path].output_sub_dir
+        img.output_sub_dir = original_imgs.loc[img.path].output_sub_dir
 
     return Result(stages=s, output=masked_img)
 
@@ -303,7 +318,8 @@ def fixup_maget_options(lsq12_options, nlin_options, maget_options):
 
 
 # TODO support LSQ6 registrations??
-def maget(imgs : List[MincAtom], options, prefix, output_dir, build_model_xfms=None):     # FIXME prefix, output_dir aren't used !!
+def maget(imgs : List[MincAtom], options, prefix, output_dir, build_model_xfms=None):
+    # FIXME prefix, output_dir aren't used !!
 
     s = Stages()
 
@@ -320,10 +336,14 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir, build_model_xfms=N
                                                        transform_type=LinearTransType.lsq12,
                                                        file_resolution=resolution)
 
-    nlin_hierarchy = get_nonlinear_configuration_from_options(options.maget.nlin.nlin_protocol,
-                                                              next(iter(options.maget.nlin.flags_.nlin_protocol)),
-                                                              reg_method=options.maget.nlin.reg_method,
-                                                              file_resolution=resolution)
+    nlin_component = get_nonlinear_component(options.maget.nlin.reg_method)
+
+
+
+    #nlin_hierarchy = get_nonlinear_configuration_from_options(options.maget.nlin.nlin_protocol,
+    #                                                          next(iter(options.maget.nlin.flags_.nlin_protocol)),
+    #                                                          reg_method=options.maget.nlin.reg_method,
+    #                                                          file_resolution=resolution)
 
     if maget_options.mask or maget_options.mask_only:
 
@@ -364,8 +384,11 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir, build_model_xfms=N
                               mincresample_new(img=atlas.labels,
                                                xfm=s.defer(lsq12_nlin(source=img,
                                                                       target=atlas,
+                                                                      nlin_module=nlin_component,
                                                                       lsq12_conf=lsq12_conf,
-                                                                      nlin_conf=nlin_hierarchy,
+                                                                      nlin_options=options.maget.nlin.nlin_protocol,
+                                                                      resolution=resolution,
+                                                                      #nlin_conf=nlin_hierarchy,
                                                                       resample_source=False)).xfm,
                                                like=img,
                                                invert=True,
@@ -416,7 +439,10 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir, build_model_xfms=N
                                     lsq12_nlin(source=row.img,
                                                target=row.template,
                                                lsq12_conf=lsq12_conf,
-                                               nlin_conf=nlin_hierarchy,
+                                               resolution=resolution,
+                                               nlin_module=nlin_component,
+                                               nlin_options=options.maget.nlin.nlin_protocol,
+                                               #nlin_conf=nlin_hierarchy,
                                                resample_source=False)).xfm
                                   if build_model_xfms is None
                                   # use transforms from model building if we have them:
