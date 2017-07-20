@@ -39,7 +39,10 @@ class Algorithms(Generic[I, X], metaclass=ABCMeta):
                  postfix: str = None) -> Result[I]:
         pass
 
-    # must be able to handle arbitrary (not simply pure linear or pure nonlinear) transformations
+    # must be able to handle arbitrary (not simply pure linear or pure nonlinear) transformations.
+    # we should have a separate method for averaging purely affine transformations.
+    # also, we should track whether or not a transform is pure affine (either by inspecting it
+    # or via additional metadata in pydpiper) in order to use this more efficient functionality when possible
     @abstractstaticmethod
     def average_transforms(xfms : Sequence[GenericXfmHandler[I, X]], avg_xfm : I) -> X: pass
     # TODO: it seems a bit heavyweight to require XfmHandlers here simply for sampling purposes

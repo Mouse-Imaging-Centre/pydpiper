@@ -14,18 +14,20 @@ from pydpiper.minc.nlin import NLIN
 #def transformix(img : ImgAtom, xfm : XfmAtom, out_dir: str): pass
 
 
-class ITKToMinc(object):
-    pass
-
-
 def to_itk_xfm(xfm): raise NotImplementedError
 
 def from_itk_xfm(xfm): raise NotImplementedError
 
 class Algorithms(itk.Algorithms):
     @staticmethod
-    def scale_transform(xfm): raise NotImplementedError
-
+    def scale_transform(xfm, scale):
+        scaled_xfm = xfm.newname_with_suffix("_scaled_%s" % scale)
+        # don't actually evaluate the resulting vector field:
+        s = CmdStage(cmd=["echo", ('(Transform "WeightedCombinationTransform")\n'
+                                   '(SubTransforms %s)\n'
+                                   '(Scales %s)\n') % (xfm.path, scale)],
+                     inputs=(xfm,), outputs=(scaled_xfm,))
+        return Result(stages=Stages([s]), output=scaled_xfm)
     def resample(img,
                  xfm,  # TODO: update to handler?
                  like,
@@ -34,11 +36,31 @@ class Algorithms(itk.Algorithms):
                  new_name_wo_ext: str = None,
                  subdir: str = None,
                  postfix: str = None):
-        raise NotImplementedError("use antsApplyTransform !")
+        raise NotImplementedError("use transformix ?")
 
     @staticmethod
-    def average_transforms(xfms, avg_xfm): raise NotImplementedError
+    def average_transforms(xfms, avg_xfm):
+        intermediate_xfm = avg_xfm.newname_with_suffix("_inter", subdir="tmp")
+        s = Stages()
+        s.add(CmdStage(cmd=["echo", ('(Transform "WeightedCombinationTransform")\n'
+                                     '(SubTransforms %s)\n'
+                                     '(NormalizeCombinationsWeights "true")\n') %
+                                       ' '.join(sorted(xfm.path for xfm in xfms))],
+                       inputs=xfms, outputs=(intermediate_xfm,)))
+        s.add(CmdStage(cmd=["transformix", "-def", "all",
+                            "-out", os.path.dirname(avg_xfm.path),
+                            "-tp", intermediate_xfm.path,
+                            "-xfm", avg_xfm.path],
+                       inputs=(intermediate_xfm,), outputs=(avg_xfm,)))
 
+class ToMinc(itk.ToMinc):
+    @staticmethod
+    def to_mni_xfm(xfm):
+        raise NotImplemented("call transformix -def")
+
+    @staticmethod
+    def from_mni_xfm(xfm):
+        raise NotImplemented("write a transformix parameter file")
 
 class Elastix(NLIN):
 
@@ -48,7 +70,7 @@ class Elastix(NLIN):
   
   Algorithms = itk.Algorithms
   
-  ToMinc = itk.ToMinc
+  ToMinc = ToMinc
 
   @staticmethod
   def hierarchical_to_single(c): return c

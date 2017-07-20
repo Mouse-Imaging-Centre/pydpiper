@@ -255,7 +255,8 @@ class DRAMMS(NLIN[NiiAtom, DrammsXfmAtom]):
                conf,
                initial_source_transform = None,
                transform_name_wo_ext = None,
-               resample_source = True,  # ignored!
+               resample_source = True,
+               # ^ ... since produced anyway ... is it OK for the
                resample_subdir = "resampled"):
 
       # TODO this stuff is basically stolen from ANTS ... we should make some utility wrappers
@@ -278,7 +279,7 @@ class DRAMMS(NLIN[NiiAtom, DrammsXfmAtom]):
 
       cmd = (["dramms",
               "--source", source.path, "--target", target.path,
-              "--outimg", out_img.path, "--outdef", out_def.path]
+              "--outimg", out_img.path if resample_source else "/dev/null", "--outdef", out_def.path]
              + (["--bt", target.mask.path] if target.mask else [])
              + (["--bs", source.mask.path] if source.mask else [])
              + (["-d", initial_source_transform.path] if initial_source_transform else [])

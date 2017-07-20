@@ -632,14 +632,15 @@ def _mk_nlin_parser(p: ArgParser):
     group = p.add_argument_group("Nonlinear registration options",
                                  "Options for performing a non-linear registration")
     group.add_argument("--registration-method", dest="reg_method",
-                       default="ANTS", choices=["ANTS", "antsRegistration", "DRAMMS", "elastix", "minctracc"],
+                       default="ANTS", choices=["ANTS", "antsRegistration", "demons",
+                                                "DRAMMS", "elastix", "minctracc"],
                        help="Specify algorithm used for non-linear registrations. "
                             "[Default = %(default)s]")
     # TODO wire up the choices here in reg_method and reg_strategy to the actual ones ...
-    # group.add_argument("--registration-strategy", dest="reg_strategy",
-    #                    default="build_model", choices=['build_model', 'pairwise', 'tournament',
-    #                                                    'tournament_and_build_model', 'pairwise_and_build_model'],
-    #                    help="Process used for model construction [Default = %(default)s")
+    group.add_argument("--registration-strategy", dest="reg_strategy",
+                        default="build_model", choices=['build_model', 'pairwise', 'tournament',
+                                                        'tournament_and_build_model', 'pairwise_and_build_model'],
+                        help="Process used for model construction [Default = %(default)s")
     group.add_argument("--nlin-protocol", dest="nlin_protocol",
                        type=str, default=None,
                        help="Can optionally specify a registration protocol that is different from defaults. "

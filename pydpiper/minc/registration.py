@@ -1379,6 +1379,9 @@ def get_nonlinear_component(reg_method : str):
     def _antsRegistration():
         import pydpiper.minc.antsRegistration as antsRegistration
         return antsRegistration.ANTSRegistration
+    def _demons():
+        import pydpiper.itk.demons as demons
+        return demons.Demons
     def _DRAMMS():
         import pydpiper.itk.DRAMMS as DRAMMS
         return DRAMMS.DRAMMS
@@ -1389,6 +1392,7 @@ def get_nonlinear_component(reg_method : str):
         return MINCTRACC
     d = { "ANTS"             : _ANTS,
           "antsRegistration" : _antsRegistration,
+          "demons"           : _demons,
           "DRAMMS"           : _DRAMMS,
           "elastix"          : _elastix,
           "minctracc"        : _minctracc }

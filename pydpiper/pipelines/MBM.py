@@ -12,6 +12,7 @@ from pydpiper.minc.containers import XfmHandler
 
 from pydpiper.core.files import FileAtom
 #from pydpiper.minc.nlin import NLIN
+from pydpiper.minc.nlin import NLIN_BUILD_MODEL
 from pydpiper.minc.registration_strategies import get_model_building_procedure
 from pydpiper.minc.thickness import cortical_thickness
 from pydpiper.pipelines.MAGeT import maget, maget_parsers, fixup_maget_options, maget_mask, get_imgs
@@ -204,8 +205,8 @@ def mbm(imgs : List[MincAtom], options : MBMConf, prefix : str, output_dir : str
     #                                                         reg_method=options.mbm.nlin.reg_method,
     #                                                          file_resolution=resolution)
 
-    I = TypeVar("I")
-    X = TypeVar("X")
+    #I = TypeVar("I")
+    #X = TypeVar("X")
     #def wrap_minc(nlin_module: NLIN[I, X]) -> type[NLIN[MincAtom, XfmAtom]]:
     #    class N(NLIN[MincAtom, XfmAtom]): pass
 
@@ -214,8 +215,30 @@ def mbm(imgs : List[MincAtom], options : MBMConf, prefix : str, output_dir : str
     # they could still do this if it can be done safety (i.e., not breaking assumptions of various nonlinear units)
     nlin_module = get_nonlinear_component(reg_method=options.mbm.nlin.reg_method)
 
-    nlin_build_model_component = get_model_building_procedure(options.mbm.model_building.reg_strategy,
+    nlin_build_model_component = get_model_building_procedure(options.mbm.nlin.reg_strategy,
+                                                              # was: model_building.reg_strategy
                                                               reg_module=nlin_module)
+
+    # does this belong here?
+    # def model_building_with_initial_target_generation(prelim_model_building_component,
+    #                                                   final_model_building_component):
+    #     class C(final_model_building_component):
+    #         @staticmethod
+    #         def build_model(imgs,
+    #                         conf     : BuildModelConf,
+    #                         nlin_dir,
+    #                         nlin_prefix,
+    #                         initial_target,
+    #                         output_name_wo_ext = None): pass
+    #
+    #     return C
+
+    #if options.mbm.model_building.prelim_reg_strategy is not None:
+    #    prelim_nlin_build_model_component = get_model_building_procedure(options.mbm.model_building.prelim_reg_strategy,
+    #                                                                     reg_module=nlin_module)
+    #    nlin_build_model_component = model_building_with_initial_target_generation(
+    #                                   final_model_building_component=nlin_build_model_component,
+    #                                   prelim_model_building_component=prelim_nlin_build_model_component)
 
     # TODO don't use name 'x_module' for something that's technically not a module ... perhaps unit/component?
 
@@ -384,10 +407,23 @@ common_space_parser = AnnotatedParser(parser=BaseParser(_mk_common_space_parser(
 def _mk_model_building_parser(parser : ArgParser):
     group = parser.add_argument_group("Model building options",
                                       "Options specific to consensus model building")
-    group.add_argument("--registration-strategy", dest="reg_strategy",
-                       default="build_model", choices=['build_model', 'pairwise', 'tournament',
-                                                       'tournament_and_build_model', 'pairwise_and_build_model'],
-                       help="Process used for model construction [Default = %(default)s")
+    #group.add_argument("--registration-strategy", dest="reg_strategy",
+    #                   default="build_model", choices=['build_model', 'pairwise', 'tournament'],
+    #                   help="Process used for model construction [Default = %(default)s")
+    #group.add_argument("--preliminary-registration-strategy", dest="preliminary_reg_strategy",
+    #                   default=None, choices=['pairwise', 'tournament'],
+    #                   help="Process used to construct a preliminary target for nonlinear model building "
+    #                        "(use with '--registration-strategy=build_model' only!)")
+    #group.add_argument("--preliminary-registration-protocol", dest="preliminary_reg_protocol",
+    #                   default=None, type=str,
+    #                   help="Protocol file for the optional preliminary model building")
+    group.add_argument("--pairwise-nlin-max-pairs", default=None, type=int, dest="prelim_nlin_max_pairs",
+                       help="Maximum number of nonlinear registrations per input file "
+                            "for preliminary pairwise nonlinear model construction [default = %(default)s")
+    group.add_argument("--pairwise-nlin-max-images", default=25, type=int, dest="prelim_nlin_max_images",
+                       help="Maximum number of images to use "
+                            "for preliminary pairwise nonlinear model construction [default = %(default)s")
+    # TODO prelim_tournament_max_depth  # continue as a build model afterwards??
     return parser
 
 model_building_parser = AnnotatedParser(parser=BaseParser(_mk_model_building_parser(ArgParser(add_help=False)),

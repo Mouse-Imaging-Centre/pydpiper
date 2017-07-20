@@ -168,6 +168,8 @@ class ANTS(NLIN):
     # TODO: similarity_inputs should be a set, but `MincAtom`s aren't hashable
     for sim_metric_conf in conf.sim_metric_confs:
         if conf.file_resolution is not None and sim_metric_conf.use_gradient_image:
+            # TODO the `blur` parameter has been restored into the parser but not yet into the ANTSConf
+            # but when this is done the fwhm should be given by this if it's specified
             src = s.defer(mincblur(source, fwhm=conf.file_resolution)).gradient
             dest = s.defer(mincblur(target, fwhm=conf.file_resolution)).gradient
         elif conf.file_resolution is None and sim_metric_conf.use_gradient_image:

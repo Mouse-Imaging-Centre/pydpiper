@@ -2,10 +2,7 @@ import os
 import warnings
 from argparse import Namespace
 from typing import List, Type, Sequence, Optional, NamedTuple, Tuple
-import math
-
-#from pydpiper.core.files import FileAtom
-from pydpiper.itk.tools import convert
+import random
 
 from pydpiper.core.stages import Result, Stages, CmdStage, identity_result
 from pydpiper.minc.containers import XfmHandler
@@ -15,6 +12,7 @@ from pydpiper.minc.registration import (WithAvgImgs, mincbigaverage, Interpolati
 from pydpiper.minc.files import MincAtom, XfmAtom, ImgAtom, IdMinc
 from pydpiper.minc.nlin import NLIN, NLIN_BUILD_MODEL, Algorithms
 
+gen = random.Random(42)
 
 # TODO expand parameter list to be similar to ANTS_NLIN_build_model, possibly add resolution parameter?
 # use/pass generation parameter for naming ?!
@@ -27,7 +25,7 @@ def build_model(reg_module : Type[NLIN]) -> Type[NLIN_BUILD_MODEL]:
           #algorithms : Type[Algorithms]
           ) -> Result[WithAvgImgs[List[XfmHandler]]]:
         confs = reg_module.hierarchical_to_single(conf) if conf is not None else None
-        if len(confs) == 0:
+        if confs is None or len(confs) == 0:
             raise ValueError("No configurations supplied ...")
         s = Stages()
 
@@ -225,7 +223,7 @@ def mk_build_model_class(nlin : Type[NLIN],
     return BUILD_MODEL_CLASS
 
 
-def pairwise(nlin_module: NLIN, max_pairs: Optional[int] = None):
+def pairwise(nlin_module: NLIN, max_pairs: Optional[int] = None, max_images: Optional[int] = None):
   def f(imgs: List[MincAtom],
         nlin_dir: str,
         conf: nlin_module.Conf,
@@ -237,6 +235,7 @@ def pairwise(nlin_module: NLIN, max_pairs: Optional[int] = None):
     s = Stages()
 
     if len(imgs) < 2:
+        # TODO add error checking/warnings for max_images and max_pairs as well ...
         raise ValueError("currently need at least two images")
 
     #if not output_name_wo_ext:
@@ -273,18 +272,24 @@ def pairwise(nlin_module: NLIN, max_pairs: Optional[int] = None):
                           target=final_avg,
                           resampled=res)
 
+    if max_images is None or max_images >= len(imgs):
+        model_imgs = imgs
+    else:
+        warnings.warn("nonlinear max_images is set; hopefully this is NOT generating your final consensus average")
+        model_imgs = gen.sample(imgs, max_images)
 
-    if max_pairs is None or max_pairs >= len(imgs):
+
+    if max_pairs is None or max_pairs >= len(model_imgs):
         avg_xfms = [avg_nlin_xfm_from(#conf=conf, like=like,
                                                #output_atom=final_avg,
                                                src_img=img, target_imgs=imgs)
-                     for img in imgs]
+                     for img in model_imgs]
     else:
-        warnings.warn("nonlinear max_pairs is set; this should NOT be generating your consensus average!")
+        warnings.warn("nonlinear max_pairs is set; hopefully this is NOT generating your consensus average!")
         avg_xfms = [avg_nlin_xfm_from(#conf=conf, like=like,
                                                #output_atom=final_avg,
                                                src_img=img, target_imgs=gen.sample(imgs, max_pairs))
-                     for img in imgs]
+                     for img in model_imgs]
 
     # avg_xfmHs = [avg_nlin_xfm_from(src_img=img, target_imgs=imgs) for img in imgs]
 
@@ -345,7 +350,7 @@ def pairwise_and_build_model(nlin_module : Type[NLIN]):
           ):
         s = Stages()
 
-        pairwise_result = s.defer(pairwise(nlin_module, max_pairs=15).build_model(
+        pairwise_result = s.defer(pairwise(nlin_module, max_images=25, max_pairs=None).build_model(
             imgs=imgs, nlin_dir=nlin_dir, conf=nlin_module.hierarchical_to_single(conf)[-1] if conf else None,
             initial_target=initial_target, nlin_prefix=nlin_prefix
             #, output_name_wo_ext=output_name_wo_ext  #, algorithms=nlin_module.algorithms

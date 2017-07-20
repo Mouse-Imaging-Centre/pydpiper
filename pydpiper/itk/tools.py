@@ -1,3 +1,4 @@
+
 import os
 from typing import Optional, Sequence
 from configargparse import Namespace
@@ -33,6 +34,115 @@ def itk_convert_xfm(xfm : ITKXfmAtom, out_ext : str) -> Result[ITKXfmAtom]:
         cmd = CmdStage(inputs=(xfm,), outputs=(out_xfm,),
                        cmd=["itk_convert_xfm", xfm.path, out_xfm.path])
         return Result(stages=Stages((cmd,)), output=out_xfm)
+
+
+class Interpolation(object):
+    def render(self):
+        return self.__class__.__name__
+
+class Linear(Interpolation): pass
+class NearestNeighbor(Interpolation): pass
+class MultiLabel(Interpolation): raise NotImplemented
+class Gaussian(Interpolation): raise NotImplemented
+class BSpline(Interpolation): raise NotImplemented
+class CosineWindowsSinc(Interpolation): pass
+class WelchWindowedSinc(Interpolation): pass
+class HammingWindowedSinc(Interpolation): pass
+class LanczosWindowedSinc(Interpolation): pass
+
+
+def antsApplyTransforms(img,
+                        transform,
+                        reference_image,
+                        #outfile: str = None,
+                        interpolation: Interpolation = None,
+                        invert: bool = None,
+                        dimensionality: int = None,
+                        input_image_type = None,
+                        default_voxel_value: float = None,
+                        #static_case_for_R: bool = None,
+                        #float: bool = None
+                        new_name_wo_ext: str = None,
+                        subdir: str = None):
+
+    if not subdir:
+        subdir = 'resampled'
+
+    if not new_name_wo_ext:
+        out_img = img.newname(name=transform.filename_wo_ext + '-resampled', subdir=subdir)
+    else:
+        out_img = img.newname(name=new_name_wo_ext, subdir=subdir)
+
+    # TODO add rest of --output options
+    cmd = (["antsApplyTransforms",
+            "--input", img.path,
+            "--reference-image", reference_image.path,
+            "--output", out_img.path]
+           + (["--transform", transform.path] if invert is None
+              else ["-t", "[%s,%d]" % (transform.path, invert)])
+           + (["--dimensionality", dimensionality] if dimensionality is not None else [])
+           + (["--interpolation", interpolation.render()] if interpolation is not None else [])
+           + (["--default-voxel-value", str(default_voxel_value)] if default_voxel_value is not None else []))
+    s = CmdStage(cmd=cmd,
+                 inputs=(img, transform, reference_image),
+                 outputs=(out_img,))
+    return Result(stages=Stages([s]), output=out_img)
+
+
+def resample_simple(img, xfm, like,
+                    invert = False,
+                    use_nn_interpolation = None,
+                    new_name_wo_ext = None,
+                    subdir = None,
+                    postfix = None):
+    return antsApplyTransforms(img=img, transform=xfm, reference_image=like,
+                               interpolation=MultiLabel() if use_nn_interpolation else None,
+                               invert=invert, new_name_wo_ext=new_name_wo_ext, subdir=subdir)
+
+
+def resample(img,
+             xfm,  # TODO: update to handler?
+             like,
+             invert = False,
+             use_nn_interpolation = None,
+             new_name_wo_ext: str = None,
+             subdir: str = None,
+             postfix: str = None):
+
+    s = Stages()
+
+    if not subdir:
+        subdir = 'resampled'
+
+    # we need to get the filename without extension here in case we have
+    # masks/labels associated with the input file. When that's the case,
+    # we supply its name with "_mask" and "_labels" for which we need
+    # to know what the main file will be resampled as
+    if not new_name_wo_ext:
+        # FIXME this is wrong when invert=True
+        new_name_wo_ext = xfm.filename_wo_ext + '-resampled'
+
+    new_img = s.defer(resample_simple(img=img, xfm=xfm, like=like,
+                                      invert=invert,
+                                      use_nn_interpolation=use_nn_interpolation,
+                                      new_name_wo_ext=new_name_wo_ext,
+                                      subdir=subdir))
+    new_img.mask = s.defer(resample_simple(img=img.mask, xfm=xfm, like=like,
+                                           use_nn_interpolation=True,
+                                           invert=invert,
+                                           new_name_wo_ext=new_name_wo_ext + "_mask",
+                                           subdir=subdir)) if img.mask is not None else None
+    new_img.labels = s.defer(resample_simple(img=img.labels, xfm=xfm, like=like,
+                                             use_nn_interpolation=True,
+                                             invert=invert,
+                                             new_name_wo_ext=new_name_wo_ext + "_labels",
+                                             subdir=subdir)) if img.labels is not None else None
+
+    # Note that new_img can't be used for anything until the mask/label files are also resampled.
+    # This shouldn't create a problem with stage dependencies as long as masks/labels appear in inputs/outputs of CmdStages.
+    # (If this isn't automatic, a relevant helper function would be trivial.)
+    # TODO: can/should this be done semi-automatically? probably ...
+    return Result(stages=s, output=new_img)
 
 
 # is c3d or ImageMath better for this (memory)?
@@ -120,6 +230,8 @@ class Algorithms(Algorithms):
         return Result(stages=Stages((cmd,)),
                       output=Namespace(img=out_img, gradient=out_gradient)
                                if gradient else Namespace(img=out_img))
-    scale_transform = NotImplemented
 
+    resample = resample
+
+    scale_transform = NotImplemented
     average_transforms = NotImplemented
