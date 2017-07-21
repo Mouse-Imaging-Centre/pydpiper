@@ -6,20 +6,23 @@ import typing
 from typing import Any, Callable, List, Set, Tuple, TypeVar
 
 from pydpiper.minc.files import XfmAtom
-
-from pydpiper.minc.containers import XfmHandler
-
+from pydpiper.minc.containers import XfmHandler, GenericXfmHandler
 from pydpiper.core.files import FileAtom
-
 from pydpiper.execution.pipeline import CmdStage
 
 
 def maybe_deref_path(x):
     # ugh ... just a convenience to allow using applymap in a 'generic' way ...
-    if isinstance(x, FileAtom) or isinstance(x, XfmAtom):
-        return x.path
-    elif isinstance(x, XfmHandler):
+    #if isinstance(x, FileAtom) or isinstance(x, XfmAtom):
+    #    return x.path
+    # doesn't work in typing 3.6.1:
+    #elif isinstance(x, GenericXfmHandler) or isinstance(x, XfmHandler):
+    #    return x.xfm.path
+    # workaround:
+    if hasattr(x, 'xfm'):
         return x.xfm.path
+    elif hasattr(x, 'path'):
+        return x.path
     else:
         return x
 
