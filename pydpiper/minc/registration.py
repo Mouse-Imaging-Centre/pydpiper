@@ -1571,7 +1571,6 @@ class WithAvgImgs(Generic[T]):
         self.avg_img = avg_img
 
 
-# nothing requires the linear conf to specify 12 params, so perhaps this should be called 'lin_nlin' ...
 def lsq12_nlin(source: MincAtom,
                target: MincAtom,
                lsq12_conf: MinctraccConf,
