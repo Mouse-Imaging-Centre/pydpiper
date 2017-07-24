@@ -56,7 +56,7 @@ class Algorithms(itk.Algorithms):
 class ToMinc(itk.ToMinc):
     @staticmethod
     def to_mni_xfm(xfm):
-        raise NotImplemented("call transformix -def")
+        raise NotImplemented("call transformix -def followed by itk_convert_xfm")
 
     @staticmethod
     def from_mni_xfm(xfm):

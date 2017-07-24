@@ -1,4 +1,4 @@
-
+import copy
 import os
 from typing import Optional, Sequence
 from configargparse import Namespace
@@ -42,15 +42,51 @@ class Interpolation(object):
 
 class Linear(Interpolation): pass
 class NearestNeighbor(Interpolation): pass
-class MultiLabel(Interpolation): raise NotImplemented
-class Gaussian(Interpolation): raise NotImplemented
-class BSpline(Interpolation): raise NotImplemented
+class MultiLabel(Interpolation):  """TODO: add options"""
+class Gaussian(Interpolation): """TODO: add options"""
+class BSpline(Interpolation):
+    def __init__(self, order=None):
+        self.order = order
+    def render(self):
+        return self.__class__.__name__ + (("[order=%d]" % self.order) if self.order is not None else "")
 class CosineWindowsSinc(Interpolation): pass
 class WelchWindowedSinc(Interpolation): pass
 class HammingWindowedSinc(Interpolation): pass
 class LanczosWindowedSinc(Interpolation): pass
 
 
+def as_deformation(transform, reference_image, interpolation: Interpolation = None,
+                   invert: bool = None, dimensionality: int = None,
+                   default_voxel_value: float = None, new_name_wo_ext: str = None,
+                   subdir: str = None, ext: str = None):
+    """Convert an arbitrary ITK transformation to a deformation field representation"""
+
+    if not subdir:
+        subdir = 'tmp'
+
+    ext = ext or ".nii.gz"
+
+    if not new_name_wo_ext:
+        out_xfm = transform.newname(name=transform.filename_wo_ext + '_def', subdir=subdir, ext=ext)
+    else:
+        out_xfm = transform.newname(name=new_name_wo_ext, subdir=subdir, ext=ext)
+
+    # TODO add rest of --output options
+    cmd = (["antsApplyTransforms",
+            "--reference-image", reference_image.path,
+            "--output", "[%s,1]" % out_xfm.path]
+           + (["--transform", transform.path] if invert is None
+              else ["-t", "[%s,%d]" % (transform.path, invert)])
+           + (["--dimensionality", dimensionality] if dimensionality is not None else [])
+           + (["--interpolation", interpolation.render()] if interpolation is not None else [])
+           + (["--default-voxel-value", str(default_voxel_value)] if default_voxel_value is not None else []))
+    s = CmdStage(cmd=cmd,
+                 inputs=(transform, reference_image),
+                 outputs=(out_xfm,))
+    return Result(stages=Stages([s]), output=out_xfm)
+
+
+# TODO: generalize to multiple transforms (see program name)
 def antsApplyTransforms(img,
                         transform,
                         reference_image,
@@ -59,6 +95,7 @@ def antsApplyTransforms(img,
                         invert: bool = None,
                         dimensionality: int = None,
                         input_image_type = None,
+                        output_warped_file: bool = None,
                         default_voxel_value: float = None,
                         #static_case_for_R: bool = None,
                         #float: bool = None
@@ -205,6 +242,20 @@ class ToMinc(ToMinc):
     @staticmethod
     def from_mni_xfm(xfm): return itk_convert_xfm(xfm, out_ext=".nii.gz")
 
+def imageToXfm(i):
+    x = copy.deepcopy(i)
+    x.__class__ = ITKXfmAtom
+    del x.mask
+    del x.labels
+    return x
+
+def xfmToImage(x):
+    i = copy.deepcopy(x)
+    i.__class__ = ImgAtom
+    i.mask = None
+    i.labels = None
+    return i
+
 # TODO move this
 class Algorithms(Algorithms):
     average   = average_images
@@ -233,5 +284,22 @@ class Algorithms(Algorithms):
 
     resample = resample
 
-    scale_transform = NotImplemented
-    average_transforms = NotImplemented
+    @staticmethod
+    def scale_transform(xfm, scale, newname_wo_ext):
+        s = Stages()
+        defs = s.defer(as_deformation(transform=xfm.xfm, reference=xfm.source))
+        scaled_defs = (defs.xfm.newname(newname_wo_ext) if newname_wo_ext else
+                        defs.xfm.newname_with_suffix("_scaled_%s" % scale))
+        s.defer(CmdStage(cmd=['c3d', '-scale', str(scale), defs.path, "-o", scaled_defs.path],
+                         inputs=(defs,), outputs=(scaled_defs,)))
+        return Result(stages=s, output=scaled_defs)
+
+    @staticmethod
+    def average_transforms(xfms, avg_xfm):
+        s = Stages()
+        defs = [s.defer(as_deformation(transform=xfm.xfm, reference_image=xfm.source)) for xfm in xfms]
+        avg = imageToXfm(s.defer(average_images([xfmToImage(d) for d in defs],
+                                                output_dir=os.path.join(defs[0].pipeline_sub_dir,
+                                                                        defs[0].output_sub_dir,
+                                                                        "transforms"))))
+        return Result(stages=s, output=avg)
