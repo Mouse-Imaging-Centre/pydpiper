@@ -57,11 +57,6 @@ def build_model(reg_module : Type[NLIN]) -> Type[NLIN_BUILD_MODEL]:
                                 get_default_build_model_conf=reg_module.get_default_multilevel_conf,
                                 parse_build_model_protocol=reg_module.parse_multilevel_protocol_file)
 
-def foo():
-    TYPES = NamedTuple("TYPES", [('A', Type)])
-    t = TYPES(A=int)
-    VALUES = NamedTuple("VALUES", [('x', t.A)])
-    return VALUES
 
 def nonlinear_midpoint_xfm(nlin_algorithm : Type[NLIN],
                            img_A: MincAtom,

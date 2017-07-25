@@ -1,5 +1,4 @@
-
-
+import copy
 import os
 import warnings
 from typing import Optional, Tuple
@@ -68,9 +67,17 @@ DrammsXfmHandler = GenericXfmHandler[NiiAtom, DrammsXfmAtom]
 
 # TODO add more options?
 def dramms_to_itk(xfm: DrammsXfmAtom) -> Result[ITKXfmAtom]:
-    out_xfm = xfm.newext(".nii.gz")
+    out_xfm = xfm.newname_with_suffix("_itk")
     return Result(stages=Stages([CmdStage(cmd=['dramms-convert', '-f', 'DRAMMS',
                                                '-i', xfm.path, '-F', 'ITK', '-o', out_xfm.path],
+                                          inputs=(xfm,), outputs=(out_xfm,))]),
+                  output=out_xfm)
+
+
+def itk_to_dramms(xfm: ITKXfmAtom) -> Result[DrammsXfmAtom]:
+    out_xfm = xfm.newname_with_suffix("_dramms")
+    return Result(stages=Stages([CmdStage(cmd=['dramms-convert', '-f', 'ITK',
+                                               '-i', xfm.path, '-F', 'DRAMMS', '-o', out_xfm.path],
                                           inputs=(xfm,), outputs=(out_xfm,))]),
                   output=out_xfm)
 
@@ -102,7 +109,7 @@ def dramms_warp_simple(img: NiiAtom,
                        like: Optional[NiiAtom] = None,
                        extra_flags: Tuple[str] = (),
                        use_nn_interpolation = None,
-                       #invert: bool = False,
+                       invert: bool = False,
                        new_name_wo_ext: str = None,
                        subdir: str = None) -> Result[NiiAtom]:
     """
@@ -110,6 +117,14 @@ def dramms_warp_simple(img: NiiAtom,
     ...
     new_name_wo_ext -- string indicating a user specified file name (without extension)
     """
+
+    s = Stages()
+
+    if invert:
+        inv_xfm = xfm.newname_with_suffix("_inverted")
+        s.add(CmdStage(cmd=["dramms-defop", "-i", xfm.path, inv_xfm.path],
+                       inputs=(xfm,), outputs=(inv_xfm,)))
+        xfm = inv_xfm
 
     if not subdir:
         subdir = 'resampled'
@@ -136,7 +151,9 @@ def dramms_warp_simple(img: NiiAtom,
              + (['-transform %s' % xfm.path]) #if xfm is not identity else [])
              + ['-like %s' % like.path, img.path, outf.path]))
 
-    return Result(stages=Stages([stage]), output=outf)
+    s.add(stage)
+
+    return Result(stages=s, output=outf)
 
 
 def dramms_warp(img: NiiAtom,  # TODO change to ITKAtom ?!
@@ -147,7 +164,6 @@ def dramms_warp(img: NiiAtom,  # TODO change to ITKAtom ?!
                 new_name_wo_ext: str = None,
                 subdir: str = None,
                 postfix: str = None) -> Result[NiiAtom]:
-
 
     s = Stages()
 
@@ -189,10 +205,28 @@ def dramms_warp(img: NiiAtom,  # TODO change to ITKAtom ?!
 
 class DRAMMSAlgorithms(itk.Algorithms):
     @staticmethod
-    def scale_transform(xfm, scale, newname_wo_ext):  raise NotImplementedError
+    def scale_transform(xfm, scale, newname_wo_ext):
+        scaled_xfm = xfm.newname_with_suffix("_scaled%s" % scale)
+        c = CmdStage(cmd=["dramms-defop", "-m", str(scale), xfm.path, scaled_xfm.path],
+                     inputs=(xfm,),
+                     outputs=(scaled_xfm,))
+        return Result(stages=Stages([c]), output=scaled_xfm)
+    #    s = Stages()
+    #    itk_xfm = copy.deepcopy(xfm)
+    #    itk_xfm.xfm = s.defer(dramms_to_itk(xfm.xfm))
+    #    return Result(stages=s,
+    #                  output=s.defer(itk_to_dramms(
+    #                           s.defer(itk.Algorithms.scale_transform(itk_xfm, scale, newname_wo_ext)))))
     resample = dramms_warp
     @staticmethod
-    def average_transforms(xfms, avg_xfm):  raise NotImplementedError
+    def average_transforms(xfms, avg_xfm):
+        s = Stages()
+        itk_xfms = copy.deepcopy(xfms)
+        for xfm in itk_xfms:
+            xfm.xfm = s.defer(dramms_to_itk(xfm.xfm))
+        return Result(stages=s,
+                      output=s.defer(itk_to_dramms(
+                               s.defer(itk.Algorithms.average_transforms(itk_xfms, avg_xfm)))))
 
 
 class DRAMMS(NLIN[NiiAtom, DrammsXfmAtom]):

@@ -666,8 +666,7 @@ def mincresample(img: MincAtom,
                  extra_flags: Tuple[str] = (),
                  new_name_wo_ext: str = None,
                  subdir: str = None,
-                 #postfix: str = None
-                 ) -> Result[MincAtom]:
+                 postfix: str = None) -> Result[MincAtom]:
     """
     ...
     new_name_wo_ext -- string indicating a user specified file name (without extension)

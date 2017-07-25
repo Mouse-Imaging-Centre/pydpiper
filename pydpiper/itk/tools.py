@@ -13,6 +13,9 @@ from pydpiper.core.files  import ImgAtom, FileAtom
 class ITKXfmAtom(FileAtom):
     pass
 
+class ITKImgAtom(ImgAtom):
+    pass
+
 
 def convert(infile : ImgAtom, out_ext : str) -> Result[ImgAtom]:
     s = Stages()
@@ -58,8 +61,9 @@ class LanczosWindowedSinc(Interpolation): pass
 def as_deformation(transform, reference_image, interpolation: Interpolation = None,
                    invert: bool = None, dimensionality: int = None,
                    default_voxel_value: float = None, new_name_wo_ext: str = None,
-                   subdir: str = None, ext: str = None):
-    """Convert an arbitrary ITK transformation to a deformation field representation"""
+                   subdir: str = None, ext: str = None) -> Result[ITKImgAtom]:
+    """Convert an arbitrary ITK transformation to a deformation field representation.
+    Consider this an image rather than a transformation since, e.g., AverageImages can be used."""
 
     if not subdir:
         subdir = 'tmp'
@@ -67,9 +71,9 @@ def as_deformation(transform, reference_image, interpolation: Interpolation = No
     ext = ext or ".nii.gz"
 
     if not new_name_wo_ext:
-        out_xfm = transform.newname(name=transform.filename_wo_ext + '_def', subdir=subdir, ext=ext)
+        out_xfm = xfmToImage(transform.newname(name=transform.filename_wo_ext + '_def', subdir=subdir, ext=ext))
     else:
-        out_xfm = transform.newname(name=new_name_wo_ext, subdir=subdir, ext=ext)
+        out_xfm = xfmToImage(transform.newname(name=new_name_wo_ext, subdir=subdir, ext=ext))
 
     # TODO add rest of --output options
     cmd = (["antsApplyTransforms",
@@ -195,7 +199,7 @@ def average_images(imgs        : Sequence[ImgAtom],
                    output_dir  : str = '.',
                    name_wo_ext : str = "average",
                    out_ext     : Optional[str] = None,
-                   avg_file    : Optional[ImgAtom] = None):
+                   avg_file    : Optional[ITKImgAtom] = None) -> Result[ITKImgAtom]:
 
     s = Stages()
 
@@ -242,16 +246,16 @@ class ToMinc(ToMinc):
     @staticmethod
     def from_mni_xfm(xfm): return itk_convert_xfm(xfm, out_ext=".nii.gz")
 
-def imageToXfm(i):
+def imageToXfm(i : ITKImgAtom) -> ITKXfmAtom:
     x = copy.deepcopy(i)
     x.__class__ = ITKXfmAtom
     del x.mask
     del x.labels
     return x
 
-def xfmToImage(x):
+def xfmToImage(x : ITKXfmAtom):
     i = copy.deepcopy(x)
-    i.__class__ = ImgAtom
+    i.__class__ = ITKImgAtom
     i.mask = None
     i.labels = None
     return i
@@ -298,8 +302,10 @@ class Algorithms(Algorithms):
     def average_transforms(xfms, avg_xfm):
         s = Stages()
         defs = [s.defer(as_deformation(transform=xfm.xfm, reference_image=xfm.source)) for xfm in xfms]
-        avg = imageToXfm(s.defer(average_images([xfmToImage(d) for d in defs],
-                                                output_dir=os.path.join(defs[0].pipeline_sub_dir,
-                                                                        defs[0].output_sub_dir,
-                                                                        "transforms"))))
+        avg = imageToXfm(s.defer(average_images(defs,
+                                                avg_file=xfmToImage(avg_xfm),
+                                                #output_dir=os.path.join(defs[0].pipeline_sub_dir,
+                                                #                        defs[0].output_sub_dir,
+                                                #                        "transforms")
+                                                )))
         return Result(stages=s, output=avg)

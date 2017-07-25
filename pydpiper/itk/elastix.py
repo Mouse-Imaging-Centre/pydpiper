@@ -14,6 +14,12 @@ from pydpiper.minc.nlin import NLIN
 #def transformix(img : ImgAtom, xfm : XfmAtom, out_dir: str): pass
 
 
+def as_deformation(xfm):
+    c = CmdStage(cmd=["transformix", "-def", "all", "-out", dirname, "-tp", xfm.path, "-xfm", out_path],
+                 inputs=(xfm,), outputs=NotImplemented)
+    return Result(stages=Stages([c]), output=NotImplemented)
+
+
 def to_itk_xfm(xfm): raise NotImplementedError
 
 def from_itk_xfm(xfm): raise NotImplementedError
@@ -56,7 +62,15 @@ class Algorithms(itk.Algorithms):
 class ToMinc(itk.ToMinc):
     @staticmethod
     def to_mni_xfm(xfm):
-        raise NotImplemented("call transformix -def followed by itk_convert_xfm")
+        s = Stages()
+        defs = xfm.newname_with_suffix("_defs", subdir="tmp")
+        s.add(CmdStage(cmd=["transformix", "-def", "all",
+                            "-out", defs.dir,
+                            "-tp", xfm.path,
+                            "-xfm", os.path.join(defs.filename_wo_ext, defs.ext)],
+                       inputs=(xfm,), outputs=(defs,)))
+        out_xfm = s.defer(itk.itk_convert_xfm(defs, out_ext=".mnc"))
+        return Result(stages=s, output=out_xfm)
 
     @staticmethod
     def from_mni_xfm(xfm):
