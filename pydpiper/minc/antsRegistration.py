@@ -362,6 +362,9 @@ def antsRegistration(source: MincAtom,
 
 class ANTSRegistration(NLIN):
 
+    img_ext = ".mnc"
+    xfm_ext = ".xfm"
+
     Conf = ANTSRegistrationConf
 
     MultilevelConf = Sequence[ANTSRegistrationConf]

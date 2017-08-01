@@ -13,6 +13,8 @@ from pydpiper.minc.nlin import NLIN
 
 class Demons(NLIN):
 
+  img_ext = xfm_ext = ".nii.gz"
+
   Conf = str
 
   MultilevelConf = Sequence[str]

@@ -23,7 +23,7 @@ from pydpiper.minc.nlin import NLIN, NLIN_BUILD_MODEL, Algorithms
 
 def custom_formatwarning(msg, cat, filename, lineno, line=None):
     # change the order of how the warning is printed
-    return "\nWarning: " + str(msg) + " " + str(filename) + ":" + str(lineno) + "\n\n"
+    return "\nWarning: " + str(msg) + " [" + str(filename) + ":" + str(lineno) + "]\n\n"
 warnings.formatwarning = custom_formatwarning
 warnings.simplefilter("once")
 
@@ -2957,6 +2957,7 @@ class MincAlgorithms(Algorithms):
 
 
 class MINCTRACC(NLIN):
+    img_ext = xfm_ext = "mnc"
     Conf = MultilevelMinctraccConf
 
     # blech ... does this mean the 'multilevelconf' should be renamed 'hierarchicalconf' or similar? yes ...

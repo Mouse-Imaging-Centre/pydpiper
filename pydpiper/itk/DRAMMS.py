@@ -68,7 +68,7 @@ DrammsXfmHandler = GenericXfmHandler[NiiAtom, DrammsXfmAtom]
 # TODO add more options?
 def dramms_to_itk(xfm: DrammsXfmAtom) -> Result[ITKXfmAtom]:
     out_xfm = xfm.newname_with_suffix("_itk")
-    return Result(stages=Stages([CmdStage(cmd=['dramms-convert', '-f', 'DRAMMS',
+    return Result(stages=Stages([CmdStage(cmd=['dramms-convert', '-v', '-f', 'DRAMMS',
                                                '-i', xfm.path, '-F', 'ITK', '-o', out_xfm.path],
                                           inputs=(xfm,), outputs=(out_xfm,))]),
                   output=out_xfm)
@@ -231,6 +231,9 @@ class DRAMMSAlgorithms(itk.Algorithms):
 
 class DRAMMS(NLIN[NiiAtom, DrammsXfmAtom]):
 
+  img_ext = ".nii.gz"
+  xfm_ext = ".nii.gz"
+
   MultilevelConf = Tuple[str]
 
   Conf = str
@@ -290,7 +293,7 @@ class DRAMMS(NLIN[NiiAtom, DrammsXfmAtom]):
                initial_source_transform = None,
                transform_name_wo_ext = None,
                resample_source = True,
-               # ^ ... since produced anyway ... is it OK for the
+               # ^ ... since produced anyway ... is it OK for this default to be different from the super?
                resample_subdir = "resampled"):
 
       # TODO this stuff is basically stolen from ANTS ... we should make some utility wrappers
@@ -301,20 +304,25 @@ class DRAMMS(NLIN[NiiAtom, DrammsXfmAtom]):
           trans_output_dir = "transforms"
 
       # TODO instead of setting ext here manually, add to Algorithms/Types ... ?
+      # TODO can't use ".nii.gz" ext here since manually constructing an XfmAtom uses 'explode',
+      # which gets this wrong, and then some tools fail on ".nii_itk.gz"
       if transform_name_wo_ext:
           name = os.path.join(source.pipeline_sub_dir, source.output_sub_dir, trans_output_dir,
-                              "%s.nii.gz" % (transform_name_wo_ext))
+                              "%s.nii" % (transform_name_wo_ext))
       else:
           name = os.path.join(source.pipeline_sub_dir, source.output_sub_dir, trans_output_dir,
-                              "%s_DRAMMS_to_%s.nii.gz" % (source.filename_wo_ext, target.filename_wo_ext))
+                              "%s_DRAMMS_to_%s.nii" % (source.filename_wo_ext, target.filename_wo_ext))
       out_def = DrammsXfmAtom(name=name, pipeline_sub_dir=source.pipeline_sub_dir, output_sub_dir=source.output_sub_dir)
+      out_def.ext = ".nii.gz"  # must occur before use ...
+      # TODO add optional arg to constructors to deal with extensions containing '.' (see above comment) ?
 
       out_img = source.newname_with_suffix("_to_%s" % target.filename_wo_ext)
 
-      cmd = (["dramms",
+      cmd = (["dramms", "-a", "0",
               "--source", source.path, "--target", target.path,
               "--outimg", out_img.path if resample_source else "/dev/null", "--outdef", out_def.path]
-             + (["--bt", target.mask.path] if target.mask else [])
+             # DRAMMS doesn't allow --bt and --bs at the same time; is this the best solution -- ?
+             + (["--bt", target.mask.path] if target.mask and not source.mask else [])
              + (["--bs", source.mask.path] if source.mask else [])
              + (["-d", initial_source_transform.path] if initial_source_transform else [])
              + conf.split())

@@ -78,6 +78,8 @@ class ToMinc(itk.ToMinc):
 
 class Elastix(NLIN):
 
+  img_ext = xfm_ext = ".nii.gz"
+
   Conf = str  # the filename
 
   MultilevelConf = Sequence[str]  # the filenames

@@ -25,7 +25,7 @@ def convert(infile : ImgAtom, out_ext : str) -> Result[ImgAtom]:
     if infile.labels is not None:
         outfile.mask = s.defer(convert(infile.labels, out_ext=out_ext))
     s.add(CmdStage(inputs=(infile,), outputs=(outfile,),
-                   cmd = ['c3d', '-o', outfile.path, infile.path]))
+                   cmd = ['c3d', infile.path, '-o', outfile.path]))
     return Result(stages=s, output=outfile)
 
 
@@ -189,7 +189,8 @@ def resample(img,
 # is c3d or ImageMath better for this (memory)?
 def max(imgs : Sequence[ImgAtom], out_img : ImgAtom):
     cmd = CmdStage(inputs = imgs, outputs = (out_img,),
-                   cmd = ['c3d'] + [img.path for img in imgs] + ['-accum', '-max', '-o', out_img.path])
+                   cmd = (['c3d'] + [img.path for img in imgs]
+                          + ['-accum', '-max', '-endaccum', '-o', out_img.path]))
     return Result(stages=Stages((cmd,)), output=out_img)
 
 
@@ -210,22 +211,24 @@ def average_images(imgs        : Sequence[ImgAtom],
 
     # the output_dir basically gives us the equivalent of the pipeline_sub_dir for
     # regular input files to a pipeline, so use that here
-    avg = avg_file or ImgAtom(name=os.path.join(output_dir, '%s%s' % (name_wo_ext, ext)),
+    avg = avg_file or ImgAtom(name=os.path.join(output_dir, '%s.todo' % name_wo_ext),
                               orig_name=None,
                               pipeline_sub_dir=output_dir)
+    avg.ext = ext
 
     # if all input files have masks associated with them, add the combined mask to
     # the average:
     # TODO what if avg_file has a mask ... should that be used instead? (then rename avg -> avg_file above)
     all_inputs_have_masks = all((img.mask for img in imgs))
     if all_inputs_have_masks:
-        combined_mask = (ImgAtom(name=os.path.join(avg_file.dir, '%s_mask%s' % (avg_file.filename_wo_ext, ext)),
+        combined_mask = (ImgAtom(name=os.path.join(avg_file.dir, '%s_mask.todo' % avg_file.filename_wo_ext),
                                  orig_name=None,
                                  pipeline_sub_dir=avg_file.pipeline_sub_dir)
                          if avg_file is not None else
-                         ImgAtom(name=os.path.join(output_dir, '%s_mask%s' % (name_wo_ext, ext)),
+                         ImgAtom(name=os.path.join(output_dir, '%s_mask.todo' % name_wo_ext),
                                  orig_name=None,
                                  pipeline_sub_dir=output_dir))
+        combined_mask.ext = ext
         s.defer(max(imgs=sorted({img_inst.mask for img_inst in imgs}),
                     out_img=combined_mask))
         avg.mask = combined_mask
@@ -302,6 +305,7 @@ class Algorithms(Algorithms):
     def average_transforms(xfms, avg_xfm):
         s = Stages()
         defs = [s.defer(as_deformation(transform=xfm.xfm, reference_image=xfm.source)) for xfm in xfms]
+        #avg_img = NotImplemented
         avg = imageToXfm(s.defer(average_images(defs,
                                                 avg_file=xfmToImage(avg_xfm),
                                                 #output_dir=os.path.join(defs[0].pipeline_sub_dir,

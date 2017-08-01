@@ -219,10 +219,10 @@ def mk_build_model_class(nlin : Type[NLIN],
 
 
 def pairwise(nlin_module: NLIN, max_pairs: Optional[int] = None, max_images: Optional[int] = None):
-  def f(imgs: List[MincAtom],
+  def f(imgs: List[ImgAtom],   # TODO: these types are quite imprecise!
         nlin_dir: str,
         conf: nlin_module.Conf,
-        initial_target: MincAtom,
+        initial_target: ImgAtom,
         nlin_prefix: str
         #output_dir_for_avg: str = None,
         #output_name_wo_ext: str = None
@@ -237,8 +237,9 @@ def pairwise(nlin_module: NLIN, max_pairs: Optional[int] = None, max_images: Opt
     #    output_name_wo_ext = "full_pairwise_nlin_%s" % nlin_module.__name__
     output_name_wo_ext = "nlin_%s" % nlin_module.__name__
 
-    final_avg = MincAtom(name=os.path.join(nlin_dir, output_name_wo_ext + ".mnc"),
-                         pipeline_sub_dir=nlin_dir)
+    final_avg = ImgAtom(name=os.path.join(nlin_dir, output_name_wo_ext + ".todo"),
+                        pipeline_sub_dir=nlin_dir)
+    final_avg.ext = nlin_module.img_ext  # FIXME
 
     def avg_nlin_xfm_from(src_img: MincAtom,
                           target_imgs: List[MincAtom]):
@@ -247,17 +248,18 @@ def pairwise(nlin_module: NLIN, max_pairs: Optional[int] = None, max_images: Opt
                                               conf=conf,
                                               resample_subdir=nlin_dir))   ## TODO: is this subdir correct?
                  for target_img in target_imgs]
+        xfm = XfmAtom(name=os.path.join(src_img.pipeline_sub_dir,
+                                        src_img.output_sub_dir,
+                                       "transforms",
+                                       "%s_avg_nlin_%s.todo" %
+                                         (src_img.filename_wo_ext,
+                                          nlin_module.__name__)),
+                      pipeline_sub_dir=src_img.pipeline_sub_dir,
+                      output_sub_dir=src_img.output_sub_dir)
+        xfm.ext = nlin_module.xfm_ext
 
         avg_xfm = s.defer(nlin_module.Algorithms.average_transforms(xfms=xfmHs,
-                                                                    avg_xfm=XfmAtom(name=os.path.join(
-                                                                              src_img.pipeline_sub_dir,
-                                                                              src_img.output_sub_dir,
-                                                                              "transforms",
-                                                                              "%s_avg_nlin_%s.xfm" %
-                                                                                (src_img.filename_wo_ext,
-                                                                                 nlin_module.__name__)),
-                                                                    pipeline_sub_dir=src_img.pipeline_sub_dir,
-                                                                    output_sub_dir=src_img.output_sub_dir)))
+                                                                    avg_xfm=xfm))
 
         res = s.defer(nlin_module.Algorithms.resample(img=src_img,
                                                       xfm=avg_xfm,

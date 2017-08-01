@@ -132,21 +132,25 @@ def launchExecutor(executor):
 
 # like a stage but lighter weight (no methods wasting memory...)
 class StageInfo(object):
-    def __init__(self, *, mem, procs, ix, cmd, log_file):
+    def __init__(self, *, mem, procs, ix, cmd, log_file, output_files):
         self.mem = mem
         self.procs = procs
         self.ix = ix
         self.cmd = cmd
         self.log_file = log_file
+        self.output_files = output_files
 
 
 def stageinfo_dict_to_class(classname, d):
-    return StageInfo(mem=d['mem'], procs=d['procs'], ix=d['ix'], cmd=d['cmd'], log_file=d['log_file'])
+    return StageInfo(mem=d['mem'], procs=d['procs'], ix=d['ix'], cmd=d['cmd'], log_file=d['log_file'],
+                     output_files=d['output_files'])
 
 
 Pyro4.util.SerializerBase.register_dict_to_class("pydpiper.execution.pipeline_executor.StageInfo",
                                                  stageinfo_dict_to_class)
 
+
+class MissingOutputs(ValueError): pass
 
 def runStage(*, clientURI, stage, cmd_wrapper):
         ix = stage.ix
@@ -169,13 +173,23 @@ def runStage(*, clientURI, stage, cmd_wrapper):
             #client.addPIDtoRunningList(process.pid)
             process.communicate()
             #client.removePIDfromRunningList(process.pid)
-            ret = process.returncode 
+            ret = process.returncode
+            if ret == 0:
+                # TODO: better logic here, e.g., check time stamp is after stage started, allow some tolerance
+                #  for NFS slowness, etc.
+                missing_outputs = [o for o in stage.output_files if not os.path.exists(o)]
+                if len(missing_outputs) > 0:
+                    logger.warning("missing outputs from Stage %i: %s", ix, missing_outputs)
+                    of.write("[executor] warning: missing outputs: %s\n" % missing_outputs)
+                    raise MissingOutputs(missing_outputs)
             of.close()
         except Exception as e:
             logger.exception("Exception whilst running stage: %i (on %s)", ix, clientURI)
             return ix, e
         else:
+            # TODO: the big try-catch block above is quite ugly ...
             logger.info("Stage %i finished, return was: %i (on %s)", ix, ret, clientURI)
+
             return ix, ret
 
 

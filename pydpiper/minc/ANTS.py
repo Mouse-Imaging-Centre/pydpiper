@@ -96,6 +96,9 @@ default_ANTS_mem_cfg = ANTSMemCfg(base_mem=0.177, mem_per_voxel_coarse=1.385e-7,
 
 class ANTS(NLIN):
 
+  img_ext = ".mnc"
+  xfm_ext = ".xfm"
+
   Conf = ANTSConf
 
   MultilevelConf = MultilevelANTSConf

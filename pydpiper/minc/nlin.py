@@ -61,6 +61,11 @@ class Algorithms(Generic[I, X], metaclass=ABCMeta):
 # TODO not *actually* generic; should take a type as a field, but this is annoying to write down
 class NLIN(Generic[I, X], metaclass=ABCMeta):
 #class NLIN(metaclass=ABCMeta):
+
+  # TODO replace with actual I and X modules which include these extensions!
+  img_ext = NotImplemented   # type: str
+  xfm_ext = NotImplemented   # type: str
+
   class Conf: pass
 
   class MultilevelConf: pass
