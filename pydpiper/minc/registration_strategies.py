@@ -33,10 +33,13 @@ def build_model(reg_module : Type[NLIN]) -> Type[NLIN_BUILD_MODEL]:
         avg_imgs = []
         xfms = [None] * len(imgs)
         for i, conf in enumerate(confs, start=1):
-            xfms = [s.defer(reg_module.register(source=img
-                                                         if reg_module.accepts_initial_transform()
-                                                             or (xfm is None)
-                                                         else xfm.resampled,
+            xfms = [s.defer(reg_module.register(source=img,
+                                                # in the case the registration algorithm doesn't accept
+                                                # an initial transform,
+                                                # we could use the resampled output of the previous
+                                                # step for a more efficient registration process,
+                                                # although this would require more careful bookkeeping
+                                                # of transforms and incur additional resampling error
                                                 target=avg,
                                                 conf=conf,
                                                 initial_source_transform=xfm.xfm
