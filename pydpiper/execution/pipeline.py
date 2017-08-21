@@ -287,7 +287,7 @@ class Pipeline(object):
         self.unfinished_pred_counts = [ len([i for i in self.G.predecessors(n)
                                              if not self.stages[i].isFinished()])
                                         for n in range(self.G.order()) ]
-        graph_heads = [n for n in self.G.nodes_iter()
+        graph_heads = [n for n in self.G.nodes()
                        if self.unfinished_pred_counts[n] == 0]
         logger.info("Graph heads: " + str(graph_heads))
         for n in graph_heads:
@@ -381,7 +381,7 @@ class Pipeline(object):
         """computes stage dependencies by examining their inputs/outputs"""
         starttime = time.time()
         # iterate over all nodes
-        for i in self.G.nodes_iter():
+        for i in self.G.nodes():
             for ip in self.stages[i].inputFiles:
                 # if the input to the current stage was the output of another
                 # stage, add a directional dependence to the DiGraph
@@ -1116,7 +1116,7 @@ def flatten_pipeline(p):
         else:
             return 0 
                 
-    return sorted([(i, str(p.stages[i]), p.G.predecessors(i)) for i in p.G.nodes_iter()], key=functools.cmp_to_key(post))
+    return sorted([(i, str(p.stages[i]), p.G.predecessors(i)) for i in p.G.nodes()], key=functools.cmp_to_key(post))
 
 def pipelineDaemon(pipeline, options, programName=None):
     """Launches Pyro server and (if specified by options) pipeline executors"""

@@ -157,7 +157,7 @@ def execute(stages, options):
         # TODO: or check inputs to unfinished stages lying outside the unfinished set, instead of the 'overall' inputs!
         inputs = [ i for s in pipeline.G
                    for i in pipeline.stages[s].inputFiles
-                   if len(pipeline.G.predecessors(s)) == 0 ]
+                   if pipeline.G.in_degree(s) == 0 ]
 
         def input_ok(input_file):
             # TODO: the `.endswith` call here is because in the old code the inputs/outputs are strings, not `Stage`s

@@ -18,7 +18,7 @@ setup(name='pydpiper',
       url='https://github.com/Mouse-Imaging-Centre/pydpiper',
       install_requires=[
         'ConfigArgParse>=0.11.0',
-        'networkx',
+        'networkx>=2.0b1',
         'ordered-set',
         'pandas',
         #'pydotplus',  # use nx.nx_pydot.write_dot to write graphviz files
