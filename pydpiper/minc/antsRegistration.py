@@ -239,9 +239,9 @@ def antsRegistration(source: MincAtom,
     # directory belonging to the source image.
     # TODO: is this what we want? perhaps we actually want to move this transformation
     # over to a subdirectory of the target file...
-    xfm_target_to_source = xfm_source_to_target.newname_with_suffix("_inverse", subdir='tmp')
-
-    # run full command
+    # N.B.: the name of the following file is forced by antsRegistration; we can't specify a subdir or anything...
+    # DON'T CHANGE THIS!
+    xfm_target_to_source = xfm_source_to_target.newname_with_suffix("_inverse", subdir=source_subdir)
 
     # outputs from antRegistration are:
     #   {output_prefix}_grid_0.mnc
@@ -281,6 +281,20 @@ def antsRegistration(source: MincAtom,
             moving = target
         return "'%s[%s,%s,%s,%s]'" % (m.metric, fixed.path, moving.path, m.weight, m.radius_or_bins)
 
+    if conf.use_masks:
+        if source.mask is not None and target.mask is not None:
+            mask_arr = ['--masks', '[%s,%s]' % (source.mask.path, target.mask.path)]
+        elif source.mask is not None:
+            mask_arr = ['--masks', '[%s]' % source.mask.path]
+        elif target.mask is not None:
+            warnings.warn("only target mask is specified; antsRegistration needs at least a source mask")
+            mask_arr = []
+        else:
+            warnings.warn("no masks supplied")
+            mask_arr = []
+    else:
+        mask_arr = []
+
     cmd = CmdStage(
         inputs=tuple(img for img in
                      (source, target,
@@ -304,8 +318,7 @@ def antsRegistration(source: MincAtom,
             + optional(initial_source_transform, lambda xfm: ['--initial-fixed-transform', xfm.path])
             + optional(initial_target_transform, lambda xfm: ['--initial-moving-transform', xfm.path])
             + flatten(*[['--metric', render_metric(m)] for m in conf.metrics])
-            + (['--masks', '[' + source.mask.path + ',' +
-                target.mask.path + ']'] if source.mask.path and target.mask.path and conf.use_masks else [])
+            + mask_arr
             + ['--shrink-factors', 'x'.join(str(s) for s in conf.shrink_factors)]
             + ['--smoothing-sigmas', 'x'.join(str(s) for s in conf.smoothing_sigmas)]
     )
