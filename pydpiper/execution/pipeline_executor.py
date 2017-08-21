@@ -162,27 +162,26 @@ def runStage(*, clientURI, stage, cmd_wrapper):
             command_logfile = stage.log_file
 
             # log file for the stage
-            of = open(command_logfile, 'a')
-            of.write("Stage " + str(ix) + " running on " + socket.gethostname()
-                     + " (" + clientURI + ") at " + datetime.isoformat(datetime.now(), " ") + ":\n")
-            of.write(command_to_run + "\n")
-            of.flush()
-            
-            args = shlex.split(command_to_run)
-            process = subprocess.Popen(args, stdout=of, stderr=of, shell=False)
-            #client.addPIDtoRunningList(process.pid)
-            process.communicate()
-            #client.removePIDfromRunningList(process.pid)
-            ret = process.returncode
-            if ret == 0:
-                # TODO: better logic here, e.g., check time stamp is after stage started, allow some tolerance
-                #  for NFS slowness, etc.
-                missing_outputs = [o for o in stage.output_files if not os.path.exists(o)]
-                if len(missing_outputs) > 0:
-                    logger.warning("missing outputs from Stage %i: %s", ix, missing_outputs)
-                    of.write("[executor] warning: missing outputs: %s\n" % missing_outputs)
-                    raise MissingOutputs(missing_outputs)
-            of.close()
+            with open(command_logfile, 'a') as of:
+                of.write("Stage " + str(ix) + " running on " + socket.gethostname()
+                         + " (" + clientURI + ") at " + datetime.isoformat(datetime.now(), " ") + ":\n")
+                of.write(command_to_run + "\n")
+                of.flush()
+
+                args = shlex.split(command_to_run)
+                process = subprocess.Popen(args, stdout=of, stderr=of, shell=False)
+                #client.addPIDtoRunningList(process.pid)
+                process.communicate()
+                #client.removePIDfromRunningList(process.pid)
+                ret = process.returncode
+                if ret == 0:
+                    # TODO: better logic here, e.g., check time stamp is after stage started, allow some tolerance
+                    #  for NFS slowness, etc.
+                    missing_outputs = [o for o in stage.output_files if not os.path.exists(o)]
+                    if len(missing_outputs) > 0:
+                        logger.warning("missing outputs from Stage %i: %s", ix, missing_outputs)
+                        of.write("[executor] warning: missing outputs: %s\n" % missing_outputs)
+                        raise MissingOutputs(missing_outputs)
         except Exception as e:
             logger.exception("Exception whilst running stage: %i (on %s)", ix, clientURI)
             return ix, e
