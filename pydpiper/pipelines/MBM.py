@@ -2,23 +2,20 @@
 
 import os.path
 import warnings
-
-#import numpy as np
 import pandas as pd
-import sys
 from configargparse import Namespace, ArgParser
 from typing import List, TypeVar
 from pydpiper.minc.containers import XfmHandler
 
+from pydpiper.core.arguments    import (lsq6_parser, lsq12_parser, nlin_parser, stats_parser, CompoundParser,
+                                        AnnotatedParser, NLINConf, BaseParser, segmentation_parser)
 from pydpiper.core.files import FileAtom
-#from pydpiper.minc.nlin import NLIN
-from pydpiper.minc.nlin import NLIN_BUILD_MODEL
+from pydpiper.core.util  import NamedTuple, maybe_deref_path
+from pydpiper.core.stages       import Result, Stages
+from pydpiper.execution.application    import mk_application
+
 from pydpiper.minc.registration_strategies import get_model_building_procedure
 from pydpiper.minc.thickness import cortical_thickness
-from pydpiper.pipelines.MAGeT import maget, maget_parsers, fixup_maget_options, maget_mask, get_imgs
-from pydpiper.core.util import NamedTuple, maybe_deref_path
-from pydpiper.core.stages       import Result, Stages
-
 #TODO fix up imports, naming, stuff in registration vs. pipelines, ...
 from pydpiper.minc.files        import MincAtom, XfmAtom
 from pydpiper.minc.registration import (lsq6_nuc_inorm, lsq12_nlin_build_model, registration_targets,
@@ -29,9 +26,8 @@ from pydpiper.minc.registration import (lsq6_nuc_inorm, lsq12_nlin_build_model, 
                                         Interpolation, param2xfm, get_nonlinear_component)
 from pydpiper.minc.analysis     import determinants_at_fwhms, StatsConf
 from pydpiper.minc.thickness    import thickness_parser
-from pydpiper.core.arguments    import (lsq6_parser, lsq12_parser, nlin_parser, stats_parser, CompoundParser,
-                                        AnnotatedParser, NLINConf, BaseParser, segmentation_parser)
-from pydpiper.execution.application    import mk_application
+
+from pydpiper.pipelines.MAGeT import maget, maget_parsers, fixup_maget_options, maget_mask, get_imgs
 
 
 MBMConf = NamedTuple('MBMConf', [('lsq6',  LSQ6Conf),
@@ -54,73 +50,7 @@ def mbm_pipeline(options : MBMConf):
                              output_dir=output_dir))
 
     if options.mbm.common_space.do_common_space_registration:
-        if not options.mbm.common_space.common_space_model:
-            raise ValueError("No common space template provided!")
-        if not options.mbm.common_space.common_space_mask:
-            warnings.warn("No common space mask provided ... might be OK if your consensus average mask is OK")
-        # TODO allow lsq6 registration as well ...
-        common_space_model = MincAtom(options.mbm.common_space.common_space_model,
-                                      # TODO fix the subdirectories!
-                                      mask=MincAtom(options.mbm.common_space.common_space_mask,
-                                                    pipeline_sub_dir=os.path.join(
-                                                        options.application.output_directory,
-                                                        options.application.pipeline_name + "_processed"))
-                                           if options.mbm.common_space.common_space_mask else None,
-                                      pipeline_sub_dir=os.path.join(options.application.output_directory,
-                                                                    options.application.pipeline_name + "_processed"))
-
-        # TODO allow different lsq12/nlin config params than the ones used in MBM ...
-        #full_hierarchy = get_nonlinear_configuration_from_options(nlin_protocol=options.mbm.nlin.nlin_protocol,
-        #                                                          reg_method=options.mbm.nlin.reg_method,
-        #                                                          file_resolution=options.registration.resolution)
-        # WEIRD ... see comment in lsq12_nlin code ...
-        #nlin_conf  = full_hierarchy.confs[-1] if isinstance(full_hierarchy, MultilevelANTSConf) else full_hierarchy
-        # also weird that we need to call get_linear_configuration_from_options here ... ?
-        #    nlin_build_model_component = model_building_with_initial_target_generation(
-        #                                   final_model_building_component=nlin_build_model_component,
-        #                                   prelim_model_building_component=prelim_nlin_build_model_component)
-
-        # TODO don't use name 'x_module' for something that's technically not a module ... perhaps unit/component?
-        nlin_component = get_nonlinear_component(reg_method=options.mbm.nlin.reg_method)
-
-        lsq12_conf = get_linear_configuration_from_options(conf=options.mbm.lsq12,
-                                                           transform_type=LinearTransType.lsq12,
-                                                           file_resolution=options.registration.resolution)
-        # N.B.: options.registration.resolution has been *updated* correctly by mbm( ). sigh ...
-        model_to_common = s.defer(lsq12_nlin(source=mbm_result.avg_img, target=common_space_model,
-                                             lsq12_conf=lsq12_conf, nlin_module=nlin_component,
-                                             resolution=options.registration.resolution,
-                                             nlin_options=options.mbm.nlin.nlin_protocol, #=nlin_conf,
-                                             resample_source=True))
-
-        model_common = s.defer(mincresample_new(img=mbm_result.avg_img,
-                                                xfm=model_to_common.xfm, like=common_space_model,
-                                                postfix="_common"))
-
-        overall_xfms_to_common = [s.defer(concat_xfmhandlers([rigid_xfm, nlin_xfm, model_to_common]))
-                                  for rigid_xfm, nlin_xfm in zip(mbm_result.xfms.rigid_xfm,
-                                                                 mbm_result.xfms.lsq12_nlin_xfm)]
-
-        xfms_to_common = [s.defer(concat_xfmhandlers([nlin_xfm, model_to_common]))
-                       for nlin_xfm in mbm_result.xfms.lsq12_nlin_xfm]
-
-        mbm_result.xfms = mbm_result.xfms.assign(xfm_to_common=xfms_to_common,
-                                                 overall_xfm_to_common=overall_xfms_to_common)
-
-        if options.mbm.stats.calc_stats:
-            log_nlin_det_common, log_full_det_common = (
-                [dets.map(lambda d:
-                            s.defer(mincresample_new(
-                                      img=d,
-                                      xfm=model_to_common.xfm,
-                                      like=common_space_model,
-                                      postfix="_common")))
-                 for dets in (mbm_result.determinants.log_nlin_det, mbm_result.determinants.log_full_det)])
-
-            mbm_result.determinants = mbm_result.determinants.assign(log_nlin_det_common=log_nlin_det_common,
-                                                                     log_full_det_common=log_full_det_common)
-
-        mbm_result.model_common = model_common
+        s.defer(common_space(mbm_result, options))
 
     # create useful CSVs (note the files listed therein won't yet exist ...):
     (mbm_result.xfms.assign(native_file=lambda df: df.rigid_xfm.apply(lambda x: x.source),
@@ -166,6 +96,81 @@ def mbm_pipeline(options : MBMConf):
     #                    output_dir=os.path.join(options.application.output_directory, prefix + "_processed")))
 
     return Result(stages=s, output=mbm_result)
+
+
+def common_space(mbm_result, options):
+    s = Stages()
+
+    if not options.mbm.common_space.common_space_model:
+        raise ValueError("No common space template provided!")
+    if not options.mbm.common_space.common_space_mask:
+        warnings.warn("No common space mask provided ... might be OK if your consensus average mask is OK")
+    # TODO allow lsq6 registration as well ...
+    common_space_model = MincAtom(options.mbm.common_space.common_space_model,
+                                  # TODO fix the subdirectories!
+                                  mask=MincAtom(options.mbm.common_space.common_space_mask,
+                                                pipeline_sub_dir=os.path.join(
+                                                    options.application.output_directory,
+                                                    options.application.pipeline_name + "_processed"))
+                                  if options.mbm.common_space.common_space_mask else None,
+                                  pipeline_sub_dir=os.path.join(options.application.output_directory,
+                                                                options.application.pipeline_name + "_processed"))
+
+    # TODO allow different lsq12/nlin config params than the ones used in MBM ...
+    # full_hierarchy = get_nonlinear_configuration_from_options(nlin_protocol=options.mbm.nlin.nlin_protocol,
+    #                                                          reg_method=options.mbm.nlin.reg_method,
+    #                                                          file_resolution=options.registration.resolution)
+    # WEIRD ... see comment in lsq12_nlin code ...
+    # nlin_conf  = full_hierarchy.confs[-1] if isinstance(full_hierarchy, MultilevelANTSConf) else full_hierarchy
+    # also weird that we need to call get_linear_configuration_from_options here ... ?
+    #    nlin_build_model_component = model_building_with_initial_target_generation(
+    #                                   final_model_building_component=nlin_build_model_component,
+    #                                   prelim_model_building_component=prelim_nlin_build_model_component)
+
+    # TODO don't use name 'x_module' for something that's technically not a module ... perhaps unit/component?
+    nlin_component = get_nonlinear_component(reg_method=options.mbm.nlin.reg_method)
+
+    lsq12_conf = get_linear_configuration_from_options(conf=options.mbm.lsq12,
+                                                       transform_type=LinearTransType.lsq12,
+                                                       file_resolution=options.registration.resolution)
+    # N.B.: options.registration.resolution has been *updated* correctly by mbm( ). sigh ...
+    model_to_common = s.defer(lsq12_nlin(source=mbm_result.avg_img, target=common_space_model,
+                                         lsq12_conf=lsq12_conf, nlin_module=nlin_component,
+                                         resolution=options.registration.resolution,
+                                         nlin_options=options.mbm.nlin.nlin_protocol,  # =nlin_conf,
+                                         resample_source=True))
+
+    model_common = s.defer(mincresample_new(img=mbm_result.avg_img,
+                                            xfm=model_to_common.xfm, like=common_space_model,
+                                            postfix="_common"))
+
+    overall_xfms_to_common = [s.defer(concat_xfmhandlers([rigid_xfm, nlin_xfm, model_to_common]))
+                              for rigid_xfm, nlin_xfm in zip(mbm_result.xfms.rigid_xfm,
+                                                             mbm_result.xfms.lsq12_nlin_xfm)]
+
+    xfms_to_common = [s.defer(concat_xfmhandlers([nlin_xfm, model_to_common]))
+                      for nlin_xfm in mbm_result.xfms.lsq12_nlin_xfm]
+
+    mbm_result.xfms = mbm_result.xfms.assign(xfm_to_common=xfms_to_common,
+                                             overall_xfm_to_common=overall_xfms_to_common)
+
+    if options.mbm.stats.calc_stats:
+        log_nlin_det_common, log_full_det_common = (
+            [dets.map(lambda d:
+                      s.defer(mincresample_new(
+                          img=d,
+                          xfm=model_to_common.xfm,
+                          like=common_space_model,
+                          postfix="_common")))
+             for dets in (mbm_result.determinants.log_nlin_det, mbm_result.determinants.log_full_det)])
+
+        mbm_result.determinants = mbm_result.determinants.assign(log_nlin_det_common=log_nlin_det_common,
+                                                                 log_full_det_common=log_full_det_common)
+
+    mbm_result.model_common = model_common
+
+    return Result(stages=s, output=mbm_result)
+    # TODO: the interface of this function (basically a destructive 'id' function) is horrific
 
 
 def mbm(imgs : List[MincAtom], options : MBMConf, prefix : str, output_dir : str = ""):

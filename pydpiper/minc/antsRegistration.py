@@ -313,7 +313,7 @@ def antsRegistration(source: MincAtom,
             + ['--winsorize-image-intensities', '[0.01,0.99]']
             + optional(conf.use_histogram_matching, lambda _: ['--use-histogram-matching', '1'])
             + ['--float', '0']
-            + ['--output', '[' + xfm_source_to_target.dir + '/' + xfm_source_to_target.filename_wo_ext + ']']
+            + ['--output', '[' + os.path.join(xfm_source_to_target.dir, xfm_source_to_target.filename_wo_ext) + ']']
             + ['--transform', conf.transformation_model]
             + optional(initial_source_transform, lambda xfm: ['--initial-fixed-transform', xfm.path])
             + optional(initial_target_transform, lambda xfm: ['--initial-moving-transform', xfm.path])

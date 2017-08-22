@@ -184,10 +184,10 @@ def maget_mask(imgs : List[MincAtom], maget_options, resolution : float,
 
     masking_nlin_component = get_nonlinear_component(reg_method=maget_options.maget.mask_method)
 
-    masking_nlin_conf = (masking_nlin_component.parse_protocol_file(
-                           maget_options.maget.masking_nlin_protocol, resolution=resolution)
-                         if maget_options.maget.masking_nlin_protocol is not None
-                         else masking_nlin_component.get_default_conf(resolution=resolution))
+    #masking_nlin_conf = (masking_nlin_component.parse_protocol_file(
+    #                       maget_options.maget.masking_nlin_protocol, resolution=resolution)
+    #                     if maget_options.maget.masking_nlin_protocol is not None
+    #                     else masking_nlin_component.get_default_conf(resolution=resolution))
 
     # TODO lift outside then delete
     #masking_imgs = copy.deepcopy(imgs)
