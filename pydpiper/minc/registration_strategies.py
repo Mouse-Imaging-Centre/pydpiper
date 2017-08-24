@@ -282,13 +282,13 @@ def pairwise(nlin_module: NLIN, max_pairs: Optional[int] = None, max_images: Opt
     if max_pairs is None or max_pairs >= len(model_imgs):
         avg_xfms = [avg_nlin_xfm_from(#conf=conf, like=like,
                                                #output_atom=final_avg,
-                                               src_img=img, target_imgs=imgs)
+                                               src_img=img, target_imgs=model_imgs)
                      for img in model_imgs]
     else:
         warnings.warn("nonlinear max_pairs is set; hopefully this is NOT generating your consensus average!")
         avg_xfms = [avg_nlin_xfm_from(#conf=conf, like=like,
                                                #output_atom=final_avg,
-                                               src_img=img, target_imgs=gen.sample(imgs, max_pairs))
+                                               src_img=img, target_imgs=gen.sample(model_imgs, max_pairs))
                      for img in model_imgs]
 
     # avg_xfmHs = [avg_nlin_xfm_from(src_img=img, target_imgs=imgs) for img in imgs]
