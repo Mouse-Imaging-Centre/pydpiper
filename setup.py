@@ -29,7 +29,8 @@ setup(name='pydpiper',
         'pyminc',
         'Pyro4',
         'pytest',
-        'typing'
+        'typing',
+        'qbatch'
       ],
       #extras_require = { 'graphing' : ['pygraphviz']},  # could make pygraphviz optional, but then won't auto-install
       platforms="any",

@@ -1,16 +1,16 @@
+
 import os
 import warnings
-from argparse import Namespace
-from typing import List, Type, Sequence, Optional, NamedTuple, Tuple
+from typing import (List, Type, Sequence, Optional)  #, NamedTuple, Tuple
 import random
 
-from pydpiper.core.stages import Result, Stages, CmdStage, identity_result
+from pydpiper.core.stages import (Result, Stages)  #, CmdStage, identity_result
 from pydpiper.minc.containers import XfmHandler
-from pydpiper.minc.registration import (WithAvgImgs, mincbigaverage, Interpolation,
-                                        invert_xfmhandler, minc_displacement,
-                                        mincmath, xfmconcat, param2xfm)
+from pydpiper.minc.registration import (WithAvgImgs, mincbigaverage, #Interpolation,
+                                        invert_xfmhandler, #minc_displacement, mincmath,
+                                        xfmconcat, param2xfm)
 from pydpiper.minc.files import MincAtom, XfmAtom, ImgAtom, IdMinc
-from pydpiper.minc.nlin import NLIN, NLIN_BUILD_MODEL, Algorithms
+from pydpiper.minc.nlin import NLIN, NLIN_BUILD_MODEL   #, Algorithms
 
 gen = random.Random(42)
 
@@ -246,6 +246,8 @@ def pairwise(nlin_module: NLIN, max_pairs: Optional[int] = None, max_images: Opt
 
     def avg_nlin_xfm_from(src_img: MincAtom,
                           target_imgs: List[MincAtom]):
+        # TODO: should there be another affine step here?  Two images registered in the best affine way
+        # to the overall average might not be ideally affinely registered to each other ...
         xfmHs = [s.defer(nlin_module.register(source=src_img,   ## TODO: add source resampling stuff !!
                                               target=target_img,
                                               conf=conf,

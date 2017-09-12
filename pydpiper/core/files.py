@@ -139,7 +139,7 @@ class FileAtom(object):
         """Create a FileAtom representing <dirs>/<file><suffix><.ext>
         from one representing <dirs>/<file><.ext>
 
-        >>> os.path.basename(FileAtom(name='img_1.mnc').newname_with_suffix(suffix='_fwhm0.056').get_basename())
+        >>> FileAtom(name='img_1.mnc').newname_with_suffix(suffix='_fwhm0.056').get_basename()
         'img_1_fwhm0.056.mnc'
         """
         return self.newname_with_fn(lambda n: n + suffix, ext=ext, subdir=subdir)

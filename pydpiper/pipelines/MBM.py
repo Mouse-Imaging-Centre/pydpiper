@@ -101,6 +101,9 @@ def mbm_pipeline(options : MBMConf):
 def common_space(mbm_result, options):
     s = Stages()
 
+    # TODO: the interface of this function (basically a destructive 'id' function) is horrific
+    # TODO: instead, copy the mbm_result here ??
+
     if not options.mbm.common_space.common_space_model:
         raise ValueError("No common space template provided!")
     if not options.mbm.common_space.common_space_mask:
@@ -170,7 +173,6 @@ def common_space(mbm_result, options):
     mbm_result.model_common = model_common
 
     return Result(stages=s, output=mbm_result)
-    # TODO: the interface of this function (basically a destructive 'id' function) is horrific
 
 
 def mbm(imgs : List[MincAtom], options : MBMConf, prefix : str, output_dir : str = ""):

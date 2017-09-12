@@ -62,7 +62,16 @@ class DrammsXfmAtom(FileAtom):
     pass
 
 
-DrammsXfmHandler = GenericXfmHandler[NiiAtom, DrammsXfmAtom]
+class DrammsXfmHandler(GenericXfmHandler[NiiAtom, DrammsXfmAtom]):
+    def __init__(self,
+                 source,
+                 xfm,
+                 target,
+                 resampled = None,
+                 inverse = None,
+                 salience_map = None):
+        super().__init__(self, source=source, xfm=xfm, target=target, resampled=resampled, inverse=inverse)
+        self.salience_map = salience_map
 
 
 # TODO add more options?
@@ -318,6 +327,8 @@ class DRAMMS(NLIN[NiiAtom, DrammsXfmAtom]):
 
       out_img = source.newname_with_suffix("_to_%s" % target.filename_wo_ext)
 
+      salience_map = out_img.newname("MutualSaliency-%s.nii.gz" % target.filename_wo_ext)
+
       cmd = (["dramms", "-a", "0",
               "--source", source.path, "--target", target.path,
               "--outimg", out_img.path if resample_source else "/dev/null", "--outdef", out_def.path]
@@ -325,13 +336,16 @@ class DRAMMS(NLIN[NiiAtom, DrammsXfmAtom]):
              + (["--bt", target.mask.path] if target.mask and not source.mask else [])
              + (["--bs", source.mask.path] if source.mask else [])
              + (["-d", initial_source_transform.path] if initial_source_transform else [])
+             + (["-c", "2"])  # TODO: open up more options ...
              + conf.split())
       s = CmdStage(cmd=cmd,
                    inputs=tuple(i for i in (source, initial_source_transform, source.mask, target.mask)
                                 if i is not None),
                    outputs=(out_img, out_def))
       return Result(stages=Stages([s]),
-                    output=XfmHandler(source=source, target=target, xfm=out_def, resampled=out_img))
+                    output=DrammsXfmHandler(source=source, target=target,
+                                            xfm=out_def, resampled=out_img,
+                                            salience_map=salience_map))
              #+ ((flatten(*[
              #     # TODO: ffd spacing
              #     ([] if ... else [])

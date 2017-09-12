@@ -1,3 +1,4 @@
+
 import csv
 import os
 import random
@@ -2742,8 +2743,7 @@ def create_quality_control_images(imgs: List[MincAtom],
     individualImagesLabeled = []
 
     if create_montage and montage_output == None:
-        print("\nError: createMontage is specified in createQualityControlImages, but no output name for the montage is provided. Exiting...\n")
-        sys.exit()
+        sys.exit("\nError: createMontage is specified in createQualityControlImages, but no output name for the montage is provided. Exiting...\n")
 
     # for each of the input files, run a mincpik call and create
     # a triplane image.
