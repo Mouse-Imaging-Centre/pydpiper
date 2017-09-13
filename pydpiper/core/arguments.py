@@ -287,7 +287,7 @@ def _mk_execution_parser(p: ArgParser) -> ArgParser:
                        type=str, default=None,
                        help="Name of the SGE pe, if any. [Default = %(default)s]")
     group.add_argument("--mem-request-attribute", dest="mem_request_attribute",
-                       type=str, default="vf",
+                       type=str, default=None,
                        help="Name of the resource attribute to request for managing memory limits. [Default = %(default)s]")
     group.add_argument("--greedy", dest="greedy",
                        action="store_true",

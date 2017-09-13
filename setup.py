@@ -3,16 +3,16 @@ import os
 from setuptools import setup
 
 setup(name='pydpiper',
-      version='2.0.8',
+      version='2.0.9',
       license='Modified BSD',
       description='Python code for flexible pipeline control',
       long_description='Python code for flexible pipeline control',
       author='Miriam Friedel, Matthijs van Eede, Jason Lerch, Jon Pipitone, Fraser MacDonald, Ben Darwin',
-      maintainer_email='matthijs@mouseimaging.ca',
+      maintainer_email='matthijs.vaneede@sickkids.ca',
       url='https://github.com/Mouse-Imaging-Centre/pydpiper',
       install_requires=[
         'ConfigArgParse>=0.11.0',
-        'networkx',
+        'networkx<2.0',
         'ordered-set',
         'pandas',
         #'pydotplus',  # use nx.nx_pydot.write_dot to write graphviz files
@@ -23,7 +23,8 @@ setup(name='pydpiper',
         'pyminc',
         'Pyro4',
         'pytest',
-        'typing'
+        'typing',
+        'qbatch'
       ],
       #extras_require = { 'graphing' : ['pygraphviz']},  # could make pygraphviz optional, but then won't auto-install
       platforms="any",

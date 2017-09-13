@@ -14,3 +14,6 @@ graphviz - http://www.graphviz.org/ (optional)
 
 Various Python libraries are also required (see `setup.py` for details); these should
 be installed automatically by setuptools when the above command is run.
+
+We use [`qbatch`](https://github.com/pipitone/qbatch) for submitting jobs to compute grid queues.  Installing Pydpiper will install the `qbatch` binary as well, but you must ensure this (and a somewhat recent version of GNU Parallel) is in your path. To configure Pydpiper for your queue, you may configure qbatch directly using `QBATCH_*` environment variables to whatever extent you desire and further specify or override whatever you choose using Pydpiper flags (or a config file or environment vars; see the README); however, the default is currently local execution so you must tell Pydpiper what `--queue-type` you intend.  (We also have a "headless" mode developed for "capacity" queues such as Compute Canada's SciNet grid; this mode uses `qsub` directly and only works with TORQUE/PBS queues at the moment but will soon use `qbatch` as well.)
+
