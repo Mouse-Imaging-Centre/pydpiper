@@ -35,7 +35,7 @@ def itk_convert_xfm(xfm : ITKXfmAtom, out_ext : str) -> Result[ITKXfmAtom]:
     else:
         out_xfm = xfm.newext(out_ext)
         cmd = CmdStage(inputs=(xfm,), outputs=(out_xfm,),
-                       cmd=["itk_convert_xfm", xfm.path, out_xfm.path])
+                       cmd=["itk_convert_xfm", "--clobber", xfm.path, out_xfm.path])
         return Result(stages=Stages((cmd,)), output=out_xfm)
 
 
