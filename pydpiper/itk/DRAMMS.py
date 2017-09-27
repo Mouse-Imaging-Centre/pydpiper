@@ -340,7 +340,8 @@ class DRAMMS(NLIN[NiiAtom, DrammsXfmAtom]):
              + (["-c", "2"])  # TODO: open up more options ...
              + conf.split())
       s = CmdStage(cmd=cmd,
-                   inputs=tuple(i for i in (source, initial_source_transform, source.mask, target.mask)
+                   inputs=tuple(i for i in (source, target, source.mask, target.mask,
+                                            initial_source_transform)
                                 if i is not None),
                    outputs=(out_img, out_def))
       return Result(stages=Stages([s]),
