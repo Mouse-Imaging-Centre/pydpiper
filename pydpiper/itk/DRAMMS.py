@@ -339,12 +339,18 @@ class DRAMMS(NLIN[NiiAtom, DrammsXfmAtom]):
              + (["-d", initial_source_transform.path] if initial_source_transform else [])
              + (["-c", "2"])  # TODO: open up more options ...
              + conf.split())
-      s = CmdStage(cmd=cmd,
+      c = CmdStage(cmd=cmd,
                    inputs=tuple(i for i in (source, target, source.mask, target.mask,
                                             initial_source_transform)
                                 if i is not None),
                    outputs=(out_img, out_def))
-      return Result(stages=Stages([s]),
+
+      def set_memory(st, _cfg):
+          st.setMem(14)
+
+      c.when_runnable_hooks.append(lambda st: set_memory(st, ()))
+
+      return Result(stages=Stages([c]),
                     output=DrammsXfmHandler(source=source, target=target,
                                             xfm=out_def, resampled=out_img,
                                             #salience_map=salience_map
