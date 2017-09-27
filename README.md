@@ -5,7 +5,7 @@ It is very much under active development. The paper describing the framework can
 http://www.ncbi.nlm.nih.gov/pubmed/25126069
 
 We kindly ask you to reference this paper when using the code.
-For installation instructions, see the INSTALL file.
+For instructions on installing Pydpiper and optionally configuring it for your HPC environment, see the INSTALL file.
 
 `pydpiper` supports config files (lowest precedence), environment variables, and command-line flags (highest precedence) in a mostly uniform way via the [ConfigArgParse](https://pypi.python.org/pypi/ConfigArgParse) module.  For examples, see the `config` directory; note that unlike the command line, values in key-value pairs must not be quoted (e.g., `--queue-type=sge`, not `--queue-type='sge'`).  The config file should also be accessible to any remote machines.  You can specify a default configuration file location (e.g., for a site-wide default) with the (otherwise undocumented) environment variable `PYDPIPER_CONFIG_FILE`.
 

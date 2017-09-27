@@ -2456,6 +2456,9 @@ def lsq6_nuc_inorm(imgs: List[MincAtom],
         else:
             s.defer(mincbigaverage(imgs=final_resampled_lsq6_files,
                                    output_dir=lsq6_dir))
+        #s.defer(mincaverage(imgs=final_resampled_lsq6_files,
+        #                    output_dir=lsq6_dir,
+        #                    copy_header_from_first_input=lsq6_options.copy_header_info))
 
     if create_qc_images:
         s.defer(create_quality_control_images(imgs=final_resampled_lsq6_files,

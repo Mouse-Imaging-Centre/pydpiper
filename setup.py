@@ -9,12 +9,12 @@ if sys.version_info < (3, 5):
     raise ValueError("Minimum Python version supported is 3.5")
 
 setup(name='pydpiper',
-      version='2.0.8',
+      version='2.0.9',
       license='Modified BSD',
       description='Python code for flexible pipeline control',
       long_description='Python code for flexible pipeline control',
       author='Miriam Friedel, Matthijs van Eede, Jason Lerch, Jon Pipitone, Fraser MacDonald, Ben Darwin',
-      maintainer_email='matthijs@mouseimaging.ca',
+      maintainer_email='matthijs.vaneede@sickkids.ca',
       url='https://github.com/Mouse-Imaging-Centre/pydpiper',
       install_requires=[
         'ConfigArgParse>=0.11.0',

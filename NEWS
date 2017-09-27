@@ -1,3 +1,12 @@
+New in Version 2.0.9
+====================
+* Pydpiper now depends on `qbatch` (and hence a recent `gnuparallel`).
+  One can configure queueing options through either qbatch or Pydpiper; see the INSTALL file.
+  The 'headless' (`--submit-server`) mode hasn't been ported and still uses `qsub` directly.
+* the above change adds SLURM scheduler support
+* modifications to the supplied config files due to the above
+* backport mincaverage copy_header fix from develop
+
 New in Version 2.0.8
 ====================
 * add option to perform atlas-to-atlas registration of the study model to a 'common space model' and resample images

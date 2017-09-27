@@ -352,10 +352,10 @@ class pipelineExecutor(object):
             logger.info("Done calling unregisterClient")
 
     def submitToQueue(self, number):
-        """Submits to queueing system using qsub"""
-        if self.queue_type not in ['sge', 'pbs']:
-            msg = ("Specified queueing system is: %s" % (self.queue_type) + 
-                   "Only `queue_type`s 'sge', 'pbs', and None currently support launching executors." + 
+        """Submits to queueing system using qbatch"""
+        if self.queue_type not in ['sge', 'pbs', 'slurm', None]:
+            msg = ("Specified queueing system is: %s" % (self.queue_type) +
+                   "Only `queue_type`s 'sge', 'pbs', and None currently support launching executors." +
                    "Exiting...")
             logger.warning(msg)
             sys.exit(msg)
@@ -373,71 +373,55 @@ class pipelineExecutor(object):
                        "--num-executors", str(1), '--mem', str(self.mem)]
                      + q.remove_flags(['--num-exec', '--mem'], sys.argv[1:])))
 
-            os.system("mkdir -p logs")    # FIXME: this really doesn't belong here
-            if self.queue_type == "sge":
-                strprocs = str(self.procs)
-                strmem = ','.join(["%s=%sG" % (attr, float(self.mem))
-                                   for attr in self.mem_request_attribute.split(',')])
-                queue_opts = (['-V', '-j', 'yes', '-cwd', '-t', '1-%d' % number,
-                              '-N', jobname,
-                              '-l', strmem,
-                              '-o', "logs/%s-$JOB_ID-$TASK_ID-eo.log" % jobname]
-                              + (['-q', self.queue_name]
-                                if self.queue_name else [])
-                              + (['-pe', self.pe, strprocs]
-                                if self.pe else [])
-                              + shlex.split(self.queue_opts))
-                qsub_cmd = ['qsub'] + queue_opts
-
-                header = '\n'.join(["#!/usr/bin/env bash",
-                                    # why `csh`?  It seems that `qsub` doesn't allow one to
-                                    # pass args to the shell specified with `-S`, so we can't pass --noprofile
-                                    # (or --norc) to bash.  As a result, /etc, ~/.bashrc, etc.,
-                                    # are read again by the executors, which is unlikely to be intended.
-                                    # Since no-one uses csh, this is less likely to be a problem.
-                                    # (This was implicitly happening before the `#$ -S ...` line was added
-                                    # and none of our many users complained...)
-                                    "#$ -S /bin/csh",
-                                    "setenv PYRO_LOGFILE logs/%s-${JOB_ID}-${SGE_TASK_ID}.log" % ident])
-                # FIXME huge hack -- shouldn't we just iterate over options,
-                # possibly checking for membership in the executor option group?
-                # The problem is that we can't easily check if an option is
-                # available from a parser (but what about calling get_defaults and
-                # looking at exceptions?).  However, one possibility is to
-                # create a list of tuples consisting of the data with which to
-                # call parser.add_arguments and use this to check.
-                # NOTE there's a problem with argparse's prefix matching which
-                # also affects removal of --num-executors
-
-            elif self.queue_type == 'pbs':
-                if self.ppn > 1:
-                    logger.warning("ppn of %d currently ignored in this configuration" % self.ppn)
-                if "PBS_O_WORKDIR" in env:
-                    del env["PBS_O_WORKDIR"]  # because on CCM, this is set to /home/user on qlogin nodes ...
-                    del env["PBS_JOBID"]
-                header = '\n'.join(["#!/usr/bin/env bash",
-                                    "#PBS -N %s" % jobname,
-                                    "#PBS -l nodes=1:ppn=1",
-                                    # CCM is strict, and doesn't like float values:
-                                    "#PBS -l walltime=%s" % (self.time),
-                                    "#PBS -l %s\n" % ','.join(["%s=%dg" % (attr, m.ceil(self.mem)) for
-                                                              attr in self.mem_request_attribute.split(',')]),
-                                    # FIXME add walltime stuff here if specified (and check <= max_walltime ??)
-                                    "df /dev/shm >&2",  # FIXME: remove
-                                    "cd $PBS_O_WORKDIR",
-                                    "export PYRO_LOGFILE=logs/%s-${PBS_JOBID}.log" % ident])
-                qsub_cmd = (['qsub', '-V', '-t', '1-%d' % number,
-                             '-o', "logs/%s-$PBS_JOBID-o.log" % ident,
-                             '-e', "logs/%s-$PBS_JOBID-e.log" % ident,
-                             '-Wumask=0137']
-                             + (['-q', self.queue_name] if self.queue_name else []))
-
-            script = header + '\n' + ' '.join(cmd) + '\n'
-            #print(script)
-            #print(' '.join(qsub_cmd))
-            p = subprocess.run(qsub_cmd, input=script.encode('ascii'), env=env)
+            #     header = '\n'.join(["#!/usr/bin/env bash",
+            #                         # why `csh`?  It seems that `qsub` doesn't allow one to
+            #                         # pass args to the shell specified with `-S`, so we can't pass --noprofile
+            #                         # (or --norc) to bash.  As a result, /etc, ~/.bashrc, etc.,
+            #                         # are read again by the executors, which is unlikely to be intended.
+            #                         # Since no-one uses csh, this is less likely to be a problem.
+            #                         # (This was implicitly happening before the `#$ -S ...` line was added
+            #                         # and none of our many users complained...)
+            #                         "#$ -S /bin/csh",
+            #                         "setenv PYRO_LOGFILE logs/%s-${JOB_ID}-${SGE_TASK_ID}.log" % ident])
+            #     # FIXME huge hack -- shouldn't we just iterate over options,
+            #     # possibly checking for membership in the executor option group?
+            #     # The problem is that we can't easily check if an option is
+            #     # available from a parser (but what about calling get_defaults and
+            #     # looking at exceptions?).  However, one possibility is to
+            #     # create a list of tuples consisting of the data with which to
+            #     # call parser.add_arguments and use this to check.
+            #     # NOTE there's a problem with argparse's prefix matching which
+            #     # also affects removal of --num-executors
+            #
+            # TODO: procs! ppn! umask for log files? log file names? jobname? (see version 2.0.8)
+            if self.ppn > 1:
+                logger.warning("ppn of %d currently ignored in this configuration" % self.ppn)
+            cmd_str = ' '.join(cmd)
+            script = '\n'.join([cmd_str for _ in range(number)])
+            submit_cmd = (["qbatch",
+                           "--chunksize=1",
+                           "--cores=1",      # qbatch should run each executor as a separate job
+                           #"--ppj=%s", self.ppn,
+                           "--mem=%sGB" % m.ceil(self.mem)]  # some schedulers don't like floats
+                           # TODO expose the rest of qbatch's options here (e.g. --footer, etc.?)
+                           # the following options aren't really needed if qbatch is configured separately:
+                           + (["-b", self.queue_type] if self.queue_type else [])
+                           + (["--queue=%s" % self.queue_name] if self.queue_name else [])
+                           # TODO change to "memvars" to match qbatch?
+                           + (["--walltime=%s" % self.time] if self.time else [])  # is time ever falsy??
+                           + (["--memvars=%s" % self.mem_request_attribute] if self.mem_request_attribute else [])
+                           + (["--pe=%s" % self.pe] if self.pe else [])  # TODO: only if 'sge' ?
+                           # TODO: add queue opts via qbatch -S (or - more general - change to qbatch_opts??)
+                           + ["-"])
+            #print(submit_cmd)
+            #p = subprocess.Popen(submit_cmd, stdin=subprocess.PIPE, shell=False, env=env)
+            #_out_data, _err_data = p.communicate(script.encode('ascii'))
+            #print(out_data)
+            #print(err_data, file=sys.stderr)
+            # TODO better error reporting here ??
+            p = subprocess.run(submit_cmd, input=script.encode('ascii'), env=env)
             if p.returncode != 0:
-                raise SubmitError({ 'return' : p.returncode, 'failed_command' : qsub_cmd })
+                raise SubmitError({ 'return' : p.returncode, 'failed_command' : submit_cmd })
 
     def canRun(self, stageMem, stageProcs, runningMem, runningProcs):
         """Calculates if stage is runnable based on memory and processor availability"""
