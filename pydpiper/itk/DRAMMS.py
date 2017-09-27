@@ -63,15 +63,16 @@ class DrammsXfmAtom(FileAtom):
 
 
 class DrammsXfmHandler(GenericXfmHandler[NiiAtom, DrammsXfmAtom]):
-    def __init__(self,
-                 source,
-                 xfm,
-                 target,
-                 resampled = None,
-                 inverse = None,
-                 salience_map = None):
-        super().__init__(self, source=source, xfm=xfm, target=target, resampled=resampled, inverse=inverse)
-        self.salience_map = salience_map
+    pass
+    #def __init__(self,
+    #             source,
+    #             xfm,
+    #             target,
+    #             resampled = None,
+    #             inverse = None,
+    #             salience_map = None):
+    #    super().__init__(self, source=source, xfm=xfm, target=target, resampled=resampled, inverse=inverse)
+    #    self.salience_map = salience_map
 
 
 # TODO add more options?
@@ -327,7 +328,7 @@ class DRAMMS(NLIN[NiiAtom, DrammsXfmAtom]):
 
       out_img = source.newname_with_suffix("_to_%s" % target.filename_wo_ext)
 
-      salience_map = out_img.newname("MutualSaliency-%s.nii.gz" % target.filename_wo_ext)
+      #salience_map = out_img.newname("MutualSaliency-%s.nii.gz" % target.filename_wo_ext)
 
       cmd = (["dramms", "-a", "0",
               "--source", source.path, "--target", target.path,
@@ -345,7 +346,8 @@ class DRAMMS(NLIN[NiiAtom, DrammsXfmAtom]):
       return Result(stages=Stages([s]),
                     output=DrammsXfmHandler(source=source, target=target,
                                             xfm=out_def, resampled=out_img,
-                                            salience_map=salience_map))
+                                            #salience_map=salience_map
+                                            ))
              #+ ((flatten(*[
              #     # TODO: ffd spacing
              #     ([] if ... else [])
