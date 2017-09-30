@@ -57,7 +57,6 @@ from pydpiper.minc.nlin import NLIN
 #                                 ()])
 
 
-
 class DrammsXfmAtom(FileAtom):
     pass
 
@@ -283,9 +282,9 @@ class DRAMMS(NLIN[NiiAtom, DrammsXfmAtom]):
 
   class ToMinc(ToMinc):
       @staticmethod
-      def to_mnc(img): return convert(img, out_ext=".mnc")
+      def to_mnc(img): return itk.nii2mnc(img) #convert(img, out_ext=".mnc")
       @staticmethod
-      def from_mnc(img): return convert(img, out_ext=".nii.gz")
+      def from_mnc(img): return itk.mnc2nii(img) #convert(img, out_ext=".nii.gz")
       @staticmethod
       def to_mni_xfm(xfm):
           s = Stages()

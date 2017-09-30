@@ -3,6 +3,7 @@ import os
 from typing import Optional, Sequence
 from configargparse import Namespace
 
+from pydpiper.minc.conversion import generic_converter
 from pydpiper.minc.files import ToMinc
 from pydpiper.minc.nlin import Algorithms
 from pydpiper.core.stages import Result, CmdStage, Stages
@@ -37,6 +38,13 @@ def itk_convert_xfm(xfm : ITKXfmAtom, out_ext : str) -> Result[ITKXfmAtom]:
         cmd = CmdStage(inputs=(xfm,), outputs=(out_xfm,),
                        cmd=["itk_convert_xfm", "--clobber", xfm.path, out_xfm.path])
         return Result(stages=Stages((cmd,)), output=out_xfm)
+
+
+mnc2nii = generic_converter(renamer = lambda img: img.newext(".nii.gz"),
+                            mk_cmd = lambda i, o: ['mnc2nii', i, o])
+
+nii2mnc = generic_converter(renamer = lambda img: img.newext(".mnc"),
+                            mk_cmd = lambda i, o: ['nii2mnc', i, o])
 
 
 class Interpolation(object):

@@ -596,8 +596,8 @@ def pmincaverage(imgs: List[MincAtom],
 
 
 def mincreshape(img : MincAtom, args : List[str]):
-    out_img=img.newname_with(''.join(args))  # TODO better naming
-    stage = CmdStage(inputs=(img,), outputs=out_img,
+    out_img = img.newname_with(''.join(args))  # TODO better naming
+    stage = CmdStage(inputs=(img,), outputs=(out_img,),
                      cmd=["mincreshape", "-clobber"] + args + [img.path, out_img.path])
     return Result(stages=Stages([stage]), output=out_img)
 
