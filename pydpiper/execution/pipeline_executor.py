@@ -157,7 +157,9 @@ def runStage(*, clientURI, stage, cmd_wrapper):
 
         logger.info("Running stage %i (on %s). Memory requested: %.2f", ix, clientURI, stage.mem)
         try:
-            command_to_run  = ((cmd_wrapper + ' ') if cmd_wrapper else '') + ' '.join(stage.cmd)
+            command_to_run  = shlex.split((cmd_wrapper + ' ') if cmd_wrapper else '') + stage.cmd
+            #command_to_run = stage.cmd
+
             logger.info(command_to_run)
             command_logfile = stage.log_file
 
@@ -168,8 +170,9 @@ def runStage(*, clientURI, stage, cmd_wrapper):
                 of.write(command_to_run + "\n")
                 of.flush()
 
-                args = shlex.split(command_to_run)
-                process = subprocess.Popen(args, stdout=of, stderr=of, shell=False)
+                #args = shlex.split(command_to_run)
+                args = command_to_run
+                process = subprocess.Popen(args, stdout=of, stderr=of, shell=True)
                 #client.addPIDtoRunningList(process.pid)
                 process.communicate()
                 #client.removePIDfromRunningList(process.pid)
