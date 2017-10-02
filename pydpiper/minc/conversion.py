@@ -1,3 +1,5 @@
+import os
+
 from pydpiper.core.stages import Stages, Result, CmdStage
 
 
@@ -5,6 +7,11 @@ def generic_converter(renamer, mk_cmd):
     def f(img):
         s = Stages()
         def run_cmd(i, o):
+            try:
+                os.remove(o)
+            except FileNotFoundError:
+                # because nii2mnc doesn't know -clobber and generic_converter isn't generic enough:
+                pass
             s.add(CmdStage(inputs=(i,), outputs=(o,),
                            cmd = mk_cmd(i.path, o.path)))
         out_img = renamer(img)

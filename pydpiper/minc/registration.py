@@ -1588,16 +1588,39 @@ def lsq12_nlin(source: MincAtom,
     """
     s = Stages()
 
-    # This is strange.  The minctracc case requires a multilevel conf, while the ANTS case requires a single conf.
+    # TODO this procedure currently accepts and returns MINC files regardless of the file type used
+    # by the underlying nonlinear registration component.  The input type is a bit annoying since
+    # we've currently only implemented linear registration for MINC, but shouldn't the output type
+    # depend on the nonlinear component's file type, i.e., *be* a transform and images of that type?
+
+    # Strangeness: the minctracc case requires a multilevel conf, while the ANTS case requires a single conf.
     # Of course, it's because a 'single' ANTS run may work at several resolutions iteratively; if we're not
     # constructing intermediate models, there's no need for separate calls.  However, this is annoying since
     # one would hope this function would similarly to the model-building version in being able to dispatch
     # on the configuration passed in (and in the same way, to avoid extra logic).
+    # TODO is this comment still up-to-date?
 
     # TODO it's a bit late to do this parsing (inefficient/poorer error reporting/weird spot for IO)
     # but it's a bit harder to propagate the types correctly ...
     nlin_conf = (nlin_module.parse_protocol_file(nlin_options, resolution=resolution)
                   if nlin_options is not None else nlin_module.get_default_conf(resolution=resolution))
+
+    toMinc = nlin_module.ToMinc
+
+    # TODO: extract this somewhere else if it doesn't already exist there
+    # TODO and then also return a Result for consistency
+    def to_mni_xfmh(xfmh):
+        # TODO GenericXfmHandler?
+        # TODO handle inverse_xfm
+        return XfmHandler(source=s.defer(toMinc.to_mnc(xfmh.source)),
+                          target=s.defer(toMinc.to_mnc(xfmh.target)),
+                          resampled=s.defer(toMinc.to_mnc(xfmh.resampled if xfmh.has_resampled() else None)),
+                          xfm=s.defer(toMinc.to_mni_xfm(xfmh.xfm)))
+    #def from_mni_xfhm(xfmh):
+    #    return XfmHandler(source=s.defer(toMnc.from_mnc(xfmh.source)),
+    #                      target=s.defer(toMnc.from_mnc(xfmh.target)),
+    #                      resampled=s.defer(toMnc.from_mnc(xfmh.resampled)),
+    #                      xfm=s.defer(toMnc.from_mni_xfm(xfmh.xfm)))
 
     if nlin_module.accepts_initial_transform():
         lsq12_transform_handler = s.defer(multilevel_minctracc(source=source,
@@ -1605,21 +1628,25 @@ def lsq12_nlin(source: MincAtom,
                                                                conf=lsq12_conf,
                                                                # TODO allow a transform here?
                                                                resample_source=resample_source))
-        nlin_transform_handler = s.defer(nlin_module.register(source=source,
-                                                              target=target,
+        nlin_transform_handler = s.defer(nlin_module.register(source=s.defer(toMinc.from_mnc(source)),
+                                                              target=s.defer(toMinc.from_mnc(target)),
                                                               conf=nlin_conf,
-                                                              initial_source_transform=lsq12_transform_handler.xfm,
+                                                              initial_source_transform=s.defer(
+                                                                toMinc.from_mni_xfm(
+                                                                  lsq12_transform_handler.xfm)),
                                                               resample_source=resample_source))
-        full_transform = nlin_transform_handler
+        full_transform = to_mni_xfmh(nlin_transform_handler)  #FIXME convert to minc
     else:
         lsq12_transform_handler = s.defer(multilevel_minctracc(source=source,
                                                                target=target,
                                                                conf=lsq12_conf,
                                                                resample_source=True))
-        nlin_transform_handler = s.defer(nlin_module.register(source=lsq12_transform_handler.resampled,
-                                                              target=target,
+        nlin_transform_handler = s.defer(nlin_module.register(source=s.defer(toMinc.from_mnc(
+                                                                lsq12_transform_handler.resampled)),
+                                                              target=s.defer(toMinc.from_mnc(target)),
                                                               conf=nlin_conf,
                                                               resample_source=resample_source))
+        nlin_transform_handler = to_mni_xfmh(nlin_transform_handler)
         full_transform = s.defer(concat_xfmhandlers(xfms=[lsq12_transform_handler, nlin_transform_handler],
                                                     name=source.filename_wo_ext + "_to_" +
                                                       target.filename_wo_ext + "_lsq12_ANTS_nlin",

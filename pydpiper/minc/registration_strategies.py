@@ -417,6 +417,9 @@ def pairwise_and_build_model(nlin_module : Type[NLIN]):
 #     return C
 
 def mincify_build_model(base_build_model : Type[NLIN_BUILD_MODEL]) -> Type[NLIN_BUILD_MODEL]:
+    """Takes a model building component that inputs/outputs on a certain image format
+    and returns a new component that works on MINC files.  This isn't magic: the model building component
+    includes a ToMinc component."""
     class C(base_build_model):
         @classmethod
         def register(cls, *args, **kwargs):

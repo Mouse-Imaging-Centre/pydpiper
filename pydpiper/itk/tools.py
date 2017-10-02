@@ -40,7 +40,7 @@ def itk_convert_xfm(xfm : ITKXfmAtom, out_ext : str) -> Result[ITKXfmAtom]:
         return Result(stages=Stages((cmd,)), output=out_xfm)
 
 
-mnc2nii = generic_converter(renamer = lambda img: img.newext(".nii.gz"),
+mnc2nii = generic_converter(renamer = lambda img: img.newext(".nii"),
                             mk_cmd = lambda i, o: ['mnc2nii', i, o])
 
 nii2mnc = generic_converter(renamer = lambda img: img.newext(".mnc"),

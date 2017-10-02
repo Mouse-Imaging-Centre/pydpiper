@@ -8,7 +8,6 @@ from configargparse import ArgParser
 import os
 from typing import List
 import pandas as pd
-import numpy  as np
 
 from pydpiper.core.arguments        import (lsq12_parser, nlin_parser, stats_parser,
                                             CompoundParser, AnnotatedParser, BaseParser)
@@ -158,9 +157,6 @@ def maget_mask(imgs : List[MincAtom], maget_options, resolution : float,
 
     s = Stages()
 
-    resample  = np.vectorize(mincresample_new, excluded={"extra_flags"})
-    defer     = np.vectorize(s.defer)
-
     original_imgs = imgs
     imgs = copy.deepcopy(imgs)
     original_imgs = pd.Series(original_imgs, index=[img.path for img in original_imgs])
@@ -183,7 +179,7 @@ def maget_mask(imgs : List[MincAtom], maget_options, resolution : float,
     #                                                                  resolution)
 
     masking_nlin_component = get_nonlinear_component(reg_method=maget_options.maget.mask_method)
-
+    algorithms = masking_nlin_component.Algorithms
     #masking_nlin_conf = (masking_nlin_component.parse_protocol_file(
     #                       maget_options.maget.masking_nlin_protocol, resolution=resolution)
     #                     if maget_options.maget.masking_nlin_protocol is not None
@@ -211,41 +207,46 @@ def maget_mask(imgs : List[MincAtom], maget_options, resolution : float,
     # - run mincmath -clobber -mult <img> <voted_mask> to apply the mask to the files
     masked_img = (
         masking_alignments
-        .assign(resampled_mask=lambda df: defer(resample(img=df.atlas.apply(lambda x: x.mask),
-                                                         xfm=df.xfm.apply(lambda x: x.xfm),
-                                                         like=df.img,
-                                                         invert=True,
-                                                         interpolation=Interpolation.nearest_neighbour,
-                                                         postfix="-input-mask",
-                                                         subdir="tmp",
-                                                         # TODO annoying hack; fix mincresample(_mask) ...:
-                                                         #new_name_wo_ext=df.apply(lambda row:
-                                                         #    "%s_to_%s-input-mask" % (row.atlas.filename_wo_ext,
-                                                         #                             row.img.filename_wo_ext),
-                                                         #    axis=1),
-                                                         extra_flags=("-keep_real_range",))))
+        .assign(resampled_mask=lambda df: df.apply(axis=1, func=lambda row:
+           s.defer(algorithms.resample(img=row.atlas.mask, #apply(lambda x: x.mask),
+                                       xfm=row.xfm.xfm,  #apply(lambda x: x.xfm),
+                                       like=row.img,
+                                       invert=True,
+                                       #interpolation=Interpolation.nearest_neighbour,
+                                       postfix="-input-mask",
+                                       subdir="tmp",
+                                       # TODO annoying hack; fix mincresample(_mask) ...:
+                                       #new_name_wo_ext=df.apply(lambda row:
+                                       #    "%s_to_%s-input-mask" % (row.atlas.filename_wo_ext,
+                                       #                             row.img.filename_wo_ext),
+                                       #    axis=1),
+                                       use_nn_interpolation=True
+                                       #extra_flags=("-keep_real_range",)
+                                       ))))
         .groupby('img', as_index=False)
         .aggregate({'resampled_mask' : lambda masks: list(masks)})
         .rename(columns={"resampled_mask" : "resampled_masks"})
         .assign(voted_mask=lambda df: df.apply(axis=1,
                                                func=lambda row:
-                                                 s.defer(mincmath(op="max", vols=sorted(row.resampled_masks),
-                                                                  new_name="%s_max_mask" % row.img.filename_wo_ext,
-                                                                  subdir="tmp"))))
+                  # FIXME cannot use mincmath here !!!
+                  s.defer(mincmath(op="max", vols=sorted(row.resampled_masks),
+                                   new_name="%s_max_mask" % row.img.filename_wo_ext,
+                                   subdir="tmp"))))
         .apply(axis=1, func=lambda row: row.img._replace(mask=row.voted_mask)))
 
     # resample the atlas images back to the input images:
     # (note: this doesn't modify `masking_alignments`, but only stages additional outputs)
-    masking_alignments.assign(resampled_img=lambda df:
-      defer(resample(img=df.atlas,
-                     xfm=df.xfm.apply(lambda x: x.xfm),
-                     subdir="tmp",
-                     # TODO delete this stupid hack:
-                     #new_name_wo_ext=df.apply(lambda row:
-                     #  "%s_to_%s-resampled" % (row.atlas.filename_wo_ext,
-                     #                          row.img.filename_wo_ext),
-                     #                          axis=1),
-                     like=df.img, invert=True)))
+    masking_alignments.assign(resampled_img=lambda df: df.apply(axis=1, func=lambda row:
+      s.defer(algorithms.resample(
+                img=row.atlas,
+                xfm=row.xfm.xfm, #.apply(lambda x: x.xfm),
+                subdir="tmp",
+                # TODO delete this stupid hack:
+                #new_name_wo_ext=df.apply(lambda row:
+                #  "%s_to_%s-resampled" % (row.atlas.filename_wo_ext,
+                #                          row.img.filename_wo_ext),
+                #                          axis=1),
+                like=row.img, invert=True))))
 
     for img in masked_img:
         img.output_sub_dir = original_imgs.loc[img.path].output_sub_dir
@@ -338,7 +339,8 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir, build_model_xfms=N
 
     nlin_component = get_nonlinear_component(options.maget.nlin.reg_method)
 
-
+    # TODO should this be here or outside `maget` call?
+    #imgs = [s.defer(nlin_component.ToMinc.from_mnc(img)) for img in imgs]
 
     #nlin_hierarchy = get_nonlinear_configuration_from_options(options.maget.nlin.nlin_protocol,
     #                                                          next(iter(options.maget.nlin.flags_.nlin_protocol)),
@@ -433,7 +435,9 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir, build_model_xfms=N
                                      != imgs_and_templates.template[ix].path)  # FIXME hardcoded df name !!
                 .assign(label_file=lambda df: df.apply(axis=1, func=lambda row:
                           s.defer(
+                            # TODO switch to uses of nlin_component.whatever(...) in several places below?
                             mincresample_new(
+                            #nlin_component.Algorithms.resample(
                               img=row.template_label_file,
                               xfm=s.defer(
                                     lsq12_nlin(source=row.img,
@@ -447,13 +451,20 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir, build_model_xfms=N
                                   if build_model_xfms is None
                                   # use transforms from model building if we have them:
                                   else s.defer(
-                                         xfmconcat([build_model_xfms[row.img.path],
-                                                   s.defer(xfminvert(build_model_xfms[row.template.path],
-                                                                     subdir="tmp"))])),
+                                         xfmconcat(
+                                         #nlin_component.Algorithms.concat(
+                                          [build_model_xfms[row.img.path],
+                                           s.defer(
+                                             xfminvert(
+                                             #nlin_component.Algorithms.invert(
+                                               build_model_xfms[row.template.path],
+                                               subdir="tmp"))])),
                               like=row.img,
                               invert=True,
+                              #use_nn_interpolation=True
                               interpolation=Interpolation.nearest_neighbour,
-                              extra_flags=('-keep_real_range',)))))
+                              extra_flags=('-keep_real_range',)
+                            ))))
             ) if len(imgs) > 1 else pd.DataFrame({ 'img' : [], 'label_file' : [] })
               # ... as no distinct templates to align if only one image supplied (#320)
 
@@ -462,6 +473,9 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir, build_model_xfms=N
                                              ignore_index=True)
         else:
             imgs_with_all_labels = atlas_labelled_imgs
+
+        #imgs_with_all_labels = imgs_with_all_labels.applymap(
+        #    lambda x: s.defer(nlin_component.ToMinc.to_mnc(x)))
 
         segmented_imgs = (
                 imgs_with_all_labels

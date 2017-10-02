@@ -255,7 +255,9 @@ class DRAMMS(NLIN[NiiAtom, DrammsXfmAtom]):
 
   @staticmethod
   def accepts_initial_transform():
-      return True
+      #return True  # FIXME yes, but I don't want to use it to avoid itk_convert_xfm flipping weirdness
+                    # since I don't know an xfm equivalent of mnc2nii (+ inverse)
+      return False
 
   @classmethod
   def parse_protocol_file(cls, filename, resolution):
