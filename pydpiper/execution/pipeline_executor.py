@@ -157,8 +157,7 @@ def runStage(*, clientURI, stage, cmd_wrapper):
 
         logger.info("Running stage %i (on %s). Memory requested: %.2f", ix, clientURI, stage.mem)
         try:
-            command_to_run  = shlex.split((cmd_wrapper + ' ') if cmd_wrapper else '') + stage.cmd
-            #command_to_run = stage.cmd
+            command_to_run  = ((cmd_wrapper + ' ') if cmd_wrapper else '') + ' '.join(stage.cmd)
 
             logger.info(command_to_run)
             command_logfile = stage.log_file

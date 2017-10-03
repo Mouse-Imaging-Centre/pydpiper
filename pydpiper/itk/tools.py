@@ -41,10 +41,10 @@ def itk_convert_xfm(xfm : ITKXfmAtom, out_ext : str) -> Result[ITKXfmAtom]:
 
 
 mnc2nii = generic_converter(renamer = lambda img: img.newext(".nii"),
-                            mk_cmd = lambda i, o: ['mnc2nii', i, o])
+                            mk_cmd = lambda i, o: ["bash", "-c", "'rm %s.path; mnc2nii %s %s'" % (o, i, o)])
 
 nii2mnc = generic_converter(renamer = lambda img: img.newext(".mnc"),
-                            mk_cmd = lambda i, o: ['nii2mnc', i, o])
+                            mk_cmd = lambda i, o: ["bash", "-c", "'rm %s.path; nii2mnc %s %s'" % (o, i, o)])
 
 
 class Interpolation(object):
