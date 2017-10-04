@@ -8,14 +8,7 @@ def generic_converter(renamer, mk_cmd):
         s = Stages()
         def run_cmd(i, o):
             c = CmdStage(inputs=(i,), outputs=(o,),
-                          cmd = mk_cmd(i.path, o.path))
-            # FIXME because nii2mnc doesn't know -clobber and generic_converter isn't generic enough:
-            def h(s):
-                try:
-                    os.remove(o.path)
-                except FileNotFoundError:
-                    pass
-            c.when_runnable_hooks.append(h)
+                         cmd = mk_cmd(i.path, o.path))
             s.add(c)
         out_img = renamer(img)
         if img.mask:
