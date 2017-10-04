@@ -171,18 +171,19 @@ def runStage(*, clientURI, stage, cmd_wrapper):
 
                 #args = shlex.split(command_to_run)
                 args = command_to_run
+                start_time = time.time()
                 process = subprocess.Popen(args, stdout=of, stderr=of, shell=True)
                 #client.addPIDtoRunningList(process.pid)
                 process.communicate()
                 #client.removePIDfromRunningList(process.pid)
                 ret = process.returncode
                 if ret == 0:
-                    # TODO: better logic here, e.g., check time stamp is after stage started, allow some tolerance
-                    #  for NFS slowness, etc.
-                    missing_outputs = [o for o in stage.output_files if not os.path.exists(o)]
+                    # TODO: better logic here, e.g., allow some tolerance for NFS slowness, etc.
+                    missing_outputs = [o for o in stage.output_files
+                                       if (not os.path.exists(o)) or os.path.getmtime(o) < start_time]
                     if len(missing_outputs) > 0:
-                        logger.warning("missing outputs from Stage %i: %s", ix, missing_outputs)
-                        of.write("[executor] warning: missing outputs: %s\n" % missing_outputs)
+                        logger.warning("some outputs not produced by Stage %i: %s", ix, missing_outputs)
+                        of.write("[executor] ERROR: outputs not produced, failing this stage: %s\n" % missing_outputs)
                         raise MissingOutputs(missing_outputs)
         except Exception as e:
             logger.exception("Exception whilst running stage: %i (on %s)", ix, clientURI)
