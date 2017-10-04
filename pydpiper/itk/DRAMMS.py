@@ -323,7 +323,8 @@ class DRAMMS(NLIN[NiiAtom, DrammsXfmAtom]):
       else:
           name = os.path.join(source.pipeline_sub_dir, source.output_sub_dir, trans_output_dir,
                               "%s_DRAMMS_to_%s.nii" % (source.filename_wo_ext, target.filename_wo_ext))
-      out_def = DrammsXfmAtom(name=name, pipeline_sub_dir=source.pipeline_sub_dir, output_sub_dir=source.output_sub_dir)
+      out_def = DrammsXfmAtom(name=name, pipeline_sub_dir=source.pipeline_sub_dir,
+                              output_sub_dir=source.output_sub_dir)
       out_def.ext = ".nii.gz"  # must occur before use ...
       # TODO add optional arg to constructors to deal with extensions containing '.' (see above comment) ?
 
@@ -333,7 +334,9 @@ class DRAMMS(NLIN[NiiAtom, DrammsXfmAtom]):
 
       cmd = (["dramms", "-a", "0",
               "--source", source.path, "--target", target.path,
-              "--outimg", out_img.path if resample_source else "/dev/null", "--outdef", out_def.path]
+              # specify outimg even if it isn't requested since otherwise it's written to /tmp;
+              # /dev/null doesn't work since DRAMMS helpfully appends ".nii" and crashes
+              "--outdef", out_def.path, "--outimg", out_img.path]
              # DRAMMS doesn't allow --bt and --bs at the same time; is this the best solution -- ?
              + (["--bt", target.mask.path] if target.mask and not source.mask else [])
              + (["--bs", source.mask.path] if source.mask else [])
@@ -345,6 +348,8 @@ class DRAMMS(NLIN[NiiAtom, DrammsXfmAtom]):
                                             initial_source_transform)
                                 if i is not None),
                    outputs=(out_img, out_def))
+
+      # TODO could add a hook here to delete the outimg if resample_source is False
 
       def set_memory(st, _cfg):
           st.setMem(14)
