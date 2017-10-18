@@ -221,7 +221,8 @@ def mincaverage(imgs: List[MincAtom],
                 name_wo_ext: str = "average",
                 output_dir: str = '.',
                 avg_file: Optional[MincAtom] = None,
-                copy_header_from_first_input: bool = False):
+                copy_header_from_first_input: bool = False,
+                nocheck_dimensions: bool = False):
     """
     By default mincaverage only copies header information over to the output
     file that is shared by all input files (xspace, yspace, zspace information etc.)
@@ -270,6 +271,8 @@ def mincaverage(imgs: List[MincAtom],
                        orig_name=None,
                        pipeline_sub_dir=output_dir))
     additional_flags = ["-copy_header"] if copy_header_from_first_input else []  # type: List[str]
+    if nocheck_dimensions: additional_flags.append("-nocheck_dimensions")
+
     avg_cmd = CmdStage(inputs=tuple(imgs), outputs=(avg, sdfile),
                        cmd=['mincaverage', '-clobber', '-normalize', '-max_buffer_size_in_kb', '409620'] +
                            additional_flags +
