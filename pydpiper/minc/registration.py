@@ -1571,6 +1571,56 @@ class WithAvgImgs(Generic[T]):
         self.avg_imgs = avg_imgs
         self.avg_img = avg_img
 
+def lsq6_lsq12_nlin(source: MincAtom,
+                    target: MincAtom,
+                    lsq6_conf: LSQ6Conf,
+                    lsq12_conf: MinctraccConf,
+                    nlin_module: NLIN,
+                    resolution: float,
+                    nlin_options,  # nlin_module.Conf,  ??  want an nlin_module.Conf here ...
+                    #nlin_conf: Union[MultilevelMinctraccConf, MultilevelANTSConf, ANTSConf],  # sigh ... ...
+                    lsq6_post_fix: str = None):
+    """
+    Full source to target registration. First calls the lsq6() module to align the
+    source to the target rigidly, then calls lsq12_nlin for the linear and nonlinear
+    alignment (*not* model building)
+    :return:
+    """
+    s = Stages()
+
+
+    # first run the rigid alignment
+    # if an lsq6_post_fix is given, don't use the resampling
+    # from the lsq6() module, as it will create a standard name
+
+    source_lsq6_to_target_xfm = s.defer(lsq6(imgs=[source],
+                                             target=target,
+                                             resolution=resolution,
+                                             conf=lsq6_conf,
+                                             resample_images=True if not lsq6_post_fix else False))
+
+    # resample the source file manually if an lsq6_post_fix was provided:
+    if lsq6_post_fix:
+        source_resampled = s.defer(mincresample(img=source,
+                                                xfm=source_lsq6_to_target_xfm[0].xfm,
+                                                like=target,
+                                                interpolation=Interpolation.sinc,
+                                                new_name_wo_ext=source.filename_wo_ext + lsq6_post_fix,
+                                                subdir="resampled"))
+    else:
+        source_resampled = source_lsq6_to_target_xfm[0].resampled
+
+
+    # then run the linear and nonlinear alignment:
+    rigid_source_lsq12_and_nlin_xfm = s.defer(lsq12_nlin(source=source_resampled,
+                                                         target=target,
+                                                         lsq12_conf=lsq12_conf,
+                                                         nlin_module=nlin_module,
+                                                         resolution=resolution,
+                                                         nlin_options=nlin_options))
+    return Result(stages=s, output=rigid_source_lsq12_and_nlin_xfm)
+
+
 
 def lsq12_nlin(source: MincAtom,
                target: MincAtom,
