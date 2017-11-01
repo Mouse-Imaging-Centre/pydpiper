@@ -11,12 +11,13 @@ from pydpiper.core.arguments        import (lsq6_parser, lsq12_parser, nlin_pars
                                             CompoundParser, AnnotatedParser, BaseParser)
 from pydpiper.execution.application import mk_application
 from pydpiper.core.stages           import Stages, Result
+from pydpiper.minc.analysis         import mincblob
 from pydpiper.pipelines.MAGeT       import get_imgs
 from pydpiper.minc.files            import MincAtom
-from pydpiper.minc.registration import (check_MINC_input_files, lsq6_lsq12_nlin, LSQ6Conf,
-                                        MinctraccConf, get_resolution_from_file,
-                                        get_linear_configuration_from_options, LinearTransType,
-                                        get_nonlinear_component)
+from pydpiper.minc.registration     import (check_MINC_input_files, lsq6_lsq12_nlin, LSQ6Conf,
+                                            MinctraccConf, get_resolution_from_file,
+                                            get_linear_configuration_from_options, LinearTransType,
+                                            get_nonlinear_component, invert_xfmhandler, minc_displacement)
 from pydpiper.minc.nlin             import NLIN
 """
 General idea:
@@ -153,6 +154,7 @@ def stage_embryos_pipeline(options):
 
     nlin_component = get_nonlinear_component(options.staging.nlin.reg_method)
 
+    # match each of the embryos individually
     for i in range(imgs_and_rough_volume.shape[0]):
         s.defer(match_embryo_to_4D_atlas(imgs_and_rough_volume.loc[i],
                                          time_points_in_4D_atlas,
