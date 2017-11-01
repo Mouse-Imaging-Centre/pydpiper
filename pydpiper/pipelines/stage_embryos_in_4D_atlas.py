@@ -112,17 +112,26 @@ def match_embryo_to_4D_atlas(embryo_with_volume_est,
     # make sure we don't index outside the possible range
     lowest_index  = max(0, mid_index - 5)
     highest_index = min(full_4D_atlas_info.shape[0], mid_index + 5)
-    for i in range(lowest_index, highest_index, 1):
-        all_transforms = [s.defer(lsq6_lsq12_nlin(source=embryo_with_volume_est["mincatom"],
-                                                  target=full_4D_atlas_info.loc[i]["mincatom"],
-                                                  lsq6_conf=lsq6_conf,
-                                                  lsq12_conf=lsq12_conf,
-                                                  nlin_module=nlin_module,
-                                                  resolution=resolution,
-                                                  nlin_options=nlin_options.nlin_protocol,
-                                                  lsq6_post_fix="_lsq6_to_E" + str(full_4D_atlas_info.loc[i]["timepoint"]) ))]
+
+    all_transforms = [s.defer(lsq6_lsq12_nlin(source=embryo_with_volume_est["mincatom"],
+                                              target=full_4D_atlas_info.loc[i]["mincatom"],
+                                              lsq6_conf=lsq6_conf,
+                                              lsq12_conf=lsq12_conf,
+                                              nlin_module=nlin_module,
+                                              resolution=resolution,
+                                              nlin_options=nlin_options.nlin_protocol,
+                                              resampled_post_fix_string="E" + str(full_4D_atlas_info.loc[i]["timepoint"]))) for
+                      i in range(lowest_index, highest_index + 1, 1)]
 
     # gather stats on those registrations
+    # the match is determined by the sum of the magnitude
+    # of the inverse transformation from 4D instance -> embryo
+    # using the mask of the 4D instance to limit the total sum
+    # 1) calculate inverse
+    all_inv_transforms = [s.defer(invert_xfmhandler(xfm)) for xfm in all_transforms]
+    minc_displacement_grids = [s.defer(minc_displacement(inv_xfm)) for inv_xfm in all_inv_transforms]
+    magnitudes = [s.defer(mincblob(op='magnitude', grid=disp_grid)) for disp_grid in minc_displacement_grids]
+
     return Result(stages=s, output=all_transforms)
 
 def stage_embryos_pipeline(options):
