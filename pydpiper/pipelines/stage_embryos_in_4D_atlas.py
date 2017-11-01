@@ -33,13 +33,13 @@ volume  =`mincstats -quiet -volume -floor $biModalT $file`
   -- rough size estimates of the time points based on the masks
 --> stored in a csv like so:
 
-echo volume,timepoint,anatomical_scan,mask > 4D_embryo_mapping.csv; 
+echo volume,timepoint,file,mask_file > 4D_embryo_mapping.csv; 
 for main in `seq 12 16`; do 
     for minor in `seq 0 9`; do 
         for file in E${main}.${minor}*_mask.mnc; do 
             realpathmainfile=`realpath ${file/_mask.mnc/.mnc}`; 
             realpathmask=`realpath $file`; 
-            volume=`mincstats -quiet -volume -floor 0.5  $file`; 
+            volume=`mincstats -quiet -volume -floor 1500  $realpathmainfile`; 
             echo $volume,${main}.${minor},$realpathmainfile,$realpathmask  >> 4D_embryo_mapping.csv ;  
         done; 
     done; 
