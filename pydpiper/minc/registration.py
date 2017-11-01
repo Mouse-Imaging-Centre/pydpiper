@@ -1579,7 +1579,7 @@ def lsq6_lsq12_nlin(source: MincAtom,
                     resolution: float,
                     nlin_options,  # nlin_module.Conf,  ??  want an nlin_module.Conf here ...
                     #nlin_conf: Union[MultilevelMinctraccConf, MultilevelANTSConf, ANTSConf],  # sigh ... ...
-                    lsq6_post_fix: str = None):
+                    resampled_post_fix_string: str = None):
     """
     Full source to target registration. First calls the lsq6() module to align the
     source to the target rigidly, then calls lsq12_nlin for the linear and nonlinear
@@ -1590,22 +1590,22 @@ def lsq6_lsq12_nlin(source: MincAtom,
 
 
     # first run the rigid alignment
-    # if an lsq6_post_fix is given, don't use the resampling
+    # if an resampled_post_fix_string is given, don't use the resampling
     # from the lsq6() module, as it will create a standard name
 
     source_lsq6_to_target_xfm = s.defer(lsq6(imgs=[source],
                                              target=target,
                                              resolution=resolution,
                                              conf=lsq6_conf,
-                                             resample_images=True if not lsq6_post_fix else False))
+                                             resample_images=True if not resampled_post_fix_string else False))
 
-    # resample the source file manually if an lsq6_post_fix was provided:
-    if lsq6_post_fix:
+    # resample the source file manually if an resampled_post_fix_string was provided:
+    if resampled_post_fix_string:
         source_resampled = s.defer(mincresample(img=source,
                                                 xfm=source_lsq6_to_target_xfm[0].xfm,
                                                 like=target,
                                                 interpolation=Interpolation.sinc,
-                                                new_name_wo_ext=source.filename_wo_ext + lsq6_post_fix,
+                                                new_name_wo_ext=source.filename_wo_ext + "_lsq6_to_" + resampled_post_fix_string,
                                                 subdir="resampled"))
     else:
         source_resampled = source_lsq6_to_target_xfm[0].resampled
@@ -1617,7 +1617,20 @@ def lsq6_lsq12_nlin(source: MincAtom,
                                                          lsq12_conf=lsq12_conf,
                                                          nlin_module=nlin_module,
                                                          resolution=resolution,
-                                                         nlin_options=nlin_options))
+                                                         nlin_options=nlin_options,
+                                                         resample_source=True if not resampled_post_fix_string else False))
+
+    # resample the source file manually if an resampled_post_fix_string was provided:
+    if resampled_post_fix_string:
+        source_resampled_final = s.defer(mincresample(img=source_resampled,
+                                                      xfm=rigid_source_lsq12_and_nlin_xfm.xfm,
+                                                      like=target,
+                                                      interpolation=Interpolation.sinc,
+                                                      new_name_wo_ext=source.filename_wo_ext + "_lsq6_lsq12_and_nlin_to_" + resampled_post_fix_string,
+                                                      subdir="resampled"))
+        rigid_source_lsq12_and_nlin_xfm.resampled = source_resampled_final
+
+
     return Result(stages=s, output=rigid_source_lsq12_and_nlin_xfm)
 
 
