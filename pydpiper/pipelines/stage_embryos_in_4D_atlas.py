@@ -110,8 +110,8 @@ def match_embryo_to_4D_atlas(embryo_with_volume_est,
 
     # register embryo to closest match +/- 5 time points
     # make sure we don't index outside the possible range
-    lowest_index  = max(0, mid_index - 5)
-    highest_index = min(full_4D_atlas_info.shape[0], mid_index + 5)
+    lowest_index  = max(0, mid_index - 7)
+    highest_index = min(full_4D_atlas_info.shape[0] - 1, mid_index + 7)
 
     all_transforms = [s.defer(lsq6_lsq12_nlin(source=embryo_with_volume_est["mincatom"],
                                               target=full_4D_atlas_info.loc[i]["mincatom"],
