@@ -78,9 +78,24 @@ def instances_in_4D_atlas_from_csv(csv_4D: str, pipeline_sub_dir: str) -> pd.Ser
     return df
 
 def get_volume_estimate(imgs: List[MincAtom]):
-    biModalT_values = [subprocess.check_output(["mincstats", "-quiet", "-biModalT", img.orig_path]).rstrip().decode() for img in imgs]
-    volumes = [subprocess.check_output(["mincstats", "-quiet", "-floor", biModalT, "-volume", img.orig_path]).rstrip().decode() for
-               biModalT,img in zip(biModalT_values,imgs)]
+    """
+    Sometimes when the bimodalt value is calculated, the threshold
+    will separate the embryo+gel from the background. In that case,
+    the calculated volume will take up more than 50% of the entire volume
+    which is highly unlikely. So if that's the case, we'll re-calculate the
+    bimodalt value using the -kapur method, as it seems to separate out
+    the "second" peak in the data.
+    """
+    volumes = []
+    for img in imgs:
+        biModalT = subprocess.check_output(["mincstats", "-quiet", "-biModalT", img.orig_path]).rstrip().decode()
+        volume = subprocess.check_output(["mincstats", "-quiet", "-floor", biModalT, "-volume", img.orig_path]).rstrip().decode()
+        total_file_volume = subprocess.check_output(["mincstats", "-quiet", "-volume", img.orig_path]).rstrip().decode()
+        # if the ratio is larger than 0.5, we'll recompute
+        if float(volume) / float(total_file_volume) > 0.5:
+            biModalT = subprocess.check_output(["mincstats", "-quiet", "-biModalT", "-kapur", img.orig_path]).rstrip().decode()
+            volume = subprocess.check_output(["mincstats", "-quiet", "-floor", biModalT, "-volume", img.orig_path]).rstrip().decode()
+        volumes += [volume]
     return volumes
 
 def get_index_closest_volume_match(volume, full_4D_atlas_info):
