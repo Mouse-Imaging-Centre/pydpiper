@@ -8,7 +8,7 @@ from configargparse import ArgParser
 from pydpiper.core.arguments import AnnotatedParser, BaseParser
 from pydpiper.core.util import AutoEnum
 from pydpiper.minc.registration import lsq12_nlin, concat_xfmhandlers, mincblur, mincresample, mincresample_new, \
-    mincreshape, minc_label_ops, LabelOp, optional
+    minc_label_ops, LabelOp, optional
 from pydpiper.core.files import FileAtom
 from pydpiper.core.stages import Stages, CmdStage, Result
 #from pydpiper.core.util   import NamedTuple
