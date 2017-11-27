@@ -948,7 +948,7 @@ def launchPipelineExecutors(options, mem_needed, number, uri_file):
         for _ in range(number):
             e = pe.pipelineExecutor(options=options.execution,
                                     uri_file=uri_file,
-                                    #pipeline_name=options.application.pipeline_name,
+                                    pipeline_name=options.application.pipeline_name,
                                     memNeeded=mem_needed)
             # since launchPipelineExecutors can be called from server,
             # need some concurrency or pe.launchExecutor will hang server ....
@@ -957,7 +957,7 @@ def launchPipelineExecutors(options, mem_needed, number, uri_file):
     else:
         pipelineExecutor = pe.pipelineExecutor(options=options.execution,
                                                uri_file=uri_file,
-                                               #pipeline_name=options.application.pipeline_name,
+                                               pipeline_name=options.application.pipeline_name,
                                                memNeeded=mem_needed)
         pipelineExecutor.submitToQueue(number=number)
 
