@@ -191,7 +191,8 @@ class InsufficientResources(Exception):
     pass
 
 class pipelineExecutor(object):
-    def __init__(self, options, uri_file, memNeeded = None):
+    def __init__(self, options, uri_file, pipeline_name, memNeeded = None):
+        # TODO change options, uri_file, pipeline_name to exec_options, app_options
         # better: self.options = options ... ?
         # TODO the additional argument `mem` represents the
         # server's estimate of the amount of memory
@@ -204,6 +205,7 @@ class pipelineExecutor(object):
         logger.info("self.mem = %0.2fG", self.mem)
         if self.mem > options.mem:
             raise InsufficientResources("executor requesting %.2fG memory but maximum is %.2fG" % (options.mem, self.mem))
+        self.pipeline_name = pipeline_name
         self.procs = options.proc
         self.ppn = options.ppn
         self.pe  = options.pe
@@ -340,25 +342,26 @@ class pipelineExecutor(object):
 
     def submitToQueue(self, number):
         """Submits to queueing system using qbatch"""
-        if self.queue_type not in ['sge', 'pbs', 'slurm', None]:
-            msg = ("Specified queueing system is: %s" % (self.queue_type) +
-                   "Only `queue_type`s 'sge', 'pbs', and None currently support launching executors." +
-                   "Exiting...")
+        # TODO it would be best if we could get this information from qbatch:
+        supported = ['sge', 'pbs', 'slurm', None]
+        if self.queue_type not in supported:
+            msg = ("Specified queueing system is: %s" % self.queue_type +
+                   "To our knowledge qbatch only supports `queue_type`s %s currently support launching executors " % supported + "so this probably won't work ...")
             logger.warning(msg)
-            sys.exit(msg)
-        else:
-            now = datetime.now().strftime("%Y-%m-%d-at-%H-%M-%S")
-            ident = "pipeline-executor-" + now
-            #jobname = ((os.path.basename(program_name) + '-') if program_name is not None else "") + ident
-            jobname = ident
-            # do we really need the program name here?
-            env = os.environ.copy()
-            cmd = ((self.executor_wrapper.split() if self.executor_wrapper else [])
-                  + (["pipeline_executor.py", "--local",
-                       '--uri-file', self.uri_file,
-                       # Only one exec is launched at a time in this manner, so:
-                       "--num-executors", str(1), '--mem', str(self.mem)]
-                     + q.remove_flags(['--num-exec', '--mem'], sys.argv[1:])))
+
+        now = datetime.now().strftime("%Y-%m-%d-at-%H-%M-%S")
+        ident = self.pipeline_name + '-executor-' + now #"pipeline-executor-" + now
+        #jobname = ((os.path.basename(program_name) + '-') if program_name is not None else "") + ident
+        jobname = ident
+        # do we really need the program name here?
+        env = os.environ.copy()
+        env['PYRO_LOGFILE'] = "logs/%s.log" % ident
+        cmd = ((self.executor_wrapper.split() if self.executor_wrapper else [])
+               + (["pipeline_executor.py", "--local",
+                   '--uri-file', self.uri_file,
+                   # Only one exec is launched at a time in this manner, so:
+                   "--num-executors", str(1), '--mem', str(self.mem)]
+                   + q.remove_flags(['--num-exec', '--mem'], sys.argv[1:])))
 
             #     header = '\n'.join(["#!/usr/bin/env bash",
             #                         # why `csh`?  It seems that `qsub` doesn't allow one to
@@ -380,35 +383,36 @@ class pipelineExecutor(object):
             #     # NOTE there's a problem with argparse's prefix matching which
             #     # also affects removal of --num-executors
             #
-            # TODO: procs! ppn! umask for log files? log file names? jobname? (see version 2.0.8)
-            if self.ppn > 1:
-                logger.warning("ppn of %d currently ignored in this configuration" % self.ppn)
-            cmd_str = ' '.join(cmd)
-            script = '\n'.join([cmd_str for _ in range(number)])
-            submit_cmd = (["qbatch",
-                           "--chunksize=1",
-                           "--cores=1",      # qbatch should run each executor as a separate job
-                           #"--ppj=%s", self.ppn,
-                           "--mem=%sGB" % m.ceil(self.mem)]  # some schedulers don't like floats
-                           # TODO expose the rest of qbatch's options here (e.g. --footer, etc.?)
-                           # the following options aren't really needed if qbatch is configured separately:
-                           + (["-b", self.queue_type] if self.queue_type else [])
-                           + (["--queue=%s" % self.queue_name] if self.queue_name else [])
-                           # TODO change to "memvars" to match qbatch?
-                           + (["--walltime=%s" % self.time] if self.time else [])  # is time ever falsy??
-                           + (["--memvars=%s" % self.mem_request_attribute] if self.mem_request_attribute else [])
-                           + (["--pe=%s" % self.pe] if self.pe else [])  # TODO: only if 'sge' ?
-                           # TODO: add queue opts via qbatch -S (or - more general - change to qbatch_opts??)
-                           + ["-"])
-            #print(submit_cmd)
-            #p = subprocess.Popen(submit_cmd, stdin=subprocess.PIPE, shell=False, env=env)
-            #_out_data, _err_data = p.communicate(script.encode('ascii'))
-            #print(out_data)
-            #print(err_data, file=sys.stderr)
-            # TODO better error reporting here ??
-            p = subprocess.run(submit_cmd, input=script.encode('ascii'), env=env)
-            if p.returncode != 0:
-                raise SubmitError({ 'return' : p.returncode, 'failed_command' : submit_cmd })
+            # TODO: procs! ppn! umask for log files? log file names? (see version 2.0.8)
+        if self.ppn > 1:
+            logger.warning("ppn of %d currently ignored in this configuration" % self.ppn)
+        cmd_str = ' '.join(cmd)
+        script = '\n'.join([cmd_str for _ in range(number)])
+        submit_cmd = (["qbatch",
+                       "--chunksize=1",
+                       "--cores=1",      # qbatch should run each executor as a separate job
+                       "--jobname=%s" % ident,  # TODO -- add more identification?
+                       #"--ppj=%s", self.ppn,
+                       "--mem=%sGB" % m.ceil(self.mem)]  # some schedulers don't like floats
+                       # TODO expose the rest of qbatch's options here (e.g. --footer, etc.?)
+                       # the following options aren't really needed if qbatch is configured separately:
+                       + (["-b", self.queue_type] if self.queue_type else [])
+                       + (["--queue=%s" % self.queue_name] if self.queue_name else [])
+                       + (["--walltime=%s" % self.time] if self.time else [])  # is time ever falsy??
+                       # TODO change to "memvars" to match qbatch?
+                       + (["--memvars=%s" % self.mem_request_attribute] if self.mem_request_attribute else [])
+                       + (["--pe=%s" % self.pe] if self.pe else [])  # TODO: only if 'sge' ?
+                       # TODO: add queue opts via qbatch -S (or - more general - change to qbatch_opts??)
+                       + ["-"])
+        #print(submit_cmd)
+        #p = subprocess.Popen(submit_cmd, stdin=subprocess.PIPE, shell=False, env=env)
+        #_out_data, _err_data = p.communicate(script.encode('ascii'))
+        #print(out_data)
+        #print(err_data, file=sys.stderr)
+        # TODO better error reporting here ??
+        p = subprocess.run(submit_cmd, input=script.encode('ascii'), env=env)
+        if p.returncode != 0:
+            raise SubmitError({ 'return' : p.returncode, 'failed_command' : submit_cmd })
 
     def canRun(self, stageMem, stageProcs, runningMem, runningProcs):
         """Calculates if stage is runnable based on memory and processor availability"""
@@ -600,9 +604,9 @@ def main():
         files = [default_config_file]
     else:
         files = []
-    parser = ArgParser(default_config_files=files)    
 
     from pydpiper.core.arguments import _mk_execution_parser
+    parser = ArgParser(default_config_files=files)
     _mk_execution_parser(parser)
 
     # using parse_known_args instead of parse_args is a hack since we
@@ -614,7 +618,7 @@ def main():
     ensure_exec_specified(options.num_exec)
 
     def local_launch(options):
-        pe = pipelineExecutor(options=options, uri_file=options.urifile)  #, pipeline_name=options.pipeline_name)
+        pe = pipelineExecutor(options=options, uri_file=options.urifile, pipeline_name="anon-executor")  # didn't parse application options so don't have a --pipeline-name
         # FIXME - I doubt missing the other options even works, otherwise we could change the executor interface!!
         # executors don't use any shared-memory constructs, so OK to copy
         ps = [Process(target=launchExecutor, args=(pe,))
@@ -633,7 +637,7 @@ def main():
                                                time=q.timestr_to_secs(options.time))
     elif options.queue_type is not None:
         for i in range(options.num_exec):
-            pe = pipelineExecutor(options=options, uri_file=options.urifile)   #, pipeline_name=pipeline_name)
+            pe = pipelineExecutor(options=options, uri_file=options.urifile, pipeline_name="anon-executor")
             pe.submitToQueue(1)  # TODO is there a reason why we have logic for submitting `i` executors again here?
     else:
         local_launch(options)
