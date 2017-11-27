@@ -9,7 +9,7 @@ import sys
 import pandas as pd
 from pydpiper.pipelines.MAGeT import get_imgs
 
-from pydpiper.pipelines.MBM import mbm_parser
+from pydpiper.pipelines.MBM import mk_mbm_parser
 from pydpiper.core.stages import Result, Stages
 from pydpiper.pipelines.twolevel_model_building import two_level
 from pydpiper.core.arguments import (execution_parser, registration_parser, application_parser, parse, CompoundParser,
@@ -54,7 +54,7 @@ def main(args):
           [execution_parser,
            application_parser,
            registration_parser,
-           AnnotatedParser(parser=mbm_parser, namespace="mbm")])
+           AnnotatedParser(parser=mk_mbm_parser(), namespace="mbm")])
 
     options = parse(p, args[1:])
     stages = asymmetry_pipeline(options).stages
