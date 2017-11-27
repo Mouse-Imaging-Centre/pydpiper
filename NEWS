@@ -1,5 +1,11 @@
 New in Version 2.0.9
 ====================
+* fix average misnaming (#348)
+* correctly set jobname (#349) and log file locations
+* add nocheck_dimensions option (default: false) to mincaverage
+
+New in Version 2.0.9
+====================
 * Pydpiper now depends on `qbatch` (and hence a recent `gnuparallel`).
   One can configure queueing options through either qbatch or Pydpiper; see the INSTALL file.
   The 'headless' (`--submit-server`) mode hasn't been ported and still uses `qsub` directly.

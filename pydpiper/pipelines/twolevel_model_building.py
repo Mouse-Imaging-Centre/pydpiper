@@ -113,7 +113,7 @@ def two_level(grouped_files_df, options : TwoLevelConf):
 
     first_level_results = (
         grouped_files_df
-        .groupby('group', as_index=False, sort=False)       # the usual annoying pattern to do a aggregate with access
+        .groupby('group', as_index=False)       # the usual annoying pattern to do a aggregate with access
         .aggregate({ 'file' : lambda files: list(files) })  # to the groupby object's keys ... TODO: fix
         .rename(columns={ 'file' : "files" })
         .assign(build_model=lambda df:
