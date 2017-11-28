@@ -35,6 +35,8 @@ default_similarity_metric_conf = SimilarityMetricConf(
 
 ANTSConf = NamedTuple("ANTSConf",
                       [("file_resolution", float),
+                       ("blur", float),  # TODO switch to factors instead?  allow vox/pc/mm ...?
+                       # TODO rename to blur_resolution?
                        ("iterations", str),
                        ("transformation_model", str),  # TODO make an enumeration so, e.g., users don't type "Syn"
                        ("regularization", str),
@@ -49,6 +51,7 @@ ANTS_default_conf = ANTSConf(
     regularization="'Gauss[2,1]'",
     use_mask=True,
     file_resolution=None,
+    blur=None,
     sim_metric_confs=[default_similarity_metric_conf,
                       default_similarity_metric_conf.replace(use_gradient_image=True)])  # type: ANTSConf
 
@@ -171,10 +174,11 @@ class ANTS(NLIN):
     # TODO: similarity_inputs should be a set, but `MincAtom`s aren't hashable
     for sim_metric_conf in conf.sim_metric_confs:
         if conf.file_resolution is not None and sim_metric_conf.use_gradient_image:
+            blur_resolution = conf.blur or conf.file_resolution
             # TODO the `blur` parameter has been restored into the parser but not yet into the ANTSConf
             # but when this is done the fwhm should be given by this if it's specified
-            src = s.defer(mincblur(source, fwhm=conf.file_resolution)).gradient
-            dest = s.defer(mincblur(target, fwhm=conf.file_resolution)).gradient
+            src = s.defer(mincblur(source, fwhm=blur_resolution)).gradient
+            dest = s.defer(mincblur(target, fwhm=blur_resolution)).gradient
         elif conf.file_resolution is None and sim_metric_conf.use_gradient_image:
             # the file resolution is not set, however we want to use the gradients
             # for this similarity metric...
