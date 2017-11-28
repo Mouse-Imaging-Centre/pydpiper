@@ -3,6 +3,7 @@
 # TODO use a class instead of a file(=module)?
 import csv
 import os
+import warnings
 from functools import reduce
 from operator import mul
 from typing import cast, List, Optional
@@ -18,25 +19,25 @@ from pydpiper.minc.nlin import NLIN
 # TODO we need to move some stuff around ...
 from pydpiper.minc.registration import (mincblur, mincresample, Interpolation,
                                         parse_many, parse_nullable, parse_bool, ParseError,
-                                        all_equal, mincbigaverage, WithAvgImgs, MincAlgorithms)
+                                        all_equal, mincbigaverage, WithAvgImgs, MincAlgorithms, parse_n)
 
 SimilarityMetricConf = NamedTuple('SimilarityMetricConf',
                                   [("metric", str),
                                    ("weight", float),
                                    ("radius_or_bins", int),
+                                   # TODO rename to blur_resolution?
+                                   ("blur", float),  # TODO switch to factors instead?  allow vox/pc/mm ...?
                                    ("use_gradient_image", bool)])
-
 
 default_similarity_metric_conf = SimilarityMetricConf(
     metric="CC",
     weight=1.0,
     radius_or_bins=3,
+    blur=None,
     use_gradient_image=False)
 
 ANTSConf = NamedTuple("ANTSConf",
                       [("file_resolution", float),
-                       ("blur", float),  # TODO switch to factors instead?  allow vox/pc/mm ...?
-                       # TODO rename to blur_resolution?
                        ("iterations", str),
                        ("transformation_model", str),  # TODO make an enumeration so, e.g., users don't type "Syn"
                        ("regularization", str),
@@ -51,7 +52,6 @@ ANTS_default_conf = ANTSConf(
     regularization="'Gauss[2,1]'",
     use_mask=True,
     file_resolution=None,
-    blur=None,
     sim_metric_confs=[default_similarity_metric_conf,
                       default_similarity_metric_conf.replace(use_gradient_image=True)])  # type: ANTSConf
 
@@ -173,21 +173,29 @@ class ANTS(NLIN):
     similarity_inputs = set()  # type: Set[MincAtom]
     # TODO: similarity_inputs should be a set, but `MincAtom`s aren't hashable
     for sim_metric_conf in conf.sim_metric_confs:
-        if conf.file_resolution is not None and sim_metric_conf.use_gradient_image:
-            blur_resolution = conf.blur or conf.file_resolution
-            # TODO the `blur` parameter has been restored into the parser but not yet into the ANTSConf
-            # but when this is done the fwhm should be given by this if it's specified
-            src = s.defer(mincblur(source, fwhm=blur_resolution)).gradient
-            dest = s.defer(mincblur(target, fwhm=blur_resolution)).gradient
-        elif conf.file_resolution is None and sim_metric_conf.use_gradient_image:
-            # the file resolution is not set, however we want to use the gradients
-            # for this similarity metric...
-            raise ValueError("A similarity metric in the ANTS configuration "
-                            "wants to use the gradients, but the file resolution for the "
-                            "configuration has not been set.")
+        if sim_metric_conf.use_gradient_image:
+            if sim_metric_conf.blur is not None:
+                gradient_blur_resolution = sim_metric_conf.blur
+            elif conf.file_resolution is not None:
+                gradient_blur_resolution = conf.file_resolution
+            else:
+                gradient_blur_resolution = None
+                raise ValueError("A similarity metric in the ANTS configuration "
+                                 "wants to use the gradients, but I know neither the file resolution nor "
+                                 "an intended nonnegative blur fwhm.")
+            if gradient_blur_resolution <= 0:
+                warnings.warn("Not blurring the gradients as this was explicitly disabled")
+            src = s.defer(mincblur(source, fwhm=gradient_blur_resolution)).gradient
+            dest = s.defer(mincblur(target, fwhm=gradient_blur_resolution)).gradient
         else:
-            src = source
-            dest = target
+            # these are not gradient image terms; only blur if explicitly specified:
+            if sim_metric_conf.blur is not None and sim_metric_conf.blur > 0:
+                src  = s.defer(mincblur(source, fwhm=sim_metric_conf.blur)).img
+                dest = s.defer(mincblur(source, fwhm=sim_metric_conf.blur)).img
+            else:
+                src  = source
+                dest = target
+
         similarity_inputs.add(src)
         similarity_inputs.add(dest)
         inner = ','.join([src.path, dest.path,
@@ -290,7 +298,7 @@ class ANTS(NLIN):
     """
 
     # parsers to use for each row of the protocol file
-    parsers = {"blur"               : parse_many(parse_nullable(float)),
+    parsers = {"blur"               : parse_many(float),
                "gradient"           : parse_many(parse_bool),
                "similarity_metric"  : parse_many(str),
                "weight"             : parse_many(float),
@@ -350,7 +358,7 @@ class ANTS(NLIN):
     # convert a mapping of options to _single_ values to a single-generation ANTS configuration object:
     def convert_single_gen(single_gen_params, file_resolution) -> ANTSConf:  # TODO name this better ...
         # TODO check for/catch IndexError ... a bit hard to use zip since some params may not be defined ...
-        sim_metric_names = {"use_gradient_image", "metric", "weight", "radius_or_bins"}
+        sim_metric_names = {"blur", "use_gradient_image", "metric", "weight", "radius_or_bins"}
         # TODO duplication; e.g., parsers = sim_metric_parsers U <...>
         sim_metric_params = {k : v for k, v in single_gen_params.items() if k in sim_metric_names}
         other_attrs       = {k : v for k, v in single_gen_params.items() if k not in sim_metric_names}
