@@ -1964,9 +1964,21 @@ def lsq12_pairwise(imgs: List[MincAtom],
                                                            file_resolution=resolution)
 
     s = Stages()
-    avgs_and_xfms = s.defer(multilevel_pairwise_minctracc(imgs=imgs, conf=minctracc_conf, like=like,
-                                                          output_dir_for_avg=lsq12_dir, mincaverage=mincaverage,
-                                                          max_pairs=lsq12_conf.max_pairs))
+
+    if lsq12_conf.run_lsq12:
+        avgs_and_xfms = s.defer(multilevel_pairwise_minctracc(imgs=imgs, conf=minctracc_conf, like=like,
+                                                              output_dir_for_avg=lsq12_dir, mincaverage=mincaverage,
+                                                              max_pairs=lsq12_conf.max_pairs))
+        # TODO: instead of this case analysis, we could dispatch on overall LSQ12 module as we do for the nonlinear part
+    else:
+        final_avg = MincAtom(name=os.path.join(lsq12_dir, "lsq12_identity_avg.mnc"),
+                             pipeline_sub_dir=lsq12_dir)
+        avg = s.defer(mincaverage([img for img in imgs], avg_file=final_avg))
+        identity_xfm = s.defer(param2xfm(out_xfm=FileAtom(name=os.path.join(lsq12_dir, 'tmp', "identity.xfm"),
+                                                          output_sub_dir=os.path.join(lsq12_dir, 'tmp'))))
+        identity_xfms = [XfmHandler(source=img, target=avg, xfm=identity_xfm, resampled=img) for img in imgs]
+        avgs_and_xfms = WithAvgImgs(avg_imgs=[avg], avg_img=avg,
+                                    output=identity_xfms)
 
     if create_qc_images:
         s.defer(create_quality_control_images(imgs=[avgs_and_xfms.avg_img]
