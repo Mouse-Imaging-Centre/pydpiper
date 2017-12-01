@@ -254,7 +254,9 @@ def mbm(imgs : List[MincAtom], options : MBMConf, prefix : str, output_dir : str
         # be part of the lsq6 options rather than the MBM ones; see comments on #287.
         # TODO don't actually do this resampling if not required (i.e., if the imgs already have the same grids)??
         # however, for now need to add the masks:
-        identity_xfm = s.defer(param2xfm(out_xfm=FileAtom(name="id.xfm")))
+        identity_xfm = s.defer(param2xfm(out_xfm=FileAtom(name=os.path.join(lsq6_dir, 'tmp', "id.xfm"),
+                                                          pipeline_sub_dir=lsq6_dir,
+                                                          output_sub_dir='tmp')))
         lsq6_result  = [XfmHandler(source=img, target=img, xfm=identity_xfm,
                                    resampled=s.defer(mincresample_new(img=img,
                                                                       like=targets.registration_standard,
