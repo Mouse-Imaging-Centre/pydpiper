@@ -26,7 +26,7 @@ Pyro4.config.SERVERTYPE = "multiplex"
 
 class SubmitError(ValueError): pass
 
-for boring_exception, name in [(mincException, "mincException"), (SubmitError, "SubmitError"), (KeyError,"KeyError")]:
+for boring_exception, name in [(mincException, "mincException"), (SubmitError, "SubmitError"), (KeyError, "KeyError")]:
     Pyro4.util.SerializerBase.register_dict_to_class(name, lambda _classname, dict: boring_exception)
     Pyro4.util.SerializerBase.register_class_to_dict(boring_exception, lambda obj: { "__class__" : name })
 
