@@ -1290,11 +1290,12 @@ def parse_minctracc_protocol(f, base_minctracc_conf, parsers, names,
 
         conf  = base_minctracc_conf.replace(**attrs)  # FIXME this is rather unsafe
         return modify(MinctraccConf(blur_resolution=single_gen_params["blur"],
-                             use_gradient=single_gen_params["gradient"],
-                             step_sizes=(single_gen_params["step"],) * 3,
-                             use_masks=True, #FIXME
-                             linear_conf=None,
-                             nonlinear_conf=None), conf)
+                                    use_gradient=single_gen_params["gradient"],
+                                    step_sizes=(single_gen_params["step"],) * 3,
+                                    use_masks=True, #FIXME
+                                    linear_conf=None,
+                                    nonlinear_conf=None),
+                      conf)
 
     return MultilevelMinctraccConf([convert_single_gen({ key : vs[j] for key, vs in d.items() }) for j in range(l)])
 
