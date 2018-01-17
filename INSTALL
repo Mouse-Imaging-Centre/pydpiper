@@ -4,7 +4,7 @@ https://github.com/Mouse-Imaging-Centre/pydpiper
 
 Using the Downloads button, access the .tar.gz or .zip file.
 Unzip and untar and change into the source directory (e.g. cd pydpiper)
-Run: python setup.py install 
+Run: python3 setup.py install 
 
 System dependencies:
 
