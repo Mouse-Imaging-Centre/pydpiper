@@ -18,7 +18,7 @@ from pydpiper.core.files import FileAtom
 from pydpiper.core.stages import CmdStage, Result, Stages, identity_result
 from pydpiper.core.util import pairs, AutoEnum, NamedTuple, raise_, flatten
 from pydpiper.minc.containers import XfmHandler
-from pydpiper.minc.files import MincAtom, XfmAtom, xfmToMinc, IdMinc
+from pydpiper.minc.files import MincAtom, XfmAtom, xfmToMinc, IdMinc, mincToXfm
 from pydpiper.minc.nlin import NLIN, NLIN_BUILD_MODEL, Algorithms
 
 
@@ -2989,6 +2989,13 @@ def minc_label_ops(in_labels : MincAtom, op : LabelOp, op_arg : Optional[Union[M
     return Result(stages=Stages([s]), output=out_labels)
 
 
+def make_xfm_for_grid(grid : MincAtom):
+    xfm = mincToXfm(grid.newname_with_suffix("_grid"))
+    cmd = CmdStage(inputs=(grid,), outputs=(xfm,),
+                   cmd=['make_xfm_for_grid.pl', grid.path, xfm.path])
+    return Result(stages=Stages([cmd]), output=xfm)
+
+
 # TODO move?
 class MincAlgorithms(Algorithms):
     blur     = mincblur
@@ -3033,6 +3040,7 @@ class MincAlgorithms(Algorithms):
         # write its information to disk
         scaled_xfm = xfm.xfm.newname_with_suffix(suffix="_halfway")
         # write the xfm file:
+        # TODO replace with make_xfm_for_grid!
         s.add(CmdStage(inputs=(scaled_grid,),
                        outputs=(scaled_xfm,),
                        cmd=(["make_xfm_for_grid.pl",
