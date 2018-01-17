@@ -39,6 +39,14 @@ def xfmToMinc(xfm):
     return mnc
 
 
+def mincToXfm(mnc):
+    xfm = copy.deepcopy(mnc)
+    del xfm.mask
+    del xfm.labels
+    xfm.__class__ = XfmAtom
+    return xfm
+
+
 I, X = TypeVar("T"), TypeVar("I")
 
 class ToMinc(Generic[I, X], metaclass=ABCMeta):
