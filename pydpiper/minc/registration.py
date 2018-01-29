@@ -1325,7 +1325,7 @@ def parse_minctracc_nonlinear_protocol(f,
     return parse_minctracc_protocol(f=f,
                                     parsers=parsers,
                                     names=names,
-                                    base_minctracc_conf=default_nonlinear_minctracc_conf,
+                                    base_minctracc_conf=base_minctracc_conf, #default_nonlinear_minctracc_conf,
                                     is_ignored_key=lambda k: k.startswith("w_") or (k in ["memory_required", "simplex"]),
                                     modify=lambda b, c: b.replace(nonlinear_conf=c))
 
