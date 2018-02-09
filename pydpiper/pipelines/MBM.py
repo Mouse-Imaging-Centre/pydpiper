@@ -20,7 +20,6 @@ from pydpiper.minc.thickness import cortical_thickness
 from pydpiper.minc.files        import MincAtom, XfmAtom
 from pydpiper.minc.registration import (lsq6_nuc_inorm, lsq12_nlin_build_model, registration_targets,
                                         LSQ6Conf, LSQ12Conf, get_resolution_from_file, concat_xfmhandlers,
-                                        get_nonlinear_configuration_from_options,
                                         invert_xfmhandler, check_MINC_input_files, lsq12_nlin,
                                         LinearTransType, get_linear_configuration_from_options, mincresample_new,
                                         Interpolation, param2xfm, get_nonlinear_component)
