@@ -13,28 +13,31 @@ from typing import Callable, Dict, List, TypeVar, Iterator, Generic, Optional, T
 from pydpiper.core.util import pairs
 from pydpiper.minc.analysis import determinants_at_fwhms, invert_xfmhandler
 from pydpiper.core.stages import Result
-from pydpiper.minc.registration import (Subject, Stages, ANTS_NLIN_build_model, ANTS_default_conf,
-                                        intrasubject_registrations, mincaverage,
+import pydpiper.minc.ANTS as ANTS
+from pydpiper.minc.registration import (Stages,
+                                        mincaverage,
                                         concat_xfmhandlers, check_MINC_input_files, registration_targets,
-                                        lsq6_nuc_inorm, get_resolution_from_file, XfmHandler, LSQ6Conf,
-                                        RegistrationConf, InputSpace, LSQ12Conf, lsq12_nlin_build_model, TargetType,
-                                        MultilevelANTSConf, create_quality_control_images,
+                                        lsq6_nuc_inorm, get_resolution_from_file, XfmHandler,
+                                        InputSpace, lsq12_nlin_build_model, TargetType,
+                                        MinctraccConf,
+                                        create_quality_control_images,
                                         check_MINC_files_have_equal_dimensions_and_resolution,
                                         default_lsq12_multilevel_minctracc, get_pride_of_models_mapping,
-                                        get_default_multi_level_ANTS, parse_ANTS_protocol_file,
-                                        parse_minctracc_nonlinear_protocol, get_nonlinear_configuration_from_options,
+                                        get_nonlinear_configuration_from_options,
                                         mincresample)
 from pydpiper.minc.files import MincAtom
 from pydpiper.execution.application import execute  # type: ignore
 from pydpiper.core.arguments import (application_parser,
-                                     chain_parser,
                                      execution_parser,
                                      lsq6_parser, lsq12_parser,
                                      registration_parser,
                                      stats_parser,
                                      parse,
-                                     AnnotatedParser, BaseParser, CompoundParser, LSQ6Method, nlin_parser,
+                                     AnnotatedParser, CompoundParser, nlin_parser,
                                      _chain_parser)
+from pydpiper.minc.registration_strategies import get_model_building_procedure
+
+#ANTS_NLIN_build_model = get_model_building_procedure('build_model', ANTS.ANTS)
 
 
 # TODO (general for all option records, not just for the registration chain):
@@ -108,7 +111,7 @@ class Subject(Generic[V]):
 # seems specific enough (at least in its current incarnation) to the registration chain that it lives in this file:
 def intrasubject_registrations(subj: Subject,
                                linear_conf: MinctraccConf,
-                               nlin_conf: ANTSConf) \
+                               nlin_conf: ANTS.ANTSConf) \
         -> Result[Tuple[List[Tuple[int, int, XfmHandler]], int]]:
     """
 
@@ -327,7 +330,7 @@ def chain(options):
         first_nlin_target = s.defer(mincaverage(imgs=list(s_id_to_intersubj_img_dict.values()),
                                                 name_wo_ext="avg_of_input_files",
                                                 output_dir=pipeline_nlin_common_dir))
-        intersubj_xfms = s.defer(ANTS_NLIN_build_model(imgs=list(s_id_to_intersubj_img_dict.values()),
+        intersubj_xfms = s.defer(ANTS.NLIN_build_model(imgs=list(s_id_to_intersubj_img_dict.values()),
                                                        initial_target=first_nlin_target,
                                                        nlin_dir=pipeline_nlin_common_dir,
                                                        conf=nonlinear_configuration))
