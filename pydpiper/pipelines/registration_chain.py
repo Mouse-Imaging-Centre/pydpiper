@@ -8,12 +8,12 @@ import sys
 import bisect
 import re
 
-from typing import Callable, Dict, List, TypeVar, Iterator, Generic, Optional, Tuple
+from typing import Callable, Dict, List, TypeVar, Iterator, Generic, Optional, Tuple, Type
 
 from pydpiper.core.util import pairs
 from pydpiper.minc.analysis import determinants_at_fwhms, invert_xfmhandler
 from pydpiper.core.stages import Result
-import pydpiper.minc.ANTS as ANTS
+from pydpiper.minc.nlin import NLIN
 from pydpiper.minc.registration import (Stages,
                                         mincaverage,
                                         concat_xfmhandlers, check_MINC_input_files, registration_targets,
@@ -23,8 +23,7 @@ from pydpiper.minc.registration import (Stages,
                                         create_quality_control_images,
                                         check_MINC_files_have_equal_dimensions_and_resolution,
                                         default_lsq12_multilevel_minctracc, get_pride_of_models_mapping,
-                                        get_nonlinear_configuration_from_options,
-                                        mincresample)
+                                        mincresample, lsq12_nlin, get_nonlinear_component)
 from pydpiper.minc.files import MincAtom
 from pydpiper.execution.application import execute  # type: ignore
 from pydpiper.core.arguments import (application_parser,
@@ -36,8 +35,6 @@ from pydpiper.core.arguments import (application_parser,
                                      AnnotatedParser, CompoundParser, nlin_parser,
                                      _chain_parser)
 from pydpiper.minc.registration_strategies import get_model_building_procedure
-
-#ANTS_NLIN_build_model = get_model_building_procedure('build_model', ANTS.ANTS)
 
 
 # TODO (general for all option records, not just for the registration chain):
@@ -111,7 +108,9 @@ class Subject(Generic[V]):
 # seems specific enough (at least in its current incarnation) to the registration chain that it lives in this file:
 def intrasubject_registrations(subj: Subject,
                                linear_conf: MinctraccConf,
-                               nlin_conf: ANTS.ANTSConf) \
+                               nlin_module: Type[NLIN],
+                               nlin_options, #: nlin_module.Conf,
+                               resolution: float) \
         -> Result[Tuple[List[Tuple[int, int, XfmHandler]], int]]:
     """
 
@@ -140,7 +139,10 @@ def intrasubject_registrations(subj: Subject,
                         s.defer(lsq12_nlin(source=src[1],
                                            target=dest[1],
                                            lsq12_conf=linear_conf,
-                                           nlin_conf=nlin_conf,
+                                           nlin_module=nlin_module,
+                                           nlin_options=nlin_options,
+                                           resolution=resolution,
+                                           #nlin_conf=nlin_conf,
                                            resample_source=True)))
                        for source_index, (src, dest) in enumerate(pairs(timepts))]
     return Result(stages=s, output=(time_pt_to_xfms, index_of_common_time_pt))
@@ -158,7 +160,7 @@ def chain(options):
     # data, making it harder to keep the mapping simple/straightforward
 
 
-    chain_opts = options.chain  # type : ChainConf
+    #chain_opts = options.chain  # type : ChainConf
 
     s = Stages()
     
@@ -167,6 +169,8 @@ def chain(options):
 
     output_dir    = options.application.output_directory
     pipeline_name = options.application.pipeline_name
+
+    resolution = options.registration.resolution
 
     pipeline_processed_dir = os.path.join(output_dir, pipeline_name + "_processed")
     pipeline_lsq12_common_dir = os.path.join(output_dir, pipeline_name + "_lsq12_" + options.chain.common_time_point_name)
@@ -241,7 +245,8 @@ def chain(options):
                                                                   registration_targets=targets,
                                                                   resolution=options.registration.resolution,
                                                                   lsq6_options=options.lsq6,
-                                                                  lsq6_dir=None, # no average will be create, is just one file...
+                                                                  # no average will be created, is just one file...
+                                                                  lsq6_dir=None,
                                                                   create_qc_images=False,
                                                                   create_average=False,
                                                                   subject_matter=options.registration.subject_matter)
@@ -308,17 +313,24 @@ def chain(options):
             print(subject + '\t' + s_id_to_intersubj_img_dict[subject].path)
 
     # determine what configuration to use for the non linear registration
-    nonlinear_configuration = get_nonlinear_configuration_from_options(options.nlin.nlin_protocol,
-                                                                       next(iter(options.nlin.flags_.nlin_protocol)),
-                                                                       options.nlin.reg_method,
-                                                                       options.registration.resolution)
+    nlin_module = get_nonlinear_component(reg_method=options.nlin.reg_method)
+
+    build_model_component = get_model_building_procedure(options.nlin.reg_strategy,
+                                                         # was: model_building.reg_strategy
+                                                         reg_module=nlin_module)
+
+    nlin_conf = (build_model_component.parse_build_model_protocol(
+                     options.nlin.nlin_protocol, resolution=resolution)
+                 if options.nlin.nlin_protocol is not None
+                 else build_model_component.get_default_build_model_conf(resolution=resolution))
 
     if options.registration.input_space in [InputSpace.lsq6, InputSpace.native]:
         intersubj_xfms = s.defer(lsq12_nlin_build_model(imgs=list(s_id_to_intersubj_img_dict.values()),
                                                 lsq12_conf=options.lsq12,
-                                                nlin_conf=nonlinear_configuration,
+                                                nlin_conf=nlin_conf,
                                                 resolution=options.registration.resolution,
                                                 lsq12_dir=pipeline_lsq12_common_dir,
+                                                nlin_module=build_model_component,
                                                 nlin_dir=pipeline_nlin_common_dir,
                                                 nlin_prefix="common"))
                                                 #, like={atlas_from_init_model_at_this_tp}
@@ -326,14 +338,16 @@ def chain(options):
         #TODO: write reader that creates a ANTS configuration out of an input protocol
         # if we're starting with files that are already aligned with an affine transformation
         # (overall scaling is also dealt with), then the target for the non linear registration
-        # should be the averge of the current input files.
+        # should be the average of the current input files.
         first_nlin_target = s.defer(mincaverage(imgs=list(s_id_to_intersubj_img_dict.values()),
                                                 name_wo_ext="avg_of_input_files",
                                                 output_dir=pipeline_nlin_common_dir))
-        intersubj_xfms = s.defer(ANTS.NLIN_build_model(imgs=list(s_id_to_intersubj_img_dict.values()),
-                                                       initial_target=first_nlin_target,
-                                                       nlin_dir=pipeline_nlin_common_dir,
-                                                       conf=nonlinear_configuration))
+        intersubj_xfms = s.defer(build_model_component.build_model(
+                                     imgs=list(s_id_to_intersubj_img_dict.values()),
+                                     initial_target=first_nlin_target,
+                                     nlin_dir=pipeline_nlin_common_dir,
+                                     nlin_module=build_model_component,
+                                     conf=nlin_conf))
 
 
     intersubj_img_to_xfm_to_common_avg_dict = { xfm.source : xfm for xfm in intersubj_xfms.output }
@@ -403,10 +417,16 @@ def chain(options):
     #   index_of_common_time_pt)
     chain_xfms = { s_id : s.defer(intrasubject_registrations(
                                     subj=subj,
+                                    resolution=resolution,
+                                    nlin_module=nlin_module,
                                     linear_conf=default_lsq12_multilevel_minctracc,
-                                    nlin_conf=ANTS_default_conf.replace(
-                                        file_resolution=options.registration.resolution,
-                                        iterations="100x100x100x50")))
+                                    # TODO why does this use almost-defaults instead of parsing?!
+                                    # TODO when this was specialized to ANTS we could set iterations;
+                                    # can/should we do something similar here in generality?
+                                    nlin_options=options.nlin.nlin_protocol #nlin_module.get_default_conf(resolution=resolution)
+                                        #.replace(file_resolution=options.registration.resolution,
+                                        #         iterations="100x100x100x50"
+                                    ))
                    for s_id, subj in subj_id_to_Subjec_for_within_dict.items() }
 
     # create a montage image for each pair of time points
@@ -809,8 +829,7 @@ def get_chain_transforms_for_stats(pipeline_subject_info, intersubj_xfms_dict, c
     return Result(stages=s, output=(dict_transforms_to_common_avg, dict_transforms_to_subject_common_tp))
 
 
-if __name__ == "__main__":
-
+def main():
     p = CompoundParser(
           [execution_parser,
            application_parser,
@@ -889,3 +908,7 @@ if __name__ == "__main__":
     #chain_stages = chain(options).stages
 
     execute(chain_result.stages, options)
+
+
+if __name__ == "__main__":
+    main()
