@@ -15,17 +15,17 @@ from pydpiper.core.stages import Result, Stages
 from pydpiper.core.arguments import (execution_parser, registration_parser, application_parser, parse, CompoundParser,
                                      AnnotatedParser, BaseParser)
 from pydpiper.execution.application import execute
-from pydpiper.minc.registration import check_MINC_input_files, lsq12_nlin, get_pride_of_models_mapping, TargetType, \
-    xfmconcat, concat_xfmhandlers, get_linear_configuration_from_options, LinearTransType, \
-    get_nonlinear_configuration_from_options, MultilevelANTSConf, get_resolution_from_file, registration_targets, \
-    mincresample, xfminvert, invert_xfmhandler, mincresample_new
+from pydpiper.minc.registration import (
+  check_MINC_input_files, lsq12_nlin, get_pride_of_models_mapping, TargetType,
+  xfmconcat, concat_xfmhandlers, get_linear_configuration_from_options, LinearTransType,
+  get_nonlinear_configuration_from_options, MultilevelANTSConf, get_resolution_from_file, registration_targets,
+  mincresample, xfminvert, invert_xfmhandler, mincresample_new)
 from pydpiper.minc.files import MincAtom
 
 
 TamarackConf = NamedTuple("TamarackConf", [("first_level_conf", MBMConf),
                                            ("second_level_conf", MBMConf)])
 
-# TODO come up with a better name ...
 def tamarack_pipeline(options):
 
     output_dir    = options.application.output_directory

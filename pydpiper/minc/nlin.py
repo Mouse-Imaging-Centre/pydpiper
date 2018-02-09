@@ -126,4 +126,4 @@ class NLIN_BUILD_MODEL(NLIN, metaclass=ABCMeta):
     def parse_build_model_protocol(filename : str, resolution : float) -> BuildModelConf: pass
 
     @abstractstaticmethod
-    def get_default_build_model_conf () -> BuildModelConf: pass
+    def get_default_build_model_conf() -> BuildModelConf: pass
