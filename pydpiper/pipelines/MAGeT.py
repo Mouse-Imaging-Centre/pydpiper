@@ -526,6 +526,7 @@ def maget_pipeline(options):
                    output_dir=options.application.output_directory,
                    build_model_xfms=build_model_xfms)
 
+    # TODO this should also be created by MBM and other pipelines that run MAGeT
     (pd.DataFrame({ 'img_file'   : result.output.apply(lambda row: row.path),
                     'label_file' : result.output.apply(lambda row: row.labels.path),
                     #'mask_file'  : result.output.apply(lambda row: row.mask.path if row.mask else "NA")

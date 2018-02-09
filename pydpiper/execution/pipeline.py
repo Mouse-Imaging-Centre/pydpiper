@@ -270,6 +270,7 @@ class Pipeline(object):
         
         self.outputDir = self.options.application.output_directory or os.getcwd()
 
+        # TODO this doesn't work with the qbatch-based server submission on Graham:
         if self.options.execution.submit_server and self.options.execution.local:
             # redirect the standard output to a text file
             serverLogFile = os.path.join(self.outputDir, self.pipeline_name + '_server_stdout.log')
