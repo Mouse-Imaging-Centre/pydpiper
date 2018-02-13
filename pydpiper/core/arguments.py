@@ -207,20 +207,6 @@ def parse(parser: Parser, args: List[str]) -> Namespace:
 
 
 def _mk_application_parser(p: ArgParser) -> ArgParser:
-    """
-    The arguments that all applications share:
-    --pipeline-name
-    --restart
-    --no-restart
-    --output-dir
-    --create-graph
-    --execute
-    --no-execute
-    --version
-    --verbose
-    --no-verbose
-    files - leftover arguments (0 or more are allowed)
-    """
     # p = ArgParser(add_help=False)
     g = p.add_argument_group("General application options",
                              "General options for all pydpiper applications.")
@@ -358,6 +344,9 @@ def _mk_execution_parser(p: ArgParser) -> ArgParser:
     group.add_argument("--executor_wrapper", dest="executor_wrapper",
                        type=str, default="",
                        help="Command inside of which to run the executor. [Default='%(default)s']")
+    group.add_argument("--defer-directory-creation", default=False,
+                       action="store_true", dest="defer_directory_creation",
+                       help="Create relevant directories when a stage is run instead of at startup [Default=%(default)s]")
     return p
 
 
