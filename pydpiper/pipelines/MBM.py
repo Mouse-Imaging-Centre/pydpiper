@@ -75,8 +75,10 @@ def mbm_pipeline(options : MBMConf):
     if options.application.csv_file==None:
         analysis.to_csv("analysis.csv", index=False)
     else:
-        pass
-
+        input_csv = pd.read_csv(options.application.csv_file)
+        analysis = pd.merge(input_csv, analysis, left_on='file', right_on='native_file').drop(["file"], axis=1)
+        analysis.to_csv("analysis.csv", index=False)
+    #TODO join with label files
     import pdb; pdb.set_trace()
 
 
