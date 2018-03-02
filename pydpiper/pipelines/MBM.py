@@ -53,7 +53,8 @@ def mbm_pipeline(options : MBMConf):
         s.defer(common_space(mbm_result, options))
 
     # create useful CSVs (note the files listed therein won't yet exist ...):
-    transforms = (mbm_result.xfms.assign(native_file=lambda df: df.rigid_xfm.apply(lambda x: x.source),
+    transforms = (mbm_result.xfms.assign(
+                            native_file=lambda df: df.rigid_xfm.apply(lambda x: x.source),
                             lsq6_file=lambda df: df.lsq12_nlin_xfm.apply(lambda x: x.source),
                             lsq6_mask_file=lambda df:
                               df.lsq12_nlin_xfm.apply(lambda x: x.source.mask if x.source.mask else ""),
@@ -65,16 +66,15 @@ def mbm_pipeline(options : MBMConf):
 
     transforms.to_csv("transforms.csv", index=False)
 
-    determinants = (mbm_result.determinants.drop(["full_det", "nlin_det"], axis=1)
-     .applymap(maybe_deref_path))
+    determinants = (mbm_result.determinants.drop(["full_det", "nlin_det"], axis=1).applymap(maybe_deref_path))
 
     determinants.to_csv("determinants.csv", index=False)
 
-    joined = pd.merge(transforms, determinants, left_on='lsq12_nlin_xfm', right_on='inv_xfm').drop(["inv_xfm"], axis=1)
+    analysis = pd.merge(transforms, determinants, left_on='lsq12_nlin_xfm', right_on='inv_xfm').drop(["inv_xfm"], axis=1)
 
-    if (options.application.csv_file==None):
-        joined.to_csv("joined.csv", index=False)
-    elif (not options.application.csv_file):
+    if options.application.csv_file==None:
+        analysis.to_csv("analysis.csv", index=False)
+    else:
         pass
 
     import pdb; pdb.set_trace()
