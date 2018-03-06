@@ -80,8 +80,6 @@ def mbm_pipeline(options : MBMConf):
         input_csv = pd.read_csv(options.application.csv_file)
         analysis = pd.merge(input_csv, analysis, left_on='file', right_on='native_file').drop(["file"], axis=1)
         analysis.to_csv("analysis.csv", index=False)
-    import pdb; pdb.set_trace()
-
 
     # # TODO moved here from inside `mbm` for now ... does this make most sense?
     # if options.mbm.segmentation.run_maget:
