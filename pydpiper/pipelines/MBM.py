@@ -66,6 +66,8 @@ def mbm_pipeline(options : MBMConf):
 
     transforms.to_csv("transforms.csv", index=False)
 
+    transforms = (transforms.assign(label_files = mbm_result.maget_result.apply(lambda x: x.path))) #do this after transforms.to_csv
+
     determinants = (mbm_result.determinants.drop(["full_det", "nlin_det"], axis=1).applymap(maybe_deref_path))
 
     determinants.to_csv("determinants.csv", index=False)
@@ -78,7 +80,6 @@ def mbm_pipeline(options : MBMConf):
         input_csv = pd.read_csv(options.application.csv_file)
         analysis = pd.merge(input_csv, analysis, left_on='file', right_on='native_file').drop(["file"], axis=1)
         analysis.to_csv("analysis.csv", index=False)
-    #TODO join with label files
     import pdb; pdb.set_trace()
 
 
