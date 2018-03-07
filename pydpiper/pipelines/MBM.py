@@ -66,7 +66,7 @@ def mbm_pipeline(options : MBMConf):
 
     transforms.to_csv("transforms.csv", index=False)
 
-    transforms = (transforms.assign(label_files = mbm_result.maget_result.apply(lambda x: x.path))) #do this after transforms.to_csv
+    transforms = (transforms.assign(label_files = mbm_result.maget_result.apply(lambda x: x.labels.path))) #do this after transforms.to_csv
 
     determinants = (mbm_result.determinants.drop(["full_det", "nlin_det"], axis=1).applymap(maybe_deref_path))
 
