@@ -52,7 +52,8 @@ def mbm_pipeline(options : MBMConf):
         s.defer(common_space(mbm_result, options))
 
     # create useful CSVs (note the files listed therein won't yet exist ...):
-    (mbm_result.xfms.assign(native_file=lambda df: df.rigid_xfm.apply(lambda x: x.source),
+    transforms = (mbm_result.xfms.assign(
+                            native_file=lambda df: df.rigid_xfm.apply(lambda x: x.source),
                             lsq6_file=lambda df: df.lsq12_nlin_xfm.apply(lambda x: x.source),
                             lsq6_mask_file=lambda df:
                               df.lsq12_nlin_xfm.apply(lambda x: x.source.mask if x.source.mask else ""),
@@ -60,11 +61,24 @@ def mbm_pipeline(options : MBMConf):
                             common_space_file=lambda df: df.xfm_to_common.apply(lambda x: x.resampled)
                                                 if options.mbm.common_space.do_common_space_registration else None)
      .applymap(maybe_deref_path)
-     .drop(["common_space_file"] if not options.mbm.common_space.do_common_space_registration else [], axis=1)
-     .to_csv("transforms.csv", index=False))
+     .drop(["common_space_file"] if not options.mbm.common_space.do_common_space_registration else [], axis=1))
 
-    (mbm_result.determinants.drop(["full_det", "nlin_det"], axis=1)
-     .applymap(maybe_deref_path).to_csv("determinants.csv", index=False))
+    transforms.to_csv("transforms.csv", index=False)
+
+    transforms = (transforms.assign(label_files = mbm_result.maget_result.apply(lambda x: x.path))) #do this after transforms.to_csv
+
+    determinants = (mbm_result.determinants.drop(["full_det", "nlin_det"], axis=1).applymap(maybe_deref_path))
+
+    determinants.to_csv("determinants.csv", index=False)
+
+    analysis = pd.merge(transforms, determinants, left_on='lsq12_nlin_xfm', right_on='inv_xfm').drop(["inv_xfm"], axis=1)
+
+    if options.application.csv_file==None:
+        analysis.to_csv("analysis.csv", index=False)
+    else:
+        input_csv = pd.read_csv(options.application.csv_file)
+        analysis = pd.merge(input_csv, analysis, left_on='file', right_on='native_file').drop(["file"], axis=1)
+        analysis.to_csv("analysis.csv", index=False)
 
     # # TODO moved here from inside `mbm` for now ... does this make most sense?
     # if options.mbm.segmentation.run_maget:
