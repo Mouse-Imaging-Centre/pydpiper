@@ -221,7 +221,7 @@ def normal_execute(pipeline, options):
     #pipelineDaemon runs pipeline, launches Pyro client/server and executors (if specified)
     logger.info("Starting pipeline daemon...")
     # TODO: make a flag to disable this in case already created, wish to create later, etc.
-    if not options.application.defer_directory_creation:
+    if not options.execution.defer_directory_creation:
         create_directories(pipeline.stages) # TODO: or whatever
     pipelineDaemon(pipeline, options, sys.argv[0])
     logger.info("Server has stopped.  Quitting...")
