@@ -323,6 +323,7 @@ def mbm(imgs : List[MincAtom], options : MBMConf, prefix : str, output_dir : str
 
     # TODO don't use name 'x_module' for something that's technically not a module ... perhaps unit/component?
 
+    # TODO tedious: why can't parse_build_model_protocol handle the null protocol case? is this something we want?
     nlin_conf = (nlin_build_model_component.parse_build_model_protocol(
                                               options.mbm.nlin.nlin_protocol, resolution=resolution)
                  if options.mbm.nlin.nlin_protocol is not None
