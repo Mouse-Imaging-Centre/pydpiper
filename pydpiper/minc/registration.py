@@ -1407,47 +1407,6 @@ def get_nonlinear_component(reg_method : str):
         raise NotImplemented("nonlinear registration via method '%s'" % reg_method)
 
 
-def get_nonlinear_configuration_from_options(nlin_protocol : str,
-                                             reg_method : str):
-                                             # TODO now missing flag for reg_method/nlin_protocol
-                                             # ... could take nlin_options as arg instead ...
-                                             #file_resolution : float):
-    """
-    :param nlin_protocol: path to the protocol on the system (can be None)
-    :param reg_method: the registration method (currently ANTS or minctracc)
-    :param file_resolution: resolution at which registrations are performed
-    :return:  MultilevelANTSConf or MultilevelMinctraccConf
-    """
-    raise ValueError("deprecated; call <nlin module>.parse_<...> instead")
-
-    # TODO maybe just take the whole nlin_conf as a param to save typing at the call site?
-     # determine what configuration to use for the non linear registration
-#     if nlin_protocol:
-#         # actually parse it:
-#         if reg_method == "ANTS":
-#             non_linear_configuration = parse_ANTS_protocol_file(nlin_protocol, file_resolution)
-#         elif reg_method == "minctracc":
-#             non_linear_configuration = parse_minctracc_nonlinear_protocol_file(nlin_protocol)
-#         else:
-#             raise ValueError("?!")
-#     else:
-#         # get one of the default configurations
-#         if reg_method == "ANTS":
-#             non_linear_configuration = get_default_multi_level_ANTS(file_resolution=file_resolution)
-#             note_message = "Note: the non-linear protocol (" + flag_nlin_protocol + \
-#                            ") was not set. Using the default ANTS protocol:\n"
-#             for conf in non_linear_configuration.confs:
-#                 note_message += conf.transformation_model + ", " + conf.regularization + ", " + conf.iterations + "\n"
-#             print(note_message)
-#         elif reg_method == "minctracc":
-#             #TODO: this. Still TODO.
-#             raise ValueError("Error.. we do not have proper minctracc nonlinear defaults yet. ")
-#         else:
-#             raise ValueError("?!")
-#
-#     return non_linear_configuration
-
-
 def parse_many(parser, sep=','):
     def f(st):
         return tuple(parser(s) for s in st.split(sep))
