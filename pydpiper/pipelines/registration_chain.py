@@ -254,7 +254,7 @@ def chain(options):
                                          pipeline_subject_info)  # type: Dict[str, Subject[XfmHandler]]
 
         # create verification images to show the 6 parameter alignment
-        montageLSQ6 = pipeline_montage_dir + "/quality_control_montage_lsq6.png"
+        montageLSQ6 = pipeline_montage_dir + "/quality_control_montage_lsq6"
         # TODO, base scaling factor on resolution of initial model or target
         filesToCreateImagesFrom = []
         for subj_id, subj in subj_id_to_subj_with_lsq6_xfm_dict.items():
