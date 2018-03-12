@@ -16,7 +16,6 @@ from pydpiper.execution.application import mk_application
 from pydpiper.minc.analysis import voxel_vote
 from pydpiper.minc.files            import MincAtom, XfmAtom
 from pydpiper.minc.registration     import (check_MINC_input_files, lsq12_nlin, custom_formatwarning,
-                                            get_nonlinear_configuration_from_options,
                                             get_linear_configuration_from_options, LinearTransType,
                                             mincresample_new, mincmath, Interpolation, xfmconcat, xfminvert,
                                             get_nonlinear_component)
@@ -40,6 +39,7 @@ def get_imgs(options):
             warnings.warn("couldn't read csv ... did you supply `file` column?")
             raise
         # FIXME check `file` column is present ...
+        # TODO check for zero length file ...
 
         csv_base = os.path.dirname(options.csv_file)
 
