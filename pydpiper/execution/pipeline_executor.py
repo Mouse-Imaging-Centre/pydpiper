@@ -154,7 +154,7 @@ class MissingOutputs(ValueError): pass
 
 
 def runStage(*, clientURI    : str, stage,
-                cmd_wrapper  : str, mkdirs : bool):
+                cmd_wrapper  : str, fs_delay : float, check_outputs : bool, mkdirs : bool):
         ix = stage.ix
 
         logger.info("Running stage %i (on %s). Memory requested: %.2f", ix, clientURI, stage.mem)
@@ -186,13 +186,15 @@ def runStage(*, clientURI    : str, stage,
                 #client.removePIDfromRunningList(process.pid)
                 ret = process.returncode
                 if ret == 0:
+                    time.sleep(fs_delay)  # TODO: better: async wait with timeout=fs_delay on all output files?
                     # TODO: better logic here, e.g., allow some tolerance for NFS slowness, etc.
                     missing_outputs = [o for o in stage.output_files
                                        if (not os.path.exists(o)) or os.path.getmtime(o) < start_time]
                     if len(missing_outputs) > 0:
                         logger.warning("some outputs not produced by Stage %i: %s", ix, missing_outputs)
-                        of.write("[executor] ERROR: outputs not produced, failing this stage: %s\n" % missing_outputs)
-                        raise MissingOutputs(missing_outputs)
+                        if check_outputs:
+                          of.write("[executor] ERROR: outputs not produced, failing this stage: %s\n" % missing_outputs)
+                          raise MissingOutputs(missing_outputs)
         except Exception as e:
             logger.exception("Exception whilst running stage: %i (on %s)", ix, clientURI)
             return ix, e
@@ -243,6 +245,8 @@ class pipelineExecutor(object):
         self.executor_wrapper = options.executor_wrapper
         self.ns = options.use_ns
         self.uri_file = options.urifile
+        self.fs_delay = options.fs_delay
+        self.check_outputs = options.check_outputs
         if self.uri_file is None:
             self.uri_file = os.path.abspath(os.path.join(os.curdir, uri_file))
         # the next variable is used to keep track of how long the
@@ -325,7 +329,7 @@ class pipelineExecutor(object):
         # stop the worker processes (children) immediately without completing outstanding work
         # Initially I wanted to stop the running processes using pool.terminate() and pool.join()
         # but the keyboard interrupt handling proved tricky. Instead, the executor now keeps
-        # track of the process IDs (pid) of the current running jobs. Those are targetted by
+        # track of the process IDs (pid) of the current running jobs. Those are targeted by
         # os.kill in order to stop the processes in the Pool
         logger.info("Executor shutting down.  Killing running jobs...")
         #for subprocID in self.current_running_job_pids:
@@ -609,6 +613,7 @@ class pipelineExecutor(object):
             result = self.pool.apply_async(runStage, args=(),
                                            kwds={ "clientURI" : self.clientURI, "stage" : stage,
                                                   "cmd_wrapper" : self.cmd_wrapper,
+                                                  "fs_delay" : self.fs_delay, "check_outputs" : self.check_outputs,
                                                   "mkdirs" : self.defer_directory_creation },
                                            callback=process_result)
             self.runningChildren[i] = ChildProcess(i, result, stage.mem, stage.procs)
