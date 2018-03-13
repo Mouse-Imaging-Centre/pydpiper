@@ -448,7 +448,7 @@ def _mk_common_space_parser(parser : ArgParser):
                        type=str, help="Run MAGeT segmentation on the images.")
     group.add_argument("--common-space-mask", dest="common_space_mask",
                        type=str, help="Mask for common space model")
-    group.set_defaults(do_common_space_registration=True)
+    group.set_defaults(do_common_space_registration=False)
     group.add_argument("--common-space-registration", dest="do_common_space_registration",
                        action="store_true", help="Do registration to common (db) space. [default]")
     group.add_argument("--no-common-space-registration", dest="do_common_space_registration",

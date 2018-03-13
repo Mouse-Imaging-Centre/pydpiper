@@ -13,19 +13,25 @@ New in Version 2.0.11
   (the most useful addition).  An --nlin-pairs flag has been added to control the complexity
   of pairwise nonlinear model building with some small default intended for producing an
   intermediate average prior to 'standard' model building.
-* begin adding support (not yet functioning, mostly due to ITK<->MINC file conversion issues)
+* begin adding support (not yet functioning, mostly due to ITK<->MINC/xfm file conversion issues)
   for other registration tools based on ITK/NIfTI: Elastix, Demons, DRAMMS, and some
   auxiliary tools (e.g., c3d).
 * increase maximum memory requests in the MICe/SLURM config file
+* add option to defer file directory creation until runtime in the hope of starting a pipeline
+  sooner.  Currently quite (time/memory) inefficient so not recommended but much room for improvement.
+* output files are now checked to ensure they exist when a stage finishes.
+  Flags --{,no-}check-outputs and --fs-delay control this.
+* write out more/better output CSV files; for MBM.py; see analysis.py, which is
+  ready for modelling as soon as you filter by your chosen blurring kernel width (`fwhm` column)
+* MBM.py doesn't do common space registration by default
 * configuration objects now track the flags which can be used to control them
   and this is used in some error messages to provide more useful suggestions
-* output files are now checked to ensure they exist when a stage finishes
-* log file locations can now be specified when creating a CmdStage
 * added stage_embryos_in_4D_atlas.py; this may move to mouse-imaging-centre/MICe-lab
 * better/more automated checking of input files from pipeline graph
 * use networkx 2.x instead of 1.x API
+* log file locations can now be specified when creating a CmdStage
 * delete obsolete test_registration_fh.py
-* many miscellaneous internal changes
+* many miscellaneous internal changes and bugfixes
 
 New in Version 2.0.10
 ====================
