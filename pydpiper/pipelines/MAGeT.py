@@ -16,7 +16,6 @@ from pydpiper.execution.application import mk_application
 from pydpiper.minc.analysis import voxel_vote
 from pydpiper.minc.files            import MincAtom, XfmAtom
 from pydpiper.minc.registration     import (check_MINC_input_files, lsq12_nlin, custom_formatwarning,
-                                            get_nonlinear_configuration_from_options,
                                             get_linear_configuration_from_options, LinearTransType,
                                             mincresample_new, mincmath, Interpolation, xfmconcat, xfminvert,
                                             get_nonlinear_component)
@@ -24,6 +23,7 @@ from pydpiper.minc.registration     import (check_MINC_input_files, lsq12_nlin, 
 warnings.formatwarning = custom_formatwarning
 
 
+# TODO will be more reusable if this doesn't take the whole options object but separate pieces
 # TODO move to a more sensible location !!
 def get_imgs(options):
     #options : application_options
@@ -32,12 +32,14 @@ def get_imgs(options):
 
     if options.csv_file:
         try:
-            csv = pd.read_csv(options.csv_file)
+            csv = pd.read_csv(options.csv_file,
+                              index_col=False)  # because this is just weird, and may cause 'wrong' cols to be read!
+            # TODO turn on index_col=False in other read_csv calls!
         except:
             warnings.warn("couldn't read csv ... did you supply `file` column?")
             raise
-
         # FIXME check `file` column is present ...
+        # TODO check for zero length file ...
 
         csv_base = os.path.dirname(options.csv_file)
 
@@ -408,6 +410,11 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir, build_model_xfms=N
 
             # FIXME: the --max-templates flag is ambiguously named ... should be --max-new-templates
             # (and just use all atlases)
+            # TODO we could have a separate templates_csv (or --template-files f [f ...]) but you can just
+            # run a separate MAGeT pipeline and
+            #if maget_options.templates_csv:
+            #    templates = pd.read_csv(maget_options.templates_csv).template
+            #else:
             templates = pd.DataFrame({ 'template' : choose_new_templates(ts=imgs,
                                                                          n=maget_options.max_templates - len(atlases))})
             # note these images are the masked ones if masking was done ...
@@ -519,6 +526,7 @@ def maget_pipeline(options):
                    output_dir=options.application.output_directory,
                    build_model_xfms=build_model_xfms)
 
+    # TODO this should also be created by MBM and other pipelines that run MAGeT
     (pd.DataFrame({ 'img_file'   : result.output.apply(lambda row: row.path),
                     'label_file' : result.output.apply(lambda row: row.labels.path),
                     #'mask_file'  : result.output.apply(lambda row: row.mask.path if row.mask else "NA")

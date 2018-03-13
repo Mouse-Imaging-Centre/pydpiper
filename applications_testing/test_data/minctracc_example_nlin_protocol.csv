@@ -3,7 +3,6 @@
 "iterations";20;20;6;6;8;8;8;8;8;8;8;8
 "simplex";5;5;2;2;2;2;2;2;2;2;2;2
 "gradient";FALSE;TRUE;FALSE;TRUE;FALSE;TRUE;FALSE;TRUE;FALSE;TRUE;FALSE;TRUE
-"w_translations";0.4;0.4;0.4;0.4;0.4;0.4;0.4;0.4;0.4;0.4;0.4;0.4
 "optimization";"-use_simplex";"-use_simplex";"-use_simplex";"-use_simplex";"-use_simplex";"-use_simplex";"-use_simplex";"-use_simplex";"-use_simplex";"-use_simplex";"-use_simplex";"-use_simplex"
 "stiffness";0.98;0.98;0.98;0.98;0.98;0.98;0.98;0.98;0.98;0.98;0.98;0.98
 "weight";0.8;0.8;0.8;0.8;0.8;0.8;0.8;0.8;0.8;0.8;0.8;0.8

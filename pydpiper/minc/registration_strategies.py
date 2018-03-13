@@ -51,7 +51,8 @@ def build_model(reg_module : Type[NLIN]) -> Type[NLIN_BUILD_MODEL]:
                                                 resample_source=True))
                     for img, xfm in zip(imgs, xfms)]
             avg = s.defer(reg_module.Algorithms.average([xfm.resampled for xfm in xfms],
-                                                        name_wo_ext='nlin-%d' % i, output_dir=nlin_dir))
+                                                        name_wo_ext='%s-nlin-%d' % (nlin_prefix, i),
+                                                        output_dir=nlin_dir))
             avg_imgs.append(avg)
         return Result(stages=s, output=WithAvgImgs(output=xfms, avg_img=avg, avg_imgs=avg_imgs))
     return mk_build_model_class(nlin=reg_module,
@@ -238,7 +239,7 @@ def pairwise(nlin_module: NLIN, max_pairs: Optional[int] = None, max_images: Opt
 
     #if not output_name_wo_ext:
     #    output_name_wo_ext = "full_pairwise_nlin_%s" % nlin_module.__name__
-    output_name_wo_ext = "nlin_%s" % nlin_module.__name__
+    output_name_wo_ext = "%s_nlin_%s" % (nlin_prefix, nlin_module.__name__)
 
     final_avg = ImgAtom(name=os.path.join(nlin_dir, output_name_wo_ext + ".todo"),
                         pipeline_sub_dir=nlin_dir)

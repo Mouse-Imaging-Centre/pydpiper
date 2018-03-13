@@ -18,7 +18,7 @@ from pydpiper.core.files import FileAtom
 from pydpiper.core.stages import CmdStage, Result, Stages, identity_result
 from pydpiper.core.util import pairs, AutoEnum, NamedTuple, raise_, flatten
 from pydpiper.minc.containers import XfmHandler
-from pydpiper.minc.files import MincAtom, XfmAtom, xfmToMinc, IdMinc
+from pydpiper.minc.files import MincAtom, XfmAtom, xfmToMinc, IdMinc, mincToXfm
 from pydpiper.minc.nlin import NLIN, NLIN_BUILD_MODEL, Algorithms
 
 
@@ -1290,11 +1290,12 @@ def parse_minctracc_protocol(f, base_minctracc_conf, parsers, names,
 
         conf  = base_minctracc_conf.replace(**attrs)  # FIXME this is rather unsafe
         return modify(MinctraccConf(blur_resolution=single_gen_params["blur"],
-                             use_gradient=single_gen_params["gradient"],
-                             step_sizes=(single_gen_params["step"],) * 3,
-                             use_masks=True, #FIXME
-                             linear_conf=None,
-                             nonlinear_conf=None), conf)
+                                    use_gradient=single_gen_params["gradient"],
+                                    step_sizes=(single_gen_params["step"],) * 3,
+                                    use_masks=True, #FIXME
+                                    linear_conf=None,
+                                    nonlinear_conf=None),
+                      conf)
 
     return MultilevelMinctraccConf([convert_single_gen({ key : vs[j] for key, vs in d.items() }) for j in range(l)])
 
@@ -1324,7 +1325,7 @@ def parse_minctracc_nonlinear_protocol(f,
     return parse_minctracc_protocol(f=f,
                                     parsers=parsers,
                                     names=names,
-                                    base_minctracc_conf=default_nonlinear_minctracc_conf,
+                                    base_minctracc_conf=base_minctracc_conf, #default_nonlinear_minctracc_conf,
                                     is_ignored_key=lambda k: k.startswith("w_") or (k in ["memory_required", "simplex"]),
                                     modify=lambda b, c: b.replace(nonlinear_conf=c))
 
@@ -1383,68 +1384,27 @@ def get_nonlinear_component(reg_method : str):
     def _antsRegistration():
         import pydpiper.minc.antsRegistration as antsRegistration
         return antsRegistration.ANTSRegistration
-    def _demons():
-        import pydpiper.itk.demons as demons
-        return demons.Demons
-    def _DRAMMS():
-        import pydpiper.itk.DRAMMS as DRAMMS
-        return DRAMMS.DRAMMS
-    def _elastix():
-        import pydpiper.itk.elastix as elastix
-        return elastix.Elastix
+    #def _demons():
+    #    import pydpiper.itk.demons as demons
+    #    return demons.Demons
+    #def _DRAMMS():
+    #    import pydpiper.itk.DRAMMS as DRAMMS
+    #    return DRAMMS.DRAMMS
+    #def _elastix():
+    #    import pydpiper.itk.elastix as elastix
+    #    return elastix.Elastix
     def _minctracc():
         return MINCTRACC
     d = { "ANTS"             : _ANTS,
           "antsRegistration" : _antsRegistration,
-          "demons"           : _demons,
-          "DRAMMS"           : _DRAMMS,
-          "elastix"          : _elastix,
+          #"demons"           : _demons,
+          #"DRAMMS"           : _DRAMMS,
+          #"elastix"          : _elastix,
           "minctracc"        : _minctracc }
     if reg_method in d:
         return d[reg_method]()
     else:
         raise NotImplemented("nonlinear registration via method '%s'" % reg_method)
-
-
-def get_nonlinear_configuration_from_options(nlin_protocol : str,
-                                             reg_method : str):
-                                             # TODO now missing flag for reg_method/nlin_protocol
-                                             # ... could take nlin_options as arg instead ...
-                                             #file_resolution : float):
-    """
-    :param nlin_protocol: path to the protocol on the system (can be None)
-    :param reg_method: the registration method (currently ANTS or minctracc)
-    :param file_resolution: resolution at which registrations are performed
-    :return:  MultilevelANTSConf or MultilevelMinctraccConf
-    """
-    raise ValueError("deprecated; call <nlin module>.parse_<...> instead")
-
-    # TODO maybe just take the whole nlin_conf as a param to save typing at the call site?
-     # determine what configuration to use for the non linear registration
-#     if nlin_protocol:
-#         # actually parse it:
-#         if reg_method == "ANTS":
-#             non_linear_configuration = parse_ANTS_protocol_file(nlin_protocol, file_resolution)
-#         elif reg_method == "minctracc":
-#             non_linear_configuration = parse_minctracc_nonlinear_protocol_file(nlin_protocol)
-#         else:
-#             raise ValueError("?!")
-#     else:
-#         # get one of the default configurations
-#         if reg_method == "ANTS":
-#             non_linear_configuration = get_default_multi_level_ANTS(file_resolution=file_resolution)
-#             note_message = "Note: the non-linear protocol (" + flag_nlin_protocol + \
-#                            ") was not set. Using the default ANTS protocol:\n"
-#             for conf in non_linear_configuration.confs:
-#                 note_message += conf.transformation_model + ", " + conf.regularization + ", " + conf.iterations + "\n"
-#             print(note_message)
-#         elif reg_method == "minctracc":
-#             #TODO: this. Still TODO.
-#             raise ValueError("Error.. we do not have proper minctracc nonlinear defaults yet. ")
-#         else:
-#             raise ValueError("?!")
-#
-#     return non_linear_configuration
 
 
 def parse_many(parser, sep=','):
@@ -1964,9 +1924,21 @@ def lsq12_pairwise(imgs: List[MincAtom],
                                                            file_resolution=resolution)
 
     s = Stages()
-    avgs_and_xfms = s.defer(multilevel_pairwise_minctracc(imgs=imgs, conf=minctracc_conf, like=like,
-                                                          output_dir_for_avg=lsq12_dir, mincaverage=mincaverage,
-                                                          max_pairs=lsq12_conf.max_pairs))
+
+    if lsq12_conf.run_lsq12:
+        avgs_and_xfms = s.defer(multilevel_pairwise_minctracc(imgs=imgs, conf=minctracc_conf, like=like,
+                                                              output_dir_for_avg=lsq12_dir, mincaverage=mincaverage,
+                                                              max_pairs=lsq12_conf.max_pairs))
+        # TODO: instead of this case analysis, we could dispatch on overall LSQ12 module as we do for the nonlinear part
+    else:
+        final_avg = MincAtom(name=os.path.join(lsq12_dir, "lsq12_identity_avg.mnc"),
+                             pipeline_sub_dir=lsq12_dir)
+        avg = s.defer(mincaverage([img for img in imgs], avg_file=final_avg))
+        identity_xfm = s.defer(param2xfm(out_xfm=FileAtom(name=os.path.join(lsq12_dir, 'tmp', "identity.xfm"),
+                                                          output_sub_dir=os.path.join(lsq12_dir, 'tmp'))))
+        identity_xfms = [XfmHandler(source=img, target=avg, xfm=identity_xfm, resampled=img) for img in imgs]
+        avgs_and_xfms = WithAvgImgs(avg_imgs=[avg], avg_img=avg,
+                                    output=identity_xfms)
 
     if create_qc_images:
         s.defer(create_quality_control_images(imgs=[avgs_and_xfms.avg_img]
@@ -2977,6 +2949,13 @@ def minc_label_ops(in_labels : MincAtom, op : LabelOp, op_arg : Optional[Union[M
     return Result(stages=Stages([s]), output=out_labels)
 
 
+def make_xfm_for_grid(grid : MincAtom):
+    xfm = mincToXfm(grid.newname_with_suffix("_grid"))
+    cmd = CmdStage(inputs=(grid,), outputs=(xfm,),
+                   cmd=['make_xfm_for_grid.pl', grid.path, xfm.path])
+    return Result(stages=Stages([cmd]), output=xfm)
+
+
 # TODO move?
 class MincAlgorithms(Algorithms):
     blur     = mincblur
@@ -3021,6 +3000,7 @@ class MincAlgorithms(Algorithms):
         # write its information to disk
         scaled_xfm = xfm.xfm.newname_with_suffix(suffix="_halfway")
         # write the xfm file:
+        # TODO replace with make_xfm_for_grid!
         s.add(CmdStage(inputs=(scaled_grid,),
                        outputs=(scaled_xfm,),
                        cmd=(["make_xfm_for_grid.pl",

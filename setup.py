@@ -9,7 +9,7 @@ if sys.version_info < (3, 5):
     raise ValueError("Minimum Python version supported is 3.5")
 
 setup(name='pydpiper',
-      version='2.0.10',
+      version='2.0.11',
       license='Modified BSD',
       description='Python code for flexible pipeline control',
       long_description='Python code for flexible pipeline control',
@@ -21,11 +21,9 @@ setup(name='pydpiper',
         'networkx>=2.0b1',
         'ordered-set',
         'pandas',
-        #'pydotplus',  # use nx.nx_pydot.write_dot to write graphviz files
+        #'pydot',  # use nx.nx_pydot.write_dot to write graphviz files
         #'pygraphviz',
-        # in principle one could require 'pydotplus' instead (and use nx.nx_pydot.write_dot), but that package isn't
-        # very maintained (pydot_ng seems to be more popular, but networkx hasn't switched).  This is
-        # annoying because pygraphviz needs the graphviz headers (e.g., from libgraphviz-dev .deb) to compile.
+        # pygraphviz needs the graphviz headers (e.g., from libgraphviz-dev .deb) to compile.
         'pyminc',
         'Pyro4',
         'pytest',

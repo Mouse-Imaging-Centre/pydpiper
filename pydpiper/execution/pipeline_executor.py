@@ -26,7 +26,7 @@ Pyro4.config.SERVERTYPE = "multiplex"
 
 class SubmitError(ValueError): pass
 
-for boring_exception, name in [(mincException, "mincException"), (SubmitError, "SubmitError"), (KeyError,"KeyError")]:
+for boring_exception, name in [(mincException, "mincException"), (SubmitError, "SubmitError"), (KeyError, "KeyError")]:
     Pyro4.util.SerializerBase.register_dict_to_class(name, lambda _classname, dict: boring_exception)
     Pyro4.util.SerializerBase.register_class_to_dict(boring_exception, lambda obj: { "__class__" : name })
 
@@ -152,7 +152,9 @@ Pyro4.util.SerializerBase.register_dict_to_class("pydpiper.execution.pipeline_ex
 
 class MissingOutputs(ValueError): pass
 
-def runStage(*, clientURI, stage, cmd_wrapper):
+
+def runStage(*, clientURI    : str, stage,
+                cmd_wrapper  : str, mkdirs : bool):
         ix = stage.ix
 
         logger.info("Running stage %i (on %s). Memory requested: %.2f", ix, clientURI, stage.mem)
@@ -160,10 +162,16 @@ def runStage(*, clientURI, stage, cmd_wrapper):
             command_to_run  = ((cmd_wrapper + ' ') if cmd_wrapper else '') + ' '.join(stage.cmd)
 
             logger.info(command_to_run)
-            command_logfile = stage.log_file
+
+            # TODO this isn't too efficient:
+            #   there is no global cache (yet) of the directories that have been created ...
+            if mkdirs:
+                os.makedirs(os.path.dirname(stage.log_file), exist_ok=True)
+                for d in set([os.path.dirname(f) for f in stage.output_files]):
+                    os.makedirs(d, exist_ok=True)
 
             # log file for the stage
-            with open(command_logfile, 'a') as of:
+            with open(stage.log_file, 'a') as of:
                 of.write("Stage " + str(ix) + " running on " + socket.gethostname()
                          + " (" + clientURI + ") at " + datetime.isoformat(datetime.now(), " ") + ":\n")
                 of.write(command_to_run + "\n")
@@ -209,7 +217,7 @@ class InsufficientResources(Exception):
 class pipelineExecutor(object):
     def __init__(self, options, uri_file, pipeline_name, memNeeded = None):
         # TODO change options, uri_file, pipeline_name to exec_options, app_options
-        # better: self.options = options ... ?
+        # TODO *** better: self.options = options ... ?
         # TODO the additional argument `mem` represents the
         # server's estimate of the amount of memory
         # an executor may need to run available jobs
@@ -221,6 +229,7 @@ class pipelineExecutor(object):
         logger.info("self.mem = %0.2fG", self.mem)
         if self.mem > options.mem:
             raise InsufficientResources("executor requesting %.2fG memory but maximum is %.2fG" % (options.mem, self.mem))
+        self.defer_directory_creation = options.defer_directory_creation
         self.pipeline_name = pipeline_name
         self.procs = options.proc
         self.ppn = options.ppn
@@ -599,7 +608,8 @@ class pipelineExecutor(object):
             logger.debug("Server knows that stage started")
             result = self.pool.apply_async(runStage, args=(),
                                            kwds={ "clientURI" : self.clientURI, "stage" : stage,
-                                                  "cmd_wrapper" : self.cmd_wrapper},
+                                                  "cmd_wrapper" : self.cmd_wrapper,
+                                                  "mkdirs" : self.defer_directory_creation },
                                            callback=process_result)
             self.runningChildren[i] = ChildProcess(i, result, stage.mem, stage.procs)
 
