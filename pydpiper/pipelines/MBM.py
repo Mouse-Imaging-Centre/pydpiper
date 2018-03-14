@@ -73,7 +73,7 @@ def mbm_pipeline(options : MBMConf):
 
     determinants.to_csv("determinants.csv", index=False)
 
-    analysis = pd.merge(transforms, determinants, left_on='lsq12_nlin_xfm', right_on='inv_xfm').drop(["inv_xfm"], axis=1)
+    analysis = pd.merge(transforms, determinants, left_on='lsq12_nlin_xfm', right_on='inv_xfm').drop(["inv_xfm","xfm"], axis=1)
 
     if options.application.csv_file==None:
         analysis.to_csv("analysis.csv", index=False)
