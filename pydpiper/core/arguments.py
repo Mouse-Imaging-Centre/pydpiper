@@ -341,6 +341,12 @@ def _mk_execution_parser(p: ArgParser) -> ArgParser:
     group.add_argument("--cmd-wrapper", dest="cmd_wrapper",
                        type=str, default="",
                        help="Wrapper inside of which to run the command, e.g., '/usr/bin/time -v'. [Default='%(default)s']")
+    group.add_argument("--check-input-files", dest="check_input_files", action="store_true",
+                       help="Check overall pipeline inputs exist and, when applicable, "
+                            "are valid MINC files [Default=%(default)s]")
+    group.add_argument("--no-check-input-files", dest="check_input_files", action="store_false",
+                       help="Opposite of --check-input-files")
+    group.set_defaults(check_inputs=True)
     group.add_argument("--check-outputs", dest="check_outputs",
                        action="store_true",
                        help="Check output files exist and error if not [Default=%(default)s]")

@@ -170,7 +170,9 @@ def execute(stages, options):
             if len(bad_inputs) > 0:
                 raise ValueError("bad inputs: %s" % bad_inputs)
 
-    check_inputs()
+    # TODO lots of optimizations/improvements possible here, e.g., check only 'live' ancestors, not original ones
+    if options.execution.check_input_files:
+        check_inputs()
 
     # TODO: why is this needed now that --version is also handled automatically?
     # --num-executors=0 (<=> --no-execute) could be the default, and you could
