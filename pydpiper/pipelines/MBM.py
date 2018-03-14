@@ -75,6 +75,8 @@ def mbm_pipeline(options : MBMConf):
 
     analysis = pd.merge(transforms, determinants, left_on='lsq12_nlin_xfm', right_on='inv_xfm').drop(["inv_xfm","xfm"], axis=1)
 
+    analysis['nlin_mask_file'] = mbm_result.xfms.lsq12_nlin_xfm.apply(lambda x: x.resampled.mask.path)
+
     if options.application.csv_file==None:
         analysis.to_csv("analysis.csv", index=False)
     else:
