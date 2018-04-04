@@ -61,7 +61,7 @@ class CmdStage(object):
         #return self.render_fn(self.conf, self.inputs, self.outputs)
         return self.cmd_to_string()
     def cmd_to_string(self) -> str:
-        return ' '.join(self._cmd)
+        return ' '.join(str(x) for x in self._cmd)
     def to_array(self) -> List[str]:
         """Form usable for Python subprocess call."""
         return self._cmd
