@@ -189,7 +189,7 @@ class CmdStage(PipelineStage):
         """Return a small value which can be used to compare objects.
         Use a deterministic hash to allow persistence across restarts (calls to `hash` and `__hash__`
         depend on the value of PYTHONHASHSEED as of Python 3.3)"""
-        return hashlib.md5("".join(str(x) for x in self.cmd).encode()).hexdigest()
+        return hashlib.md5("".join(self.cmd).encode()).hexdigest()
 
     def __repr__(self):
         return(" ".join(self.cmd))
