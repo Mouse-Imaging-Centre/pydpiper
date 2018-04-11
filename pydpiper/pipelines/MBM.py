@@ -67,7 +67,7 @@ def mbm_pipeline(options : MBMConf):
 
     #intentionally after writing transforms to csv
     if options.mbm.segmentation.run_maget:
-        transforms = (transforms.assign(label_files = mbm_result.maget_result.apply(lambda x: x.labels.path)))
+        transforms = (transforms.assign(label_file = mbm_result.maget_result.apply(lambda x: x.labels.path)))
 
     determinants = (mbm_result.determinants.drop(["full_det", "nlin_det"], axis=1).applymap(maybe_deref_path))
 
