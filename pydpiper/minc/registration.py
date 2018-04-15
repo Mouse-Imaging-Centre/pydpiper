@@ -1404,7 +1404,7 @@ def get_nonlinear_component(reg_method : str):
     if reg_method in d:
         return d[reg_method]()
     else:
-        raise NotImplemented("nonlinear registration via method '%s'" % reg_method)
+        raise NotImplementedError("nonlinear registration via method '%s'" % reg_method)
 
 
 def parse_many(parser, sep=','):
