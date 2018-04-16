@@ -21,7 +21,8 @@ class CmdStage(object):
                  cmd      : List[str],
                  memory   : float = None,
                  procs    : int = 1,
-                 log_file : Optional[str] = None) -> None:
+                 log_file : Optional[str] = None,
+                 env      : Dictionary[str] = None) -> None:
         # TODO: rather than having separate cmd_stage fn, might want to make inputs/outputs optional here
         self.inputs  = inputs          # type: Tuple[FileAtom, ...]
         # TODO: might be better to dereference inputs -> inputs.path here to save mem
@@ -43,6 +44,7 @@ class CmdStage(object):
                                        "log",
                                        cmd[0], "%s.log" % self.outputs[0].filename_wo_ext)
                          if len(self.outputs) >= 1 else None)  # FIXME: for |self.outputs| > 1, this is a fragile hack
+        self.env = env if env is not None else {}
     # NB: __hash__ and __eq__ ignore hooks, memory
     # Also, we assume cmd determines inputs, outputs so ignore it in hash/eq calculations
     # FIXME: we should make the CmdStage fields immutable (via properties) to prevent hashing-related bugs
