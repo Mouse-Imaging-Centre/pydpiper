@@ -6,11 +6,10 @@ import sys
 import warnings
 
 import numpy as np
-from configargparse import Namespace, ArgParser
+from configargparse import Namespace
 import pandas as pd
 from pydpiper.pipelines.registration_chain import get_closest_model_from_pride_of_models
 
-from pydpiper.pipelines.MAGeT import maget, fixup_maget_options
 from pydpiper.minc.analysis import determinants_at_fwhms
 from pydpiper.minc.files import MincAtom
 from pydpiper.minc.registration import (concat_xfmhandlers, invert_xfmhandler, mincresample_new, check_MINC_input_files,
@@ -24,7 +23,7 @@ from pydpiper.core.arguments import (AnnotatedParser, CompoundParser, applicatio
                                      execution_parser, registration_parser, parse, BaseParser, segmentation_parser)
 
 
-TwoLevelConf = NamedTuple("TwoLevelConf", [("first_level_conf", MBMConf),
+TwoLevelConf = NamedTuple("TwoLevelConf", [("first_level_conf",  MBMConf),
                                            ("second_level_conf", MBMConf)])
 
 
@@ -50,7 +49,10 @@ def two_level_pipeline(options : TwoLevelConf):
             warnings.warn("Something went wrong ... does your .csv file have `group` and `file` columns?")
             raise
 
-    check_MINC_input_files(files_df.file.map(lambda x: x.path))
+    # TODO is it actually sufficient that *within-study* filenames are distinct, as follows??
+    for name, g in files_df.groupby("group"):   # TODO: collect the outputs
+        check_MINC_input_files(g.file.map(lambda x: x.path))
+    #check_MINC_input_files(files_df.file.map(lambda x: x.path))
 
     pipeline = two_level(grouped_files_df=files_df, options=options)
 

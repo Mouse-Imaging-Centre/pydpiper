@@ -26,7 +26,6 @@ warnings.formatwarning = custom_formatwarning
 # TODO will be more reusable if this doesn't take the whole options object but separate pieces
 # TODO move to a more sensible location !!
 def get_imgs(options):
-    #options : application_options
     if options.csv_file and options.files:
         raise ValueError("both --csv-file and --files specified ...")
 

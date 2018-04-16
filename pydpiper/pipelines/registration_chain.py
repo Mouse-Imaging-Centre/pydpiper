@@ -181,7 +181,8 @@ def chain(options):
     pipeline_subject_info = map_over_time_pt_dict_in_Subject(
                                      lambda subj_str:  MincAtom(name=subj_str, pipeline_sub_dir=pipeline_processed_dir),
                                      subject_info)  # type: Dict[str, Subject[MincAtom]]
-    
+
+
     # verify that in input files are proper MINC files, and that there 
     # are no duplicates in the filenames
     all_Minc_atoms = []  # type: List[MincAtom]
