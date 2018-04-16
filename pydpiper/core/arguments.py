@@ -314,7 +314,7 @@ def _mk_execution_parser(p: ArgParser) -> ArgParser:
                        help="Submit the server to the grid.  Currently works only with PBS/Torque systems.")
     group.add_argument("--no-submit-server", dest="submit_server", action="store_false",
                        help="Opposite of --submit-server. [default]")
-    group.add_argument("--time-to-seppuku", dest="time_to_seppuku",
+    group.add_argument("--max-idle-time", dest="max_idle_time",
                        type=int, default=1,
                        help="The number of minutes an executor is allowed to continuously sleep, i.e. wait for an available job, while active on a compute node/farm before it kills itself due to resource hogging. [Default = %(default)s]")
     group.add_argument("--time-to-accept-jobs", dest="time_to_accept_jobs",

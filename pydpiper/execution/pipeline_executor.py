@@ -257,7 +257,7 @@ class pipelineExecutor(object):
         self.current_time = None
         # the maximum number of minutes an executor can be continuously
         # idle for, before it has to kill itself.
-        self.time_to_seppuku = options.time_to_seppuku
+        self.max_idle_time = options.max_idle_time
         # the time in minutes after which an executor will not accept new jobs
         self.time_to_accept_jobs = options.time_to_accept_jobs
         # stores the time of connection with the server
@@ -446,13 +446,12 @@ class pipelineExecutor(object):
     def canRun(self, stageMem, stageProcs, runningMem, runningProcs):
         """Calculates if stage is runnable based on memory and processor availability"""
         return stageMem <= self.mem - runningMem and stageProcs <= self.procs - runningProcs
-    def is_seppuku_time(self):
-        # Is it time to perform seppuku: has the
-        # idle_time exceeded the allowed time to be idle?
-        # time_to_seppuku is given in minutes
-        # idle_time       is given in seconds
-        if self.time_to_seppuku != None:
-            if (self.time_to_seppuku * 60) < self.idle_time:
+    def is_max_idle_time(self):
+        # Has the idle_time exceeded the allowed maximum?
+        # max_idle_time is given in minutes
+        # idle_time     is given in seconds
+        if self.max_idle_time != None:
+            if (self.max_idle_time * 60) < self.idle_time:
                 return True
         return False
                         
@@ -533,10 +532,10 @@ class pipelineExecutor(object):
         if self.idle():
             self.idle_time += self.current_time - self.prev_time
             logger.debug("Current idle time: %d, and total seconds allowed: %d",
-                         self.idle_time, self.time_to_seppuku * 60)
+                         self.idle_time, self.max_idle_time * 60)
 
-        if self.is_seppuku_time():
-            logger.warning("Exceeded allowed idle time... Seppuku!")
+        if self.is_max_idle_time():
+            logger.warning("Exceeded allowed idle time ... bye!")
             return False
 
         # It is possible that the executor does not accept any new jobs

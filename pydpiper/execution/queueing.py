@@ -80,9 +80,9 @@ class runOnQueueingSystem():
         reconstruct = ""
         if self.arguments:
             reconstruct += ' '.join(remove_flags(['--num-exec', '--mem',
-                                                  '--time-to-seppuku'],
+                                                  '--max-idle-time'],
                                                  self.arguments))
-        reconstruct += " --local --num-executors=1 --time-to-seppuku=%d " \
+        reconstruct += " --local --num-executors=1 --max-idle-time=%d " \
                          % self.max_walltime
         return reconstruct
     def constructAndSubmitJobFile(self, identifier, time, isMainFile, after=None, afterany=None):
