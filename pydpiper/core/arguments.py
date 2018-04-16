@@ -353,7 +353,7 @@ def _mk_execution_parser(p: ArgParser) -> ArgParser:
     group.add_argument("--no-check-outputs", dest="check_outputs",
                        action="store_false",
                        help="Opposite of --check-outputs.")
-    group.set_defaults(check_outputs=True)
+    group.set_defaults(check_outputs=False)
     group.add_argument("--fs-delay", dest="fs_delay",
                        type=float, default=5,
                        help="Time (sec) to allow for NFS to become consistent after stage completion [Default=%(default)s]")

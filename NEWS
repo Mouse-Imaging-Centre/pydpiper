@@ -23,8 +23,8 @@ New in Version 2.0.11
 * increase maximum memory requests in the MICe/SLURM config file
 * add option to defer file directory creation until runtime in the hope of starting a pipeline
   sooner.  Currently quite (time/memory) inefficient so not recommended but much room for improvement.
-* output files are now checked to ensure they exist when a stage finishes.
-  Flags --{,no-}check-outputs and --fs-delay control this.
+* output files are now optionally checked to ensure they exist when a stage finishes.
+  Flags --{,no-}check-outputs (default: False) and --fs-delay control this.
 * write out more/better output CSV files; for MBM.py, see analysis.csv, which is in tidy format
   ready for modelling as soon as you filter by your chosen blurring kernel width (`fwhm` column)
   (please remember to do this!)
