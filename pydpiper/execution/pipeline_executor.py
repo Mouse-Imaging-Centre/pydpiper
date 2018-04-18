@@ -132,18 +132,19 @@ def launchExecutor(executor):
 
 # like a stage but lighter weight (no methods wasting memory...)
 class StageInfo(object):
-    def __init__(self, *, mem, procs, ix, cmd, log_file, output_files):
+    def __init__(self, *, mem, procs, ix, cmd, log_file, output_files, env_vars):
         self.mem = mem
         self.procs = procs
         self.ix = ix
         self.cmd = cmd
         self.log_file = log_file
         self.output_files = output_files
+        self.env_vars = env_vars
 
 
 def stageinfo_dict_to_class(classname, d):
     return StageInfo(mem=d['mem'], procs=d['procs'], ix=d['ix'], cmd=d['cmd'], log_file=d['log_file'],
-                     output_files=d['output_files'])
+                     output_files=d['output_files'], env_vars=d['env_vars'])
 
 
 Pyro4.util.SerializerBase.register_dict_to_class("pydpiper.execution.pipeline_executor.StageInfo",
@@ -152,6 +153,7 @@ Pyro4.util.SerializerBase.register_dict_to_class("pydpiper.execution.pipeline_ex
 
 class MissingOutputs(ValueError): pass
 
+#TODO declare that stage is StageInfo and not the true stage
 def runStage(*, clientURI, stage, cmd_wrapper):
         ix = stage.ix
 
@@ -172,7 +174,12 @@ def runStage(*, clientURI, stage, cmd_wrapper):
                 #args = shlex.split(command_to_run)
                 args = command_to_run
                 start_time = time.time()
-                process = subprocess.Popen(args, stdout=of, stderr=of, shell=True)
+
+                environment = os.environ
+                for key in stage.env_vars.keys():
+                    environment[key]=stage.env_vars[key]
+
+                process = subprocess.Popen(args, stdout=of, stderr=of, shell=True, env=environment)
                 #client.addPIDtoRunningList(process.pid)
                 process.communicate()
                 #client.removePIDfromRunningList(process.pid)

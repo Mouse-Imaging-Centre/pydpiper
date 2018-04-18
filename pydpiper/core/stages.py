@@ -22,7 +22,7 @@ class CmdStage(object):
                  memory   : float = None,
                  procs    : int = 1,
                  log_file : Optional[str] = None,
-                 env_vars : Dict[str] = None) -> None:
+                 env_vars : Dict[str,str] = None) -> None:
         # TODO: rather than having separate cmd_stage fn, might want to make inputs/outputs optional here
         self.inputs  = inputs          # type: Tuple[FileAtom, ...]
         # TODO: might be better to dereference inputs -> inputs.path here to save mem

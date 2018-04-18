@@ -393,7 +393,7 @@ class Pipeline(object):
     def get_stage_info(self, i):
         s = self.stages[i]
         return pe.StageInfo(mem=s.mem, procs=s.procs, ix=i, cmd=s.cmd, log_file=s.logFile,
-                            output_files=s.outputFiles)
+                            output_files=s.outputFiles, env_vars=s.env_vars)
 
     def getStage(self, i):
         """given an index, return the actual pipelineStage object"""
