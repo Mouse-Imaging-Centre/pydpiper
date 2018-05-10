@@ -175,7 +175,7 @@ def runStage(*, clientURI, stage, cmd_wrapper):
                 args = command_to_run
                 start_time = time.time()
 
-                environment = os.environ
+                environment = os.environ.copy()
                 for key in stage.env_vars.keys():
                     environment[key]=stage.env_vars[key]
 
