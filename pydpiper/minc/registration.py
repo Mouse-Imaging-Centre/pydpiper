@@ -2976,6 +2976,18 @@ def minc_label_ops(in_labels : MincAtom, op : LabelOp, op_arg : Optional[Union[M
                      + [in_labels.path, out_labels.path])
     return Result(stages=Stages([s]), output=out_labels)
 
+def autocrop(isostep: float,
+             img: MincAtom,
+             autocropped: MincAtom,
+             nearest_neighbour: bool = False,
+             extend: float = None):
+    s = CmdStage(inputs=(img,), outputs=(autocropped,),
+                 cmd=["autocrop", "-clobber"]
+                     + (["-isostep ", isostep] if isostep else [])
+                     + (["-extend ", extend] if extend else [])
+                     + (["-nearest_neighbour"] if nearest_neighbour else [])
+                     + [img.path, autocropped.path])
+    return Result(stages=Stages([s]), output=(autocropped))
 
 # TODO move?
 class MincAlgorithms(Algorithms):
