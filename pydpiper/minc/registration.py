@@ -2978,6 +2978,7 @@ def minc_label_ops(in_labels : MincAtom, op : LabelOp, op_arg : Optional[Union[M
 
 def autocrop(img: MincAtom,
              autocropped: MincAtom,
+             output_dir: str,
              isostep: float = None,
              nearest_neighbour: bool = False,
              x_pad: float = 0,
@@ -2989,7 +2990,8 @@ def autocrop(img: MincAtom,
                      + (["-isostep ", isostep] if isostep else [])
                      + (["-extend %s,%s %s,%s %s,%s" % (x_pad, x_pad, y_pad, y_pad, z_pad, z_pad)] )
                      + (["-nearest_neighbour"] if nearest_neighbour else [])
-                     + [img.path, autocropped.path])
+                     + [img.path, autocropped.path],
+                 log_file=os.path.join(output_dir, "autocrop.log"))
     return Result(stages=Stages([s]), output=(autocropped))
 
 # TODO move?
