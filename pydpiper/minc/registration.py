@@ -669,7 +669,7 @@ def mincresample(img: MincAtom,
                  interpolation: Interpolation = None,
                  extra_flags: Tuple[str] = (),
                  new_name_wo_ext: str = None,
-                 subdir: str = None,
+                 subdir: str = 'resampled',
                  postfix: str = None) -> Result[MincAtom]:
     """
     ...
@@ -693,9 +693,6 @@ def mincresample(img: MincAtom,
     label_extra_flags = (extra_flags
                          + (('-keep_real_range',) if "-keep_real_range"
                                                     not in extra_flags else ()))
-
-    if not subdir:
-        subdir = 'resampled'
 
     # we need to get the filename without extension here in case we have
     # masks/labels associated with the input file. When that's the case,
@@ -2284,6 +2281,15 @@ def lsq6(imgs: List[MincAtom],
     if not conf.run_lsq6:
         raise ValueError("You silly person... you've called lsq6(), but also specified --no-run-lsq6. That's not a very sensible combination of things.")
 
+    if resolution != get_resolution_from_file(target.path):
+        resampled_target = MincAtom(os.path.join(
+            target.newname(name=target.filename_wo_ext + "_%smicron_resampled" % int(resolution)).path))
+        target = s.defer(autocrop(
+            autocropped = resampled_target,
+            isostep = resolution,
+            img = target
+        ))
+
     # FIXME this is a stupid function: it's not very safe (note lack of type of argument) and rather redundant ...
     def conf_from_defaults(defaults) -> MultilevelMinctraccConf:
         conf = MultilevelMinctraccConf(
@@ -2724,8 +2730,6 @@ def registration_targets(lsq6_conf: LSQ6Conf,
                              "(possibly a bug: I'm probably only looking at input files specified "
                              "on the command line, so if you supplied them in a CSV "
                              "I might not have noticed (or this might not make sense) ...")
-        if not can_read_MINC_file(first_input_file):
-            raise ValueError("Error (bootstrap file): can not read MINC file: %s\n" % first_input_file)
         bootstrap_file = MincAtom(name=first_input_file,
                                   pipeline_sub_dir=os.path.join(output_dir, pipeline_name +
                                                                 "_bootstrap_file"))
@@ -2978,7 +2982,6 @@ def minc_label_ops(in_labels : MincAtom, op : LabelOp, op_arg : Optional[Union[M
 
 def autocrop(img: MincAtom,
              autocropped: MincAtom,
-             output_dir: str,
              isostep: float = None,
              nearest_neighbour: bool = False,
              x_pad: float = 0,
@@ -2990,8 +2993,7 @@ def autocrop(img: MincAtom,
                      + (["-isostep ", isostep] if isostep else [])
                      + (["-extend %s,%s %s,%s %s,%s" % (x_pad, x_pad, y_pad, y_pad, z_pad, z_pad)] )
                      + (["-nearest_neighbour"] if nearest_neighbour else [])
-                     + [img.path, autocropped.path],
-                 log_file=os.path.join(output_dir, "autocrop.log"))
+                     + [img.path, autocropped.path])
     return Result(stages=Stages([s]), output=(autocropped))
 
 # TODO move?
