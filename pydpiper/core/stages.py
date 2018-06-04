@@ -39,6 +39,7 @@ class CmdStage(object):
         # access this directory by using its "dir" and adding "../log". This is not true for files that live in the
         # _nlin or _lsq12 directories though. They live in their own top level directory, so we should just create
         # a log directory in there
+
         self.log_file = log_file or (os.path.join(self.outputs[0].dir,
                                        ".." if self.outputs[0].dir != self.outputs[0].pipeline_sub_dir else "" ,
                                        "log",
