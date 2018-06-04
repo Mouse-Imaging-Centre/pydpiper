@@ -52,7 +52,8 @@ def lsq6_pipeline(options):
     resolution = (options.registration.resolution or
                   get_resolution_from_file(
                       s.defer(registration_targets(lsq6_conf=options.lsq6,
-                                           app_conf=options.application)).registration_standard.path))
+                                                   app_conf=options.application,
+                                                   reg_conf=options.registration)).registration_standard.path))
     options.registration = options.registration.replace(resolution=resolution)
 
     # FIXME: why do we have to call registration_targets *outside* of lsq6_nuc_inorm? is it just because of the extra

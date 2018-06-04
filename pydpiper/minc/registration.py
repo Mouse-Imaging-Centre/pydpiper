@@ -2690,7 +2690,7 @@ def verify_correct_lsq6_target_options(init_model: str,
 # TODO: why is this separate?
 def registration_targets(lsq6_conf: LSQ6Conf,
                          app_conf,
-                         reg_conf = None,
+                         reg_conf,
                          first_input_file: Optional[str] = None) -> Result:
 
     target_type   = lsq6_conf.target_type
@@ -2731,21 +2731,25 @@ def registration_targets(lsq6_conf: LSQ6Conf,
 
     #TODO write a when runnable hook to let the user know
     s = Stages()
-    if reg_conf:
-        autocropped = MincAtom(target.registration_standard.filename_wo_ext
-                               + "_%smicron_resampled.mnc" % int(reg_conf.resolution*1000),
-                               mask = MincAtom(target.registration_standard.mask.filename_wo_ext
-                               + "_%smicron_resampled.mnc" % int(reg_conf.resolution*1000)))
+    if reg_conf.resolution:
 
+        autocropped = MincAtom(os.path.join(output_dir,
+            target.registration_standard.filename_wo_ext + "_%smicron_resampled.mnc" % int(reg_conf.resolution*1000)),
+               mask = MincAtom(os.path.join(output_dir,
+            target.registration_standard.mask.filename_wo_ext + "_%smicron_resampled.mnc" % int(reg_conf.resolution*1000))
+                               if target.registration_standard.mask else None))
         target.registration_standard = s.defer(autocrop(isostep = reg_conf.resolution,
                                                         img = target.registration_standard,
                                                         autocropped = autocropped))
         if target.registration_native is not None:
-            autocropped = MincAtom(target.registration_native.filename_wo_ext
-                                   + "_%smicron_resampled.mnc" % int(reg_conf.resolution * 1000))
-            target.registration_native = s.defer(autocrop(isostep = reg_conf.resolution,
-                                                          img = target.registration_native,
-                                                          autocropped = autocropped))
+            autocropped = MincAtom(os.path.join(output_dir,
+                target.registration_native.filename_wo_ext + "_%smicron_resampled.mnc" % int(reg_conf.resolution * 1000)),
+                    mask=MincAtom(os.path.join(output_dir, target.registration_native.mask.filename_wo_ext
+                                               + "_%smicron_resampled.mnc" % int(reg_conf.resolution * 1000))
+                                if target.registration_native.mask else None))
+            target.registration_native = s.defer(autocrop(isostep=reg_conf.resolution,
+                                                            img=target.registration_native,
+                                                            autocropped=autocropped))
 
     return Result(stages = s, output = (RegistrationTargets(registration_standard = target.registration_standard,
                                xfm_to_standard = target.xfm_to_standard,
