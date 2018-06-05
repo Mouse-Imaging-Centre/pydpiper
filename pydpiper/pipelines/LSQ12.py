@@ -7,8 +7,7 @@ from pydpiper.core.arguments import (AnnotatedParser, execution_parser, # lsq6_p
 from pydpiper.execution.application import execute
 from pydpiper.minc.registration import (lsq12_pairwise, LSQ12Conf,
                                         default_lsq12_multilevel_minctracc,
-                                        parse_minctracc_nonlinear_protocol_file, get_resolution_from_file,
-                                        registration_targets)
+                                        parse_minctracc_nonlinear_protocol_file, get_resolution_from_file)
 from pydpiper.minc.files import MincAtom
 
 

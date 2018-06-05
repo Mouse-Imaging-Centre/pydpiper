@@ -226,8 +226,8 @@ def chain(options):
         else:
             # if we are not dealing with a pride of models, we can retrieve a fixed
             # registration target for all input files:
-            targets = registration_targets(lsq6_conf=options.lsq6,
-                                           app_conf=options.application)
+            targets = s.defer(registration_targets(lsq6_conf=options.lsq6,
+                                           app_conf=options.application, reg_conf=options.registration))
             
             # we want to store the xfm handlers in the same shape as pipeline_subject_info,
             # as such we will call lsq6_nuc_inorm for each file individually and simply extract

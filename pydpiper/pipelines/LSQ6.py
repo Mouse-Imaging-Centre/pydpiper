@@ -21,13 +21,13 @@ def generic_pipeline(options):
     # TODO this is quite tedious and duplicates stuff in the registration chain ...
     resolution = (options.registration.resolution or
                   get_resolution_from_file(
-                      registration_targets(lsq6_conf=options.lsq6,  # not really generic due to use of options.lsq6 ...
-                                           app_conf=options.application).registration_standard.path))
+                      s.defer(registration_targets(lsq6_conf=options.lsq6,  # not really generic due to use of options.lsq6 ...
+                                           app_conf=options.application, reg_conf=options.registration)).registration_standard.path))
     options.registration = options.registration.replace(resolution=resolution)
 
-    targets = registration_targets(lsq6_conf=options.lsq6,  # see above ...
-                                   app_conf=options.application,
-                                   first_input_file=options.application.files[0])
+    targets = s.defer(registration_targets(lsq6_conf=options.lsq6,  # see above ...
+                                   app_conf=options.application, reg_conf = options.registration,
+                                   first_input_file=options.application.files[0]))
 
     return (options, targets)
 

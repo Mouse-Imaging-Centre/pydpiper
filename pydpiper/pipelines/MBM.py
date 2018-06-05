@@ -192,9 +192,9 @@ def mbm(imgs : List[MincAtom], options : MBMConf, prefix : str, output_dir : str
 
     # FIXME: why do we have to call registration_targets *outside* of lsq6_nuc_inorm? is it just because of the extra
     # options required?  Also, shouldn't options.registration be a required input (as it contains `input_space`) ...?
-    targets = registration_targets(lsq6_conf=options.mbm.lsq6,
-                                   app_conf=options.application,
-                                   first_input_file=imgs[0].path)
+    targets = s.defer(registration_targets(lsq6_conf=options.mbm.lsq6,
+                                   app_conf=options.application, reg_conf=options.registration,
+                                   first_input_file=imgs[0].path))
 
     # TODO this is quite tedious and duplicates stuff in the registration chain ...
     resolution = (options.registration.resolution or
