@@ -824,7 +824,7 @@ if __name__ == "__main__":
     
     # TODO could abstract and then parametrize by prefix/ns ??
     options = parse(p, sys.argv[1:])
-
+    s= Stages()
     # TODO: the registration resolution should be set somewhat outside
     # of any actual function? Maybe the right time to set this, is here
     # when options are gathered?
@@ -842,8 +842,9 @@ if __name__ == "__main__":
             random_key = list(pride_of_models_mapping)[0]
             file_for_resolution = pride_of_models_mapping[random_key].registration_standard.path
         else:
-            file_for_resolution = registration_targets(lsq6_conf=options.lsq6,
-                                                       app_conf=options.application).registration_standard.path
+            file_for_resolution = s.defer(registration_targets(lsq6_conf=options.lsq6,
+                                                       app_conf=options.application,
+                                                        reg_conf=options.registration)).registration_standard.path
         options.registration = options.registration.replace(
                                    resolution=get_resolution_from_file(file_for_resolution))
     
@@ -885,4 +886,4 @@ if __name__ == "__main__":
 
     #chain_stages = chain(options).stages
 
-    execute(chain_result.stages, options)
+    execute(s.defer(chain_result.stages), options)

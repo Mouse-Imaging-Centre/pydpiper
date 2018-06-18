@@ -100,9 +100,9 @@ def two_level(grouped_files_df, options : TwoLevelConf):
                                                         target_file=targets.registration_standard.path)
         else:
             # this will ensure that all groups have the same resolution -- is it necessary?
-            targets = registration_targets(lsq6_conf=options.mbm.lsq6,
+            targets = s.defer(registration_targets(lsq6_conf=options.mbm.lsq6,
                                            app_conf=options.application,
-                                           first_input_file=grouped_files_df.file.iloc[0])
+                                           first_input_file=grouped_files_df.file.iloc[0]))
 
         resolution = (options.registration.resolution
                         or get_resolution_from_file(targets.registration_standard.path))
