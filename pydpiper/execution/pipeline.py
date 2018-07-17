@@ -906,6 +906,14 @@ class Pipeline(object):
                 runnable.append(i)
                 continue
 
+            if self.options.application.smart_restart:
+                latest_input_mtime = max([os.stat(inputFile).st_mtime for inputFile in s.inputFiles])
+                latest_output_mtime = max([os.stat(outputFile).st_mtime for outputFile in s.outputFiles])
+                #this command's inputFiles were modified after its outputFiles, so rerun it.
+                if (latest_input_mtime > latest_output_mtime):
+                    runnable.append(i)
+                    continue
+
             self.setStageFinished(i, clientURI = "fake_client_URI", checking_pipeline_status = True)
 
             finished.append((i, h))  # stupid ... duplicates logic in setStageFinished ...
