@@ -53,19 +53,36 @@ def mbm_pipeline(options : MBMConf):
         s.defer(common_space(mbm_result, options))
 
     # create useful CSVs (note the files listed therein won't yet exist ...):
-    (mbm_result.xfms.assign(native_file=lambda df: df.rigid_xfm.apply(lambda x: x.source),
+    transforms = mbm_result.xfms.assign(native_file=lambda df: df.rigid_xfm.apply(lambda x: x.source),
                             lsq6_file=lambda df: df.lsq12_nlin_xfm.apply(lambda x: x.source),
                             lsq6_mask_file=lambda df:
                               df.lsq12_nlin_xfm.apply(lambda x: x.source.mask if x.source.mask else ""),
                             nlin_file=lambda df: df.lsq12_nlin_xfm.apply(lambda x: x.resampled),
+                            nlin_mask_file=lambda df:
+                              df.lsq12_nlin_xfm.apply(lambda x: x.resampled.mask if x.resampled.mask else ""),
                             common_space_file=lambda df: df.xfm_to_common.apply(lambda x: x.resampled)
-                                                if options.mbm.common_space.do_common_space_registration else None)
-     .applymap(maybe_deref_path)
-     .drop(["common_space_file"] if not options.mbm.common_space.do_common_space_registration else [], axis=1)
-     .to_csv("transforms.csv", index=False))
+                                                if options.mbm.common_space.do_common_space_registration else None)\
+        .applymap(maybe_deref_path)\
+        .drop(["common_space_file"] if not options.mbm.common_space.do_common_space_registration else [], axis=1)
+    transforms.to_csv("transforms.csv", index=False)
 
-    (mbm_result.determinants.drop(["full_det", "nlin_det"], axis=1)
-     .applymap(maybe_deref_path).to_csv("determinants.csv", index=False))
+    determinants = mbm_result.determinants.drop(["full_det", "nlin_det"], axis=1)\
+        .applymap(maybe_deref_path)
+    determinants.to_csv("determinants.csv", index=False)
+
+    analysis = transforms.merge(determinants, left_on="lsq12_nlin_xfm", right_on="inv_xfm", how='inner')\
+        .drop(["xfm", "inv_xfm"], axis=1)
+    maget_df = pd.DataFrame(data={'label_file': [result.labels.path for result in mbm_result.maget_result],
+                                  'native_file': [result.orig_path for result in mbm_result.maget_result]})
+    analysis = analysis.merge(maget_df, on="native_file")
+
+    if options.application.files:
+        analysis.to_csv("analysis.csv", index=False)
+    if options.application.csv_file:
+        csv_file = pd.read_csv(options.application.csv_file)
+        csv_file.merge(analysis, left_on="file", right_on="native_file").drop(["native_file"])\
+            .to_csv("analysis.csv",index=False)
+
 
     # # TODO moved here from inside `mbm` for now ... does this make most sense?
     # if options.mbm.segmentation.run_maget:
