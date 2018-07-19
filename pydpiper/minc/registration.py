@@ -2732,12 +2732,11 @@ def registration_targets(lsq6_conf: LSQ6Conf,
     #TODO write a when runnable hook to let the user know
     s = Stages()
     if reg_conf.resolution:
-
         autocropped = MincAtom(os.path.join(output_dir,
             target.registration_standard.filename_wo_ext + "_%smicron_resampled.mnc" % int(reg_conf.resolution*1000)),
                mask = MincAtom(os.path.join(output_dir,
-            target.registration_standard.mask.filename_wo_ext + "_%smicron_resampled.mnc" % int(reg_conf.resolution*1000))
-                               if target.registration_standard.mask else None))
+            target.registration_standard.mask.filename_wo_ext + "_%smicron_resampled.mnc" % int(reg_conf.resolution*1000)) )
+                               if target.registration_standard.mask else None)
         target.registration_standard = s.defer(autocrop(isostep = reg_conf.resolution,
                                                         img = target.registration_standard,
                                                         autocropped = autocropped))
@@ -2997,15 +2996,15 @@ def autocrop(img: MincAtom,
              autocropped: MincAtom,
              isostep: float = None,
              nearest_neighbour: bool = False,
-             x_pad: float = 0,
-             y_pad: float = 0,
-             z_pad: float = 0) -> Result[MincAtom]:
+             x_pad: str = '0,0',
+             y_pad: str = '0,0',
+             z_pad: str = '0,0',) -> Result[MincAtom]:
     s = Stages()
 
     s.add(CmdStage(inputs=(img,), outputs=(autocropped,),
                  cmd=["autocrop", "-clobber"]
                      + (["-isostep ", isostep] if isostep else [])
-                     + (["-extend %s,%s %s,%s %s,%s" % (x_pad, x_pad, y_pad, y_pad, z_pad, z_pad)] )
+                     + (["-extend %s %s %s" % (x_pad, y_pad, z_pad)] )
                      + (["-nearest_neighbour"] if nearest_neighbour else [])
                      + [img.path, autocropped.path]))
 
