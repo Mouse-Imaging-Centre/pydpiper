@@ -72,7 +72,7 @@ def mbm_pipeline(options : MBMConf):
 
     analysis = transforms.merge(determinants, left_on="lsq12_nlin_xfm", right_on="inv_xfm", how='inner')\
         .drop(["xfm", "inv_xfm"], axis=1)
-    if mbm_result.maget_result:
+    if options.mbm.segmentation.run_maget:
         maget_df = pd.DataFrame(data={'label_file': [result.labels.path for result in mbm_result.maget_result],
                                       'native_file': [result.orig_path for result in mbm_result.maget_result]})
         analysis = analysis.merge(maget_df, on="native_file")
