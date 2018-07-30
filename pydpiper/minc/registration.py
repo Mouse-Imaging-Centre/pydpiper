@@ -3012,14 +3012,14 @@ def autocrop(img: MincAtom,
         s.add(CmdStage(inputs=(img.mask,), outputs=(autocropped.mask,),
                        cmd=["autocrop", "-clobber"]
                            + (["-isostep ", isostep] if isostep else [])
-                           + (["-extend %s,%s %s,%s %s,%s" % (x_pad, x_pad, y_pad, y_pad, z_pad, z_pad)])
+                           + (["-extend %s %s %s" % (x_pad, y_pad, z_pad)])
                            + (["-nearest_neighbour"] if nearest_neighbour else [])
                            + [img.mask.path, autocropped.mask.path]))
     if img.labels is not None:
         s.add(CmdStage(inputs=(img.labels,), outputs=(autocropped.labels,),
                        cmd=["autocrop", "-clobber"]
                            + (["-isostep ", isostep] if isostep else [])
-                           + (["-extend %s,%s %s,%s %s,%s" % (x_pad, x_pad, y_pad, y_pad, z_pad, z_pad)])
+                           + (["-extend %s %s %s" % (x_pad, y_pad, z_pad)])
                            + (["-nearest_neighbour"] if nearest_neighbour else [])
                            + [img.labels.path, autocropped.labels.path]))
 

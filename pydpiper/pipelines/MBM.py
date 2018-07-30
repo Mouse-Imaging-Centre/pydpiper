@@ -84,7 +84,6 @@ def mbm_pipeline(options : MBMConf):
         csv_file.merge(analysis, left_on="file", right_on="native_file").drop(["native_file"])\
             .to_csv("analysis.csv",index=False)
 
-
     # # TODO moved here from inside `mbm` for now ... does this make most sense?
     # if options.mbm.segmentation.run_maget:
     #     import copy

@@ -125,6 +125,9 @@ def execute(stages, options):
     """Basically just looks at the arguments and exits if `--no-execute` is specified,
     otherwise dispatches on backend type."""
 
+    # if options.application.output_directory:
+    #     os.chdir(options.application.output_directory)
+
     # TODO: logger.info('Constructing pipeline...')
     pipeline = Pipeline(stages=[convertCmdStage(s) for s in stages],
                         options=options)
