@@ -106,6 +106,7 @@ def two_level(grouped_files_df, options : TwoLevelConf):
 
         resolution = (options.registration.resolution
                         or get_resolution_from_file(targets.registration_standard.path))
+        # This must happen after calling registration_targets otherwise it will resample to options.registration.resolution
         options.registration = options.registration.replace(resolution=resolution)
         # no need to check common space settings here since they're turned off at the parser level
         # (a bit strange)

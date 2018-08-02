@@ -2729,22 +2729,30 @@ def registration_targets(lsq6_conf: LSQ6Conf,
     else:
         raise ValueError("Invalid target type: %s" % lsq6_conf.target_type)
 
-    #TODO write a when runnable hook to let the user know
+
+    # TODO write a when runnable hook to let the user know
     s = Stages()
     if reg_conf.resolution:
-        autocropped = MincAtom(os.path.join(output_dir,
-            target.registration_standard.filename_wo_ext + "_%smicron_resampled.mnc" % int(reg_conf.resolution*1000)),
-               mask = MincAtom(os.path.join(output_dir,
-            target.registration_standard.mask.filename_wo_ext + "_%smicron_resampled.mnc" % int(reg_conf.resolution*1000)) )
-                               if target.registration_standard.mask else None)
+        autocropped = MincAtom(os.path.join(output_dir, pipeline_name + "_reg_target_resampled",
+                                                target.registration_standard.filename_wo_ext +
+                                                "_%smicron_resampled.mnc" % int(reg_conf.resolution*1000)),
+                                output_sub_dir=os.path.join(output_dir, pipeline_name + "_reg_target_resampled"),
+                                mask = MincAtom(os.path.join(output_dir, pipeline_name + "_reg_target_resampled",
+                                                                target.registration_standard.mask.filename_wo_ext +
+                                                                "_%smicron_resampled.mnc" % int(reg_conf.resolution*1000)),
+                                                output_sub_dir = os.path.join(output_dir, pipeline_name + "_reg_target_resampled"))
+                                                                if target.registration_standard.mask else None)
         target.registration_standard = s.defer(autocrop(isostep = reg_conf.resolution,
                                                         img = target.registration_standard,
                                                         autocropped = autocropped))
         if target.registration_native is not None:
-            autocropped = MincAtom(os.path.join(output_dir,
-                target.registration_native.filename_wo_ext + "_%smicron_resampled.mnc" % int(reg_conf.resolution * 1000)),
-                    mask=MincAtom(os.path.join(output_dir, target.registration_native.mask.filename_wo_ext
-                                               + "_%smicron_resampled.mnc" % int(reg_conf.resolution * 1000))
+            autocropped = MincAtom(os.path.join(output_dir, pipeline_name + "_reg_target_resampled",
+                                                    target.registration_native.filename_wo_ext +
+                                                    "_%smicron_resampled.mnc" % int(reg_conf.resolution * 1000)),
+                                    output_sub_dir=os.path.join(output_dir, pipeline_name + "_reg_target_resampled"),
+                                    mask=MincAtom(os.path.join(output_dir, pipeline_name + "_reg_target_resampled",
+                                                            target.registration_native.mask.filename_wo_ext +
+                                                                "_%smicron_resampled.mnc" % int(reg_conf.resolution * 1000))
                                 if target.registration_native.mask else None))
             target.registration_native = s.defer(autocrop(isostep=reg_conf.resolution,
                                                             img=target.registration_native,
@@ -2860,9 +2868,7 @@ def create_quality_control_images(imgs: List[MincAtom],
     # for each of the input files, run a mincpik call and create
     # a triplane image.
     for img in imgs:
-        img_verification = img.newname_with_suffix("_QC_image",
-                                                   subdir="tmp",
-                                                   ext=".jpg")
+        img_verification = img.newname_with_suffix("_QC_image", subdir="tmp", ext=".jpg")
         # TODO: the memory and procs are set to 0 to ensure that
         # these stages finish soonish. No other stages depend on
         # these, but we do want them to finish as soon as possible

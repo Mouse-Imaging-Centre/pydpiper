@@ -94,6 +94,8 @@ def tamarack(imgs : pd.DataFrame, options):
 
         resolution = (options.registration.resolution or
                         get_resolution_from_file(targets.registration_standard.path))
+
+        # This must happen after calling registration_targets otherwise it will resample to options.registration.resolution
         options.registration = options.registration.replace(resolution=resolution)
 
         return options

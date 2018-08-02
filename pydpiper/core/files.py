@@ -68,6 +68,7 @@ class FileAtom(object):
         if output_sub_dir:
             self.output_sub_dir = output_sub_dir
         else:
+            # Nick believes this is a bad choice because it will break --output-dir if the file is initialized w/o this
             self.output_sub_dir = self.filename_wo_ext
 
     @property

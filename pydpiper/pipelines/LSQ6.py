@@ -23,12 +23,13 @@ def generic_pipeline(options):
                   get_resolution_from_file(
                       s.defer(registration_targets(lsq6_conf=options.lsq6,  # not really generic due to use of options.lsq6 ...
                                            app_conf=options.application, reg_conf=options.registration)).registration_standard.path))
-    options.registration = options.registration.replace(resolution=resolution)
 
     targets = s.defer(registration_targets(lsq6_conf=options.lsq6,  # see above ...
                                    app_conf=options.application, reg_conf = options.registration,
                                    first_input_file=options.application.files[0]))
 
+    # This must happen after calling registration_targets otherwise it will resample to options.registration.resolution
+    options.registration = options.registration.replace(resolution=resolution)
     return (options, targets)
 
 def lsq6_pipeline(options):
@@ -42,7 +43,6 @@ def lsq6_pipeline(options):
     processed_dir = os.path.join(output_dir, pipeline_name + "_processed")
 
     imgs = [MincAtom(name, pipeline_sub_dir=processed_dir) for name in options.application.files]
-
     s = Stages()
 
     if len(options.application.files) == 0:
@@ -54,7 +54,6 @@ def lsq6_pipeline(options):
                       s.defer(registration_targets(lsq6_conf=options.lsq6,
                                                    app_conf=options.application,
                                                    reg_conf=options.registration)).registration_standard.path))
-    options.registration = options.registration.replace(resolution=resolution)
 
     # FIXME: why do we have to call registration_targets *outside* of lsq6_nuc_inorm? is it just because of the extra
     # options required?
@@ -63,6 +62,8 @@ def lsq6_pipeline(options):
                                    reg_conf=options.registration,
                                    first_input_file=options.application.files[0]))
 
+    # This must happen after calling registration_targets otherwise it will resample to options.registration.resolution
+    options.registration = options.registration.replace(resolution=resolution)
     lsq6_result = s.defer(lsq6_nuc_inorm(imgs=imgs,
                                          resolution=resolution,
                                          registration_targets=targets,
