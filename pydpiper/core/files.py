@@ -38,7 +38,7 @@ class FileAtom(object):
                             files from this one.  The file need not be inside its pipeline_sub_dir.
                             If not provided, the current working directory is used.  (MICe pipeline examples:
                             the _lsq6, _lsq12, _nlin, and _processed directories.)
-        self.output_sub_dir - a relative path to a directory in which to create new files derived from the file
+        self.output_sub_dir - a path to a directory in which to create new files derived from the file
                             (inside of the pipeline_sub_dir).  The value of this field is inherited
                             unchanged by the new file.  If `output_sub_dir` is not provided when constructing
                             a FileAtom, its filename_wo_ext is used; for instance,
@@ -48,10 +48,12 @@ class FileAtom(object):
     
     def __init__(self,
                  name             : str,
+                 output_sub_dir: str = None,
                  orig_name        : Union[str, None, NotProvided] = NotProvided(),
                  pipeline_sub_dir : str = None,
-                 output_sub_dir   : str = None) -> None:
+                 ) -> None:
         self.dir, self.filename_wo_ext, self.ext = explode(name)
+        self.output_sub_dir = output_sub_dir
         if isinstance(orig_name, NotProvided):
             self.orig_path = name  # type: str
         elif isinstance(orig_name, type(None)):
@@ -65,11 +67,12 @@ class FileAtom(object):
         else:
             self.pipeline_sub_dir = ''
 
-        if output_sub_dir:
-            self.output_sub_dir = output_sub_dir
+        if output_sub_dir == None:
+            #add deprecation warning
+            self.output_sub_dir = os.path.join(self.dir,self.filename_wo_ext)
         else:
-            # Nick believes this is a bad choice because it will break --output-dir if the file is initialized w/o this
-            self.output_sub_dir = self.filename_wo_ext
+            self.output_sub_dir = output_sub_dir
+
 
     @property
     def path(self) -> str:

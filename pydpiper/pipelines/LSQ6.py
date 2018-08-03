@@ -42,7 +42,9 @@ def lsq6_pipeline(options):
     lsq6_dir      = os.path.join(output_dir, pipeline_name + "_lsq6")
     processed_dir = os.path.join(output_dir, pipeline_name + "_processed")
 
-    imgs = [MincAtom(name, pipeline_sub_dir=processed_dir) for name in options.application.files]
+    imgs = [MincAtom(name,
+                     pipeline_sub_dir=processed_dir,
+                     output_sub_dir=processed_dir) for name in options.application.files]
     s = Stages()
 
     if len(options.application.files) == 0:
