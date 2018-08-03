@@ -81,7 +81,7 @@ def ensure_output_paths_in_dir(stages, d):
                 not_in_dir.append([o.path,s.cmd_to_string()])
     if (not_in_dir):
         # import pdb; pdb.set_trace()
-        raise ValueError(string for string in ["output %s of stage '%s' not contained inside pipeline directory %s"
+        raise ValueError(["output %s of stage '%s' not contained inside pipeline directory %s"
                           % (item[0], item[1], d) for item in not_in_dir])
 
 
