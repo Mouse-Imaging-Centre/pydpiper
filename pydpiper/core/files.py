@@ -1,5 +1,6 @@
 import copy
 import os
+import warnings
 
 from typing import Callable, Union, Tuple
 
@@ -38,7 +39,7 @@ class FileAtom(object):
                             files from this one.  The file need not be inside its pipeline_sub_dir.
                             If not provided, the current working directory is used.  (MICe pipeline examples:
                             the _lsq6, _lsq12, _nlin, and _processed directories.)
-        self.output_sub_dir - a path to a directory in which to create new files derived from the file
+        self.output_sub_dir - a relative path to a directory in which to create new files derived from the file
                             (inside of the pipeline_sub_dir).  The value of this field is inherited
                             unchanged by the new file.  If `output_sub_dir` is not provided when constructing
                             a FileAtom, its filename_wo_ext is used; for instance,
@@ -67,12 +68,10 @@ class FileAtom(object):
         else:
             self.pipeline_sub_dir = ''
 
-        if output_sub_dir == None:
-            #add deprecation warning
-            self.output_sub_dir = os.path.join(self.dir,self.filename_wo_ext)
-        else:
+        if output_sub_dir:
             self.output_sub_dir = output_sub_dir
-
+        else:
+            self.output_sub_dir = self.filename_wo_ext
 
     @property
     def path(self) -> str:
@@ -126,7 +125,7 @@ class FileAtom(object):
         '/project/images/img_3.mnc'
         """
 
-        new_dir = os.path.join(self.pipeline_sub_dir, 
+        new_dir = os.path.join(self.pipeline_sub_dir,
                                self.output_sub_dir if self.output_sub_dir else "",
                                subdir if subdir else "")
         filename_wo_ext = fn(self.filename_wo_ext)
