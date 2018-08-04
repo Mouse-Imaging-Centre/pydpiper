@@ -81,7 +81,8 @@ def mbm_pipeline(options : MBMConf):
         analysis.to_csv("analysis.csv", index=False)
     if options.application.csv_file:
         csv_file = pd.read_csv(options.application.csv_file)
-        csv_file.merge(analysis, left_on="file", right_on="native_file").drop(["native_file"])\
+        import pdb; pdb.set_trace()
+        csv_file.merge(analysis, left_on="file", right_on="native_file").drop(["native_file"], axis=1)\
             .to_csv("analysis.csv",index=False)
 
     # # TODO moved here from inside `mbm` for now ... does this make most sense?
