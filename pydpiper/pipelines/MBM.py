@@ -75,7 +75,8 @@ def mbm_pipeline(options : MBMConf):
 
     analysis = pd.merge(transforms, determinants, left_on='lsq12_nlin_xfm', right_on='inv_xfm').drop(["inv_xfm","xfm"], axis=1)
 
-    analysis['nlin_mask_file'] = mbm_result.xfms.lsq12_nlin_xfm.apply(lambda x: x.resampled.mask.path)
+    analysis['nlin_mask_file'] = mbm_result.xfms.lsq12_nlin_xfm.apply(lambda x:
+      x.resampled.mask.path if x.resampled.mask is not None else None)
 
     if options.application.csv_file==None:
         analysis.to_csv("analysis.csv", index=False)
@@ -340,6 +341,7 @@ def mbm(imgs : List[MincAtom], options : MBMConf, prefix : str, output_dir : str
     #                                   prelim_model_building_component=prelim_nlin_build_model_component)
 
     # TODO don't use name 'x_module' for something that's technically not a module ... perhaps unit/component?
+
 
     # TODO tedious: why can't parse_build_model_protocol handle the null protocol case? is this something we want?
     nlin_conf = (nlin_build_model_component.parse_build_model_protocol(

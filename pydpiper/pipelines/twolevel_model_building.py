@@ -37,7 +37,8 @@ def two_level_pipeline(options : TwoLevelConf):
         try:
             files_df = (pd.read_csv(
                           filepath_or_buffer=f,
-                          usecols=['group', 'file'])
+                          usecols=['group', 'file'],
+                          index_col=False)
                         .assign(file=lambda df:
                                        df.apply(axis="columns",
                                                 func=lambda r:

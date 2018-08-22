@@ -168,6 +168,7 @@ def execute(stages, options):
         with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:  # is 8 a good value?
             bad_inputs = [input_file for input_file, ok in zip(inputs, executor.map(input_ok, inputs)) if not ok]
             if len(bad_inputs) > 0:
+                # TODO check that this properly quotes input files, e.g. making extra spaces visible ...
                 raise ValueError("bad inputs: %s" % bad_inputs)
 
     # TODO lots of optimizations/improvements possible here, e.g., check only 'live' ancestors, not original ones

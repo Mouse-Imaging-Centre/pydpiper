@@ -40,11 +40,13 @@ def itk_convert_xfm(xfm : ITKXfmAtom, out_ext : str) -> Result[ITKXfmAtom]:
         return Result(stages=Stages((cmd,)), output=out_xfm)
 
 
+# TODO 'ITK' seems like a weird place for these; probably belong in minc;
+# also, 'generic_converter' is - did I mention? - generic
 mnc2nii = generic_converter(renamer = lambda img: img.newext(".nii"),
                             mk_cmd = lambda i, o: ["bash", "-c", "'rm %s.path; mnc2nii %s %s'" % (o, i, o)])
 
 nii2mnc = generic_converter(renamer = lambda img: img.newext(".mnc"),
-                            mk_cmd = lambda i, o: ["bash", "-c", "'rm %s.path; nii2mnc %s %s'" % (o, i, o)])
+                            mk_cmd = lambda i, o: "nii2mnc -clobber {i} {o}".split())
 
 
 class Interpolation(object):

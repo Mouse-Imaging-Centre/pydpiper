@@ -393,14 +393,6 @@ class pipelineExecutor(object):
                    + q.remove_flags(['--num-exec', '--mem'], sys.argv[1:])))
 
             #     header = '\n'.join(["#!/usr/bin/env bash",
-            #                         # why `csh`?  It seems that `qsub` doesn't allow one to
-            #                         # pass args to the shell specified with `-S`, so we can't pass --noprofile
-            #                         # (or --norc) to bash.  As a result, /etc, ~/.bashrc, etc.,
-            #                         # are read again by the executors, which is unlikely to be intended.
-            #                         # Since no-one uses csh, this is less likely to be a problem.
-            #                         # (This was implicitly happening before the `#$ -S ...` line was added
-            #                         # and none of our many users complained...)
-            #                         "#$ -S /bin/csh",
             #                         "setenv PYRO_LOGFILE logs/%s-${JOB_ID}-${SGE_TASK_ID}.log" % ident])
             #     # FIXME huge hack -- shouldn't we just iterate over options,
             #     # possibly checking for membership in the executor option group?
@@ -411,7 +403,6 @@ class pipelineExecutor(object):
             #     # call parser.add_arguments and use this to check.
             #     # NOTE there's a problem with argparse's prefix matching which
             #     # also affects removal of --num-executors
-            #
             # TODO: procs! ppn! umask for log files? log file names? (see version 2.0.8)
         if self.ppn > 1:
             logger.warning("ppn of %d currently ignored in this configuration" % self.ppn)
