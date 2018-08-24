@@ -2868,7 +2868,7 @@ def create_quality_control_images(imgs: List[MincAtom],
     # for each of the input files, run a mincpik call and create
     # a triplane image.
     for img in imgs:
-        img_verification = img.newname_with_suffix("_QC_image", subdir="tmp", ext=".jpg")
+        img_verification = img.newname_with_suffix("_QC_image", subdir="tmp", ext=".png")
         # TODO: the memory and procs are set to 0 to ensure that
         # these stages finish soonish. No other stages depend on
         # these, but we do want them to finish as soon as possible
@@ -2890,7 +2890,7 @@ def create_quality_control_images(imgs: List[MincAtom],
         # which images potentially fail
         img_verification_convert = img.newname_with_suffix("_QC_image_labeled",
                                                            subdir="tmp",
-                                                           ext=".jpg")
+                                                           ext=".png")
         # FIXME: no other stages depend on
         # these, but we do want them to finish as soon as possible
         # -- perhaps we could instead return the montage stage (or, if no montage is to be created,
