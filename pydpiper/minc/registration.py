@@ -2844,6 +2844,7 @@ def create_quality_control_images(imgs: List[MincAtom],
                                   montage_output:str = None,
                                   montage_dir:str = None,
                                   scaling_factor: int = 20,
+                                  auto_range:bool = False,
                                   message:str = "lsq6"):
     """
     This class takes a list of input files and creates
@@ -2877,6 +2878,7 @@ def create_quality_control_images(imgs: List[MincAtom],
             outputs=(img_verification,),
             cmd=["mincpik", "-clobber",
                  "-scale", str(scaling_factor),
+                 "--auto_range" if auto_range else "",
                  "-triplanar",
                  img.path, img_verification.path],
             memory=1,
