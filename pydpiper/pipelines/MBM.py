@@ -53,7 +53,7 @@ def mbm_pipeline(options : MBMConf):
 
     # create useful CSVs (note the files listed therein won't yet exist ...):
 
-    transforms = (mbm_result.xfms.assign(
+    transforms = mbm_result.xfms.assign(
                             native_file=lambda df: df.rigid_xfm.apply(lambda x: x.source),
                             lsq6_file=lambda df: df.lsq12_nlin_xfm.apply(lambda x: x.source),
                             lsq6_mask_file=lambda df:
