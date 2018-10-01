@@ -270,6 +270,7 @@ class Pipeline(object):
         
         self.outputDir = self.options.application.output_directory or os.getcwd()
 
+        # TODO this doesn't work with the qbatch-based server submission on Graham:
         if self.options.execution.submit_server and self.options.execution.local:
             # redirect the standard output to a text file
             serverLogFile = os.path.join(self.outputDir, self.pipeline_name + '_server_stdout.log')
@@ -551,7 +552,7 @@ class Pipeline(object):
             if self.verbose and not checking_pipeline_status:
                 print("\n\nStatus update: " + "\n" + str(self.num_finished_stages) +
                       " out of " + str(len(self.stages)) + " stages finished.\n" + time.ctime() +
-                      "\nFor more detailed information run (in a separate shell with modules loaded):\ncheck_pipeline_status.py "
+                      "\nFor more detailed information run (in a separate shell with paths set appropriately):\ncheck_pipeline_status.py "
                       + str(self.exec_options.urifile) + "\n")
             self.percent_finished_reported = roughly_processed
 

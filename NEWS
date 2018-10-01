@@ -1,5 +1,45 @@
-New in Version 2.0.9
-====================
+New in Version 2.0.11
+=====================
+* add preliminary support for antsRegistration (only with MICe default parameters currently)
+* new modular framework for combining image and transform file formats, registration algorithms,
+  and registration topologies.  The code for this is somewhat experimental and rather messy
+  at the moment; it uses the Typing and ABC modules but the latter could be dropped,
+  resulting in much simplification, if we dropped support for Python 3.5 and lower.
+* added the --registration-strategy=<...> flag to model building pipelines to control
+  the registration topology as mentioned above; current options include build_model (default),
+  tournament (currently unweighted), pairwise (similar to LSQ12 topology; not really recommended
+  for producing final registrations), tournament_and_build_model, and pairwise_and_build_model
+  (the most useful addition).  An --nlin-pairs flag has been added to control the complexity
+  of pairwise nonlinear model building with some small default intended for producing an
+  intermediate average prior to 'standard' model building.
+* added the 'tamarack'-style to the repo.  This acts sort of like a 'transposed' registration
+  chain in which between-timepoint registrations are obtained (via composition) from
+  average-to-average registrations, which may improve things in low-SNR regimes.
+  (See recent papers by Darren Fernandes and friends).  Needs more validation ...
+  after filtering to a fixed blurring kernel (please be careful to do this).
+* begin adding support (not yet functioning, mostly due to ITK<->MINC/xfm file conversion issues)
+  for other registration tools based on ITK/NIfTI: Elastix, Demons, DRAMMS, and some
+  auxiliary tools (e.g., c3d).
+* increase maximum memory requests in the MICe/SLURM config file
+* add option to defer file directory creation until runtime in the hope of starting a pipeline
+  sooner.  Currently quite (time/memory) inefficient so not recommended but much room for improvement.
+* output files are now optionally checked to ensure they exist when a stage finishes.
+  Flags --{,no-}check-outputs (default: False) and --fs-delay control this.
+* write out more/better output CSV files; for MBM.py, see analysis.csv, which is in tidy format
+  ready for modelling as soon as you filter by your chosen blurring kernel width (`fwhm` column)
+  (please remember to do this!)
+* MBM.py doesn't do common space registration by default
+* configuration objects now track the flags which can be used to control them
+  and this is used in some error messages to provide more useful suggestions
+* added stage_embryos_in_4D_atlas.py; this may move to mouse-imaging-centre/MICe-lab
+* better/more automated checking of input files from pipeline graph
+* use networkx 2.x instead of 1.x API
+* log file locations can now be specified when creating a CmdStage
+* delete obsolete test_registration_fh.py
+* many miscellaneous internal changes and bugfixes
+
+New in Version 2.0.10
+=====================
 * fix average misnaming (#348)
 * correctly set jobname (#349) and log file locations
 * add nocheck_dimensions option (default: false) to mincaverage

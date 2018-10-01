@@ -20,7 +20,6 @@ from pydpiper.minc.thickness import cortical_thickness
 from pydpiper.minc.files        import MincAtom, XfmAtom
 from pydpiper.minc.registration import (lsq6_nuc_inorm, lsq12_nlin_build_model, registration_targets,
                                         LSQ6Conf, LSQ12Conf, get_resolution_from_file, concat_xfmhandlers,
-                                        get_nonlinear_configuration_from_options,
                                         invert_xfmhandler, check_MINC_input_files, lsq12_nlin,
                                         LinearTransType, get_linear_configuration_from_options, mincresample_new,
                                         Interpolation, param2xfm, get_nonlinear_component)
@@ -53,7 +52,9 @@ def mbm_pipeline(options : MBMConf):
         s.defer(common_space(mbm_result, options))
 
     # create useful CSVs (note the files listed therein won't yet exist ...):
-    transforms = mbm_result.xfms.assign(native_file=lambda df: df.rigid_xfm.apply(lambda x: x.source),
+
+    transforms = (mbm_result.xfms.assign(
+                            native_file=lambda df: df.rigid_xfm.apply(lambda x: x.source),
                             lsq6_file=lambda df: df.lsq12_nlin_xfm.apply(lambda x: x.source),
                             lsq6_mask_file=lambda df:
                               df.lsq12_nlin_xfm.apply(lambda x: x.source.mask if x.source.mask else ""),
@@ -164,15 +165,15 @@ def common_space(mbm_result, options):
                                             xfm=model_to_common.xfm, like=common_space_model,
                                             postfix="_common"))
 
-    overall_xfms_to_common = [s.defer(concat_xfmhandlers([rigid_xfm, nlin_xfm, model_to_common]))
-                              for rigid_xfm, nlin_xfm in zip(mbm_result.xfms.rigid_xfm,
-                                                             mbm_result.xfms.lsq12_nlin_xfm)]
+    #overall_xfms_to_common = [s.defer(concat_xfmhandlers([rigid_xfm, nlin_xfm, model_to_common]))
+    #                          for rigid_xfm, nlin_xfm in zip(mbm_result.xfms.rigid_xfm,
+    #                                                         mbm_result.xfms.lsq12_nlin_xfm)]
 
     xfms_to_common = [s.defer(concat_xfmhandlers([nlin_xfm, model_to_common]))
                       for nlin_xfm in mbm_result.xfms.lsq12_nlin_xfm]
 
-    mbm_result.xfms = mbm_result.xfms.assign(xfm_to_common=xfms_to_common,
-                                             overall_xfm_to_common=overall_xfms_to_common)
+    mbm_result.xfms = mbm_result.xfms.assign(xfm_to_common=xfms_to_common)
+                                            #,overall_xfm_to_common=overall_xfms_to_common)
 
     if options.mbm.stats.calc_stats:
         log_nlin_det_common, log_full_det_common = (
@@ -276,7 +277,9 @@ def mbm(imgs : List[MincAtom],
         # be part of the lsq6 options rather than the MBM ones; see comments on #287.
         # TODO don't actually do this resampling if not required (i.e., if the imgs already have the same grids)??
         # however, for now need to add the masks:
-        identity_xfm = s.defer(param2xfm(out_xfm=FileAtom(name="id.xfm")))
+        identity_xfm = s.defer(param2xfm(out_xfm=FileAtom(name=os.path.join(lsq6_dir, 'tmp', "id.xfm"),
+                                                          pipeline_sub_dir=lsq6_dir,
+                                                          output_sub_dir='tmp')))
         lsq6_result  = [XfmHandler(source=img, target=img, xfm=identity_xfm,
                                    resampled=s.defer(mincresample_new(img=img,
                                                                       like=targets.registration_standard,
@@ -343,6 +346,8 @@ def mbm(imgs : List[MincAtom],
 
     # TODO don't use name 'x_module' for something that's technically not a module ... perhaps unit/component?
 
+
+    # TODO tedious: why can't parse_build_model_protocol handle the null protocol case? is this something we want?
     nlin_conf = (nlin_build_model_component.parse_build_model_protocol(
                                               options.mbm.nlin.nlin_protocol, resolution=resolution)
                  if options.mbm.nlin.nlin_protocol is not None
@@ -451,7 +456,7 @@ def _mk_common_space_parser(parser : ArgParser):
                        type=str, help="Run MAGeT segmentation on the images.")
     group.add_argument("--common-space-mask", dest="common_space_mask",
                        type=str, help="Mask for common space model")
-    group.set_defaults(do_common_space_registration=True)
+    group.set_defaults(do_common_space_registration=False)
     group.add_argument("--common-space-registration", dest="do_common_space_registration",
                        action="store_true", help="Do registration to common (db) space. [default]")
     group.add_argument("--no-common-space-registration", dest="do_common_space_registration",

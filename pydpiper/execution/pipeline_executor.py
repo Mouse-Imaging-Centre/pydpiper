@@ -26,7 +26,7 @@ Pyro4.config.SERVERTYPE = "multiplex"
 
 class SubmitError(ValueError): pass
 
-for boring_exception, name in [(mincException, "mincException"), (SubmitError, "SubmitError"), (KeyError,"KeyError")]:
+for boring_exception, name in [(mincException, "mincException"), (SubmitError, "SubmitError"), (KeyError, "KeyError")]:
     Pyro4.util.SerializerBase.register_dict_to_class(name, lambda _classname, dict: boring_exception)
     Pyro4.util.SerializerBase.register_class_to_dict(boring_exception, lambda obj: { "__class__" : name })
 
@@ -153,8 +153,8 @@ Pyro4.util.SerializerBase.register_dict_to_class("pydpiper.execution.pipeline_ex
 
 class MissingOutputs(ValueError): pass
 
-#TODO declare that stage is StageInfo and not the true stage
-def runStage(*, clientURI, stage, cmd_wrapper):
+def runStage(*, clientURI    : str, stage,
+                cmd_wrapper  : str, fs_delay : float, check_outputs : bool, mkdirs : bool):
         ix = stage.ix
 
         logger.info("Running stage %i (on %s). Memory requested: %.2f", ix, clientURI, stage.mem)
@@ -162,10 +162,16 @@ def runStage(*, clientURI, stage, cmd_wrapper):
             command_to_run  = ((cmd_wrapper + ' ') if cmd_wrapper else '') + ' '.join(stage.cmd)
 
             logger.info(command_to_run)
-            command_logfile = stage.log_file
+
+            # TODO this isn't too efficient:
+            #   there is no global cache (yet) of the directories that have been created ...
+            if mkdirs:
+                os.makedirs(os.path.dirname(stage.log_file), exist_ok=True)
+                for d in set([os.path.dirname(f) for f in stage.output_files]):
+                    os.makedirs(d, exist_ok=True)
 
             # log file for the stage
-            with open(command_logfile, 'a') as of:
+            with open(stage.log_file, 'a') as of:
                 of.write("Stage " + str(ix) + " running on " + socket.gethostname()
                          + " (" + clientURI + ") at " + datetime.isoformat(datetime.now(), " ") + ":\n")
                 of.write(command_to_run + "\n")
@@ -185,13 +191,15 @@ def runStage(*, clientURI, stage, cmd_wrapper):
                 #client.removePIDfromRunningList(process.pid)
                 ret = process.returncode
                 if ret == 0:
+                    time.sleep(fs_delay)  # TODO: better: async wait with timeout=fs_delay on all output files?
                     # TODO: better logic here, e.g., allow some tolerance for NFS slowness, etc.
                     missing_outputs = [o for o in stage.output_files
                                        if (not os.path.exists(o)) or os.path.getmtime(o) < start_time]
                     if len(missing_outputs) > 0:
                         logger.warning("some outputs not produced by Stage %i: %s", ix, missing_outputs)
-                        of.write("[executor] ERROR: outputs not produced, failing this stage: %s\n" % missing_outputs)
-                        raise MissingOutputs(missing_outputs)
+                        if check_outputs:
+                          of.write("[executor] ERROR: outputs not produced, failing this stage: %s\n" % missing_outputs)
+                          raise MissingOutputs(missing_outputs)
         except Exception as e:
             logger.exception("Exception whilst running stage: %i (on %s)", ix, clientURI)
             return ix, e
@@ -216,7 +224,7 @@ class InsufficientResources(Exception):
 class pipelineExecutor(object):
     def __init__(self, options, uri_file, pipeline_name, memNeeded = None):
         # TODO change options, uri_file, pipeline_name to exec_options, app_options
-        # better: self.options = options ... ?
+        # TODO *** better: self.options = options ... ?
         # TODO the additional argument `mem` represents the
         # server's estimate of the amount of memory
         # an executor may need to run available jobs
@@ -228,6 +236,7 @@ class pipelineExecutor(object):
         logger.info("self.mem = %0.2fG", self.mem)
         if self.mem > options.mem:
             raise InsufficientResources("executor requesting %.2fG memory but maximum is %.2fG" % (options.mem, self.mem))
+        self.defer_directory_creation = options.defer_directory_creation
         self.pipeline_name = pipeline_name
         self.procs = options.proc
         self.ppn = options.ppn
@@ -241,6 +250,8 @@ class pipelineExecutor(object):
         self.executor_wrapper = options.executor_wrapper
         self.ns = options.use_ns
         self.uri_file = options.urifile
+        self.fs_delay = options.fs_delay
+        self.check_outputs = options.check_outputs
         if self.uri_file is None:
             self.uri_file = os.path.abspath(os.path.join(os.curdir, uri_file))
         # the next variable is used to keep track of how long the
@@ -251,7 +262,7 @@ class pipelineExecutor(object):
         self.current_time = None
         # the maximum number of minutes an executor can be continuously
         # idle for, before it has to kill itself.
-        self.time_to_seppuku = options.time_to_seppuku
+        self.max_idle_time = options.max_idle_time
         # the time in minutes after which an executor will not accept new jobs
         self.time_to_accept_jobs = options.time_to_accept_jobs
         # stores the time of connection with the server
@@ -323,7 +334,7 @@ class pipelineExecutor(object):
         # stop the worker processes (children) immediately without completing outstanding work
         # Initially I wanted to stop the running processes using pool.terminate() and pool.join()
         # but the keyboard interrupt handling proved tricky. Instead, the executor now keeps
-        # track of the process IDs (pid) of the current running jobs. Those are targetted by
+        # track of the process IDs (pid) of the current running jobs. Those are targeted by
         # os.kill in order to stop the processes in the Pool
         logger.info("Executor shutting down.  Killing running jobs...")
         #for subprocID in self.current_running_job_pids:
@@ -387,14 +398,6 @@ class pipelineExecutor(object):
                    + q.remove_flags(['--num-exec', '--mem'], sys.argv[1:])))
 
             #     header = '\n'.join(["#!/usr/bin/env bash",
-            #                         # why `csh`?  It seems that `qsub` doesn't allow one to
-            #                         # pass args to the shell specified with `-S`, so we can't pass --noprofile
-            #                         # (or --norc) to bash.  As a result, /etc, ~/.bashrc, etc.,
-            #                         # are read again by the executors, which is unlikely to be intended.
-            #                         # Since no-one uses csh, this is less likely to be a problem.
-            #                         # (This was implicitly happening before the `#$ -S ...` line was added
-            #                         # and none of our many users complained...)
-            #                         "#$ -S /bin/csh",
             #                         "setenv PYRO_LOGFILE logs/%s-${JOB_ID}-${SGE_TASK_ID}.log" % ident])
             #     # FIXME huge hack -- shouldn't we just iterate over options,
             #     # possibly checking for membership in the executor option group?
@@ -405,7 +408,6 @@ class pipelineExecutor(object):
             #     # call parser.add_arguments and use this to check.
             #     # NOTE there's a problem with argparse's prefix matching which
             #     # also affects removal of --num-executors
-            #
             # TODO: procs! ppn! umask for log files? log file names? (see version 2.0.8)
         if self.ppn > 1:
             logger.warning("ppn of %d currently ignored in this configuration" % self.ppn)
@@ -440,13 +442,12 @@ class pipelineExecutor(object):
     def canRun(self, stageMem, stageProcs, runningMem, runningProcs):
         """Calculates if stage is runnable based on memory and processor availability"""
         return stageMem <= self.mem - runningMem and stageProcs <= self.procs - runningProcs
-    def is_seppuku_time(self):
-        # Is it time to perform seppuku: has the
-        # idle_time exceeded the allowed time to be idle?
-        # time_to_seppuku is given in minutes
-        # idle_time       is given in seconds
-        if self.time_to_seppuku != None:
-            if (self.time_to_seppuku * 60) < self.idle_time:
+    def is_max_idle_time(self):
+        # Has the idle_time exceeded the allowed maximum?
+        # max_idle_time is given in minutes
+        # idle_time     is given in seconds
+        if self.max_idle_time != None:
+            if (self.max_idle_time * 60) < self.idle_time:
                 return True
         return False
                         
@@ -527,10 +528,10 @@ class pipelineExecutor(object):
         if self.idle():
             self.idle_time += self.current_time - self.prev_time
             logger.debug("Current idle time: %d, and total seconds allowed: %d",
-                         self.idle_time, self.time_to_seppuku * 60)
+                         self.idle_time, self.max_idle_time * 60)
 
-        if self.is_seppuku_time():
-            logger.warning("Exceeded allowed idle time... Seppuku!")
+        if self.is_max_idle_time():
+            logger.warning("Exceeded allowed idle time ... bye!")
             return False
 
         # It is possible that the executor does not accept any new jobs
@@ -606,7 +607,9 @@ class pipelineExecutor(object):
             logger.debug("Server knows that stage started")
             result = self.pool.apply_async(runStage, args=(),
                                            kwds={ "clientURI" : self.clientURI, "stage" : stage,
-                                                  "cmd_wrapper" : self.cmd_wrapper},
+                                                  "cmd_wrapper" : self.cmd_wrapper,
+                                                  "fs_delay" : self.fs_delay, "check_outputs" : self.check_outputs,
+                                                  "mkdirs" : self.defer_directory_creation },
                                            callback=process_result)
             self.runningChildren[i] = ChildProcess(i, result, stage.mem, stage.procs)
 

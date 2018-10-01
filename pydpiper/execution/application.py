@@ -175,9 +175,12 @@ def execute(stages, options):
         with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:  # is 8 a good value?
             bad_inputs = [input_file for input_file, ok in zip(inputs, executor.map(input_ok, inputs)) if not ok]
             if len(bad_inputs) > 0:
+                # TODO check that this properly quotes input files, e.g. making extra spaces visible ...
                 raise ValueError("bad inputs: %s" % bad_inputs)
 
-    check_inputs()
+    # TODO lots of optimizations/improvements possible here, e.g., check only 'live' ancestors, not original ones
+    if options.execution.check_input_files:
+        check_inputs()
 
     # TODO: why is this needed now that --version is also handled automatically?
     # --num-executors=0 (<=> --no-execute) could be the default, and you could
@@ -228,7 +231,8 @@ def normal_execute(pipeline, options):
     #pipelineDaemon runs pipeline, launches Pyro client/server and executors (if specified)
     logger.info("Starting pipeline daemon...")
     # TODO: make a flag to disable this in case already created, wish to create later, etc.
-    create_directories(pipeline.stages) # TODO: or whatever
+    if not options.execution.defer_directory_creation:
+        create_directories(pipeline.stages) # TODO: or whatever
     pipelineDaemon(pipeline, options, sys.argv[0])
     logger.info("Server has stopped.  Quitting...")
 

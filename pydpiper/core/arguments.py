@@ -207,20 +207,6 @@ def parse(parser: Parser, args: List[str]) -> Namespace:
 
 
 def _mk_application_parser(p: ArgParser) -> ArgParser:
-    """
-    The arguments that all applications share:
-    --pipeline-name
-    --restart
-    --no-restart
-    --output-dir
-    --create-graph
-    --execute
-    --no-execute
-    --version
-    --verbose
-    --no-verbose
-    files - leftover arguments (0 or more are allowed)
-    """
     # p = ArgParser(add_help=False)
     g = p.add_argument_group("General application options",
                              "General options for all pydpiper applications.")
@@ -332,7 +318,7 @@ def _mk_execution_parser(p: ArgParser) -> ArgParser:
                        help="Submit the server to the grid.  Currently works only with PBS/Torque systems.")
     group.add_argument("--no-submit-server", dest="submit_server", action="store_false",
                        help="Opposite of --submit-server. [default]")
-    group.add_argument("--time-to-seppuku", dest="time_to_seppuku",
+    group.add_argument("--max-idle-time", dest="max_idle_time",
                        type=int, default=1,
                        help="The number of minutes an executor is allowed to continuously sleep, i.e. wait for an available job, while active on a compute node/farm before it kills itself due to resource hogging. [Default = %(default)s]")
     group.add_argument("--time-to-accept-jobs", dest="time_to_accept_jobs",
@@ -359,9 +345,28 @@ def _mk_execution_parser(p: ArgParser) -> ArgParser:
     group.add_argument("--cmd-wrapper", dest="cmd_wrapper",
                        type=str, default="",
                        help="Wrapper inside of which to run the command, e.g., '/usr/bin/time -v'. [Default='%(default)s']")
+    group.add_argument("--check-input-files", dest="check_input_files", action="store_true",
+                       help="Check overall pipeline inputs exist and, when applicable, "
+                            "are valid MINC files [Default=%(default)s]")
+    group.add_argument("--no-check-input-files", dest="check_input_files", action="store_false",
+                       help="Opposite of --check-input-files")
+    group.set_defaults(check_inputs=True)
+    group.add_argument("--check-outputs", dest="check_outputs",
+                       action="store_true",
+                       help="Check output files exist and error if not [Default=%(default)s]")
+    group.add_argument("--no-check-outputs", dest="check_outputs",
+                       action="store_false",
+                       help="Opposite of --check-outputs.")
+    group.set_defaults(check_outputs=False)
+    group.add_argument("--fs-delay", dest="fs_delay",
+                       type=float, default=5,
+                       help="Time (sec) to allow for NFS to become consistent after stage completion [Default=%(default)s]")
     group.add_argument("--executor_wrapper", dest="executor_wrapper",
                        type=str, default="",
                        help="Command inside of which to run the executor. [Default='%(default)s']")
+    group.add_argument("--defer-directory-creation", default=False,
+                       action="store_true", dest="defer_directory_creation",
+                       help="Create relevant directories when a stage is run instead of at startup [Default=%(default)s]")
     return p
 
 
