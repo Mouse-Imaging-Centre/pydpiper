@@ -396,6 +396,7 @@ def mincblur(img: MincAtom,
 def mincaverage(imgs: List[MincAtom],
                 name_wo_ext: str = "average",
                 output_dir: str = '.',
+                normalize: bool = True,
                 avg_file: Optional[MincAtom] = None,
                 copy_header_from_first_input: bool = False,
                 nocheck_dimensions: bool = False):
@@ -450,7 +451,7 @@ def mincaverage(imgs: List[MincAtom],
     if nocheck_dimensions: additional_flags.append("-nocheck_dimensions")
 
     avg_cmd = CmdStage(inputs=tuple(imgs), outputs=(avg, sdfile),
-                       cmd=['mincaverage', '-clobber', '-normalize', '-max_buffer_size_in_kb', '409620'] +
+                       cmd=['mincaverage', '-clobber'] + (['-normalize'] if normalize else []) + ['-max_buffer_size_in_kb', '409620'] +
                            additional_flags +
                            ['-sdfile', sdfile.path] +
                            sorted([img.path for img in imgs]) +
@@ -1376,6 +1377,7 @@ def get_linear_configuration_from_options(conf, transform_type : LinearTransType
         raise NotImplementedError(error_message)
 
     return minctracc_conf
+
 
 def get_nonlinear_component(reg_method : str):
     def _ANTS():
@@ -2709,6 +2711,7 @@ def registration_targets(lsq6_conf: LSQ6Conf,
                                                         pipeline_name=pipeline_name)
     else:
         raise ValueError("Invalid target type: %s" % lsq6_conf.target_type)
+
 
 def is_number(s):
     try:
