@@ -879,7 +879,8 @@ def main():
     analysis_csv = open("".join([options.application.pipeline_name, "_analysis_files.csv"]), "w")
     print("subject_id, timepoint, fwhm, log_det_absolute_second_level, "
           "log_det_relative_second_level, log_det_absolute_first_level, "
-          "log_det_relative_first_level", file=analysis_csv)
+          "log_det_relative_first_level",
+          file=analysis_csv)
     for subj_id, subject in chain_output.determinants_from_common_avg_to_subject.items():
         for timept, img in subject.time_pt_dict.items():
             # these rows contain full_det, fwhm, inv_xfm, log_full_det, log_nlin_det,... (some more)
@@ -894,7 +895,8 @@ def main():
                     from_subject_common_absolute = "NA"
                     from_subject_common_relative = "NA"
                 print(",".join([str(subj_id), str(timept), str(row.fwhm), os.path.realpath(row.log_full_det.path),
-                               os.path.realpath(row.log_nlin_det.path), from_subject_common_absolute, from_subject_common_relative]),file=analysis_csv)
+                               os.path.realpath(row.log_nlin_det.path), from_subject_common_absolute, from_subject_common_relative]),
+                      file=analysis_csv)
                       #, ",",
                       #chain_output.determinants_from_subject_common_to_subject[subj_id].time_pt_dict[timept].ix[i].log_full_det.path, ",",
                       #chain_output.determinants_from_subject_common_to_subject[subj_id].time_pt_dict[timept].ix[i].log_nlin_det.path
