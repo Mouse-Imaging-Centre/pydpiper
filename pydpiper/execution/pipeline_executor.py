@@ -582,7 +582,7 @@ class pipelineExecutor(object):
                 ix, res = result
                 if isinstance(res, int):
                     # it's a return code
-                    # don't do this logging in the callback for politenessoliphant
+                    # don't do this logging in the callback for politeness
                     self.notifyStageTerminated(ix, res)
                 elif isinstance(res, Exception):
                     # runStage raised an exception.  We could use apply_async's error_callback to handle this case

@@ -5,12 +5,6 @@ from enum import Enum
 import typing
 from typing import Any, Callable, List, Set, Tuple, TypeVar
 
-from pydpiper.minc.files import XfmAtom
-from pydpiper.minc.containers import XfmHandler, GenericXfmHandler
-from pydpiper.core.files import FileAtom
-from pydpiper.execution.pipeline import CmdStage
-
-
 def maybe_deref_path(x):
     # ugh ... just a convenience to allow using applymap in a 'generic' way ...
     #if isinstance(x, FileAtom) or isinstance(x, XfmAtom):
@@ -80,7 +74,7 @@ def flatten(*xs):
     return functools.reduce(add, xs, [])
 
 
-def output_directories(stages: Set[CmdStage]) -> Set[str]:
+def output_directories(stages: Set['pydpiper.execution.pipeline.CmdStage']) -> Set[str]:
     """Directories to be created (currently rather redundant in the presence of subdirectories).
     No need to consider stage inputs - any input already exists or is also the output
     of some previous stage."""

@@ -4,7 +4,6 @@ import ordered_set
 import shlex
 from typing import Any, Callable, Generic, Iterable, List, Set, Tuple, TypeVar, Union, Optional
 from pydpiper.core.files import FileAtom
-from pydpiper.execution.pipeline import PipelineFile, InputFile, OutputFile
 
 class CmdStage(object):
     """A simplified command stage - one could write a simple conversion
