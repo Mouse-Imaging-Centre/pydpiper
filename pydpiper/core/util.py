@@ -54,7 +54,7 @@ def NamedTuple(name : str, fields : List[Tuple[str, Callable[[Any], Any]]]):
             elif l == len(fields) + 2:
                 return f(*args, **kwargs)
             else:
-                raise ValueError("!?")
+                raise ValueError("You might be missing some fields.")
         return g
     F.__new__ = with_flags(F.__new__)
     F.maybe_replace = lambda self, **kwargs: F._replace(self, **{k:v for (k,v) in kwargs.items() if v is not None})

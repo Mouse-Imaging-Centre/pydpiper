@@ -76,7 +76,6 @@ LSQ6Conf = NamedTuple("LSQ6Conf", [("run_lsq6", bool),
                                    ("rotation_tmp_dir", Optional[str]),
                                    ("rotation_range", Optional[float]),
                                    ("rotation_interval", Optional[float]),
-                                   ("rotation_params", Optional[str]),
                                    ("copy_header_info", bool),
                                    #("bootstrap", bool),
                                    #("init_model", Optional[str]),
@@ -1027,16 +1026,16 @@ def invert_xfmhandler(xfm: XfmHandler,
                                     source=xfm.target, target=xfm.source, resampled=None,
                                     inverse=xfm))   # TODO is it correct to have the original resampled here?
 
-
+#remove first 4
 RotationalMinctraccConf = NamedTuple('RotationalMinctraccConf',
-                                     [("blur_factor", float),
+                                     [("w_translations_factor", float),
+                                      ("blur_factor", float),
                                       ("resample_step_factor", float),
                                       ("registration_step_factor", float),
-                                      ("w_translations_factor", float),
                                       ("rotational_range", float),
                                       ("rotational_interval", float),
                                       ("temp_dir", str)])
-
+#remove first 4
 default_rotational_minctracc_conf = RotationalMinctraccConf(
     blur_factor=5,
     resample_step_factor=4,
@@ -2134,76 +2133,6 @@ def check_MINC_files_have_equal_dimensions_and_resolution(args: List[str],
             raise ValueError("Not all input images have similar bounding boxes. "
                              + additional_msg)
 
-
-# data structures to hold setting for the parameter settings we know about:
-mousebrain = {'resolution': 0.056}
-human = {'resolution': 1.00}
-# we want to set the parameters such that 
-# blur          ->  560 micron (10 * resolution)
-# resample step ->  224 micron ( 4 * resolution)
-# registr. step ->  560 micron (10 * resolution)
-# w_trans       ->  448 micron ( 8 * resolution)
-# simplex       -> 1120 micron (20 * resolution)
-# so we simply need to set the resolution to establish this:
-# resolution_for_rot = 0.056
-# could also use an Enum here, although a dict (or subclasses) can be extended
-known_settings = {'mousebrain': mousebrain,
-                  'human': human}
-
-
-## under construction
-# TODO it's silly for rotation_params to be overloaded like this - make another parser flag (--subject-matter)
-#def parse_rotational_minctracc_params(rotation_params : str) -> Tuple[RotationalMinctraccConf, float]:
-#    if rotation_params in known_settings:
-#        resolution = known_settings[rotation_params]
-#    else:
-#        blur_factor, resample_step_factor, registration_step_factor, w_translations_factor = (
-#            [float(x) for x in rotation_params.split(',')])
-#    return config, resolution
-
-
-def get_parameters_for_rotational_minctracc(resolution,  # TODO why do most arguments default to None?
-                                            rotation_tmp_dir=None,
-                                            rotation_range=None,
-                                            rotation_interval=None,
-                                            rotation_params=None):
-    """
-    returns the proper combination of a rotational_minctracc configuration and
-    a value for the resolution such that the "mousebrain" option for 
-    the --lsq6-large-rotations-parameters flag works.
-
-    The parameters for rotational minctracc are set based on the resolution of the input files.
-    If not explicitly specified, most parameters are multiples of that resolution.
-
-    resolution - int/float indicating the resolution of the input files
-    rotation_params - a list with 4 integer elements indicating multiples of the resolution:
-                     [blur factor,
-                     resample factor,
-                     registration factor,
-                     w_translation factor]
-    """
-    rotational_configuration = default_rotational_minctracc_conf.maybe_replace(
-                                 temp_dir=rotation_tmp_dir,
-                                 rotational_range=rotation_range,
-                                 rotational_interval=rotation_interval)
-    rotational_resolution    = resolution
-    # for mouse brains we have fixed parameters:
-    # if rotation_params == "mousebrain":
-    if rotation_params in known_settings:
-        rotational_resolution = known_settings[rotation_params]['resolution']
-    else:
-        if rotation_params:
-            blur_factor, resample_step_factor, registration_step_factor, w_translations_factor = (
-                [float(x) for x in rotation_params.split(',')])
-            rotational_configuration = rotational_configuration.replace(
-                                         blur_factor=blur_factor,
-                                         resample_step_factor=resample_step_factor,
-                                         registration_step_factor=registration_step_factor,
-                                         w_translations_factor=w_translations_factor)
-
-    return rotational_configuration, rotational_resolution
-
-
 def to_lsq6_conf(lsq6_args : Namespace) -> LSQ6Conf:
     """Convert a Namespace produced by an LSQ6 option parser to an LSQ6Conf.
     This lets us inherit defaults from the parser without duplicating them here,
@@ -2270,55 +2199,58 @@ def lsq6(imgs: List[MincAtom],
     if conf.lsq6_method == "lsq6_large_rotations":
         # still not convinced this shouldn't go inside rotational_minctracc somehow,
         # though you may want to override ...
-        rotational_configuration, resolution_for_rot = \
-            get_parameters_for_rotational_minctracc(resolution=resolution,
-                                                    rotation_tmp_dir=conf.rotation_tmp_dir,
-                                                    rotation_range=conf.rotation_range,
-                                                    rotation_interval=conf.rotation_interval,
-                                                    rotation_params=conf.rotation_params)
-        # now call rotational_minctracc on all input images 
+
+        rotational_configuration = default_rotational_minctracc_conf
+
+        # now call rotational_minctracc on all input images
+        #TODO xfms_to_target_pt1
         xfms_to_target = [s.defer(rotational_minctracc(source=img, target=target,
+                                                       #mt_conf=mt_conf
                                                        conf=rotational_configuration,
-                                                       resolution=resolution_for_rot,
+                                                       #rot_conf
+                                                       resolution=resolution,
                                                        output_name_wo_ext=None if post_alignment_xfm else
                                                                           img.output_sub_dir + "_lsq6"))
                           for img in imgs]
+        #TODO do xfms_to_target_pt2=s.deferlsq6_simple
+        #TODO xfms_to_target = xfm_concat on pt1 and pt2
     elif conf.lsq6_method == "lsq6_centre_estimation":
-        defaults = { 'blur_factors'    : [   90,    35,    17,    9,     4],
-                     'simplex_factors' : [  128,    64,    40,   28,    16],
-                     'step_factors'    : [   90,    35,    17,    9,     4],
-                     'gradients'       : [False, False, False, True, False],
-                     'translations'    : [  0.4,   0.4,   0.4,  0.4,   0.4] }
         if conf.protocol_file is not None:
             mt_conf = parse_minctracc_linear_protocol_file(filename=conf.protocol_file,
                                                            transform_type=LinearTransType.lsq6,
                                                            minctracc_conf=default_lsq6_minctracc_conf)
         else:
+            defaults = {'blur_factors': [90, 35, 17, 9, 4],
+                        'simplex_factors': [128, 64, 40, 28, 16],
+                        'step_factors': [90, 35, 17, 9, 4],
+                        'gradients': [False, False, False, True, False],
+                        'translations': [0.4, 0.4, 0.4, 0.4, 0.4],
+                        'transform_type': ["lsq6", "lsq6", "lsq6", "lsq6", "lsq6"]}
             mt_conf = conf_from_defaults(defaults)
         xfms_to_target = [s.defer(multilevel_minctracc(source=img, target=target, conf=mt_conf,
                                                        transform_info=["-est_center", "-est_translations"]))
                           for img in imgs]
     elif conf.lsq6_method == "lsq6_simple":
-        defaults = { 'blur_factors'    : [   17,    9,     4],
-                     'simplex_factors' : [   40,   28,    16],
-                     'step_factors'    : [   17,    9,     4],
-                     'gradients'       : [False, True, False],
-                     'translations'    : [  0.4,  0.4,   0.4] }
-
-
         if conf.protocol_file is not None:  # FIXME the proliferations of LSQ6Confs vs. MultilevelMinctraccConfs here is very confusing ...
             mt_conf = parse_minctracc_linear_protocol_file(filename=conf.protocol_file,
                                                            transform_type=LinearTransType.lsq6,
                                                            minctracc_conf=default_lsq6_minctracc_conf)
         else:
+            defaults = {'blur_factors': [17, 9, 4],
+                        'simplex_factors': [40, 28, 16],
+                        'step_factors': [17, 9, 4],
+                        'gradients': [False, True, False],
+                        'translations': [0.4, 0.4, 0.4],
+                        'transform_type': ["lsq6", "lsq6", "lsq6"]}
             mt_conf = conf_from_defaults(defaults)  # FIXME print a warning?!
-
         xfms_to_target = [s.defer(multilevel_minctracc(source=img,
                                                        target=target,
                                                        conf=mt_conf))
                           for img in imgs]
     else:
         raise ValueError("bad lsq6 method: %s" % conf.lsq6_method)
+
+    #TODO if not lsq6, then lin_from_nlin to get the lsq6
 
     if post_alignment_xfm:
         composed_xfms = [s.defer(xfmconcat([xfm.xfm, post_alignment_xfm],

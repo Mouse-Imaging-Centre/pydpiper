@@ -484,14 +484,6 @@ def _mk_lsq6_parser():
                    help="Specify the directory that rotational_minctracc.py uses for temporary files. "
                         "By default we use /dev/shm/, because this program involves a lot of I/O, and "
                         "this is probably one of the fastest way to provide this. [Default = %(default)s]")
-    p.add_argument("--lsq6-large-rotations-parameters", dest="rotation_params",
-                   type=str, default="5,4,10,8",
-                   help="Settings for the large rotation alignment. factor=factor based on smallest file "
-                        "resolution: 1) blur factor, 2) resample step size factor, 3) registration step size "
-                        "factor, 4) w_translations factor  ***** if you are working with mouse brain data "
-                        " the defaults do not have to be based on the file resolution; a default set of "
-                        " settings works for all mouse brain. In order to use those setting, specify: "
-                        "\"mousebrain\" as the argument for this option. ***** [default = %(default)s]")
     p.add_argument("--lsq6-rotational-range", dest="rotation_range",
                    type=int, default=50,
                    help="Settings for the rotational range in degrees when running the large rotation "
