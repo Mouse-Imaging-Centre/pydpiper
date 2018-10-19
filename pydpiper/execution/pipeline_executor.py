@@ -625,7 +625,10 @@ def main():
     # Alternately, we could use a default location for the file
     # (say `files = ['/etc/pydpiper.cfg', '~/pydpiper.cfg', './pydpiper.cfg']`)
     # TODO this logic is duplicated in application.py
-    default_config_file = os.getenv("PYDPIPER_CONFIG_FILE")
+    if "PYDPIPER_CONFIG_FILE" in os.environ:
+        default_config_file = os.getenv("PYDPIPER_CONFIG_FILE")
+    else:
+        raise ValueError("PYDPIPER_CONFIG_FILE does not exist in your bash environment!")
     if default_config_file is not None:
         files = [default_config_file]
     else:

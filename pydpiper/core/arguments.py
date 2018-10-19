@@ -104,8 +104,11 @@ class CompoundParser(Parser):
 #     (possible solution: get positional args from overall parse somehow ... how to know which parser this is from
 #      and enforce that only a single parser accepts such args?)
 def parse(parser: Parser, args: List[str]) -> Namespace:
-    default_config_file = os.getenv(
-        "PYDPIPER_CONFIG_FILE")  # TODO: accepting a comma-separated list might allow more flexibility
+    if "PYDPIPER_CONFIG_FILE" in os.environ:
+        default_config_file = os.getenv("PYDPIPER_CONFIG_FILE")
+        # TODO: accepting a comma-separated list might allow more flexibility
+    else:
+        raise ValueError("PYDPIPER_CONFIG_FILE does not exist in your bash environment!")
     config_files = [default_config_file] if default_config_file else []
 
     # First, build a parser that's aware of all options
