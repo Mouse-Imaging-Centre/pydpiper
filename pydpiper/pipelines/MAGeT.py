@@ -43,7 +43,7 @@ def get_imgs(options):
         csv_base = os.path.dirname(options.csv_file)
 
         if hasattr(csv, 'mask_file'):
-            masks = [MincAtom(os.path.join(csv_base, mask),
+            masks = [MincAtom(os.path.join(csv_base, mask.strip()),
                               pipeline_sub_dir=os.path.join(options.output_directory,
                                                             options.pipeline_name + "_processed"))
                      if isinstance(mask, str) else None  # better way to handle missing (nan) values?
@@ -51,7 +51,7 @@ def get_imgs(options):
         else:
             masks = [None] * len(csv.file)
 
-        imgs = [MincAtom(os.path.join(csv_base, name), mask=mask,
+        imgs = [MincAtom(os.path.join(csv_base, name.strip()), mask=mask,
                          pipeline_sub_dir=os.path.join(options.output_directory,
                                                        options.pipeline_name + "_processed"))
                 # TODO does anything break if we make imgs a pd.Series?

@@ -40,12 +40,12 @@ def two_level_pipeline(options : TwoLevelConf):
                           usecols=['group', 'file'],
                           index_col=False)
                         .assign(file=lambda df:
-                                       df.apply(axis="columns",
-                                                func=lambda r:
-                                                  MincAtom(r.file,
-                                                           pipeline_sub_dir=os.path.join(first_level_dir,
-                                                                                         "%s_processed" % r.group,
-                                                                                         )))))
+                                  df.apply(axis="columns",
+                                           func=lambda r:
+                                             MincAtom(r.file.strip(),
+                                                      pipeline_sub_dir=os.path.join(first_level_dir,
+                                                                                    "%s_processed" % r.group.strip(),
+                                                                                    )))))
         except AttributeError:
             warnings.warn("Something went wrong ... does your .csv file have `group` and `file` columns?")
             raise

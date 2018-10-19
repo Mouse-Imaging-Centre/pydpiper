@@ -41,9 +41,9 @@ def tamarack_pipeline(options):
                     .assign(file=lambda df:
                                    df.apply(axis="columns",
                                             func=lambda r:
-                                                   MincAtom(r.filename,
+                                                   MincAtom(r.filename.strip(),
                                                             pipeline_sub_dir=os.path.join(first_level_dir,
-                                                                                          "%s_processed" % r.group)))))
+                                                                                          "%s_processed" % r.group.strip())))))
 
     check_MINC_input_files(files_df.file.apply(lambda img: img.path))
 

@@ -666,9 +666,9 @@ def parse_csv(rows : Iterator[Row], common_time_pt : int) -> Dict[str, Subject[F
     # Populate the subject -> Subject dictionary from the rows"""
     for row in csv.DictReader(rows):
         try:
-            subj_id   = row['subject_id']
-            timepoint = int(row['timepoint'])
-            filename  = row['filename']
+            subj_id   = row['subject_id'].strip()
+            timepoint = int(row['timepoint']).strip()
+            filename  = row['filename'].strip()
         except KeyError as e:
             raise KeyError("csv file must contain at least "
                            "'subject_id', 'timepoint', 'filename' fields; "
