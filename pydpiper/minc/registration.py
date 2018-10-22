@@ -2189,7 +2189,7 @@ def lsq6(imgs: List[MincAtom],
     # FIXME this is a stupid function: it's not very safe (note lack of type of argument) and rather redundant ...
     def conf_from_defaults(defaults) -> MultilevelMinctraccConf:
         conf = MultilevelMinctraccConf(
-            [MinctraccConf(step_sizes=[defaults["blur_factors"][i] * resolution] * 3,
+            [MinctraccConf(step_sizes=[defaults["step_factors"][i] * resolution] * 3,
                            blur_resolution=defaults["blur_factors"][i] * resolution,
                            use_gradient=defaults["gradients"][i],
                            use_masks=True,
