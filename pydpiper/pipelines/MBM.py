@@ -18,11 +18,12 @@ from pydpiper.minc.registration_strategies import get_model_building_procedure
 from pydpiper.minc.thickness import cortical_thickness
 #TODO fix up imports, naming, stuff in registration vs. pipelines, ...
 from pydpiper.minc.files        import MincAtom, XfmAtom
-from pydpiper.minc.registration import (lsq6_nuc_inorm, lsq12_nlin_build_model, registration_targets,
+from pydpiper.minc.registration import (lsq12_nlin_build_model, registration_targets,
                                         LSQ6Conf, LSQ12Conf, get_resolution_from_file, concat_xfmhandlers,
                                         invert_xfmhandler, check_MINC_input_files, lsq12_nlin,
                                         LinearTransType, get_linear_configuration_from_options, mincresample_new,
                                         Interpolation, param2xfm, get_nonlinear_component)
+from pydpiper.minc.rigid_registration import lsq6_nuc_inorm
 from pydpiper.minc.analysis     import determinants_at_fwhms, StatsConf
 from pydpiper.minc.thickness    import thickness_parser
 

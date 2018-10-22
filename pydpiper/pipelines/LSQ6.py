@@ -2,12 +2,13 @@
 
 import os
 
-from pydpiper.pipelines.MAGeT import get_imgs
-
 from pydpiper.core.arguments import lsq6_parser
 from pydpiper.core.stages import Stages, Result
 from pydpiper.execution.application import mk_application
-from pydpiper.minc.registration import get_resolution_from_file, registration_targets, lsq6_nuc_inorm
+from pydpiper.minc.registration import get_resolution_from_file, registration_targets
+from pydpiper.minc.rigid_registration import lsq6_nuc_inorm
+from pydpiper.pipelines.MAGeT import get_imgs
+
 
 # def generic_pipeline(options):
 #     s = Stages()
@@ -73,3 +74,5 @@ lsq6_application = mk_application(parsers=[lsq6_parser], pipeline=lsq6_pipeline)
 
 if __name__ == "__main__":
     lsq6_application()
+
+

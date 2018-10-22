@@ -14,10 +14,11 @@ from pydpiper.core.stages           import Stages, Result
 from pydpiper.minc.analysis         import mincblob
 from pydpiper.pipelines.MAGeT       import get_imgs
 from pydpiper.minc.files            import MincAtom
-from pydpiper.minc.registration     import (check_MINC_input_files, lsq6_lsq12_nlin, LSQ6Conf,
+from pydpiper.minc.registration     import (check_MINC_input_files, LSQ6Conf,
                                             MinctraccConf, get_resolution_from_file,
                                             get_linear_configuration_from_options, LinearTransType,
                                             get_nonlinear_component, invert_xfmhandler, minc_displacement)
+from pydpiper.minc.rigid_registration import lsq6_lsq12_nlin
 from pydpiper.minc.nlin             import NLIN
 """
 General idea:

@@ -17,13 +17,14 @@ from pydpiper.minc.nlin import NLIN
 from pydpiper.minc.registration import (Stages,
                                         mincaverage,
                                         concat_xfmhandlers, check_MINC_input_files, registration_targets,
-                                        lsq6_nuc_inorm, get_resolution_from_file, XfmHandler,
+                                        get_resolution_from_file, XfmHandler,
                                         InputSpace, lsq12_nlin_build_model, TargetType,
                                         MinctraccConf,
                                         create_quality_control_images,
                                         check_MINC_files_have_equal_dimensions_and_resolution,
                                         default_lsq12_multilevel_minctracc, get_pride_of_models_mapping,
                                         mincresample, lsq12_nlin, get_nonlinear_component)
+from pydpiper.minc.rigid_registration import lsq6_nuc_inorm
 from pydpiper.minc.files import MincAtom
 from pydpiper.execution.application import execute  # type: ignore
 from pydpiper.core.arguments import (application_parser,
