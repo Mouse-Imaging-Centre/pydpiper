@@ -2219,8 +2219,8 @@ def lsq6(imgs: List[MincAtom],
                         'simplex_factors': [20], # this matches the old "--simplex 0.8" for 40micron
                         'step_factors': [10], # this matches the old "-g 0.4" for 40micron
                         'gradients': [False], #NEW
-                        'translations': [8*resolution], #to keep it the same as before
-                        'transform_type':["lsq9"]} #NEW
+                        'translations': [8*resolution] #to keep it the same as before
+                         }
             mt_conf = conf_from_defaults(defaults)
         first_conf, remainder_conf = mt_conf.split_first()
 
@@ -2245,8 +2245,8 @@ def lsq6(imgs: List[MincAtom],
                         'simplex_factors': [128, 64, 40, 28, 16],
                         'step_factors': [90, 35, 17, 9, 4],
                         'gradients': [False, False, False, True, False],
-                        'translations': [0.4, 0.4, 0.4, 0.4, 0.4],
-                        'transform_type': ["lsq6", "lsq6", "lsq6", "lsq6", "lsq6"]}
+                        'translations': [0.4, 0.4, 0.4, 0.4, 0.4]
+                        }
             mt_conf = conf_from_defaults(defaults)
         xfms_to_target = [s.defer(multilevel_minctracc(source=img, target=target,
                                                        conf=mt_conf,
@@ -2258,8 +2258,8 @@ def lsq6(imgs: List[MincAtom],
                         'simplex_factors': [40, 28, 16],
                         'step_factors': [17, 9, 4],
                         'gradients': [False, True, False],
-                        'translations': [0.4, 0.4, 0.4],
-                        'transform_type': ["lsq6", "lsq6", "lsq6"]}
+                        'translations': [0.4, 0.4, 0.4]
+                        }
             mt_conf = conf_from_defaults(defaults)  # FIXME print a warning?!
             import pdb; pdb.set_trace()
         xfms_to_target = [s.defer(multilevel_minctracc(source=img,
