@@ -10,6 +10,7 @@ from pydpiper.minc.registration import LSQ6Conf, MultilevelMinctraccConf, Minctr
     default_rotational_minctracc_conf, rotational_minctracc, multilevel_minctracc, xfmconcat, mincresample, \
     Interpolation, lsq12_nlin, RegistrationTargets, nu_correct, default_inormalize_conf, inormalize, mincaverage, \
     mincbigaverage, create_quality_control_images
+from pydpiper.minc.analysis import lin_from_nlin
 
 
 def lsq6(imgs: List[MincAtom],
@@ -122,8 +123,8 @@ def lsq6(imgs: List[MincAtom],
 
     #TODO if not lsq6, then lin_from_nlin to get the lsq6
     transform_types = [conf.linear_conf.transform_type.name for conf in mt_conf.confs]
-    # if not all(transform_type == "lsq6" for transform_type in transform_types):
-    #     [s.defer(lin_from_nlin(xfm, "lsq6")) for xfm in xfms_to_target]
+    if not all(transform_type == "lsq6" for transform_type in transform_types):
+        [s.defer(lin_from_nlin(xfm, "lsq6")) for xfm in xfms_to_target]
 
     if post_alignment_xfm:
         composed_xfms = [s.defer(xfmconcat([xfm.xfm, post_alignment_xfm],

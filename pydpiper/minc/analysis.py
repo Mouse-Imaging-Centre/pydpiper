@@ -17,7 +17,7 @@ from pydpiper.minc.registration import concat_xfmhandlers, invert_xfmhandler, mi
 def lin_from_nlin(xfm : XfmHandler,
                   transform_type = "lsq12") -> Result[XfmHandler]:
     # TODO add dir argument
-    out_xfm = xfm.xfm.newname_with_suffix("_linear_part", subdir="tmp")
+    out_xfm = xfm.xfm.newname_with_suffix("_" + transform_type + "_part", subdir="tmp")
     stage = CmdStage(inputs=(xfm.source, xfm.xfm), outputs=(out_xfm,),
                      cmd = (['lin_from_nlin', '-clobber',
                              '-%s' % transform_type]
