@@ -2214,13 +2214,14 @@ def lsq6(imgs: List[MincAtom],
         # though you may want to override ...
 
         rotational_configuration = default_rotational_minctracc_conf
-        defaults = {'blur_factors': [5],
-                    'simplex_factors': [20], # this matches the old "--simplex 0.8" for 40micron
-                    'step_factors': [10], # this matches the old "-g 0.4" for 40micron
-                    'gradients': [False], #NEW
-                    'translations': [8*resolution], #to keep it the same as before
-                    'transform_type':["lsq6"]} #NEW
-        mt_conf = conf_from_defaults(defaults)
+        if conf.protocol_file is None:
+            defaults = {'blur_factors': [5],
+                        'simplex_factors': [20], # this matches the old "--simplex 0.8" for 40micron
+                        'step_factors': [10], # this matches the old "-g 0.4" for 40micron
+                        'gradients': [False], #NEW
+                        'translations': [8*resolution], #to keep it the same as before
+                        'transform_type':["lsq9"]} #NEW
+            mt_conf = conf_from_defaults(defaults)
         first_conf, remainder_conf = mt_conf.split_first()
 
         # now call rotational_minctracc on all input images
@@ -2234,6 +2235,10 @@ def lsq6(imgs: List[MincAtom],
                           for img in imgs]
         #TODO do xfms_to_target_pt2=s.deferlsq6_simple
         #TODO xfms_to_target = xfm_concat on pt1 and pt2
+        transform_types = [conf.linear_conf.transform_type.name for conf in mt_conf.confs]
+        # if not all(transform_type=="lsq6" for transform_type in transform_types):
+        #     s.defer()
+
     elif conf.lsq6_method == "lsq6_centre_estimation":
         if conf.protocol_file is None:
             defaults = {'blur_factors': [90, 35, 17, 9, 4],
