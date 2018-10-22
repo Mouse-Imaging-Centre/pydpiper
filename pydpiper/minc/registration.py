@@ -1129,6 +1129,7 @@ def rotational_minctracc(source: MincAtom,
                    # if-expression not recognized as a tuple; see mypy/issues/622
                    outputs=(out_xfm,),
                    cmd=["rotational_minctracc.py",
+                        "-%s" % lin_conf.transform_type.name,
                         "-t", rot_conf.temp_dir,  # TODO don't use a given option if not supplied (i.e., None)
                         "-w", ",".join(str(val) for val in lin_conf.w_translations),
                         "-s", str(resample_stepsize),
