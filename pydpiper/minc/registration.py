@@ -131,6 +131,8 @@ MinctraccConf = NamedTuple('MinctraccConf',
 class MultilevelMinctraccConf(object):
     def __init__(self, confs: List[MinctraccConf]):
         self.confs = confs
+    def split_first(self):
+        return self.confs[0], MultilevelMinctraccConf(self.confs[1:])
 
 
 MinctraccMemCfg = NamedTuple("MinctraccMemCfg",
@@ -1028,19 +1030,19 @@ def invert_xfmhandler(xfm: XfmHandler,
 
 #remove first 4
 RotationalMinctraccConf = NamedTuple('RotationalMinctraccConf',
-                                     [("w_translations_factor", float),
-                                      ("blur_factor", float),
-                                      ("resample_step_factor", float),
-                                      ("registration_step_factor", float),
+                                     # [("w_translations_factor", float),
+                                     #  ("blur_factor", float),
+                                     [("resample_step_factor", float),
+                                     #  ("registration_step_factor", float),
                                       ("rotational_range", float),
                                       ("rotational_interval", float),
                                       ("temp_dir", str)])
 #remove first 4
 default_rotational_minctracc_conf = RotationalMinctraccConf(
-    blur_factor=5,
+    # blur_factor=5,
     resample_step_factor=4,
-    registration_step_factor=10,
-    w_translations_factor=8,
+    # registration_step_factor=10,
+    # w_translations_factor=8,
     rotational_range=50,
     rotational_interval=10,
     temp_dir="/dev/shm")
@@ -1049,7 +1051,8 @@ default_rotational_minctracc_conf = RotationalMinctraccConf(
 # FIXME consistently require that masks are explicitely added to inputs array (or not?)
 def rotational_minctracc(source: MincAtom,
                          target: MincAtom,
-                         conf: RotationalMinctraccConf,
+                         rot_conf: RotationalMinctraccConf,
+                         mt_conf: MultilevelMinctraccConf,
                          resolution: float,
                          mask: MincAtom = None,  # TODO: add mask, resample_source to conf ??
                          resample_source: bool = False,
@@ -1093,18 +1096,22 @@ def rotational_minctracc(source: MincAtom,
     in the target file (target.mask).  Alternatively, a mask can be specified using the
     mask argument.
     """
+    lin_conf = mt_conf.linear_conf # type: LinearMinctraccConf
+    nlin_conf = mt_conf.nonlinear_conf #should be None
 
     s = Stages()
 
     # convert the factors into units appropriate for rotational_minctracc (i.e., mm)
-    blur_stepsize = resolution * conf.blur_factor
-    resample_stepsize = resolution * conf.resample_step_factor
-    registration_stepsize = resolution * conf.registration_step_factor
-    w_translation_stepsize = resolution * conf.w_translations_factor
+    resample_stepsize = resolution * rot_conf.resample_step_factor
+    # rotational_minctracc only gives one step size
+    if mt_conf.step_sizes[0] != mt_conf.step_sizes[1] or mt_conf.step_sizes[1] != mt_conf.step_sizes[2]:
+        raise ValueError("rotational_minctracc.py requires 3 stepsizes to be the same")
+    else:
+        registration_stepsize = mt_conf.step_sizes[0]
 
     # blur input files
-    blurred_src = s.defer(mincblur(source, blur_stepsize)).img
-    blurred_dest = s.defer(mincblur(target, blur_stepsize)).img
+    blurred_src = s.defer(mincblur(source, mt_conf.blur_resolution)).img
+    blurred_dest = s.defer(mincblur(target, mt_conf.blur_resolution)).img
 
     if not output_name_wo_ext:
         output_name_wo_ext = "%s_rot_mt_to_%s" % (source.filename_wo_ext, target.filename_wo_ext)
@@ -1122,13 +1129,13 @@ def rotational_minctracc(source: MincAtom,
                    # if-expression not recognized as a tuple; see mypy/issues/622
                    outputs=(out_xfm,),
                    cmd=["rotational_minctracc.py",
-                        "-t", conf.temp_dir,  # TODO don't use a given option if not supplied (i.e., None)
-                        "-w", ','.join([str(w_translation_stepsize)]*3),
+                        "-t", rot_conf.temp_dir,  # TODO don't use a given option if not supplied (i.e., None)
+                        "-w", ",".join(str(val) for val in lin_conf.w_translations),
                         "-s", str(resample_stepsize),
                         "-g", str(registration_stepsize),
-                        "-r", str(conf.rotational_range),
-                        "-i", str(conf.rotational_interval),
-                        "--simplex", str(resolution * 20),
+                        "-r", str(rot_conf.rotational_range),
+                        "-i", str(rot_conf.rotational_interval),
+                        "--simplex", str(lin_conf.simplex),
                         blurred_src.path,
                         blurred_dest.path,
                         out_xfm.path,
@@ -2196,18 +2203,30 @@ def lsq6(imgs: List[MincAtom],
     ############################################################################
     # alignment - switch on lsq6_method
     ############################################################################
+    # FIXME the proliferations of LSQ6Confs vs. MultilevelMinctraccConfs here is very confusing
+    if conf.protocol_file is not None:
+        mt_conf = parse_minctracc_linear_protocol_file(filename=conf.protocol_file,
+                                                       transform_type=LinearTransType.lsq6,
+                                                       minctracc_conf=default_lsq6_minctracc_conf)
     if conf.lsq6_method == "lsq6_large_rotations":
         # still not convinced this shouldn't go inside rotational_minctracc somehow,
         # though you may want to override ...
 
         rotational_configuration = default_rotational_minctracc_conf
+        defaults = {'blur_factors': [5],
+                    'simplex_factors': [20], # this matches the old "--simplex 0.8" for 40micron
+                    'step_factors': [10], # this matches the old "-g 0.4" for 40micron
+                    'gradients': [False], #NEW
+                    'translations': [8*resolution], #to keep it the same as before
+                    'transform_type':["lsq6"]} #NEW
+        mt_conf = conf_from_defaults(defaults)
+        first_conf, remainder_conf = mt_conf.split_first()
 
         # now call rotational_minctracc on all input images
         #TODO xfms_to_target_pt1
         xfms_to_target = [s.defer(rotational_minctracc(source=img, target=target,
-                                                       #mt_conf=mt_conf
-                                                       conf=rotational_configuration,
-                                                       #rot_conf
+                                                       mt_conf=first_conf,
+                                                       rot_conf=rotational_configuration,
                                                        resolution=resolution,
                                                        output_name_wo_ext=None if post_alignment_xfm else
                                                                           img.output_sub_dir + "_lsq6"))
@@ -2215,11 +2234,7 @@ def lsq6(imgs: List[MincAtom],
         #TODO do xfms_to_target_pt2=s.deferlsq6_simple
         #TODO xfms_to_target = xfm_concat on pt1 and pt2
     elif conf.lsq6_method == "lsq6_centre_estimation":
-        if conf.protocol_file is not None:
-            mt_conf = parse_minctracc_linear_protocol_file(filename=conf.protocol_file,
-                                                           transform_type=LinearTransType.lsq6,
-                                                           minctracc_conf=default_lsq6_minctracc_conf)
-        else:
+        if conf.protocol_file is None:
             defaults = {'blur_factors': [90, 35, 17, 9, 4],
                         'simplex_factors': [128, 64, 40, 28, 16],
                         'step_factors': [90, 35, 17, 9, 4],
@@ -2227,15 +2242,12 @@ def lsq6(imgs: List[MincAtom],
                         'translations': [0.4, 0.4, 0.4, 0.4, 0.4],
                         'transform_type': ["lsq6", "lsq6", "lsq6", "lsq6", "lsq6"]}
             mt_conf = conf_from_defaults(defaults)
-        xfms_to_target = [s.defer(multilevel_minctracc(source=img, target=target, conf=mt_conf,
+        xfms_to_target = [s.defer(multilevel_minctracc(source=img, target=target,
+                                                       conf=mt_conf,
                                                        transform_info=["-est_center", "-est_translations"]))
                           for img in imgs]
     elif conf.lsq6_method == "lsq6_simple":
-        if conf.protocol_file is not None:  # FIXME the proliferations of LSQ6Confs vs. MultilevelMinctraccConfs here is very confusing ...
-            mt_conf = parse_minctracc_linear_protocol_file(filename=conf.protocol_file,
-                                                           transform_type=LinearTransType.lsq6,
-                                                           minctracc_conf=default_lsq6_minctracc_conf)
-        else:
+        if conf.protocol_file is None:
             defaults = {'blur_factors': [17, 9, 4],
                         'simplex_factors': [40, 28, 16],
                         'step_factors': [17, 9, 4],
@@ -2243,6 +2255,7 @@ def lsq6(imgs: List[MincAtom],
                         'translations': [0.4, 0.4, 0.4],
                         'transform_type': ["lsq6", "lsq6", "lsq6"]}
             mt_conf = conf_from_defaults(defaults)  # FIXME print a warning?!
+            import pdb; pdb.set_trace()
         xfms_to_target = [s.defer(multilevel_minctracc(source=img,
                                                        target=target,
                                                        conf=mt_conf))
