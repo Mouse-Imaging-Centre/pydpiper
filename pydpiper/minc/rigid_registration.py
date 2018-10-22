@@ -89,7 +89,7 @@ def lsq6(imgs: List[MincAtom],
                                                        output_name_wo_ext=None if post_alignment_xfm else
                                                                           img.output_sub_dir + "_lsq6"))
                           for img in imgs]
-        #TODO do xfms_to_target_pt2=s.deferlsq6_simple
+        #TODO do xfms_to_target_pt2=s.defer(lsq6_simple)
         #TODO xfms_to_target = xfm_concat on pt1 and pt2
 
     elif conf.lsq6_method == "lsq6_centre_estimation":
@@ -121,10 +121,9 @@ def lsq6(imgs: List[MincAtom],
     else:
         raise ValueError("bad lsq6 method: %s" % conf.lsq6_method)
 
-    #TODO if not lsq6, then lin_from_nlin to get the lsq6
     transform_types = [conf.linear_conf.transform_type.name for conf in mt_conf.confs]
     if not all(transform_type == "lsq6" for transform_type in transform_types):
-        [s.defer(lin_from_nlin(xfm, "lsq6")) for xfm in xfms_to_target]
+        xfms_to_target = [s.defer(lin_from_nlin(xfm, "lsq6")) for xfm in xfms_to_target]
 
     if post_alignment_xfm:
         composed_xfms = [s.defer(xfmconcat([xfm.xfm, post_alignment_xfm],
