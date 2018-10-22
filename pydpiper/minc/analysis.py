@@ -14,11 +14,13 @@ from pydpiper.minc.registration import concat_xfmhandlers, invert_xfmhandler, mi
 #TODO find the nicest API (currently determinants_at_fwhms, but still weird)
 #and write documentation indicating it
 
-def lin_from_nlin(xfm : XfmHandler) -> Result[XfmHandler]:
+def lin_from_nlin(xfm : XfmHandler,
+                  transform_type = "lsq12") -> Result[XfmHandler]:
     # TODO add dir argument
     out_xfm = xfm.xfm.newname_with_suffix("_linear_part", subdir="tmp")
     stage = CmdStage(inputs=(xfm.source, xfm.xfm), outputs=(out_xfm,),
-                     cmd = (['lin_from_nlin', '-clobber', '-lsq12']
+                     cmd = (['lin_from_nlin', '-clobber',
+                             '-%s' % transform_type]
                             + (['-mask', xfm.source.mask.path] if xfm.source.mask else [])
                             + [xfm.target.path, xfm.xfm.path, out_xfm.path]))
     return Result(stages=Stages([stage]),
