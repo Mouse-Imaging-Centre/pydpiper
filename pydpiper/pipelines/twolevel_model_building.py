@@ -44,7 +44,7 @@ def two_level_pipeline(options : TwoLevelConf):
                                            func=lambda r:
                                              MincAtom(r.file.strip(),
                                                       pipeline_sub_dir=os.path.join(first_level_dir,
-                                                                                    "%s_processed" % r.group.strip(),
+                                                                                    "%s_processed" % r.group,
                                                                                     )))))
         except AttributeError:
             warnings.warn("Something went wrong ... does your .csv file have `group` and `file` columns?")
@@ -104,8 +104,9 @@ def two_level(grouped_files_df, options : TwoLevelConf):
         else:
             # this will ensure that all groups have the same resolution -- is it necessary?
             targets = s.defer(registration_targets(lsq6_conf=options.mbm.lsq6,
-                                           app_conf=options.application,
-                                           first_input_file=grouped_files_df.file.iloc[0]))
+                                                   app_conf=options.application,
+                                                   reg_conf=options.registration,
+                                                   first_input_file=grouped_files_df.file.iloc[0]))
 
         resolution = (options.registration.resolution
                         or get_resolution_from_file(targets.registration_standard.path))
