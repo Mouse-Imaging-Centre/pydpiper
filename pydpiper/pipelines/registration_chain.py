@@ -234,8 +234,8 @@ def chain(options):
         else:
             # if we are not dealing with a pride of models, we can retrieve a fixed
             # registration target for all input files:
-            targets = registration_targets(lsq6_conf=options.lsq6,
-                                           app_conf=options.application)
+            targets = s.defer(registration_targets(lsq6_conf=options.lsq6,
+                                           app_conf=options.application, reg_conf=options.registration))
             
             # we want to store the xfm handlers in the same shape as pipeline_subject_info,
             # as such we will call lsq6_nuc_inorm for each file individually and simply extract
@@ -847,7 +847,7 @@ def main():
     
     # TODO could abstract and then parametrize by prefix/ns ??
     options = parse(p, sys.argv[1:])
-
+    s= Stages()
     # TODO: the registration resolution should be set somewhat outside
     # of any actual function? Maybe the right time to set this, is here
     # when options are gathered?
@@ -865,8 +865,9 @@ def main():
             random_key = list(pride_of_models_mapping)[0]
             file_for_resolution = pride_of_models_mapping[random_key].registration_standard.path
         else:
-            file_for_resolution = registration_targets(lsq6_conf=options.lsq6,
-                                                       app_conf=options.application).registration_standard.path
+            file_for_resolution = s.defer(registration_targets(lsq6_conf=options.lsq6,
+                                                       app_conf=options.application,
+                                                        reg_conf=options.registration)).registration_standard.path
         options.registration = options.registration.replace(
                                    resolution=get_resolution_from_file(file_for_resolution))
     

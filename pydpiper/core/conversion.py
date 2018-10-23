@@ -12,4 +12,5 @@ def convertCmdStage(cmd_stage):
     c._runnable_hooks = cmd_stage.when_runnable_hooks
     c.finished_hooks = cmd_stage.when_finished_hooks
     c.logFile = cmd_stage.log_file
+    c.env_vars = cmd_stage.env_vars
     return c

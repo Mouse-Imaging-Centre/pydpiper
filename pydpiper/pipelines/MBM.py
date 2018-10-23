@@ -52,38 +52,38 @@ def mbm_pipeline(options : MBMConf):
         s.defer(common_space(mbm_result, options))
 
     # create useful CSVs (note the files listed therein won't yet exist ...):
-    transforms = (mbm_result.xfms.assign(
+
+    transforms = mbm_result.xfms.assign(
                             native_file=lambda df: df.rigid_xfm.apply(lambda x: x.source),
                             lsq6_file=lambda df: df.lsq12_nlin_xfm.apply(lambda x: x.source),
                             lsq6_mask_file=lambda df:
                               df.lsq12_nlin_xfm.apply(lambda x: x.source.mask if x.source.mask else ""),
                             nlin_file=lambda df: df.lsq12_nlin_xfm.apply(lambda x: x.resampled),
+                            nlin_mask_file=lambda df:
+                              df.lsq12_nlin_xfm.apply(lambda x: x.resampled.mask if x.resampled.mask else ""),
                             common_space_file=lambda df: df.xfm_to_common.apply(lambda x: x.resampled)
-                                                if options.mbm.common_space.do_common_space_registration else None)
-     .applymap(maybe_deref_path)
-     .drop(["common_space_file"] if not options.mbm.common_space.do_common_space_registration else [], axis=1))
-
+                                                if options.mbm.common_space.do_common_space_registration else None)\
+        .applymap(maybe_deref_path)\
+        .drop(["common_space_file"] if not options.mbm.common_space.do_common_space_registration else [], axis=1)
     transforms.to_csv("transforms.csv", index=False)
 
-    #intentionally after writing transforms to csv
-    if options.mbm.segmentation.run_maget:
-        transforms = (transforms.assign(label_file = mbm_result.maget_result.apply(lambda x: x.labels.path)))
-
-    determinants = (mbm_result.determinants.drop(["full_det", "nlin_det"], axis=1).applymap(maybe_deref_path))
-
+    determinants = mbm_result.determinants.drop(["full_det", "nlin_det"], axis=1)\
+        .applymap(maybe_deref_path)
     determinants.to_csv("determinants.csv", index=False)
 
-    analysis = pd.merge(transforms, determinants, left_on='lsq12_nlin_xfm', right_on='inv_xfm').drop(["inv_xfm","xfm"], axis=1)
+    analysis = transforms.merge(determinants, left_on="lsq12_nlin_xfm", right_on="inv_xfm", how='inner')\
+        .drop(["xfm", "inv_xfm"], axis=1)
+    if options.mbm.segmentation.run_maget:
+        maget_df = pd.DataFrame(data={'label_file': [result.labels.path for result in mbm_result.maget_result],
+                                      'native_file': [result.orig_path for result in mbm_result.maget_result]})
+        analysis = analysis.merge(maget_df, on="native_file")
 
-    analysis['nlin_mask_file'] = mbm_result.xfms.lsq12_nlin_xfm.apply(lambda x:
-      x.resampled.mask.path if x.resampled.mask is not None else None)
-
-    if options.application.csv_file==None:
+    if options.application.files:
         analysis.to_csv("analysis.csv", index=False)
-    else:
-        input_csv = pd.read_csv(options.application.csv_file)
-        analysis = pd.merge(input_csv, analysis, left_on='file', right_on='native_file').drop(["file"], axis=1)
-        analysis.to_csv("analysis.csv", index=False)
+    if options.application.csv_file:
+        csv_file = pd.read_csv(options.application.csv_file)
+        csv_file.merge(analysis, left_on="file", right_on="native_file").drop(["native_file"], axis=1)\
+            .to_csv("analysis.csv",index=False)
 
     # # TODO moved here from inside `mbm` for now ... does this make most sense?
     # if options.mbm.segmentation.run_maget:
@@ -193,7 +193,11 @@ def common_space(mbm_result, options):
     return Result(stages=s, output=mbm_result)
 
 
-def mbm(imgs : List[MincAtom], options : MBMConf, prefix : str, output_dir : str = ""):
+def mbm(imgs : List[MincAtom],
+        options : MBMConf,
+        prefix : str,
+        output_dir : str = "",
+        with_maget : bool = True):
 
     # TODO could also allow pluggable pipeline parts e.g. LSQ6 could be substituted out for the modified LSQ6
     # for the kidney tips, etc...
@@ -210,9 +214,9 @@ def mbm(imgs : List[MincAtom], options : MBMConf, prefix : str, output_dir : str
 
     # FIXME: why do we have to call registration_targets *outside* of lsq6_nuc_inorm? is it just because of the extra
     # options required?  Also, shouldn't options.registration be a required input (as it contains `input_space`) ...?
-    targets = registration_targets(lsq6_conf=options.mbm.lsq6,
-                                   app_conf=options.application,
-                                   first_input_file=imgs[0].path)
+    targets = s.defer(registration_targets(lsq6_conf=options.mbm.lsq6,
+                                   app_conf=options.application, reg_conf=options.registration,
+                                   first_input_file=imgs[0].path))
 
     # TODO this is quite tedious and duplicates stuff in the registration chain ...
     resolution = (options.registration.resolution or
@@ -222,36 +226,37 @@ def mbm(imgs : List[MincAtom], options : MBMConf, prefix : str, output_dir : str
 
     # FIXME: this needs to go outside of the `mbm` function to avoid being run from within other pipelines (or
     # those other pipelines need to turn off this option)
-    if options.mbm.segmentation.run_maget or options.mbm.maget.maget.mask:
+    if with_maget:
+        if options.mbm.segmentation.run_maget or options.mbm.maget.maget.mask:
 
-        # temporary fix...?
-        if options.mbm.maget.maget.mask and not options.mbm.segmentation.run_maget:
-            # which means that --no-run-maget was specified
-            if options.mbm.maget.maget.atlas_lib == None:
-                # clearly you do not want to run MAGeT at any point in this pipeline
-                err_msg_maget = "\nYou specified not to run MAGeT using the " \
-                                "--no-run-maget flag. However, the code also " \
-                                "wants to use MAGeT to generate masks for your " \
-                                "input files after the 6 parameter alignment (lsq6). " \
-                                "Because you did not specify a MAGeT atlas library " \
-                                "this can not be done. \nTo run the pipeline without " \
-                                "using MAGeT to mask your input files, please also " \
-                                "specify: \n--maget-no-mask\n"
-                raise ValueError(err_msg_maget)
+            # temporary fix...?
+            if options.mbm.maget.maget.mask and not options.mbm.segmentation.run_maget:
+                # which means that --no-run-maget was specified
+                if options.mbm.maget.maget.atlas_lib == None:
+                    # clearly you do not want to run MAGeT at any point in this pipeline
+                    err_msg_maget = "\nYou specified not to run MAGeT using the " \
+                                    "--no-run-maget flag. However, the code also " \
+                                    "wants to use MAGeT to generate masks for your " \
+                                    "input files after the 6 parameter alignment (lsq6). " \
+                                    "Because you did not specify a MAGeT atlas library " \
+                                    "this can not be done. \nTo run the pipeline without " \
+                                    "using MAGeT to mask your input files, please also " \
+                                    "specify: \n--maget-no-mask\n"
+                    raise ValueError(err_msg_maget)
 
-        import copy
-        maget_options = copy.deepcopy(options)  #Namespace(maget=options)
-        #maget_options
-        #maget_options.maget = maget_options.mbm
-        #maget_options.execution = options.execution
-        #maget_options.application = options.application
-        #maget_options.application.output_directory = os.path.join(options.application.output_directory, "segmentation")
-        maget_options.maget = options.mbm.maget
+            import copy
+            maget_options = copy.deepcopy(options)  #Namespace(maget=options)
+            #maget_options
+            #maget_options.maget = maget_options.mbm
+            #maget_options.execution = options.execution
+            #maget_options.application = options.application
+            #maget_options.application.output_directory = os.path.join(options.application.output_directory, "segmentation")
+            maget_options.maget = options.mbm.maget
 
-        fixup_maget_options(maget_options=maget_options.maget,
-                            nlin_options=maget_options.mbm.nlin,
-                            lsq12_options=maget_options.mbm.lsq12)
-        del maget_options.mbm
+            fixup_maget_options(maget_options=maget_options.maget,
+                                nlin_options=maget_options.mbm.nlin,
+                                lsq12_options=maget_options.mbm.lsq12)
+            del maget_options.mbm
 
         #def with_new_output_dir(img : MincAtom):
             #img = copy.copy(img)
@@ -282,8 +287,7 @@ def mbm(imgs : List[MincAtom], options : MBMConf, prefix : str, output_dir : str
                         for img in imgs]
     # what about running nuc/inorm without a linear registration step??
 
-    if options.mbm.maget.maget.mask:
-
+    if with_maget and options.mbm.maget.maget.mask:
         masking_imgs = copy.deepcopy([xfm.resampled for xfm in lsq6_result])
         masked_img = (s.defer(maget_mask(imgs=masking_imgs,
                                          resolution=resolution,
@@ -296,7 +300,7 @@ def mbm(imgs : List[MincAtom], options : MBMConf, prefix : str, output_dir : str
         # replace any masks of the resampled images with the newly created masks:
         for xfm in lsq6_result:
             xfm.resampled = masked_img.loc[xfm.resampled.path]
-    else:
+    elif with_maget:
         warnings.warn("Not masking your images from atlas masks after LSQ6 alignment ... probably not what you want "
                       "(this can have negative effects on your registration and statistics)")
 
@@ -388,7 +392,7 @@ def mbm(imgs : List[MincAtom], options : MBMConf, prefix : str, output_dir : str
 
 
     # FIXME moved above rest of registration for debugging ... shouldn't use and destructively modify lsq6_result!!!
-    if options.mbm.segmentation.run_maget:
+    if with_maget and options.mbm.segmentation.run_maget:
         maget_options = copy.deepcopy(maget_options)
         maget_options.maget.maget.mask = maget_options.maget.maget.mask_only = False   # already done above
         # use the original masks here otherwise the masking step will be re-run due to the previous masking run's
@@ -439,7 +443,7 @@ def mbm(imgs : List[MincAtom], options : MBMConf, prefix : str, output_dir : str
 
     output = Namespace(avg_img=lsq12_nlin_result.avg_img, xfms=output_xfms, determinants=determinants)
 
-    if options.mbm.segmentation.run_maget:
+    if with_maget and options.mbm.segmentation.run_maget:
         output.maget_result = maget_result
 
     return Result(stages=s, output=output)
@@ -493,18 +497,21 @@ model_building_parser = AnnotatedParser(parser=BaseParser(_mk_model_building_par
                                         namespace="model_building")
 
 
-def mk_mbm_parser(with_common_space : bool = True):
+def mk_mbm_parser(with_common_space : bool = True,
+                  with_maget        : bool = True):
     return CompoundParser(
              [lsq6_parser,
               lsq12_parser,
               nlin_parser,
               model_building_parser,
-              stats_parser,
+              stats_parser
               #thickness_parser,
-              AnnotatedParser(parser=maget_parsers, namespace="maget", prefix="maget"),
+              ] +
               # TODO note that the maget-specific flags (--mask, --masking-method, etc., also get the "maget-" prefix)
               # which could be changed by putting in the maget-specific parser separately from its lsq12, nlin parsers
-              segmentation_parser] + ([common_space_parser] if with_common_space else []))
+              ([common_space_parser] if with_common_space else []) +
+              ([segmentation_parser,
+                AnnotatedParser(parser=maget_parsers, namespace="maget", prefix="maget")] if with_maget else []))
 
 
 # TODO cast to MBMConf?

@@ -2,7 +2,7 @@ import os
 
 import ordered_set
 import shlex
-from typing import Any, Callable, Generic, Iterable, List, Set, Tuple, TypeVar, Union, Optional
+from typing import Any, Callable, Generic, Iterable, List, Set, Tuple, TypeVar, Union, Optional, Dict
 from pydpiper.core.files import FileAtom
 
 class CmdStage(object):
@@ -20,13 +20,14 @@ class CmdStage(object):
                  cmd      : List[str],
                  memory   : float = None,
                  procs    : int = 1,
-                 log_file : Optional[str] = None) -> None:
+                 log_file : Optional[str] = None,
+                 env_vars : Dict[str,str] = None) -> None:
         # TODO: rather than having separate cmd_stage fn, might want to make inputs/outputs optional here
         self.inputs  = inputs          # type: Tuple[FileAtom, ...]
         # TODO: might be better to dereference inputs -> inputs.path here to save mem
         self.outputs = outputs         # type: Tuple[FileAtom, ...]
         #self.conf    = conf           # not needed at present -- see note on render_fn
-        self._cmd    = cmd             # type: List[str]
+        self._cmd    = [str(x) for x in cmd] # type: List[str]
         # TODO: why not expose this publicly?
         self.when_runnable_hooks = []  # type: List[Callable[[], Any]]
         # TODO: make the hooks accessible via the constructor?
@@ -37,11 +38,13 @@ class CmdStage(object):
         # access this directory by using its "dir" and adding "../log". This is not true for files that live in the
         # _nlin or _lsq12 directories though. They live in their own top level directory, so we should just create
         # a log directory in there
+
         self.log_file = log_file or (os.path.join(self.outputs[0].dir,
                                        ".." if self.outputs[0].dir != self.outputs[0].pipeline_sub_dir else "" ,
                                        "log",
                                        cmd[0], "%s.log" % self.outputs[0].filename_wo_ext)
                          if len(self.outputs) >= 1 else None)  # FIXME: for |self.outputs| > 1, this is a fragile hack
+        self.env_vars = env_vars if env_vars is not None else {}
     # NB: __hash__ and __eq__ ignore hooks, memory
     # Also, we assume cmd determines inputs, outputs so ignore it in hash/eq calculations
     # FIXME: we should make the CmdStage fields immutable (via properties) to prevent hashing-related bugs
@@ -60,7 +63,7 @@ class CmdStage(object):
         #return self.render_fn(self.conf, self.inputs, self.outputs)
         return self.cmd_to_string()
     def cmd_to_string(self) -> str:
-        return ' '.join(self._cmd)
+        return ' '.join(str(x) for x in self._cmd)
     def to_array(self) -> List[str]:
         """Form usable for Python subprocess call."""
         return self._cmd

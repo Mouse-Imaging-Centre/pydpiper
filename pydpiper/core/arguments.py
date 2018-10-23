@@ -104,8 +104,11 @@ class CompoundParser(Parser):
 #     (possible solution: get positional args from overall parse somehow ... how to know which parser this is from
 #      and enforce that only a single parser accepts such args?)
 def parse(parser: Parser, args: List[str]) -> Namespace:
-    default_config_file = os.getenv(
-        "PYDPIPER_CONFIG_FILE")  # TODO: accepting a comma-separated list might allow more flexibility
+    if "PYDPIPER_CONFIG_FILE" in os.environ:
+        default_config_file = os.getenv("PYDPIPER_CONFIG_FILE")
+        # TODO: accepting a comma-separated list might allow more flexibility
+    else:
+        raise ValueError("PYDPIPER_CONFIG_FILE does not exist in your bash environment!")
     config_files = [default_config_file] if default_config_file else []
 
     # First, build a parser that's aware of all options
@@ -210,9 +213,13 @@ def _mk_application_parser(p: ArgParser) -> ArgParser:
     # p = ArgParser(add_help=False)
     g = p.add_argument_group("General application options",
                              "General options for all pydpiper applications.")
+    #TODO is this broken? Shouldn't this action be "store_true"?
     g.add_argument("--restart", dest="restart",
                    action="store_false", default=True,
                    help="Restart pipeline using backup files. [default = %(default)s]")
+    g.add_argument("--smart-restart", dest="smart_restart",
+                   action="store_true", default=False,
+                   help="Restart pipeline using backup files accounting for modifications. [default = %(default)s]")
     g.add_argument("--pipeline-name", dest="pipeline_name", type=str,
                    default=time.strftime("pipeline-%d-%m-%Y-at-%H-%m-%S"),
                    help="Name of pipeline and prefix for models.")

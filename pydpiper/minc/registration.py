@@ -617,15 +617,12 @@ def mincresample_simple(img: MincAtom,
                         interpolation: Optional[Interpolation] = None,
                         invert: bool = False,
                         new_name_wo_ext: str = None,
-                        subdir: str = None) -> Result[MincAtom]:
+                        subdir: str = 'resampled') -> Result[MincAtom]:
     """
     Resample an image, ignoring mask/labels
     ...
     new_name_wo_ext -- string indicating a user specified file name (without extension)
     """
-
-    if not subdir:
-        subdir = 'resampled'
 
     if not new_name_wo_ext:
         # FIXME the path to `outf` is wrong.  For instance, resampling a mask file ends up in the initial model
@@ -670,7 +667,7 @@ def mincresample(img: MincAtom,
                  interpolation: Interpolation = None,
                  extra_flags: Tuple[str] = (),
                  new_name_wo_ext: str = None,
-                 subdir: str = None,
+                 subdir: str = 'resampled',
                  postfix: str = None) -> Result[MincAtom]:
     """
     ...
@@ -694,9 +691,6 @@ def mincresample(img: MincAtom,
     label_extra_flags = (extra_flags
                          + (('-keep_real_range',) if "-keep_real_range"
                                                     not in extra_flags else ()))
-
-    if not subdir:
-        subdir = 'resampled'
 
     # we need to get the filename without extension here in case we have
     # masks/labels associated with the input file. When that's the case,
@@ -2670,7 +2664,8 @@ def verify_correct_lsq6_target_options(init_model: str,
 # TODO: why is this separate?
 def registration_targets(lsq6_conf: LSQ6Conf,
                          app_conf,
-                         first_input_file: Optional[str] = None) -> RegistrationTargets:
+                         reg_conf,
+                         first_input_file: Optional[str] = None) -> Result:
 
     target_type   = lsq6_conf.target_type
     target_file   = lsq6_conf.target_file
@@ -2687,9 +2682,7 @@ def registration_targets(lsq6_conf: LSQ6Conf,
         target_file = MincAtom(name=target_file,
                                pipeline_sub_dir=os.path.join(output_dir, pipeline_name +
                                                              "_target_file"))
-        return RegistrationTargets(registration_standard=target_file,
-                                   xfm_to_standard=None,
-                                   registration_native=None)
+        target = RegistrationTargets(registration_standard=target_file)
     elif target_type == TargetType.bootstrap:
         if target_file is not None:
             raise ValueError("BUG: bootstrap was chosen but a file was specified ...")
@@ -2698,20 +2691,49 @@ def registration_targets(lsq6_conf: LSQ6Conf,
                              "(possibly a bug: I'm probably only looking at input files specified "
                              "on the command line, so if you supplied them in a CSV "
                              "I might not have noticed (or this might not make sense) ...")
-        if not can_read_MINC_file(first_input_file):
-            raise ValueError("Error (bootstrap file): can not read MINC file: %s\n" % first_input_file)
         bootstrap_file = MincAtom(name=first_input_file,
                                   pipeline_sub_dir=os.path.join(output_dir, pipeline_name +
                                                                 "_bootstrap_file"))
-        return RegistrationTargets(registration_standard=bootstrap_file)
+        target = RegistrationTargets(registration_standard=bootstrap_file)
 
     elif target_type == TargetType.initial_model:
-        return get_registration_targets_from_init_model(target_file,
+        target = get_registration_targets_from_init_model(target_file,
                                                         output_dir=output_dir,
                                                         pipeline_name=pipeline_name)
     else:
         raise ValueError("Invalid target type: %s" % lsq6_conf.target_type)
 
+    # TODO write a when runnable hook to let the user know
+    s = Stages()
+    if reg_conf.resolution:
+        autocropped = MincAtom(os.path.join(output_dir, pipeline_name + "_reg_target_resampled",
+                                                target.registration_standard.filename_wo_ext +
+                                                "_%smicron_resampled.mnc" % int(reg_conf.resolution*1000)),
+                                output_sub_dir=os.path.join(output_dir, pipeline_name + "_reg_target_resampled"),
+                                mask = MincAtom(os.path.join(output_dir, pipeline_name + "_reg_target_resampled",
+                                                                target.registration_standard.mask.filename_wo_ext +
+                                                                "_%smicron_resampled.mnc" % int(reg_conf.resolution*1000)),
+                                                output_sub_dir = os.path.join(output_dir, pipeline_name + "_reg_target_resampled"))
+                                                                if target.registration_standard.mask else None)
+        target.registration_standard = s.defer(autocrop(isostep = reg_conf.resolution,
+                                                        img = target.registration_standard,
+                                                        autocropped = autocropped))
+        if target.registration_native is not None:
+            autocropped = MincAtom(os.path.join(output_dir, pipeline_name + "_reg_target_resampled",
+                                                    target.registration_native.filename_wo_ext +
+                                                    "_%smicron_resampled.mnc" % int(reg_conf.resolution * 1000)),
+                                    output_sub_dir=os.path.join(output_dir, pipeline_name + "_reg_target_resampled"),
+                                    mask=MincAtom(os.path.join(output_dir, pipeline_name + "_reg_target_resampled",
+                                                            target.registration_native.mask.filename_wo_ext +
+                                                                "_%smicron_resampled.mnc" % int(reg_conf.resolution * 1000))
+                                if target.registration_native.mask else None))
+            target.registration_native = s.defer(autocrop(isostep=reg_conf.resolution,
+                                                            img=target.registration_native,
+                                                            autocropped=autocropped))
+
+    return Result(stages = s, output = (RegistrationTargets(registration_standard = target.registration_standard,
+                               xfm_to_standard = target.xfm_to_standard,
+                               registration_native = target.registration_native)))
 
 def is_number(s):
     try:
@@ -2795,6 +2817,7 @@ def create_quality_control_images(imgs: List[MincAtom],
                                   montage_output:str = None,
                                   montage_dir:str = None,
                                   scaling_factor: int = 20,
+                                  auto_range:bool = False,
                                   message:str = "lsq6"):
     """
     This class takes a list of input files and creates
@@ -2819,9 +2842,7 @@ def create_quality_control_images(imgs: List[MincAtom],
     # for each of the input files, run a mincpik call and create
     # a triplane image.
     for img in imgs:
-        img_verification = img.newname_with_suffix("_QC_image",
-                                                   subdir="tmp",
-                                                   ext=".jpg")
+        img_verification = img.newname_with_suffix("_QC_image", subdir="tmp", ext=".png")
         # TODO: the memory and procs are set to 0 to ensure that
         # these stages finish soonish. No other stages depend on
         # these, but we do want them to finish as soon as possible
@@ -2830,6 +2851,7 @@ def create_quality_control_images(imgs: List[MincAtom],
             outputs=(img_verification,),
             cmd=["mincpik", "-clobber",
                  "-scale", str(scaling_factor),
+                 "--auto_range" if auto_range else "",
                  "-triplanar",
                  img.path, img_verification.path],
             memory=1,
@@ -2843,7 +2865,7 @@ def create_quality_control_images(imgs: List[MincAtom],
         # which images potentially fail
         img_verification_convert = img.newname_with_suffix("_QC_image_labeled",
                                                            subdir="tmp",
-                                                           ext=".jpg")
+                                                           ext=".png")
         # FIXME: no other stages depend on
         # these, but we do want them to finish as soon as possible
         # -- perhaps we could instead return the montage stage (or, if no montage is to be created,
@@ -2950,6 +2972,39 @@ def minc_label_ops(in_labels : MincAtom, op : LabelOp, op_arg : Optional[Union[M
                      + ([op_arg] if op_arg is not None else [])
                      + [in_labels.path, out_labels.path])
     return Result(stages=Stages([s]), output=out_labels)
+
+def autocrop(img: MincAtom,
+             autocropped: MincAtom,
+             isostep: float = None,
+             nearest_neighbour: bool = False,
+             x_pad: str = '0,0',
+             y_pad: str = '0,0',
+             z_pad: str = '0,0',) -> Result[MincAtom]:
+    s = Stages()
+
+    s.add(CmdStage(inputs=(img,), outputs=(autocropped,),
+                 cmd=["autocrop", "-clobber"]
+                     + (["-isostep ", isostep] if isostep else [])
+                     + (["-extend %s %s %s" % (x_pad, y_pad, z_pad)] )
+                     + (["-nearest_neighbour"] if nearest_neighbour else [])
+                     + [img.path, autocropped.path]))
+
+    if img.mask is not None:
+        s.add(CmdStage(inputs=(img.mask,), outputs=(autocropped.mask,),
+                       cmd=["autocrop", "-clobber"]
+                           + (["-isostep ", isostep] if isostep else [])
+                           + (["-extend %s %s %s" % (x_pad, y_pad, z_pad)])
+                           + (["-nearest_neighbour"] if nearest_neighbour else [])
+                           + [img.mask.path, autocropped.mask.path]))
+    if img.labels is not None:
+        s.add(CmdStage(inputs=(img.labels,), outputs=(autocropped.labels,),
+                       cmd=["autocrop", "-clobber"]
+                           + (["-isostep ", isostep] if isostep else [])
+                           + (["-extend %s %s %s" % (x_pad, y_pad, z_pad)])
+                           + (["-nearest_neighbour"] if nearest_neighbour else [])
+                           + [img.labels.path, autocropped.labels.path]))
+
+    return Result(stages=s, output=autocropped)
 
 
 def make_xfm_for_grid(grid : MincAtom):

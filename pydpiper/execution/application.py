@@ -74,11 +74,15 @@ def ensure_short_output_paths(stages, max_len=255):  # magic no. for EXT3, EXT4,
 
 def ensure_output_paths_in_dir(stages, d):
     # TODO also check the logfiles ... should these be counted as stage outputs (tedious to add by hand ...)?
+    not_in_dir = []
     for s in stages:
         for o in s.outputs:
             if os.path.relpath(o.path, d).startswith('..'):
-                raise ValueError("output %s of stage %s not contained inside "
-                                 "pipeline directory %s" % (o.path, s, d))
+                not_in_dir.append([o.path,s.cmd_to_string()])
+    if (not_in_dir):
+        # import pdb; pdb.set_trace()
+        raise ValueError(["output %s of stage '%s' not contained inside pipeline directory %s"
+                          % (item[0], item[1], d) for item in not_in_dir])
 
 
 # TODO: where should this live - util?
@@ -124,6 +128,9 @@ def ensure_commands_exist(stages):
 def execute(stages, options):
     """Basically just looks at the arguments and exits if `--no-execute` is specified,
     otherwise dispatches on backend type."""
+
+    # if options.application.output_directory:
+    #     os.chdir(options.application.output_directory)
 
     # TODO: logger.info('Constructing pipeline...')
     pipeline = Pipeline(stages=[convertCmdStage(s) for s in stages],

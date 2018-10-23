@@ -480,9 +480,9 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir, build_model_xfms=N
         else:
             imgs_with_all_labels = atlas_labelled_imgs
 
+
         #imgs_with_all_labels = imgs_with_all_labels.applymap(
         #    lambda x: s.defer(nlin_component.ToMinc.to_mnc(x)))
-
         segmented_imgs = (
                 imgs_with_all_labels
                 .groupby('img')
@@ -491,7 +491,8 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir, build_model_xfms=N
                 .reset_index()
                 .assign(voted_labels=lambda df: df.apply(axis=1, func=lambda row:
                           s.defer(voxel_vote(label_files=row.label_files,
-                                             output_dir=os.path.join(row.img.pipeline_sub_dir, row.img.output_sub_dir)))))
+                                             output_dir=os.path.join(row.img.pipeline_sub_dir, row.img.output_sub_dir),
+                                             name=row.img.filename_wo_ext+"_voted"))))
                 .apply(axis=1, func=lambda row: row.img._replace(labels=row.voted_labels))
         )
 

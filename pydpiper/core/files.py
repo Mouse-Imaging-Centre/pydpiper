@@ -1,5 +1,6 @@
 import copy
 import os
+import warnings
 
 from typing import Callable, Union, Tuple
 
@@ -48,10 +49,12 @@ class FileAtom(object):
     
     def __init__(self,
                  name             : str,
+                 output_sub_dir: str = None,
                  orig_name        : Union[str, None, NotProvided] = NotProvided(),
                  pipeline_sub_dir : str = None,
-                 output_sub_dir   : str = None) -> None:
+                 ) -> None:
         self.dir, self.filename_wo_ext, self.ext = explode(name)
+        self.output_sub_dir = output_sub_dir
         if isinstance(orig_name, NotProvided):
             self.orig_path = name  # type: str
         elif isinstance(orig_name, type(None)):
@@ -122,7 +125,7 @@ class FileAtom(object):
         '/project/images/img_3.mnc'
         """
 
-        new_dir = os.path.join(self.pipeline_sub_dir, 
+        new_dir = os.path.join(self.pipeline_sub_dir,
                                self.output_sub_dir if self.output_sub_dir else "",
                                subdir if subdir else "")
         filename_wo_ext = fn(self.filename_wo_ext)

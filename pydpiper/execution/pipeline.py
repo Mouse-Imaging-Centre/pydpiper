@@ -394,7 +394,7 @@ class Pipeline(object):
     def get_stage_info(self, i):
         s = self.stages[i]
         return pe.StageInfo(mem=s.mem, procs=s.procs, ix=i, cmd=s.cmd, log_file=s.logFile,
-                            output_files=s.outputFiles)
+                            output_files=s.outputFiles, env_vars=s.env_vars)
 
     def getStage(self, i):
         """given an index, return the actual pipelineStage object"""
@@ -697,7 +697,7 @@ class Pipeline(object):
           # running indefinitely with no jobs
             (self.number_launched_and_waiting_clients + len(self.clients) == 0 and
             max_memory_required > self.memAvail)):
-              msg = ("\nShutting down due to jobs (e.g. `%s`) which require more memory (%.2fG) than available anywhere. "
+              msg = ("\nShutting down due to jobs (e.g. `%s`) which require more memory (%.2fG) than the amount requestable. "
                      "Please use the --mem argument to increase the amount of memory that executors can request."
                      % (str(highest_mem_stage)[:1000], max_memory_required))
               print(msg)
@@ -906,6 +906,14 @@ class Pipeline(object):
             if not h in previous_hashes:
                 runnable.append(i)
                 continue
+
+            if self.options.application.smart_restart:
+                latest_input_mtime = max([os.stat(inputFile).st_mtime for inputFile in s.inputFiles])
+                latest_output_mtime = max([os.stat(outputFile).st_mtime for outputFile in s.outputFiles])
+                #this command's inputFiles were modified after its outputFiles, so rerun it.
+                if (latest_input_mtime > latest_output_mtime):
+                    runnable.append(i)
+                    continue
 
             self.setStageFinished(i, clientURI = "fake_client_URI", checking_pipeline_status = True)
 

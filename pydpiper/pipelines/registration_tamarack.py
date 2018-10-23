@@ -88,12 +88,14 @@ def tamarack(imgs : pd.DataFrame, options):
                                                         # so we can't send this RegistrationTargets to `mbm` directly ...
                                                         # one option: add yet another optional arg to `mbm` ...
         else:
-            targets = registration_targets(lsq6_conf=options.mbm.lsq6,
-                                           app_conf=options.application,
-                                           first_input_file=imgs.filename.iloc[0])
+            targets = s.defer(registration_targets(lsq6_conf=options.mbm.lsq6,
+                                           app_conf=options.application, reg_conf=options.registration,
+                                           first_input_file=imgs.filename.iloc[0]))
 
         resolution = (options.registration.resolution or
                         get_resolution_from_file(targets.registration_standard.path))
+
+        # This must happen after calling registration_targets otherwise it will resample to options.registration.resolution
         options.registration = options.registration.replace(resolution=resolution)
 
         return options
