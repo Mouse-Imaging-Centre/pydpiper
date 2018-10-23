@@ -58,14 +58,27 @@ def two_level_pipeline(options : TwoLevelConf):
     pipeline = two_level(grouped_files_df=files_df, options=options)
 
     # TODO write these into the appropriate subdirectory ...
-    (pipeline.output.overall_determinants
-       .drop('inv_xfm', axis=1)
-       .applymap(maybe_deref_path)
-       .to_csv("overall_determinants.csv", index=False))
-    (pipeline.output.resampled_determinants
-       .drop(['inv_xfm', 'full_det', 'nlin_det'], axis=1)
-       .applymap(maybe_deref_path)
-       .to_csv("resampled_determinants.csv", index=False))
+    overall = pipeline.output.overall_determinants\
+        .drop('inv_xfm', axis=1)\
+        .applymap(maybe_deref_path)
+    overall.to_csv("overall_determinants.csv", index=False)
+    resampled = pipeline.output.resampled_determinants\
+        .drop(['inv_xfm', 'full_det', 'nlin_det'], axis=1)\
+        .applymap(maybe_deref_path)
+    resampled.to_csv("resampled_determinants.csv", index=False)
+
+    # rename/drop some columns, bind the dfs and write to "analysis.csv" as it should be.
+    # deprecate the two csvs next release.
+    overall = overall.drop(["full_det", "nlin_det"], axis=1)\
+        .rename(columns={"overall_xfm" : "xfm"})
+    resampled = resampled.rename(columns={
+        "first_level_log_full_det" : "log_full_det",
+        "first_level_log_nlin_det" : "log_nlin_det",
+        "first_level_xfm" : "xfm",
+        "first_level_log_full_det_resampled" : "resampled_log_full_det",
+        "first_level_log_nlin_det_resampled" : "resampled_log_nlin_det"
+    })
+    pd.concat([resampled, overall], axis=1).to_csv("analysis.csv", index=False)
 
     return pipeline
 
