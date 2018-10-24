@@ -165,15 +165,15 @@ def common_space(mbm_result, options):
                                             xfm=model_to_common.xfm, like=common_space_model,
                                             postfix="_common"))
 
-    #overall_xfms_to_common = [s.defer(concat_xfmhandlers([rigid_xfm, nlin_xfm, model_to_common]))
-    #                          for rigid_xfm, nlin_xfm in zip(mbm_result.xfms.rigid_xfm,
-    #                                                         mbm_result.xfms.lsq12_nlin_xfm)]
+    overall_xfms_to_common_inv = [s.defer(invert_xfmhandler(xfmhandler)) for xfmhandler in
+                                  [s.defer(concat_xfmhandlers([rigid_xfm, nlin_xfm, model_to_common])) for rigid_xfm, nlin_xfm in
+                                   zip(mbm_result.xfms.rigid_xfm, mbm_result.xfms.lsq12_nlin_xfm)]]
 
     xfms_to_common = [s.defer(concat_xfmhandlers([nlin_xfm, model_to_common]))
                       for nlin_xfm in mbm_result.xfms.lsq12_nlin_xfm]
 
-    mbm_result.xfms = mbm_result.xfms.assign(xfm_to_common=xfms_to_common)
-                                            #,overall_xfm_to_common=overall_xfms_to_common)
+    mbm_result.xfms = mbm_result.xfms.assign(xfm_to_common=xfms_to_common,
+                                             overall_xfm_to_common_inv=overall_xfms_to_common_inv)
 
     if options.mbm.stats.calc_stats:
         log_nlin_det_common, log_full_det_common = (
@@ -185,8 +185,16 @@ def common_space(mbm_result, options):
                           postfix="_common")))
              for dets in (mbm_result.determinants.log_nlin_det, mbm_result.determinants.log_full_det)])
 
-        mbm_result.determinants = mbm_result.determinants.assign(log_nlin_det_common=log_nlin_det_common,
-                                                                 log_full_det_common=log_full_det_common)
+        overall_determinants = s.defer(determinants_at_fwhms(
+            xfms=overall_xfms_to_common_inv,
+            blur_fwhms=options.mbm.stats.stats_kernels))
+
+        mbm_result.determinants = \
+            mbm_result.determinants.assign(log_nlin_det_common=log_nlin_det_common,
+                                           log_full_det_common=log_full_det_common,
+                                           log_nlin_overall_det_common=overall_determinants.log_nlin_det,
+                                           log_full_overall_det_common=overall_determinants.log_full_det
+                                           )
 
     mbm_result.model_common = model_common
 

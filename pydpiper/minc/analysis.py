@@ -166,7 +166,7 @@ def determinants_at_fwhms(xfms       : List[XfmHandler],  # TODO change to pd.Se
     """
     s = Stages()
 
-    inv_xfms = s.defer([invert_xfmhandler(xfm) for xfm in xfms]) if inv_xfms is None else inv_xfms
+    inv_xfms = [s.defer(invert_xfmhandler(xfm)) for xfm in xfms] if inv_xfms is None else inv_xfms
 
     fwhms = [float(x) for x in blur_fwhms.split(',')]
 
