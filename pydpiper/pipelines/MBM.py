@@ -75,14 +75,16 @@ def mbm_pipeline(options : MBMConf):
         .drop(["xfm", "inv_xfm"], axis=1)
     if options.mbm.segmentation.run_maget:
         maget_df = pd.DataFrame(data={'label_file': [result.labels.path for result in mbm_result.maget_result],
-                                      'native_file': [result.orig_path for result in mbm_result.maget_result]})
+                                      'native_file': [result.orig_path for result in mbm_result.maget_result],
+                                      '_merge': [os.path.basename(result.orig_path) for result in mbm_result.maget_result]})
         analysis = analysis.merge(maget_df, on="native_file")
 
     if options.application.files:
-        analysis.to_csv("analysis.csv", index=False)
+        analysis.drop(["_merge"], axis=1).to_csv("analysis.csv", index=False)
     if options.application.csv_file:
         csv_file = pd.read_csv(options.application.csv_file)
-        csv_file.merge(analysis, left_on="file", right_on="native_file").drop(["native_file"], axis=1)\
+        csv_file = csv_file.assign(_merge= [os.path.basename(file) for file in csv_file.file])
+        csv_file.merge(analysis).drop(["_merge"], axis=1)\
             .to_csv("analysis.csv",index=False)
 
     # # TODO moved here from inside `mbm` for now ... does this make most sense?
