@@ -65,10 +65,13 @@ def two_level_pipeline(options : TwoLevelConf):
     resampled = pipeline.output.resampled_determinants\
         .drop(['inv_xfm', 'full_det', 'nlin_det'], axis=1)\
         .applymap(maybe_deref_path)
-    resampled.to_csv("resampled_determinants.csv", index=False)
+    resampled.drop(['_merge'], axis=1).to_csv("resampled_determinants.csv", index=False)
 
     # rename/drop some columns, bind the dfs and write to "analysis.csv" as it should be.
     # deprecate the two csvs next release.
+    analysis = pd.read_csv(options.application.csv_file)
+    analysis = analysis.assign(_merge=[os.path.basename(file) for file in analysis.file])
+
     overall = overall.drop(["full_det", "nlin_det"], axis=1)\
         .rename(columns={"overall_xfm" : "xfm"})
     resampled = resampled.rename(columns={
@@ -78,7 +81,9 @@ def two_level_pipeline(options : TwoLevelConf):
         "first_level_log_full_det_resampled" : "resampled_log_full_det",
         "first_level_log_nlin_det_resampled" : "resampled_log_nlin_det"
     })
-    pd.concat([resampled, overall], axis=1).to_csv("analysis.csv", index=False)
+    analysis.merge(pd.concat([resampled, overall], axis=1))\
+        .drop(["_merge"], axis=1)\
+        .to_csv("analysis.csv", index=False)
 
     return pipeline
 
@@ -182,9 +187,20 @@ def two_level(grouped_files_df, options : TwoLevelConf):
 
     # TODO using the avg_img here is a bit clunky -- maybe better to propagate group indices ...
     # only necessary since `mbm` doesn't return DataFrames but namespaces ...
+    # pipeline.output.first_level_results.build_model[0].xfms.rigid_xfm[0].source.path
     first_level_determinants = pd.concat(list(first_level_results.build_model.apply(
                                                 lambda x: x.determinants.assign(first_level_avg=x.avg_img))),
                                          ignore_index=True)
+    # first_level_xfms is only necessary because you otherwise have no access to the input file which is necessary
+    # for merging with the input csv. lsq12_nlin_xfm can be used to merge, and rigid_xfm contains the input file.
+    # If for some reason we want to output xfms in the future, just don't drop everything.
+    first_level_xfms = pd.concat(list(first_level_results.build_model.apply(lambda x: x.xfms.assign(
+        first_level_avg=x.avg_img))), ignore_index=True)[["lsq12_nlin_xfm", "rigid_xfm"]]
+    first_level_xfms = first_level_xfms.assign\
+        (_merge = [os.path.basename(rigid_xfm.source.path) for rigid_xfm in first_level_xfms.rigid_xfm])
+    first_level_determinants = pd.merge(left=first_level_determinants, right=first_level_xfms, left_on="inv_xfm", right_on="lsq12_nlin_xfm")\
+        .drop(["rigid_xfm", "lsq12_nlin_xfm"], axis=1)
+
 
     resampled_determinants = (pd.merge(
         left=first_level_determinants,
