@@ -4,6 +4,7 @@ TODO write some useful documentation
 from collections import defaultdict
 
 from pkg_resources import get_distribution  # type: ignore
+import warnings
 import copy
 import os
 import time
