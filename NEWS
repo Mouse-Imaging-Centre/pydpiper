@@ -1,3 +1,24 @@
+New in Version 2.0.12
+=====================
+* improvements to output CSVs for MBM and twolevel model pipelines: use analysis.csv for most cases
+* additional outputs to analysis.csv: masks, segmentations
+* CmdStage API no longer needs you to manually string-ify arguments
+* cleanup module imports to save memory on executors (see #378)
+* various fixes to directory structure and file naming
+* fixes to nii2mnc, mnc2nii
+* fix to determinants_at_fwhms when no inverse transforms supplied (previously crashed)
+* option added to disable normalization in mincaverage
+* internal cleanup of minctracc configuration objects to make rotational_minctracc
+  more similar to other LSQ6 modes; more improvements coming
+* intensity and labelling fixes to QC images, which are now produced as PNG instead of JPG for space
+* autocrop command added
+* internal functionality added to allow passing environment variables to shell commands
+* an error is signalled if PYDPIPER_CONFIG_FILE doesn't point to a readable file
+* --smart-restart flag added to allow manually modifying files and have Pydpiper automatically
+  recompute all succeeding stages
+* --time-to-seppuku flag changed to --max-idle-time
+* various other small internal changes and fixes
+
 New in Version 2.0.11
 =====================
 * add preliminary support for antsRegistration (only with MICe default parameters currently)
