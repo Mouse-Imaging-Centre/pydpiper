@@ -198,13 +198,15 @@ def two_level(grouped_files_df, options : TwoLevelConf):
     # If for some reason we want to output xfms in the future, just don't drop everything.
     first_level_xfms = pd.concat(list(first_level_results.build_model.apply(lambda x: x.xfms.assign(
         first_level_avg=x.avg_img))), ignore_index=True)[["lsq12_nlin_xfm", "rigid_xfm"]]
-    first_level_xfms = first_level_xfms.assign\
-        (_merge = [os.path.basename(rigid_xfm.source.path) for rigid_xfm in first_level_xfms.rigid_xfm])
-    maget_df = pd.DataFrame([{"label_file" : x.labels.path, "_merge" : os.path.basename(x.orig_path)}
-                             for x in pd.concat([namespace.maget_result for namespace in first_level_results.build_model])])
-    first_level_xfms=pd.merge(left=first_level_xfms, right=maget_df)
-    first_level_determinants = pd.merge(left=first_level_determinants, right=first_level_xfms, left_on="inv_xfm", right_on="lsq12_nlin_xfm")\
-        .drop(["rigid_xfm", "lsq12_nlin_xfm"], axis=1)
+    first_level_xfms = first_level_xfms.assign(
+        _merge = [os.path.basename(rigid_xfm.source.path) for rigid_xfm in first_level_xfms.rigid_xfm])
+    if options.mbm.segmentation.run_maget:
+        maget_df = pd.DataFrame([{"label_file" : x.labels.path, "_merge" : os.path.basename(x.orig_path)}
+                                 for x in pd.concat([namespace.maget_result for namespace in first_level_results.build_model])])
+        first_level_xfms = pd.merge(left=first_level_xfms, right=maget_df)
+    first_level_determinants = (pd.merge(left=first_level_determinants, right=first_level_xfms,
+                                         left_on="inv_xfm", right_on="lsq12_nlin_xfm")
+                                .drop(["rigid_xfm", "lsq12_nlin_xfm"], axis=1))
 
     resampled_determinants = (pd.merge(
         left=first_level_determinants,
