@@ -3,6 +3,8 @@
 import time
 import sys
 import os
+import warnings
+
 from configargparse import ArgParser, Namespace  # type: ignore
 from datetime import datetime
 from multiprocessing import Process, Pool, Lock # type: ignore
@@ -625,10 +627,14 @@ def main():
     # Alternately, we could use a default location for the file
     # (say `files = ['/etc/pydpiper.cfg', '~/pydpiper.cfg', './pydpiper.cfg']`)
     # TODO this logic is duplicated in application.py
-    if "PYDPIPER_CONFIG_FILE" in os.environ:
-        default_config_file = os.getenv("PYDPIPER_CONFIG_FILE")
-    else:
-        raise ValueError("PYDPIPER_CONFIG_FILE does not exist in your bash environment!")
+    #if "PYDPIPER_CONFIG_FILE" in os.environ:
+    default_config_file = os.getenv("PYDPIPER_CONFIG_FILE")
+    if default_config_file is not None:
+        try:
+            with open(PYDPIPER_CONFIG_FILE):
+                pass
+        except:
+            warnings.warn(f"PYDPIPER_CONFIG_FILE is set to '{default_config_file}', which can't be opened.")
     if default_config_file is not None:
         files = [default_config_file]
     else:
