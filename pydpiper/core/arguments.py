@@ -112,7 +112,7 @@ def parse(parser: Parser, args: List[str]) -> Namespace:
         with open(default_config_file) as _:
           pass
       except:
-        warnings.warn(f"PYDPIPER_CONFIG_FILE is set to '{default_config_file}', which does not exist.")
+        warnings.warn(f"PYDPIPER_CONFIG_FILE is set to '{default_config_file}', which can't be opened.")
     config_files = [default_config_file] if default_config_file else []
 
     # First, build a parser that's aware of all options

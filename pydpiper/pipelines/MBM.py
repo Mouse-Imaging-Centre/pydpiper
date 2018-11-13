@@ -463,14 +463,14 @@ def mbm(imgs : List[MincAtom],
 def _mk_common_space_parser(parser : ArgParser):
     group = parser.add_argument_group("Common space options", "Options for registration/resampling to common (db) space.")
     group.add_argument("--common-space-model", dest="common_space_model",
-                       type=str, help="Run MAGeT segmentation on the images.")
+                       type=str, help="Model image to which to align consensus average")
     group.add_argument("--common-space-mask", dest="common_space_mask",
                        type=str, help="Mask for common space model")
     group.set_defaults(do_common_space_registration=False)
     group.add_argument("--common-space-registration", dest="do_common_space_registration",
-                       action="store_true", help="Do registration to common (db) space. [default]")
+                       action="store_true", help="Do registration to common (db) space.")
     group.add_argument("--no-common-space-registration", dest="do_common_space_registration",
-                       default=True, action="store_false", help="Skip registration to common (db) space.")
+                       default=True, action="store_false", help="Skip registration to common (db) space [default].")
     return parser
 
 
