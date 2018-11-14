@@ -437,8 +437,8 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir, build_model_xfms=N
                 imgs_and_templates
                 .rename(columns={ 'label_file' : 'template_label_file' })
                 # don't register template to itself, since otherwise atlases would vote on that template twice
-                .select(lambda ix: imgs_and_templates.img[ix].path
-                                     != imgs_and_templates.template[ix].path)  # FIXME hardcoded df name !!
+                .loc[lambda df: df.index.map(lambda ix: df.img[ix].path
+                                               != df.template[ix].path)]
                 .assign(label_file=lambda df: df.apply(axis=1, func=lambda row:
                           s.defer(
                             # TODO switch to uses of nlin_component.whatever(...) in several places below?
