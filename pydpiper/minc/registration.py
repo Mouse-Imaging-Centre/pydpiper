@@ -3030,7 +3030,7 @@ class MincAlgorithms(Algorithms):
         return mincresample(img=img, xfm=xfm, like=like, invert=invert,
                             interpolation=Interpolation.nearest_neighbour
                               if use_nn_interpolation else Interpolation.sinc,
-                            extra_flags=(("-keep_real_range",) if use_nn_interpolation else ()),
+                            extra_flags=(("-keep_real_range", "-labels") if use_nn_interpolation else ()),
                             new_name_wo_ext=new_name_wo_ext, subdir=subdir, postfix=postfix)
 
     # TODO XfmHandler -> XfmHandler? XfmAtom, LikeFile -> XfmAtom ?

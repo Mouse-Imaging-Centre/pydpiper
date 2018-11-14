@@ -222,7 +222,6 @@ def maget_mask(imgs : List[MincAtom], maget_options, resolution : float,
                                        #                             row.img.filename_wo_ext),
                                        #    axis=1),
                                        use_nn_interpolation=True
-                                       #extra_flags=("-keep_real_range",)
                                        ))))
         .groupby('img', as_index=False)
         .aggregate({'resampled_mask' : lambda masks: list(masks)})
@@ -396,7 +395,7 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir, build_model_xfms=N
                                                like=img,
                                                invert=True,
                                                interpolation=Interpolation.nearest_neighbour,
-                                               extra_flags=('-keep_real_range',)))}
+                                               extra_flags=('-keep_real_range', '-labels')))}
                          for img in imgs for atlas in atlases)
         )
 
@@ -469,7 +468,7 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir, build_model_xfms=N
                               invert=True,
                               #use_nn_interpolation=True
                               interpolation=Interpolation.nearest_neighbour,
-                              extra_flags=('-keep_real_range',)
+                              extra_flags=('-keep_real_range', '-labels')
                             ))))
             ) if len(imgs) > 1 else pd.DataFrame({ 'img' : [], 'label_file' : [] })
               # ... as no distinct templates to align if only one image supplied (#320)
