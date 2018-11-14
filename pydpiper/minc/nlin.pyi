@@ -82,6 +82,7 @@ class NLIN(Generic[I,X]):  # TODO inherit from something better; provide some de
   @staticmethod
   def get_default_multilevel_conf() -> Optional[MultilevelConf]: ...
 
+  @staticmethod
   def hierarchical_to_single(m : MultilevelConf) -> Sequence[Conf]: ...
 
   # TODO change to parse a string, not a filename? or both ...?
