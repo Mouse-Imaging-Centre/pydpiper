@@ -981,7 +981,8 @@ def xfmaverage(xfms: List[XfmAtom],
     #    outf = XfmAtom(name=os.path.join(output_dir, 'transforms', output_filename), orig_name=None)
 
     stage = CmdStage(inputs=tuple(xfms), outputs=(outf,),
-                     cmd=["xfmavg", "-clobber"] + sorted([x.path for x in xfms]) + [outf.path])
+                     cmd=["xfmavg_scip.py", "--verbose", "--clobber"]
+                         + sorted([x.path for x in xfms]) + [outf.path])
 
     return Result(stages=Stages([stage]), output=outf)
 
