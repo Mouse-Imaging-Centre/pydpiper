@@ -65,13 +65,13 @@ class NLIN(Generic[I, X]):
   img_ext = NotImplemented   # type: str
   xfm_ext = NotImplemented   # type: str
 
-  class Conf: raise NotImplementedError
+  class Conf: pass
 
-  class MultilevelConf: raise NotImplementedError
+  class MultilevelConf: pass
 
-  class ToMinc(ToMinc): raise NotImplementedError
+  class ToMinc(ToMinc): pass
 
-  class Algorithms(Algorithms): raise NotImplementedError
+  class Algorithms(Algorithms): pass
 
   @staticmethod
   def hierarchical_to_single(m: 'MultiLevelConf') -> Sequence[Conf]: raise NotImplementedError
@@ -110,7 +110,7 @@ class NLIN(Generic[I, X]):
 
 class NLIN_BUILD_MODEL(NLIN):
 
-    class BuildModelConf(): raise NotImplementedError
+    class BuildModelConf(): pass
 
     @staticmethod
     def build_model(imgs     : List[MincAtom],
