@@ -40,7 +40,7 @@ def get_imgs(options):
         # FIXME check `file` column is present ...
         # TODO check for zero length file ...
 
-        csv_base = os.path.dirname(options.csv_file)
+        csv_base = os.path.dirname(options.csv_file) if options.csv_paths_relative_to_csv else ""
 
         if hasattr(csv, 'mask_file'):
             masks = [MincAtom(os.path.join(csv_base, mask.strip()),
@@ -101,7 +101,7 @@ def get_atlases(maget_options, pipeline_sub_dir : str):
     # TODO probably the [:max_templates] shouldn't be done here but in the application?
     return atlases[:max_templates]
 
-
+# TODO should this obey --csv-paths-relative-to-csv ?
 def atlases_from_csv(atlas_csv : str, pipeline_sub_dir : str) -> pd.Series:
     d = os.path.dirname(atlas_csv)
     df = (pd.read_csv(atlas_csv, usecols=["file", "mask_file", "label_file"])
