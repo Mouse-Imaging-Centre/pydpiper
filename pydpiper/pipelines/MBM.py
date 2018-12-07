@@ -76,7 +76,6 @@ def mbm_pipeline(options : MBMConf):
     if options.mbm.segmentation.run_maget:
         maget_df = pd.DataFrame(data={ 'label_file'  : [result.labels.path for result in mbm_result.maget_result],
                                        'native_file' : [result.orig_path for result in mbm_result.maget_result] })
-                                      #'_merge': [os.path.basename(result.orig_path) for result in mbm_result.maget_result]}
         analysis = analysis.merge(maget_df, on="native_file")
 
     if options.application.files:
