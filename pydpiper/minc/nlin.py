@@ -1,5 +1,5 @@
 
-from abc import ABCMeta, abstractclassmethod, abstractstaticmethod
+from abc import ABCMeta, abstractmethod
 from typing import List, Generic, TypeVar, Optional, Sequence
 
 from pydpiper.core.stages import Result
@@ -11,21 +11,25 @@ X = TypeVar('X')
 
 
 class Algorithms(Generic[I, X], metaclass=ABCMeta):
-    @abstractstaticmethod
+
+    @staticmethod
+    @abstractmethod
     def blur(img : I,
              fwhm : float,
              gradient : bool = True,
              subdir : str = "tmp"):
         pass
 
-    @abstractstaticmethod
+    @staticmethod
+    @abstractmethod
     def average(imgs : Sequence[I],
                 output_dir : str = '.',
                 name_wo_ext : str = "average",
                 avg_file : I = None) -> Result[I]:
         pass
 
-    @abstractstaticmethod
+    @staticmethod
+    @abstractmethod
     def resample(img: I,
                  xfm: X,  # TODO: update to handler?
                  like: I,
@@ -43,19 +47,19 @@ class Algorithms(Generic[I, X], metaclass=ABCMeta):
     # we should have a separate method for averaging purely affine transformations.
     # also, we should track whether or not a transform is pure affine (either by inspecting it
     # or via additional metadata in pydpiper) in order to use this more efficient functionality when possible
-    @abstractstaticmethod
+    @staticmethod
+    @abstractmethod
     def average_transforms(xfms : Sequence[GenericXfmHandler[I, X]], avg_xfm : I) -> X: pass
     # TODO: it seems a bit heavyweight to require XfmHandlers here simply for sampling purposes
 
-    @abstractstaticmethod
+    @staticmethod
+    @abstractmethod
     # a bit weird that this takes and XfmH but returns an XfmA, but the extra image data is used for sampling
     def scale_transform(xfm : Sequence[GenericXfmHandler[I, X]],
                         newname_wo_ext : str, scale : float) -> X: pass
 
     #def concat_xfms(): pass
     #def invert_xfm(): pass
-
-
 
 
 # TODO not *actually* generic; should take a type as a field, but this is annoying to write down
@@ -74,16 +78,20 @@ class NLIN(Generic[I, X], metaclass=ABCMeta):
 
   class Algorithms(Algorithms): pass
 
-  @abstractstaticmethod
+  @staticmethod
+  @abstractmethod
   def hierarchical_to_single(m: 'MultiLevelConf') -> Sequence[Conf]: pass
 
-  @abstractstaticmethod
+  @staticmethod
+  @abstractmethod
   def get_default_conf(resolution) -> Optional[Conf]: pass
 
-  @abstractstaticmethod
+  @staticmethod
+  @abstractmethod
   def get_default_multilevel_conf(resolution) -> Optional[MultilevelConf]: pass
 
-  @abstractclassmethod
+  @classmethod
+  @abstractmethod
   def parse_protocol_file(cls, filename : str, resolution : float): pass
 
   # you might think it's odd to have this here, since it's not used by `register`,
@@ -91,13 +99,16 @@ class NLIN(Generic[I, X], metaclass=ABCMeta):
   # could just give a default implementation in NLIN_BUILD_MODEL,
   # it seems a bit easier just to make the user supply it here (particularly since it can always be done,
   # and we've already implemented for minctracc, ANTS)
-  @abstractclassmethod
+  @classmethod
+  @abstractmethod
   def parse_multilevel_protocol_file(cls, filename : str, resolution : float): pass
 
-  @abstractstaticmethod
+  @staticmethod
+  @abstractmethod
   def accepts_initial_transform(): pass
 
-  @abstractclassmethod
+  @classmethod
+  @abstractmethod
   def register(cls,
                source : I,
                target : I,
@@ -113,7 +124,8 @@ class NLIN_BUILD_MODEL(NLIN, metaclass=ABCMeta):
 
     class BuildModelConf: pass
 
-    @abstractstaticmethod
+    @staticmethod
+    @abstractmethod
     def build_model(imgs     : List[MincAtom],
                     conf     : BuildModelConf,
                     nlin_dir : str,
@@ -122,8 +134,10 @@ class NLIN_BUILD_MODEL(NLIN, metaclass=ABCMeta):
                     #mincaverage,
                     output_name_wo_ext : Optional[str] = None): pass
 
-    @abstractstaticmethod
+    @staticmethod
+    @abstractmethod
     def parse_build_model_protocol(filename : str, resolution : float) -> BuildModelConf: pass
 
-    @abstractstaticmethod
+    @staticmethod
+    @abstractmethod
     def get_default_build_model_conf() -> BuildModelConf: pass
