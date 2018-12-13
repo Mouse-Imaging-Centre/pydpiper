@@ -112,7 +112,7 @@ def parse(parser: Parser, args: List[str]) -> Namespace:
         with open(default_config_file) as _:
           pass
       except:
-        warnings.warn(f"PYDPIPER_CONFIG_FILE is set to '{default_config_file}', which does not exist.")
+        warnings.warn(f"PYDPIPER_CONFIG_FILE is set to '{default_config_file}', which can't be opened.")
     config_files = [default_config_file] if default_config_file else []
 
     # First, build a parser that's aware of all options
@@ -261,6 +261,9 @@ def _mk_application_parser(p: ArgParser) -> ArgParser:
     g.add_argument("--csv-file", dest="csv_file",
                    type=str, default=None,
                    help="CSV file containing application-specific columns. [Default=%(default)s]")
+    # TODO also allow relative to pipeline output dir??
+    g.add_argument("--csv-paths-relative-to-csv", dest="csv_paths_relative_to_csv", default=False,
+                   help="CSV paths are relative to the CSV file, not the current working directory")
     return p
 
 

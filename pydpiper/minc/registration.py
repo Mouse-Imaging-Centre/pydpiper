@@ -981,7 +981,8 @@ def xfmaverage(xfms: List[XfmAtom],
     #    outf = XfmAtom(name=os.path.join(output_dir, 'transforms', output_filename), orig_name=None)
 
     stage = CmdStage(inputs=tuple(xfms), outputs=(outf,),
-                     cmd=["xfmavg", "-clobber"] + sorted([x.path for x in xfms]) + [outf.path])
+                     cmd=["xfmavg_scipy.py", "--verbose", "--clobber"]
+                         + sorted([x.path for x in xfms]) + [outf.path])
 
     return Result(stages=Stages([stage]), output=outf)
 
@@ -3030,7 +3031,7 @@ class MincAlgorithms(Algorithms):
         return mincresample(img=img, xfm=xfm, like=like, invert=invert,
                             interpolation=Interpolation.nearest_neighbour
                               if use_nn_interpolation else Interpolation.sinc,
-                            extra_flags=(("-keep_real_range",) if use_nn_interpolation else ()),
+                            extra_flags=(("-keep_real_range", "-labels") if use_nn_interpolation else ()),
                             new_name_wo_ext=new_name_wo_ext, subdir=subdir, postfix=postfix)
 
     # TODO XfmHandler -> XfmHandler? XfmAtom, LikeFile -> XfmAtom ?

@@ -2,6 +2,7 @@ New in Version 2.0.12
 =====================
 * improvements to output CSVs for MBM and twolevel model pipelines: use analysis.csv for most cases
 * additional outputs to analysis.csv: masks, segmentations
+* --resolution flag works correctly (i.e., not ignored)
 * CmdStage API no longer needs you to manually string-ify arguments
 * cleanup module imports to save memory on executors (see #378)
 * various fixes to directory structure and file naming
@@ -10,7 +11,7 @@ New in Version 2.0.12
 * option added to disable normalization in mincaverage
 * internal cleanup of minctracc configuration objects to make rotational_minctracc
   more similar to other LSQ6 modes; more improvements coming
-* intensity and labelling fixes to QC images, which are now produced as PNG instead of JPG for space
+* intensity and labelling fixes to QC images, which are now produced as JPG instead of PNG for space
 * autocrop command added
 * internal functionality added to allow passing environment variables to shell commands
 * an error is signalled if PYDPIPER_CONFIG_FILE doesn't point to a readable file

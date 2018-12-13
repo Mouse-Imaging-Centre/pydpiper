@@ -40,7 +40,7 @@ def get_imgs(options):
         # FIXME check `file` column is present ...
         # TODO check for zero length file ...
 
-        csv_base = os.path.dirname(options.csv_file)
+        csv_base = os.path.dirname(options.csv_file) if options.csv_paths_relative_to_csv else ""
 
         if hasattr(csv, 'mask_file'):
             masks = [MincAtom(os.path.join(csv_base, mask.strip()),
@@ -101,7 +101,7 @@ def get_atlases(maget_options, pipeline_sub_dir : str):
     # TODO probably the [:max_templates] shouldn't be done here but in the application?
     return atlases[:max_templates]
 
-
+# TODO should this obey --csv-paths-relative-to-csv ?
 def atlases_from_csv(atlas_csv : str, pipeline_sub_dir : str) -> pd.Series:
     d = os.path.dirname(atlas_csv)
     df = (pd.read_csv(atlas_csv, usecols=["file", "mask_file", "label_file"])
@@ -222,7 +222,6 @@ def maget_mask(imgs : List[MincAtom], maget_options, resolution : float,
                                        #                             row.img.filename_wo_ext),
                                        #    axis=1),
                                        use_nn_interpolation=True
-                                       #extra_flags=("-keep_real_range",)
                                        ))))
         .groupby('img', as_index=False)
         .aggregate({'resampled_mask' : lambda masks: list(masks)})
@@ -396,7 +395,7 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir, build_model_xfms=N
                                                like=img,
                                                invert=True,
                                                interpolation=Interpolation.nearest_neighbour,
-                                               extra_flags=('-keep_real_range',)))}
+                                               extra_flags=('-keep_real_range', '-labels')))}
                          for img in imgs for atlas in atlases)
         )
 
@@ -437,8 +436,8 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir, build_model_xfms=N
                 imgs_and_templates
                 .rename(columns={ 'label_file' : 'template_label_file' })
                 # don't register template to itself, since otherwise atlases would vote on that template twice
-                .select(lambda ix: imgs_and_templates.img[ix].path
-                                     != imgs_and_templates.template[ix].path)  # FIXME hardcoded df name !!
+                .loc[lambda df: df.index.map(lambda ix: df.img[ix].path
+                                               != df.template[ix].path)]
                 .assign(label_file=lambda df: df.apply(axis=1, func=lambda row:
                           s.defer(
                             # TODO switch to uses of nlin_component.whatever(...) in several places below?
@@ -469,7 +468,7 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir, build_model_xfms=N
                               invert=True,
                               #use_nn_interpolation=True
                               interpolation=Interpolation.nearest_neighbour,
-                              extra_flags=('-keep_real_range',)
+                              extra_flags=('-keep_real_range', '-labels')
                             ))))
             ) if len(imgs) > 1 else pd.DataFrame({ 'img' : [], 'label_file' : [] })
               # ... as no distinct templates to align if only one image supplied (#320)

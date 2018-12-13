@@ -53,7 +53,7 @@ def mbm_pipeline(options : MBMConf):
 
     # create useful CSVs (note the files listed therein won't yet exist ...):
 
-    transforms = mbm_result.xfms.assign(
+    transforms = (mbm_result.xfms.assign(
                             native_file=lambda df: df.rigid_xfm.apply(lambda x: x.source),
                             lsq6_file=lambda df: df.lsq12_nlin_xfm.apply(lambda x: x.source),
                             lsq6_mask_file=lambda df:
@@ -62,30 +62,31 @@ def mbm_pipeline(options : MBMConf):
                             nlin_mask_file=lambda df:
                               df.lsq12_nlin_xfm.apply(lambda x: x.resampled.mask if x.resampled.mask else ""),
                             common_space_file=lambda df: df.xfm_to_common.apply(lambda x: x.resampled)
-                                                if options.mbm.common_space.do_common_space_registration else None)\
-        .applymap(maybe_deref_path)\
-        .drop(["common_space_file"] if not options.mbm.common_space.do_common_space_registration else [], axis=1)
+                                                if options.mbm.common_space.do_common_space_registration else None)
+        .applymap(maybe_deref_path)
+        .drop(["common_space_file"] if not options.mbm.common_space.do_common_space_registration else [], axis=1))
     transforms.to_csv("transforms.csv", index=False)
 
-    determinants = mbm_result.determinants.drop(["full_det", "nlin_det"], axis=1)\
-        .applymap(maybe_deref_path)
+    determinants = (mbm_result.determinants.drop(["full_det", "nlin_det"], axis=1)
+        .applymap(maybe_deref_path))
     determinants.to_csv("determinants.csv", index=False)
 
-    analysis = transforms.merge(determinants, left_on="lsq12_nlin_xfm", right_on="inv_xfm", how='inner')\
-        .drop(["xfm", "inv_xfm"], axis=1)
+    analysis = (transforms.merge(determinants, left_on="lsq12_nlin_xfm", right_on="inv_xfm", how='inner')
+        .drop(["xfm", "inv_xfm"], axis=1))
     if options.mbm.segmentation.run_maget:
-        maget_df = pd.DataFrame(data={'label_file': [result.labels.path for result in mbm_result.maget_result],
-                                      'native_file': [result.orig_path for result in mbm_result.maget_result],
-                                      '_merge': [os.path.basename(result.orig_path) for result in mbm_result.maget_result]})
+        maget_df = pd.DataFrame(data={ 'label_file'  : [result.labels.path for result in mbm_result.maget_result],
+                                       'native_file' : [result.orig_path for result in mbm_result.maget_result] })
         analysis = analysis.merge(maget_df, on="native_file")
 
     if options.application.files:
-        analysis.drop(["_merge"], axis=1).to_csv("analysis.csv", index=False)
-    if options.application.csv_file:
-        csv_file = pd.read_csv(options.application.csv_file)
-        csv_file = csv_file.assign(_merge= [os.path.basename(file) for file in csv_file.file])
-        csv_file.merge(analysis).drop(["_merge"], axis=1)\
-            .to_csv("analysis.csv",index=False)
+        analysis.to_csv("analysis.csv", index=False)
+    elif options.application.csv_file:
+        csv_file = (pd.read_csv(options.application.csv_file)
+                    .assign(native_file=lambda df: df.file.apply(
+                              # TODO this is duplicating the logic in get_imgs - fix
+                              lambda fp: os.path.join(os.path.dirname(options.application.csv_file), fp)
+                                           if options.application.csv_paths_relative_to_csv else fp)))
+        csv_file.merge(analysis, on="native_file").to_csv("analysis.csv", index=False)
 
     # # TODO moved here from inside `mbm` for now ... does this make most sense?
     # if options.mbm.segmentation.run_maget:
@@ -463,14 +464,14 @@ def mbm(imgs : List[MincAtom],
 def _mk_common_space_parser(parser : ArgParser):
     group = parser.add_argument_group("Common space options", "Options for registration/resampling to common (db) space.")
     group.add_argument("--common-space-model", dest="common_space_model",
-                       type=str, help="Run MAGeT segmentation on the images.")
+                       type=str, help="Model image to which to align consensus average")
     group.add_argument("--common-space-mask", dest="common_space_mask",
                        type=str, help="Mask for common space model")
     group.set_defaults(do_common_space_registration=False)
     group.add_argument("--common-space-registration", dest="do_common_space_registration",
-                       action="store_true", help="Do registration to common (db) space. [default]")
+                       action="store_true", help="Do registration to common (db) space.")
     group.add_argument("--no-common-space-registration", dest="do_common_space_registration",
-                       default=True, action="store_false", help="Skip registration to common (db) space.")
+                       default=True, action="store_false", help="Skip registration to common (db) space [default].")
     return parser
 
 
