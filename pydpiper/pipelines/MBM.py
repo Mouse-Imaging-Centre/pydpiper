@@ -508,7 +508,8 @@ model_building_parser = AnnotatedParser(parser=BaseParser(_mk_model_building_par
 
 
 def mk_mbm_parser(with_common_space : bool = True,
-                  with_maget        : bool = True):
+                  with_maget        : bool = True,
+                  lsq6_parser = lsq6_parser):
     return CompoundParser(
              [lsq6_parser,
               lsq12_parser,

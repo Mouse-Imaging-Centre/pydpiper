@@ -416,11 +416,12 @@ registration_parser = AnnotatedParser(parser=BaseParser(_mk_registration_parser(
                                       cast=lambda ns: RegistrationConf(**vars(ns)))
 
 
-def _mk_lsq6_parser():
+def _mk_lsq6_parser(with_nuc : bool = True,
+                    with_inormalize : bool = True):
     p = ArgParser(add_help=False)
     p.set_defaults(lsq6_method="lsq6_large_rotations")
-    p.set_defaults(nuc=True)
-    p.set_defaults(inormalize=True)
+    p.set_defaults(nuc = True if with_nuc else False)
+    p.set_defaults(inormalize = True if with_inormalize else False)
     p.set_defaults(copy_header_info=False)
     # TODO: should this actually be part of the LSQ6 component?  What would it return in this case?
     p.set_defaults(run_lsq6=True)
