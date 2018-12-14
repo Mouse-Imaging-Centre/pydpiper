@@ -71,7 +71,7 @@ def two_level_pipeline(options : TwoLevelConf):
     # deprecate the two csvs next release.
     analysis = pd.read_csv(options.application.csv_file).assign(native_file=lambda df:
                  df.file.apply(lambda fp: os.path.join(os.path.dirname(options.application.csv_file), fp)
-                                             if options.application.csv_paths_relative_to_csv else fp))
+                                             if not options.application.csv_paths_relative_to_wd else fp))
 
     overall = (overall.drop(["full_det", "nlin_det"], axis=1)
         .rename(columns={"overall_xfm" : "xfm"}))
