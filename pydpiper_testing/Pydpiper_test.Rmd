@@ -1,0 +1,228 @@
+---
+title: "Pydpiper Test Notebook"
+author: "Nick Wang"
+date: '2018-08-20'
+output:
+  rmarkdown::github_document
+params:
+  start: lubridate::ymd("2018-08-20")
+  pipeline: "MBM"
+  run_pipeline: TRUE
+  download: TRUE
+---
+This RMarkdown notebook serves as a test bed for pydpiper's standard MBM.py or twolevel_model_building.py run. To run this Rmd file as a script on the command line:
+
+`Rscript -e "rmarkdown::render('Pydpiper_test.Rmd', params = list(pipeline='MBM'), output_dir = 'MBM', knit_root_dir = 'MBM')"`
+
+or 
+
+`Rscript -e "rmarkdown::render('Pydpiper_test.Rmd', params = list(pipeline='twolevel_model_building'), output_dir = 'twolevel_model_building', knit_root_dir = 'twolevel_model_building')"`
+
+This testbed uses functions from tidyverse, RMINC, and visualization tools in MRIcrotome.
+```{r setup}
+library(tidyverse)
+library(RMINC)
+library(grid)
+library(MRIcrotome)
+
+#This is a fix for knittr
+knitr::opts_chunk$set(cache.lazy = FALSE)
+```
+
+Download the required data from the web. 
+```{r get test-data, eval=params$download}
+URL <- "repo.mouseimaging.ca/repo/Pydpiper_test_files/"
+tarball <- "test-data_20180925.tar.gz"
+directory <- "test-data_20180925"
+
+if(!file.exists(tarball)) {
+  file.path(URL,tarball) %>%
+  download.file(destfile = tarball,
+                method = 'libcurl')
+  if (! directory %in% dir()) {
+    tarball %>% untar(compressed="gzip")
+  }
+}
+```
+
+## Running pydpiper on the command line
+MBM.py runs a 6 parameter alignment towards an initial model assuming the input files have a random orientation scanned in different coils/spaces (lsq6-large-rotations), then runs a 12 parameter alignment towards a linear consensus average, then a non-linear alignment towards a non-linear consensus average; MAGeT segmentation is done on the lsq6 files to segment the brains. twolevel_model_building.py essentially runs two stages of MBM.py. The first stage creates a non-linear average for each of the two groups, then the second stage creates a non-linear average for the averages of the two groups.
+```{bash MBM.py, eval=(params$pipeline=="MBM" & params$run_pipeline), include=params$pipeline=="MBM"}
+#Run `tail -F MBM/MBM_out.txt` to track the standard output
+MBM.py --pipeline-name=MBM_test \
+--subject-matter mousebrain \
+--num-executors 1000 --time 48:00:00 \
+--csv-file test-data_20180925/input.csv \
+--lsq6-large-rotations-tmp-dir=/tmp \
+--init-model test-data_20180925/Pydpiper-40-micron-basket-dec-2014/basket_mouse_brain_40micron.mnc \
+\
+--run-maget \
+--maget-registration-method minctracc \
+--maget-atlas-library test-data_20180925/ex-vivo/ \
+--maget-nlin-protocol test-data_20180925/default_nlin_MAGeT_minctracc_prot.csv \
+--maget-masking-nlin-protocol test-data_20180925/default_nlin_MAGeT_minctracc_prot.csv \
+\
+--lsq12-protocol test-data_20180925/Pydpiper_testing_default_lsq12.csv \
+>> MBM_out.txt
+```
+
+```{bash twolevel_model_building.py, eval=(params$pipeline=="twolevel_model_building" & params$run_pipeline), include=params$pipeline=="twolevel_model_building"}
+#Run `tail -F twolevel_model_building/twolevel_model_building_out.txt` to track the standard output
+twolevel_model_building.py --pipeline-name=twolevel_test \
+--subject-matter mousebrain \
+--num-executors 1000 --time 48:00:00 \
+--csv-file test-data_20180925/input2.csv \
+--lsq6-large-rotations-tmp-dir=/tmp \
+--init-model test-data_20180925/Pydpiper-40-micron-basket-dec-2014/basket_mouse_brain_40micron.mnc \
+\
+--run-maget \
+--maget-registration-method minctracc \
+--maget-atlas-library test-data_20180925/ex-vivo/ \
+--maget-nlin-protocol test-data_20180925/default_nlin_MAGeT_minctracc_prot.csv \
+--maget-masking-nlin-protocol test-data_20180925/default_nlin_MAGeT_minctracc_prot.csv \
+\
+--lsq12-protocol test-data_20180925/Pydpiper_testing_default_lsq12.csv \
+>> twolevel_model_building_out.txt
+```
+
+In total, there are 16 brains imaged twice, 2 weeks apart. The second set of images had volume changes artificially induced in the following regions:
+```{r table, echo=FALSE}
+changes <- tibble::tribble(
+  ~region, ~inducedChange,
+  'olfactory bulbs', 1.05,
+  'striatum', 0.85,
+  'cerebral cortex: occipital lobe', 0.93,
+  'dentate gyrus of hippocampus', 1.10,
+  'cerebellar cortex', 1.07
+)
+changes
+```
+
+## R Analysis
+Load the consensus average and corresponding masks as `mincArray`s.
+```{r consensus MBM.py, eval=params$pipeline=="MBM", include=params$pipeline=="MBM"}
+consensusVol <- file.path("MBM_test_nlin", "MBM_test-nlin-3.mnc") %>%
+  mincGetVolume() %>%
+  mincArray
+d <- consensusVol %>% dim()
+
+consensusMaskPath <- file.path('MBM_test_nlin', 'MBM_test-nlin-3_mask.mnc') 
+consensusMask <- consensusMaskPath %>% mincGetVolume
+```
+
+```{r consensus twolevel_model_building.py, eval=params$pipeline=="twolevel_model_building", include=params$pipeline=="twolevel_model_building"}
+consensusVol <- file.path("twolevel_test_second_level_nlin", "twolevel_test_second_level-nlin-2.mnc") %>%
+  mincGetVolume() %>%
+  mincArray
+d <- consensusVol %>% dim()
+
+consensusMaskPath <- file.path('twolevel_test_second_level_nlin', 'twolevel_test_second_level-nlin-2_mask.mnc') 
+consensusMask <- consensusMaskPath %>% mincGetVolume
+```
+
+Load MBM.py's useful output csv file pointing to the processed images.
+```{r gfs MBM.py, eval=params$pipeline=="MBM", include=params$pipeline=="MBM"}
+gfs <- file.path("analysis.csv") %>% 
+  read_csv() %>% 
+  filter(fwhm == 0.2) %>% 
+  mutate(name = str_c(type, coil, sep="_"),
+         type = fct_relevel(type, "wt")) %>%
+  select(-fwhm)
+```
+
+```{r gfs twolevel_model_building.py, eval=params$pipeline=="twolevel_model_building", include=params$pipeline=="twolevel_model_building"}
+gfs <- file.path("analysis.csv") %>% 
+  read_csv() %>% 
+  filter(fwhm == 0.2) %>% 
+  mutate(name = str_c(type, coil, sep="_"),
+         type = fct_relevel(type, "wt"),
+         log_full_det=overall_log_full_det)%>%
+  select(-fwhm)
+```
+
+Do an `anatGetAll` call on the MAGeT segmented label files. anatMatrix is a matrix of volumes, one for each region for each brain.
+```{r anatMatrix}
+defPath <- "test-data_20180925/ex-vivo/Dorr_2008_mapping_of_labels.csv"
+
+anatMatrix <- anatGetAll(gfs$label_file, method="labels", defs=defPath) %>%
+  anatCombineStructures(defs=defPath) %>% 
+  unclass() %>%
+  as_tibble()
+```
+
+Find the mean volumes for each region for the two groups.
+```{r fractions}
+fractions <- anatMatrix %>% 
+  bind_cols(select(gfs,type)) %>% 
+  gather(key=region, value=size, -type) %>% 
+  group_by(type, region) %>% 
+  summarise(mean_size=mean(size)) %>%
+  spread(key=type, value=mean_size) %>%
+  #filter(wt > 1) %>%
+  mutate(fraction = mut/wt) %>% 
+  arrange(desc(fraction)) %>%
+  left_join(changes)
+fractions
+```
+
+Also look at the regions with greatest shrinkage.
+```{r bottom}
+top_n(fractions, -10, fraction)
+```
+
+Are these changes significant? Call `anatLm` to fit a linear model on each brain region, and `anatFDR` to correct for multiple comparisons. Did modified regions yield significant results?
+```{r anatomicalAbs}
+anatMatrix <- anatMatrix %>% select(fractions$region)
+
+avs <- anatLm(~type, gfs, anatMatrix)
+qavs <- anatFDR(avs)
+fractions$qvalue_abs <- qavs[,"qvalue-tvalue-typemut"]
+fractions %>% 
+  arrange(qvalue_abs) %>% 
+  filter(!is.na(inducedChange))
+```
+
+Repeat the analysis for each region's volume relative to the total brain size by co-varying for brain size in the `anatLm` call. Do modified regions yield significant results when covarying for total brain size?
+```{r anatomicalRel"}
+gfs$brainVolumes <- anatMatrix %>% 
+  rowSums()
+
+avsrel <- anatLm(~type+brainVolumes, gfs, anatMatrix)
+qavsrel <- anatFDR(avsrel)
+
+fractions$qvalue_rel <- qavsrel[,"qvalue-tvalue-typemut"]
+fractions %>% 
+  arrange(qvalue_rel) %>% 
+  filter(!is.na(inducedChange))
+```
+
+For the sake of visualization, let us do voxel-wise analysis.
+
+```{r voxelwiseAbs, cache=TRUE}
+vs <- mincLm(log_full_det ~ type, gfs, mask=consensusMaskPath)
+vsFDR <- mincFDR(vs, mask=consensusMaskPath, method="FDR")
+vsFDR %>% thresholds()
+```
+```{r voxelwiseRel, cache=TRUE}
+vsrel <- mincLm(log_full_det ~ type+brainVolumes, gfs, mask=consensusMaskPath)
+vsrelFDR <- mincFDR(vsrel, mask=consensusMaskPath, method="FDR")
+vsrelFDR %>% thresholds()
+```
+
+```{r visualize}
+sliceSeries(nrow=5, ncol=2, begin=100, end =300) %>%
+  anatomy(consensusVol, range(consensusVol)[1], range(consensusVol)[2]) %>%
+  overlay(mincArray(vs, "tvalue-typemut"), low=vsFDR %>% thresholds() %>% {.["0.05", "tvalue-typemut"]}, high=10, symmetric = TRUE) %>%
+  addtitle("Absolute Volume Changes") %>%
+  contourSliceIndicator(consensusVol, c(700,1400)) %>%
+  legend("t-statistics") %>%
+#######
+  sliceSeries(nrow=5, ncol=2, begin=100, end = 300) %>%
+  anatomy() %>% #reuse previous anatomy call's arguments
+  overlay(mincArray(vsrel, "tvalue-typemut"), low=vsrelFDR %>% thresholds() %>% {.["0.05", "tvalue-typemut"]}, high=10, symmetric = TRUE) %>%
+  addtitle("Relative Volume Changes") %>%
+  contourSliceIndicator(consensusVol, c(700,1400)) %>%
+  legend("t-statistics") %>%
+  draw()
+```
+
