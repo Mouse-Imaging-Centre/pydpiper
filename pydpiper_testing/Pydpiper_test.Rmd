@@ -8,7 +8,8 @@ params:
   start: lubridate::ymd("2018-08-20")
   pipeline: "MBM"
   run_pipeline: TRUE
-  download: TRUE
+  download: FALSE
+  data_directory: FALSE
 ---
 This RMarkdown notebook serves as a test bed for pydpiper's standard MBM.py or twolevel_model_building.py run. To run this Rmd file as a script on the command line:
 
@@ -24,6 +25,7 @@ library(tidyverse)
 library(RMINC)
 library(grid)
 library(MRIcrotome)
+library(glue)
 
 #This is a fix for knittr
 knitr::opts_chunk$set(cache.lazy = FALSE)
@@ -43,27 +45,31 @@ if(!file.exists(tarball)) {
     tarball %>% untar(compressed="gzip")
   }
 }
+data_directory <- directory
+```
+
+```{r point to test-data, eval=params$data_directory}
+data_directory <- params$data_directory
 ```
 
 ## Running pydpiper on the command line
 MBM.py runs a 6 parameter alignment towards an initial model assuming the input files have a random orientation scanned in different coils/spaces (lsq6-large-rotations), then runs a 12 parameter alignment towards a linear consensus average, then a non-linear alignment towards a non-linear consensus average; MAGeT segmentation is done on the lsq6 files to segment the brains. twolevel_model_building.py essentially runs two stages of MBM.py. The first stage creates a non-linear average for each of the two groups, then the second stage creates a non-linear average for the averages of the two groups.
-```{bash MBM.py, eval=(params$pipeline=="MBM" & params$run_pipeline), include=params$pipeline=="MBM"}
+```{r MBM.py, eval=(params$pipeline=="MBM" & params$run_pipeline), include=params$pipeline=="MBM"}
 #Run `tail -F MBM/MBM_out.txt` to track the standard output
-MBM.py --pipeline-name=MBM_test \
---subject-matter mousebrain \
---num-executors 1000 --time 48:00:00 \
---csv-file test-data_20180925/input.csv \
---lsq6-large-rotations-tmp-dir=/tmp \
---init-model test-data_20180925/Pydpiper-40-micron-basket-dec-2014/basket_mouse_brain_40micron.mnc \
-\
---run-maget \
---maget-registration-method minctracc \
---maget-atlas-library test-data_20180925/ex-vivo/ \
---maget-nlin-protocol test-data_20180925/default_nlin_MAGeT_minctracc_prot.csv \
---maget-masking-nlin-protocol test-data_20180925/default_nlin_MAGeT_minctracc_prot.csv \
-\
---lsq12-protocol test-data_20180925/Pydpiper_testing_default_lsq12.csv \
->> MBM_out.txt
+command <- glue("MBM.py --pipeline-name=MBM_test",
+"--subject-matter mousebrain",
+"--num-executors 1000 --time 48:00:00",
+"--csv-file test-data_20180925/input.csv",
+"--lsq6-large-rotations-tmp-dir=/tmp",
+"--init-model {file.path(data_directory, 'Pydpiper-40-micron-basket-dec-2014/basket_mouse_brain_40micron.mnc')}",
+"--run-maget",
+"--maget-registration-method minctracc",
+"--maget-atlas-library {file.path(data_directory, 'ex-vivo')}",
+"--maget-nlin-protocol {file.path(data_directory, 'default_nlin_MAGeT_minctracc_prot.csv')}",
+"--maget-masking-nlin-protocol {file.path(data_directory, 'default_nlin_MAGeT_minctracc_prot.csv')}",
+"--lsq12-protocol {file.path(data_directory, 'Pydpiper_testing_default_lsq12.csv')}",
+.sep=" ")
+command %>% system
 ```
 
 ```{bash twolevel_model_building.py, eval=(params$pipeline=="twolevel_model_building" & params$run_pipeline), include=params$pipeline=="twolevel_model_building"}
@@ -225,4 +231,3 @@ sliceSeries(nrow=5, ncol=2, begin=100, end =300) %>%
   legend("t-statistics") %>%
   draw()
 ```
-
