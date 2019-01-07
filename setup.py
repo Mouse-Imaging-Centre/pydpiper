@@ -9,7 +9,7 @@ if sys.version_info < (3, 5):
     raise ValueError("Minimum Python version supported is 3.5")
 
 setup(name='pydpiper',
-      version='2.0.12',
+      version='2.0.13',
       license='Modified BSD',
       description='Python code for flexible pipeline control',
       long_description='Python code for flexible pipeline control',

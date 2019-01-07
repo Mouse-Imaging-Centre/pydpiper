@@ -1,3 +1,19 @@
+New in Version 2.0.13
+=====================
+* in the two-level pipeline, the inputs specified via --csv-file are now by default relative
+  to the csv file rather than the current working directory; this matches the behaviour of MBM.py.
+  To get the opposite behaviour, MBM and twolevel now support a new flag, --csv-paths-relative-to-wd
+* switched from xfmavg to xfmavg_scipy.py; this adds a dependency on minc2-simple (see INSTALL)
+* fixed a bug causing installation failure with Python > 3.6.4
+* fixed crashes at startup in certain flag combinations
+* pipeline correctly handles undefined PYDPIPER_CONFIG_FILE environment variable
+* minor changes to montage generation
+* added the -label flag to (most/all) mincresample commands
+* changed some internals to avoid Pandas deprecation warnings
+* internal changes to LSQ6 and MBM option parsing to support tissuevision pipeline
+* add a (somewhat unrepresentative) test script to the repo for now;
+  better ergonomics and documentation to follow
+
 New in Version 2.0.12
 =====================
 * improvements to output CSVs for MBM and twolevel model pipelines: use analysis.csv for most cases
