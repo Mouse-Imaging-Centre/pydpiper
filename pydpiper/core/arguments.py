@@ -262,8 +262,9 @@ def _mk_application_parser(p: ArgParser) -> ArgParser:
                    type=str, default=None,
                    help="CSV file containing application-specific columns. [Default=%(default)s]")
     # TODO also allow relative to pipeline output dir??
-    g.add_argument("--csv-paths-relative-to-csv", dest="csv_paths_relative_to_csv", default=False,
-                   help="CSV paths are relative to the CSV file, not the current working directory")
+    g.add_argument("--csv-paths-relative-to-wd", dest="csv_paths_relative_to_wd", default=False,
+                   action="store_true",
+                   help="CSV paths are relative to the working directory, not the CSV file")
     return p
 
 
@@ -419,11 +420,12 @@ registration_parser = AnnotatedParser(parser=BaseParser(_mk_registration_parser(
                                       cast=lambda ns: RegistrationConf(**vars(ns)))
 
 
-def _mk_lsq6_parser():
+def _mk_lsq6_parser(with_nuc : bool = True,
+                    with_inormalize : bool = True):
     p = ArgParser(add_help=False)
     p.set_defaults(lsq6_method="lsq6_large_rotations")
-    p.set_defaults(nuc=True)
-    p.set_defaults(inormalize=True)
+    p.set_defaults(nuc = True if with_nuc else False)
+    p.set_defaults(inormalize = True if with_inormalize else False)
     p.set_defaults(copy_header_info=False)
     # TODO: should this actually be part of the LSQ6 component?  What would it return in this case?
     p.set_defaults(run_lsq6=True)

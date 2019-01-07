@@ -40,7 +40,7 @@ def get_imgs(options):
         # FIXME check `file` column is present ...
         # TODO check for zero length file ...
 
-        csv_base = os.path.dirname(options.csv_file) if options.csv_paths_relative_to_csv else ""
+        csv_base = os.path.dirname(options.csv_file) if not options.csv_paths_relative_to_wd else ""
 
         if hasattr(csv, 'mask_file'):
             masks = [MincAtom(os.path.join(csv_base, mask.strip()),

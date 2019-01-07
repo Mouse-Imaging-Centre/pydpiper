@@ -27,7 +27,16 @@ TwoLevelConf = NamedTuple("TwoLevelConf", [("first_level_conf",  MBMConf),
                                            ("second_level_conf", MBMConf)])
 
 
+
+
+
 def two_level_pipeline(options : TwoLevelConf):
+
+    def relativize_path(fp):
+        #this annoying function takes care of the csv_paths_relative_to_wd flag.
+        return os.path.join(os.path.dirname(options.application.csv_file),fp) \
+            if not options.application.csv_paths_relative_to_wd \
+            else fp
 
     first_level_dir = options.application.pipeline_name + "_first_level"
 
@@ -42,7 +51,7 @@ def two_level_pipeline(options : TwoLevelConf):
                         .assign(file=lambda df:
                                   df.apply(axis="columns",
                                            func=lambda r:
-                                             MincAtom(r.file.strip(),
+                                             MincAtom(relativize_path(r.file).strip(),
                                                       pipeline_sub_dir=os.path.join(first_level_dir,
                                                                                     "%s_processed" % r.group,
                                                                                     )))))
@@ -70,8 +79,7 @@ def two_level_pipeline(options : TwoLevelConf):
     # rename/drop some columns, bind the dfs and write to "analysis.csv" as it should be.
     # deprecate the two csvs next release.
     analysis = pd.read_csv(options.application.csv_file).assign(native_file=lambda df:
-                 df.file.apply(lambda fp: os.path.join(os.path.dirname(options.application.csv_file), fp)
-                                             if options.application.csv_paths_relative_to_csv else fp))
+                 df.file.apply(relativize_path))
 
     overall = (overall.drop(["full_det", "nlin_det"], axis=1)
         .rename(columns={"overall_xfm" : "xfm"}))
