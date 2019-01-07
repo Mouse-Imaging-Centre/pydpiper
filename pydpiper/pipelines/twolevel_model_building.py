@@ -27,7 +27,16 @@ TwoLevelConf = NamedTuple("TwoLevelConf", [("first_level_conf",  MBMConf),
                                            ("second_level_conf", MBMConf)])
 
 
+
+
+
 def two_level_pipeline(options : TwoLevelConf):
+
+    def relativize_path(fp):
+        #this annoying function takes care of the csv_paths_relative_to_wd flag.
+        return os.path.join(os.path.dirname(options.application.csv_file),fp) \
+            if not options.application.csv_paths_relative_to_wd \
+            else fp
 
     first_level_dir = options.application.pipeline_name + "_first_level"
 
@@ -42,7 +51,7 @@ def two_level_pipeline(options : TwoLevelConf):
                         .assign(file=lambda df:
                                   df.apply(axis="columns",
                                            func=lambda r:
-                                             MincAtom(r.file.strip(),
+                                             MincAtom(relativize_path(r.file).strip(),
                                                       pipeline_sub_dir=os.path.join(first_level_dir,
                                                                                     "%s_processed" % r.group,
                                                                                     )))))
@@ -58,22 +67,22 @@ def two_level_pipeline(options : TwoLevelConf):
     pipeline = two_level(grouped_files_df=files_df, options=options)
 
     # TODO write these into the appropriate subdirectory ...
-    overall = pipeline.output.overall_determinants\
-        .drop('inv_xfm', axis=1)\
-        .applymap(maybe_deref_path)
+    overall = (pipeline.output.overall_determinants
+        .drop('inv_xfm', axis=1)
+        .applymap(maybe_deref_path))
     overall.to_csv("overall_determinants.csv", index=False)
-    resampled = pipeline.output.resampled_determinants\
-        .drop(['inv_xfm', 'full_det', 'nlin_det'], axis=1)\
-        .applymap(maybe_deref_path)
-    resampled.drop(['_merge'], axis=1).to_csv("resampled_determinants.csv", index=False)
+    resampled = (pipeline.output.resampled_determinants
+        .drop(['inv_xfm', 'full_det', 'nlin_det'], axis=1)
+        .applymap(maybe_deref_path))
+    resampled.to_csv("resampled_determinants.csv", index=False)
 
     # rename/drop some columns, bind the dfs and write to "analysis.csv" as it should be.
     # deprecate the two csvs next release.
-    analysis = pd.read_csv(options.application.csv_file)
-    analysis = analysis.assign(_merge=[os.path.basename(file) for file in analysis.file])
+    analysis = pd.read_csv(options.application.csv_file).assign(native_file=lambda df:
+                 df.file.apply(relativize_path))
 
-    overall = overall.drop(["full_det", "nlin_det"], axis=1)\
-        .rename(columns={"overall_xfm" : "xfm"})
+    overall = (overall.drop(["full_det", "nlin_det"], axis=1)
+        .rename(columns={"overall_xfm" : "xfm"}))
     resampled = resampled.rename(columns={
         "first_level_log_full_det" : "log_full_det",
         "first_level_log_nlin_det" : "log_nlin_det",
@@ -81,9 +90,7 @@ def two_level_pipeline(options : TwoLevelConf):
         "first_level_log_full_det_resampled" : "resampled_log_full_det",
         "first_level_log_nlin_det_resampled" : "resampled_log_nlin_det"
     })
-    analysis.merge(pd.concat([resampled, overall], axis=1))\
-        .drop(["_merge"], axis=1)\
-        .to_csv("analysis.csv", index=False)
+    (analysis.merge(pd.concat([resampled, overall], axis=1)).to_csv("analysis.csv", index=False))
 
     return pipeline
 
@@ -198,12 +205,12 @@ def two_level(grouped_files_df, options : TwoLevelConf):
     # If for some reason we want to output xfms in the future, just don't drop everything.
     first_level_xfms = pd.concat(list(first_level_results.build_model.apply(lambda x: x.xfms.assign(
         first_level_avg=x.avg_img))), ignore_index=True)[["lsq12_nlin_xfm", "rigid_xfm"]]
-    first_level_xfms = first_level_xfms.assign(
-        _merge = [os.path.basename(rigid_xfm.source.path) for rigid_xfm in first_level_xfms.rigid_xfm])
     if options.mbm.segmentation.run_maget:
-        maget_df = pd.DataFrame([{"label_file" : x.labels.path, "_merge" : os.path.basename(x.orig_path)}
+        maget_df = pd.DataFrame([{"label_file" : x.labels.path, "native_file" : x.orig_path }  #, "_merge" : basename(x.orig_path)}
                                  for x in pd.concat([namespace.maget_result for namespace in first_level_results.build_model])])
-        first_level_xfms = pd.merge(left=first_level_xfms, right=maget_df)
+        first_level_xfms = pd.merge(left=first_level_xfms.assign(native_file=lambda df:
+                                                                   df.rigid_xfm.apply(lambda x: x.source.path)),
+                                    right=maget_df, on="native_file")
     first_level_determinants = (pd.merge(left=first_level_determinants, right=first_level_xfms,
                                          left_on="inv_xfm", right_on="lsq12_nlin_xfm")
                                 .drop(["rigid_xfm", "lsq12_nlin_xfm"], axis=1))
