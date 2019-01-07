@@ -13,11 +13,11 @@ params:
 ---
 This RMarkdown notebook serves as a test bed for pydpiper's standard MBM.py or twolevel_model_building.py run. To run this Rmd file as a script on the command line:
 
-`Rscript -e "rmarkdown::render('Pydpiper_test.Rmd', params = list(pipeline='MBM'), output_dir = 'MBM', knit_root_dir = 'MBM')"`
+`Rscript -e "rmarkdown::render('Pydpiper_test.Rmd', params = list(pipeline='MBM', data_directory='/hpf/largeprojects/MICe/nwang/2018-12-14-pptest-micehome/MBM/test-data_20180925'), output_dir = '/hpf/largeprojects/MICe/nwang/2018-12-14-pptest-micehome/MBM', knit_root_dir = '/hpf/largeprojects/MICe/nwang/2018-12-14-pptest-micehome/MBM')"`
 
 or 
 
-`Rscript -e "rmarkdown::render('Pydpiper_test.Rmd', params = list(pipeline='twolevel_model_building'), output_dir = 'twolevel_model_building', knit_root_dir = 'twolevel_model_building')"`
+`Rscript -e "rmarkdown::render('Pydpiper_test.Rmd', params = list(pipeline='twolevel_model_building', data_directory='/hpf/largeprojects/MICe/nwang/2018-12-14-pptest-micehome/MBM/test-data_20180925'), output_dir = '/hpf/largeprojects/MICe/nwang/2018-12-14-pptest-micehome/twolevel_model_building', knit_root_dir = '/hpf/largeprojects/MICe/nwang/2018-12-14-pptest-micehome/twolevel_model_building')"`
 
 This testbed uses functions from tidyverse, RMINC, and visualization tools in MRIcrotome.
 ```{r setup}
