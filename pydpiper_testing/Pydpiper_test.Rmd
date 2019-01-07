@@ -1,7 +1,7 @@
 ---
 title: "Pydpiper Test Notebook"
 author: "Nick Wang"
-date: '2018-08-20'
+date: "`r format(Sys.time(), '%d %B, %Y')`"
 output:
   rmarkdown::github_document
 params:
