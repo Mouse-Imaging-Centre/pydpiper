@@ -110,7 +110,7 @@ class NLIN(Generic[I, X]):
 
 class NLIN_BUILD_MODEL(NLIN):
 
-    class BuildModelConf(): pass
+    class BuildModelConf: pass
 
     @staticmethod
     def build_model(imgs     : List[MincAtom],
