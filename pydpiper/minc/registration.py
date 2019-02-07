@@ -1770,7 +1770,6 @@ def multilevel_minctracc(source: MincAtom,
     if len(conf.confs) == 0:  # not a "registration" at all; also, src_blur/target_blur will be undefined ...
         raise ValueError("No configurations supplied")
     s = Stages()
-    last_resampled = None
     for idx, conf_ in enumerate(conf.confs):
         transform_handler = s.defer(minctracc(source, target, conf=conf_,
                                               transform=transform,
@@ -1778,10 +1777,11 @@ def multilevel_minctracc(source: MincAtom,
                                               generation=idx,
                                               transform_name_wo_ext = transform_name_wo_ext,
                                               subdir='tmp' if idx < len(conf.confs) - 1 else None,
-                                              resample_source=resample_source))
+                                              # don't create intermediate resamplings that won't be used:
+                                              resample_source=resample_source if idx + 1 == len(conf.confs) else False))
         transform = transform_handler.xfm
         # why potentially throw away the resampled image?
-        last_resampled = transform_handler.resampled if resample_source else None
+    last_resampled = transform_handler.resampled if resample_source else None
     return Result(stages=s,
                   output=XfmHandler(xfm=transform,
                                     source=source,
