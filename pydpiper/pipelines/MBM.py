@@ -168,6 +168,10 @@ def common_space(mbm_result, options):
                                             xfm=model_to_common.xfm, like=common_space_model,
                                             postfix="_common"))
 
+    overall_xfms_to_common = [s.defer(concat_xfmhandlers([rigid_xfm, nlin_xfm, model_to_common]))
+                             for rigid_xfm, nlin_xfm in zip(mbm_result.xfms.rigid_xfm,
+                                                            mbm_result.xfms.lsq12_nlin_xfm)]
+
     overall_xfms_to_common_inv = [s.defer(invert_xfmhandler(xfmhandler)) for xfmhandler in
                                   [s.defer(concat_xfmhandlers([rigid_xfm, nlin_xfm, model_to_common])) for rigid_xfm, nlin_xfm in
                                    zip(mbm_result.xfms.rigid_xfm, mbm_result.xfms.lsq12_nlin_xfm)]]
@@ -176,7 +180,7 @@ def common_space(mbm_result, options):
                       for nlin_xfm in mbm_result.xfms.lsq12_nlin_xfm]
 
     mbm_result.xfms = mbm_result.xfms.assign(xfm_to_common=xfms_to_common,
-                                             overall_xfm_to_common_inv=overall_xfms_to_common_inv)
+                                             overall_xfm_to_common=overall_xfms_to_common)
 
     if options.mbm.stats.calc_stats:
         log_nlin_det_common, log_full_det_common = (
