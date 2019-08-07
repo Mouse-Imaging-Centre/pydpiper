@@ -2975,14 +2975,16 @@ def minc_label_ops(in_labels : MincAtom, op : LabelOp, op_arg : Optional[Union[M
     return Result(stages=Stages([s]), output=out_labels)
 
 def autocrop(img: MincAtom,
-             autocropped: MincAtom,
              isostep: float = None,
              nearest_neighbour: bool = False,
              x_pad: str = '0,0',
              y_pad: str = '0,0',
-             z_pad: str = '0,0',) -> Result[MincAtom]:
+             z_pad: str = '0,0',
+             suffix = "autocropped",
+             autocropped=None) -> Result[MincAtom]:
+    if autocropped is None:
+        autocropped = img.newname_with_suffix("_" + suffix)
     s = Stages()
-
     s.add(CmdStage(inputs=(img,), outputs=(autocropped,),
                  cmd=["autocrop", "-clobber"]
                      + (["-isostep ", isostep] if isostep else [])
