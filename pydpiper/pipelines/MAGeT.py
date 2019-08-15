@@ -50,12 +50,11 @@ def get_imgs(options):
                      for mask in csv.mask_file]
         else:
             masks = [None] * len(csv.file)
-
         imgs = [MincAtom(os.path.join(csv_base, name.strip()), mask=mask,
                          pipeline_sub_dir=os.path.join(options.output_directory,
                                                        options.pipeline_name + "_processed"))
                 # TODO does anything break if we make imgs a pd.Series?
-                for name, mask in zip(csv.file, masks)]
+                for name, mask in zip(csv.file.astype("str"), masks)]
     elif options.files:
         imgs = [MincAtom(name, pipeline_sub_dir=os.path.join(options.output_directory,
                                                              options.pipeline_name + "_processed"))
