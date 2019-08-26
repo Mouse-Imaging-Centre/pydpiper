@@ -457,7 +457,7 @@ def mincify_build_model(base_build_model : Type[NLIN_BUILD_MODEL]) -> Type[NLIN_
                                                        avg_img=s.defer(mincify.to_mnc(result.avg_img)),
                                                        output=[wrap_output_xfmh(x)
                                                                for x in result.output]))
-    return C
+    return C()
 
 
 def get_model_building_procedure(strategy : str, reg_module : Type[NLIN]) -> Type[NLIN_BUILD_MODEL]:
@@ -469,10 +469,10 @@ def get_model_building_procedure(strategy : str, reg_module : Type[NLIN]) -> Typ
           'pairwise_and_build_model'   : pairwise_and_build_model
         }
     try:
-        f = mincify_build_model(d[strategy](reg_module))
+        c = mincify_build_model(d[strategy](reg_module))
     except KeyError:
         raise ValueError("unknown strategy %s; choices are %s" % (strategy, d.keys()))
     else:
-        return f(reg_module)
+        return c
 
 

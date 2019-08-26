@@ -40,24 +40,22 @@ def lsq6_pipeline(options):
 
     # TODO this is tedious and annoyingly similar to the registration chain and MBM ...
     lsq6_dir      = os.path.join(output_dir, pipeline_name + "_lsq6")
-    processed_dir = os.path.join(output_dir, pipeline_name + "_processed")
     imgs = get_imgs(options.application)
 
     s = Stages()
 
-    # TODO this is quite tedious and duplicates stuff in the registration chain ...
-    resolution = (options.registration.resolution or
-                  get_resolution_from_file(
-                      s.defer(registration_targets(lsq6_conf=options.lsq6,
-                                                   app_conf=options.application,
-                                                   reg_conf=options.registration)).registration_standard.path))
-
     # FIXME: why do we have to call registration_targets *outside* of lsq6_nuc_inorm? is it just because of the extra
     # options required?
     targets = s.defer(registration_targets(lsq6_conf=options.lsq6,
-                                   app_conf=options.application,
-                                   reg_conf=options.registration,
-                                   first_input_file=imgs[0]))
+                                           app_conf=options.application,
+                                           reg_conf=options.registration,
+                                           first_input_file=imgs[0].path))
+
+    # TODO this is quite tedious and duplicates stuff in the registration chain ...
+    resolution = (options.registration.resolution or
+                    get_resolution_from_file(targets.registration_standard.path))
+
+
     # This must happen after calling registration_targets otherwise it will resample to options.registration.resolution
     options.registration = options.registration.replace(resolution=resolution)
     lsq6_result = s.defer(lsq6_nuc_inorm(imgs=imgs,
