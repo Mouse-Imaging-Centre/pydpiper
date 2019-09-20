@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 from __future__ import print_function
+import os
 import argparse
 import signal
 from pathlib import Path
@@ -27,6 +28,8 @@ if __name__ == '__main__':
         if len(uri_files) == 1:
             uri_file = uri_files[0]
             print("Using uri file: %s" % uri_file)
+        elif len(uri_files) == 0:
+            raise ValueError("No uri_files found in your current working directory %s" % os.getcwd())
         else:
             raise ValueError("Found multiple uri_files: %s" % uri_files)
 
