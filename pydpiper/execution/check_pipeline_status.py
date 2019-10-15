@@ -1,8 +1,11 @@
 #!/usr/bin/env python
 
 from __future__ import print_function
+import os
 import argparse
 import signal
+from pathlib import Path
+Path.ls = lambda x: list(x.iterdir())
 
 signal.signal(signal.SIGPIPE, signal.SIG_DFL)
 
@@ -13,11 +16,22 @@ import Pyro4
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("uri_file", type=str, help="file containing server's URI")
+    parser.add_argument("uri_file", type=str, help="file containing server's URI. If not given, defaults to *_uri", nargs="?")
 
     options = parser.parse_args()
 
     uri_file = options.uri_file
+
+    if uri_file == None:
+        wd = Path(".")
+        uri_files = [path.name for path in wd.ls() if "_uri" in path.name]
+        if len(uri_files) == 1:
+            uri_file = uri_files[0]
+            print("Using uri file: %s" % uri_file)
+        elif len(uri_files) == 0:
+            raise ValueError("No uri_files found in your current working directory %s" % os.getcwd())
+        else:
+            raise ValueError("Found multiple uri_files: %s" % uri_files)
 
     # find the server
     try:
