@@ -68,16 +68,16 @@ def two_level_pipeline(options : TwoLevelConf):
 
     # TODO write these into the appropriate subdirectory ...
     overall = (pipeline.output.overall_determinants
-        .drop('inv_xfm', axis=1)
-        .applymap(maybe_deref_path))
+        .drop('inv_xfm', axis=1))
     overall.to_csv("overall_determinants.csv", index=False)
+
     resampled = (pipeline.output.resampled_determinants
-        .drop(['inv_xfm', 'full_det', 'nlin_det'], axis=1)
-        .applymap(maybe_deref_path))
+        .drop(['inv_xfm', 'full_det', 'nlin_det'], axis=1))
     resampled.to_csv("resampled_determinants.csv", index=False)
 
     # rename/drop some columns, bind the dfs and write to "analysis.csv" as it should be.
     # deprecate the two csvs next release.
+    # TODO it's a bit silly that we read the csv_file again here but the group names have been lost?
     analysis = pd.read_csv(options.application.csv_file).assign(native_file=lambda df:
                  df.file.apply(relativize_path))
 
@@ -90,8 +90,14 @@ def two_level_pipeline(options : TwoLevelConf):
         "first_level_log_full_det_resampled" : "resampled_log_full_det",
         "first_level_log_nlin_det_resampled" : "resampled_log_nlin_det"
     })
-    (analysis.merge(pd.concat([resampled, overall], axis=1)).to_csv("analysis.csv", index=False))
+    (analysis
+     .merge(pd.merge(left = resampled.assign(target = lambda df: df.xfm.apply(lambda r: r.target)),
+                     right = overall.assign(target  = lambda df: df.xfm.apply(lambda r: r.target)),
+                     on = ['target', 'fwhm']))
+     .applymap(maybe_deref_path)
+     .to_csv("analysis.csv", index=False))
 
+    # TODO it's unfortunate we don't return something like the nice analysis df constructed above (but before  mapping objects to paths)
     return pipeline
 
 
