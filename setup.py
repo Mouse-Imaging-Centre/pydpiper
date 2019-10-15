@@ -5,8 +5,11 @@ import sys
 
 from setuptools import setup
 
-if sys.version_info < (3, 5):
-    raise ValueError("Minimum Python version supported is 3.5")
+min_python_version = (3, 6)
+
+if sys.version_info < min_python_version:
+    raise ValueError("Minimum Python version supported is %d.%d" %
+                       (min_python_version[0], min_python_version[1]))
 
 setup(name='pydpiper',
       version='2.0.13',
