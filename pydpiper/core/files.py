@@ -1,6 +1,7 @@
 import copy
 import os
 import warnings
+from pathlib import Path
 
 from typing import Callable, Union, Tuple
 
@@ -53,6 +54,12 @@ class FileAtom(object):
                  orig_name        : Union[str, None, NotProvided] = NotProvided(),
                  pipeline_sub_dir : str = None,
                  ) -> None:
+        name = Path(name).as_posix()
+        if output_sub_dir is not None: Path(output_sub_dir).as_posix()
+        if orig_name is not None and not isinstance(orig_name, NotProvided):
+            orig_name = Path(orig_name).as_posix()
+        if pipeline_sub_dir is not None: pipeline_sub_dir = Path(pipeline_sub_dir).as_posix()
+
         self.dir, self.filename_wo_ext, self.ext = explode(name)
         self.output_sub_dir = output_sub_dir
         if isinstance(orig_name, NotProvided):
