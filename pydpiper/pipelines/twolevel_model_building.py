@@ -4,6 +4,7 @@ import copy
 import os
 import sys
 import warnings
+from pathlib import Path
 
 import numpy as np
 from configargparse import Namespace
@@ -34,9 +35,9 @@ def two_level_pipeline(options : TwoLevelConf):
 
     def relativize_path(fp):
         #this annoying function takes care of the csv_paths_relative_to_wd flag.
-        return os.path.join(os.path.dirname(options.application.csv_file),fp) \
+        return os.path.join(os.path.dirname(options.application.csv_file), Path(fp).as_posix()) \
             if not options.application.csv_paths_relative_to_wd \
-            else fp
+            else Path(fp).as_posix()
 
     first_level_dir = options.application.pipeline_name + "_first_level"
 
