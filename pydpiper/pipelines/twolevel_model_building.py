@@ -120,7 +120,7 @@ def two_level(grouped_files_df, options : TwoLevelConf):
                          "just specify an initial target instead")
     elif options.mbm.lsq6.target_type == TargetType.pride_of_models:
         pride_of_models_mapping = get_pride_of_models_mapping(pride_csv=options.mbm.lsq6.target_file,
-                                                              output_dir=options.application.output_directory,
+                                                              output_dir=os.getcwd(),
                                                               pipeline_name=options.application.pipeline_name)
 
     # FIXME this is the same as in the 'tamarack' except for names of arguments/enclosing variables
@@ -161,7 +161,7 @@ def two_level(grouped_files_df, options : TwoLevelConf):
                                                           options=group_options(options, row.group),
                                                           prefix="%s" % row.group,
                                                           output_dir=os.path.join(
-                                                              options.application.output_directory,
+                                                              os.getcwd(),
                                                               options.application.pipeline_name + "_first_level",
                                                               "%s_processed" % row.group)))))
         )
@@ -190,7 +190,7 @@ def two_level(grouped_files_df, options : TwoLevelConf):
 
     second_level_results = s.defer(mbm(imgs=first_level_results.build_model.map(lambda m: m.avg_img),
                                        options=second_level_options,
-                                       prefix=os.path.join(options.application.output_directory,
+                                       prefix=os.path.join(os.getcwd(),
                                                            options.application.pipeline_name + "_second_level")))
 
     # FIXME sadly, `mbm` doesn't return a pd.Series of xfms, so we don't have convenient indexing ...

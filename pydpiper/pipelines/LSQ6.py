@@ -35,7 +35,7 @@ from pydpiper.minc.registration import get_resolution_from_file, registration_ta
 def lsq6_pipeline(options):
     # TODO could also allow pluggable pipeline parts e.g. LSQ6 could be substituted out for the modified LSQ6
     # for the kidney tips, etc...
-    output_dir    = options.application.output_directory
+    output_dir    = os.getwcd()
     pipeline_name = options.application.pipeline_name
 
     # TODO this is tedious and annoyingly similar to the registration chain and MBM ...

@@ -42,7 +42,7 @@ def mbm_pipeline(options : MBMConf):
 
     check_MINC_input_files([img.path for img in imgs])
 
-    output_dir = options.application.output_directory
+    output_dir = os.getcwd()
 
     mbm_result = s.defer(mbm(imgs=imgs, options=options,
                              prefix=options.application.pipeline_name,
@@ -134,10 +134,10 @@ def common_space(mbm_result, options):
                                   # TODO fix the subdirectories!
                                   mask=MincAtom(options.mbm.common_space.common_space_mask,
                                                 pipeline_sub_dir=os.path.join(
-                                                    options.application.output_directory,
+                                                    os.getwd(),
                                                     options.application.pipeline_name + "_processed"))
                                   if options.mbm.common_space.common_space_mask else None,
-                                  pipeline_sub_dir=os.path.join(options.application.output_directory,
+                                  pipeline_sub_dir=os.path.join(os.getwd(),
                                                                 options.application.pipeline_name + "_processed"))
 
     # TODO allow different lsq12/nlin config params than the ones used in MBM ...
@@ -307,7 +307,7 @@ def mbm(imgs : List[MincAtom],
         masked_img = (s.defer(maget_mask(imgs=masking_imgs,
                                          resolution=resolution,
                                          maget_options=maget_options.maget,
-                                         pipeline_sub_dir=os.path.join(options.application.output_directory,
+                                         pipeline_sub_dir=os.path.join(os.getwd(),
                                                                        "%s_atlases" % prefix))))
 
         masked_img.index = masked_img.apply(lambda x: x.path)

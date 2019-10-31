@@ -233,10 +233,6 @@ def _mk_application_parser(p: ArgParser) -> ArgParser:
     # TODO instead of prefixing all subdirectories (logs, backups, processed, ...)
     # with the pipeline name/date, we could create one identifying directory
     # and put these other directories inside
-    g.add_argument("--output-dir", dest="output_directory",
-                   type=str,
-                   default='',
-                   help="Directory where output data and backups will be saved.")
     g.add_argument("--create-graph", dest="create_graph",
                    action="store_true", default=False,
                    help="Create a .dot file with graphical representation of pipeline relationships [default = %(default)s]")

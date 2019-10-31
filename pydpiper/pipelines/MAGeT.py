@@ -327,7 +327,7 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir, build_model_xfms=N
 
     resolution = options.registration.resolution  # TODO or get_resolution_from_file(...) -- only if file always exists!
 
-    pipeline_sub_dir = os.path.join(options.application.output_directory,
+    pipeline_sub_dir = os.path.join(os.getcwd(),
                                     options.application.pipeline_name + "_atlases")
 
     atlases = get_atlases(maget_options, pipeline_sub_dir)
@@ -510,7 +510,7 @@ def maget_pipeline(options):
             csv_dir = os.path.dirname(options.application.csv_file)
             build_model_xfms = { row.file :
                                      XfmAtom(name=os.path.join(csv_dir, row.lsq12_nlin_xfm),
-                                             pipeline_sub_dir=os.path.join(options.application.output_directory,
+                                             pipeline_sub_dir=os.path.join(os.getcwd(),
                                                                            options.application.pipeline_name
                                                                              + "_build_model_xfms"))
                                  for _, row in df.iterrows() }
@@ -521,7 +521,7 @@ def maget_pipeline(options):
 
     result = maget(imgs=imgs, options=options,
                    prefix=options.application.pipeline_name,
-                   output_dir=options.application.output_directory,
+                   output_dir=os.getcwd(),
                    build_model_xfms=build_model_xfms)
 
     # TODO this should also be created by MBM and other pipelines that run MAGeT
@@ -529,7 +529,7 @@ def maget_pipeline(options):
                     'label_file' : result.output.apply(lambda row: row.labels.path),
                     #'mask_file'  : result.output.apply(lambda row: row.mask.path if row.mask else "NA")
                   })
-        .to_csv(os.path.join(options.application.output_directory, "segmentations.csv"), index=False))
+        .to_csv(os.path.join(os.getcwd(), "segmentations.csv"), index=False))
 
     return result
 
