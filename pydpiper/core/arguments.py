@@ -220,10 +220,18 @@ def _mk_application_parser(p: ArgParser) -> ArgParser:
     #TODO is this broken? Shouldn't this action be "store_true"?
     g.add_argument("--restart", dest="restart",
                    action="store_false", default=True,
-                   help="Restart pipeline using backup files. [default = %(default)s]")
+                   help="""
+                   Restarts the pipeline by checking each finished stage's hash to its hash stored in the
+                   finished_stages file. If any stages were changed (perhaps due to different arguments),
+                   those stages will have to be re-run. Otherwise, the pipeline will restart from where it was last stopped.
+                   [default = %(default)s]
+                   """)
     g.add_argument("--smart-restart", dest="smart_restart",
                    action="store_true", default=False,
-                   help="Restart pipeline using backup files accounting for modifications. [default = %(default)s]")
+                   help="""
+                   Also check if a stage's input files were modified after its output files, in which case re-run that stage.
+                   [default = %(default)s]
+                   """)
     g.add_argument("--pipeline-name", dest="pipeline_name", type=str,
                    default=time.strftime("pipeline-%d-%m-%Y-at-%H-%m-%S"),
                    help="Name of pipeline and prefix for models.")
