@@ -13,7 +13,7 @@ from pydpiper.minc.files import MincAtom
 
 def LSQ12_pipeline(options):
 
-    output_dir    = os.getcwd()
+    output_dir    = options.application.output_directory
     pipeline_name = options.application.pipeline_name
 
     # TODO this is tedious and annoyingly similar to the registration chain and MBM and LSQ6 ...

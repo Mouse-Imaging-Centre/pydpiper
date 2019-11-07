@@ -167,7 +167,7 @@ def chain(options):
     with open(options.chain.csv_file, 'r') as f:
         subject_info = parse_csv(rows=f, common_time_pt=options.chain.common_time_point)
 
-    output_dir    = os.getcwd()
+    output_dir    = options.application.output_directory
     pipeline_name = options.application.pipeline_name
 
     resolution = options.registration.resolution
@@ -216,7 +216,7 @@ def chain(options):
                              "flag to specify a target for the lsq6 stage, or use an initial model.")
         if options.lsq6.target_type == TargetType.pride_of_models:
             pride_of_models_dict = get_pride_of_models_mapping(pride_csv=options.lsq6.target_file,
-                                                               output_dir=os.getcwd(),
+                                                               output_dir=options.application.output_directory,
                                                                pipeline_name=options.application.pipeline_name)
             subj_id_to_subj_with_lsq6_xfm_dict = map_with_index_over_time_pt_dict_in_Subject(
                                     lambda subj_atom, time_point:
@@ -857,7 +857,7 @@ def main():
         # works in a fairly different way, so we will separate out that option.
         if options.lsq6.target_type == TargetType.pride_of_models:
             pride_of_models_mapping = get_pride_of_models_mapping(options.lsq6.target_file,
-                                                                  os.getcwd(),
+                                                                  options.application.output_directory,
                                                                   options.application.pipeline_name)
             # all initial models that are part of the pride of models must have
             # the same resolution (it's currently a requirement). So we can get the

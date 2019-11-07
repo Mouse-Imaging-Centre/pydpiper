@@ -268,7 +268,7 @@ class Pipeline(object):
         # Handle to write out processed stages to
         self.finished_stages_fh = None
         
-        self.outputDir = os.getcwd()
+        self.outputDir = self.options.application.output_directory or os.getcwd()
 
         # TODO this doesn't work with the qbatch-based server submission on Graham:
         if self.options.execution.submit_server and self.options.execution.local:

@@ -159,7 +159,7 @@ def stage_embryos_pipeline(options):
 
     check_MINC_input_files([img.path for img in imgs])
 
-    output_directory = os.getcwd()
+    output_directory = options.application.output_directory
     output_sub_dir = os.path.join(output_directory,
                                   options.application.pipeline_name + "_4D_atlas")
 
