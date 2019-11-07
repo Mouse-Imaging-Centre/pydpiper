@@ -28,7 +28,7 @@ TamarackConf = NamedTuple("TamarackConf", [("first_level_conf", MBMConf),
 
 def tamarack_pipeline(options):
 
-    output_dir    = options.application.output_directory
+    output_dir    = os.getcwd()
     pipeline_name = options.application.pipeline_name
     #processed_dir = os.path.join(output_dir, pipeline_name + "_processed")
     first_level_dir = os.path.join(output_dir, pipeline_name + "_first_level")
@@ -72,7 +72,7 @@ def tamarack(imgs : pd.DataFrame, options):
             options = copy.deepcopy(options)
             targets = get_closest_model_from_pride_of_models(pride_of_models_dict=get_pride_of_models_mapping(
                                                                  pride_csv=options.mbm.lsq6.target_file,
-                                                                 output_dir=options.application.output_directory,
+                                                                 output_dir=os.getcwd(),
                                                                  pipeline_name=options.application.pipeline_name),
                                                              time_point=timepoint)
 
@@ -114,7 +114,7 @@ def tamarack(imgs : pd.DataFrame, options):
                                                options=row.options,
                                                prefix="%s" % row.group,
                                                output_dir=os.path.join(
-                                               options.application.output_directory,
+                                               os.getcwd(),
                                                options.application.pipeline_name + "_first_level",
                                                "%s_processed" % row.group)))))
         .sort_values(by='group')

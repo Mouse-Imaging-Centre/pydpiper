@@ -19,7 +19,7 @@ def cortical_thickness_pipeline(options):
     #                                                     options.application.pipeline_name + "_processed"))
     #        for name in options.application.files]
 
-    pipeline_sub_dir = os.path.join(options.application.output_directory,
+    pipeline_sub_dir = os.path.join(os.getcwd(),
                                     options.application.pipeline_name + "_processed")
 
     #def atom(atom_type, file):

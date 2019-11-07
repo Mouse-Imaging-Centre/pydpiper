@@ -32,7 +32,7 @@ ExecutionConf = NamedTuple('ExecutionConf', [('use_backup_files', bool),
 
 
 def output_dir(options):
-    return options.application.output_directory if options.application.output_directory else os.getcwd()
+    return os.getcwd()
 
 def write_stages(stages, name):
     """
@@ -145,13 +145,13 @@ def execute(stages, options):
         # TODO: these could have more descriptive names ...
         logger.debug("Writing dot file...")
         nx.drawing.nx_agraph.write_dot(pipeline.G, str(options.application.pipeline_name) + "_labeled-tree.dot")
-        nx.drawing.nx_agraph.write_dot(file_graph(stages, options.application.output_directory),
+        nx.drawing.nx_agraph.write_dot(file_graph(stages, os.getcwd()),
                                        str(options.application.pipeline_name) + "_labeled-tree-alternate.dot")
         logger.debug("Done.")
 
     # for debugging reasons, it's best if these come after writing stages, drawing graph, ...
     ensure_short_output_paths(stages)  # TODO convert to new `CmdStage`s
-    ensure_output_paths_in_dir(stages, options.application.output_directory)
+    ensure_output_paths_in_dir(stages, os.getcwd())
     ensure_distinct_outputs([convertCmdStage(s) for s in stages])
     ensure_commands_exist(stages)
 

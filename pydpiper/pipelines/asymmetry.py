@@ -21,7 +21,7 @@ from pydpiper.minc.files import MincAtom
 
 def asymmetry_pipeline(options):
 
-    output_dir    = options.application.output_directory
+    output_dir    = os.getcwd()
     pipeline_name = options.application.pipeline_name
     processed_dir = os.path.join(output_dir, pipeline_name + "_processed")
 

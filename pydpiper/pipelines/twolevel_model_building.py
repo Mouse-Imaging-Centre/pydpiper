@@ -4,6 +4,7 @@ import copy
 import os
 import sys
 import warnings
+from pathlib import Path
 
 import numpy as np
 from configargparse import Namespace
@@ -34,9 +35,9 @@ def two_level_pipeline(options : TwoLevelConf):
 
     def relativize_path(fp):
         #this annoying function takes care of the csv_paths_relative_to_wd flag.
-        return os.path.join(os.path.dirname(options.application.csv_file),fp) \
+        return os.path.join(os.path.dirname(options.application.csv_file), Path(fp).as_posix()) \
             if not options.application.csv_paths_relative_to_wd \
-            else fp
+            else Path(fp).as_posix()
 
     first_level_dir = options.application.pipeline_name + "_first_level"
 
@@ -93,7 +94,8 @@ def two_level_pipeline(options : TwoLevelConf):
     (analysis
      .merge(pd.merge(left = resampled.assign(target = lambda df: df.xfm.apply(lambda r: r.target)),
                      right = overall.assign(target  = lambda df: df.xfm.apply(lambda r: r.target)),
-                     on = ['target', 'fwhm']))
+                     on = ['target', 'fwhm']),
+            on = "native_file")
      .applymap(maybe_deref_path)
      .to_csv("analysis.csv", index=False))
 
@@ -118,7 +120,7 @@ def two_level(grouped_files_df, options : TwoLevelConf):
                          "just specify an initial target instead")
     elif options.mbm.lsq6.target_type == TargetType.pride_of_models:
         pride_of_models_mapping = get_pride_of_models_mapping(pride_csv=options.mbm.lsq6.target_file,
-                                                              output_dir=options.application.output_directory,
+                                                              output_dir=os.getcwd(),
                                                               pipeline_name=options.application.pipeline_name)
 
     # FIXME this is the same as in the 'tamarack' except for names of arguments/enclosing variables
@@ -159,7 +161,7 @@ def two_level(grouped_files_df, options : TwoLevelConf):
                                                           options=group_options(options, row.group),
                                                           prefix="%s" % row.group,
                                                           output_dir=os.path.join(
-                                                              options.application.output_directory,
+                                                              os.getcwd(),
                                                               options.application.pipeline_name + "_first_level",
                                                               "%s_processed" % row.group)))))
         )
@@ -188,7 +190,7 @@ def two_level(grouped_files_df, options : TwoLevelConf):
 
     second_level_results = s.defer(mbm(imgs=first_level_results.build_model.map(lambda m: m.avg_img),
                                        options=second_level_options,
-                                       prefix=os.path.join(options.application.output_directory,
+                                       prefix=os.path.join(os.getcwd(),
                                                            options.application.pipeline_name + "_second_level")))
 
     # FIXME sadly, `mbm` doesn't return a pd.Series of xfms, so we don't have convenient indexing ...
@@ -210,13 +212,14 @@ def two_level(grouped_files_df, options : TwoLevelConf):
     # for merging with the input csv. lsq12_nlin_xfm can be used to merge, and rigid_xfm contains the input file.
     # If for some reason we want to output xfms in the future, just don't drop everything.
     first_level_xfms = pd.concat(list(first_level_results.build_model.apply(lambda x: x.xfms.assign(
-        first_level_avg=x.avg_img))), ignore_index=True)[["lsq12_nlin_xfm", "rigid_xfm"]]
+        first_level_avg=x.avg_img))), ignore_index=True)[["lsq12_nlin_xfm", "rigid_xfm"]].assign(
+        native_file=lambda df:df.rigid_xfm.apply(lambda x: x.source.path))
     if options.mbm.segmentation.run_maget:
         maget_df = pd.DataFrame([{"label_file" : x.labels.path, "native_file" : x.orig_path }  #, "_merge" : basename(x.orig_path)}
                                  for x in pd.concat([namespace.maget_result for namespace in first_level_results.build_model])])
-        first_level_xfms = pd.merge(left=first_level_xfms.assign(native_file=lambda df:
-                                                                   df.rigid_xfm.apply(lambda x: x.source.path)),
+        first_level_xfms = pd.merge(left=first_level_xfms,
                                     right=maget_df, on="native_file")
+
     first_level_determinants = (pd.merge(left=first_level_determinants, right=first_level_xfms,
                                          left_on="inv_xfm", right_on="lsq12_nlin_xfm")
                                 .drop(["rigid_xfm", "lsq12_nlin_xfm"], axis=1))
