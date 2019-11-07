@@ -250,7 +250,7 @@ def reconstruct_command(options):
     reconstruct = ' '.join(sys.argv)
     logger.info("Command is: " + reconstruct)
     logger.info("Command version : " + PYDPIPER_VERSION)
-    fileForCommandAndVersion = options.application.pipeline_name + "-command-and-version-" + time.strftime("%d-%m-%Y-at-%H-%m-%S") + ".sh"
+    fileForCommandAndVersion = options.application.pipeline_name + "-command-and-version-" + time.strftime("%d-%m-%Y-at-%H-%M-%S") + ".sh"
     pf = open(fileForCommandAndVersion, "w")
     pf.write("#!/usr/bin/env bash\n")
     for p in ["PATH", "PYTHONPATH", "LD_LIBRARY_PATH", "PERL5LIB"]:
