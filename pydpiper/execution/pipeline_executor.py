@@ -20,6 +20,9 @@ os.environ["PYRO_LOGLEVEL"] = os.getenv("PYRO_LOGLEVEL", "INFO")
 import Pyro4       # type: ignore
 from typing import Any
 
+if os.getenv("OMP_NUM_THREADS") is None:  # for #378 (very large vmem usage)
+  os.environ["OMP_NUM_THREADS"] = "4"
+
 from pyminc.volumes.volumes import mincException
 
 
