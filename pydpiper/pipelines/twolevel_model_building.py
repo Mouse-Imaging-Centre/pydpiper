@@ -4,6 +4,7 @@ import copy
 import os
 import sys
 import warnings
+from pathlib import Path
 
 import numpy as np
 from configargparse import Namespace
@@ -34,9 +35,9 @@ def two_level_pipeline(options : TwoLevelConf):
 
     def relativize_path(fp):
         #this annoying function takes care of the csv_paths_relative_to_wd flag.
-        return os.path.join(os.path.dirname(options.application.csv_file),fp) \
+        return os.path.join(os.path.dirname(options.application.csv_file), Path(fp).as_posix()) \
             if not options.application.csv_paths_relative_to_wd \
-            else fp
+            else Path(fp).as_posix()
 
     first_level_dir = options.application.pipeline_name + "_first_level"
 
@@ -68,16 +69,16 @@ def two_level_pipeline(options : TwoLevelConf):
 
     # TODO write these into the appropriate subdirectory ...
     overall = (pipeline.output.overall_determinants
-        .drop('inv_xfm', axis=1)
-        .applymap(maybe_deref_path))
+        .drop('inv_xfm', axis=1))
     overall.to_csv("overall_determinants.csv", index=False)
+
     resampled = (pipeline.output.resampled_determinants
-        .drop(['inv_xfm', 'full_det', 'nlin_det'], axis=1)
-        .applymap(maybe_deref_path))
+        .drop(['inv_xfm', 'full_det', 'nlin_det'], axis=1))
     resampled.to_csv("resampled_determinants.csv", index=False)
 
     # rename/drop some columns, bind the dfs and write to "analysis.csv" as it should be.
     # deprecate the two csvs next release.
+    # TODO it's a bit silly that we read the csv_file again here but the group names have been lost?
     analysis = pd.read_csv(options.application.csv_file).assign(native_file=lambda df:
                  df.file.apply(relativize_path))
 
@@ -90,8 +91,15 @@ def two_level_pipeline(options : TwoLevelConf):
         "first_level_log_full_det_resampled" : "resampled_log_full_det",
         "first_level_log_nlin_det_resampled" : "resampled_log_nlin_det"
     })
-    (analysis.merge(pd.concat([resampled, overall], axis=1)).to_csv("analysis.csv", index=False))
+    (analysis
+     .merge(pd.merge(left = resampled.assign(target = lambda df: df.xfm.apply(lambda r: r.target)),
+                     right = overall.assign(target  = lambda df: df.xfm.apply(lambda r: r.target)),
+                     on = ['target', 'fwhm']),
+            on = "native_file")
+     .applymap(maybe_deref_path)
+     .to_csv("analysis.csv", index=False))
 
+    # TODO it's unfortunate we don't return something like the nice analysis df constructed above (but before  mapping objects to paths)
     return pipeline
 
 
@@ -204,13 +212,14 @@ def two_level(grouped_files_df, options : TwoLevelConf):
     # for merging with the input csv. lsq12_nlin_xfm can be used to merge, and rigid_xfm contains the input file.
     # If for some reason we want to output xfms in the future, just don't drop everything.
     first_level_xfms = pd.concat(list(first_level_results.build_model.apply(lambda x: x.xfms.assign(
-        first_level_avg=x.avg_img))), ignore_index=True)[["lsq12_nlin_xfm", "rigid_xfm"]]
+        first_level_avg=x.avg_img))), ignore_index=True)[["lsq12_nlin_xfm", "rigid_xfm"]].assign(
+        native_file=lambda df:df.rigid_xfm.apply(lambda x: x.source.path))
     if options.mbm.segmentation.run_maget:
         maget_df = pd.DataFrame([{"label_file" : x.labels.path, "native_file" : x.orig_path }  #, "_merge" : basename(x.orig_path)}
                                  for x in pd.concat([namespace.maget_result for namespace in first_level_results.build_model])])
-        first_level_xfms = pd.merge(left=first_level_xfms.assign(native_file=lambda df:
-                                                                   df.rigid_xfm.apply(lambda x: x.source.path)),
+        first_level_xfms = pd.merge(left=first_level_xfms,
                                     right=maget_df, on="native_file")
+
     first_level_determinants = (pd.merge(left=first_level_determinants, right=first_level_xfms,
                                          left_on="inv_xfm", right_on="lsq12_nlin_xfm")
                                 .drop(["rigid_xfm", "lsq12_nlin_xfm"], axis=1))

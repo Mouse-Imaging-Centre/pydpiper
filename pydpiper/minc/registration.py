@@ -1049,12 +1049,12 @@ default_rotational_minctracc_conf = RotationalMinctraccConf(
     temp_dir="/dev/shm")
 
 
-# FIXME consistently require that masks are explicitely added to inputs array (or not?)
+# FIXME consistently require that masks are explicitly added to inputs array (or not?)
 def rotational_minctracc(source: MincAtom,
                          target: MincAtom,
                          conf: RotationalMinctraccConf,
                          resolution: float,
-                         mask: MincAtom = None,  # TODO: add mask, resample_source to conf ??
+                         # mask: MincAtom = None,  # TODO: add mask, resample_source to conf ??
                          resample_source: bool = False,
                          output_name_wo_ext: str = None) -> Result[XfmHandler]:
     """
@@ -1120,8 +1120,9 @@ def rotational_minctracc(source: MincAtom,
     # use the target mask if around, or overwrite this mask with the mask
     # that is explicitly provided:
     # TODO: shouldn't this use the mask if it's provided rather than the target mask?
-    mask_for_command = target.mask if target.mask else mask
-    cmd = CmdStage(inputs=(blurred_src, blurred_dest) + cast(tuple, ((mask_for_command,) if mask_for_command else ())),
+    # mask_for_command = target.mask if target.mask else mask
+    cmd = CmdStage(inputs=(blurred_src, blurred_dest)
+                          + cast(tuple, ((target.mask,) if target.mask is not None else ())),
                    # if-expression not recognized as a tuple; see mypy/issues/622
                    outputs=(out_xfm,),
                    cmd=["rotational_minctracc.py",
@@ -1135,7 +1136,9 @@ def rotational_minctracc(source: MincAtom,
                         blurred_src.path,
                         blurred_dest.path,
                         out_xfm.path,
-                        "/dev/null"] + (['-m', mask_for_command.path] if mask_for_command else []))
+                        "/dev/null"]
+                       + (['-m', target.mask.path] if target.mask else [])
+                       + (['--source-mask', source.mask.path] if source.mask else []))
 
     s.update(Stages([cmd]))
 
@@ -1147,8 +1150,8 @@ def rotational_minctracc(source: MincAtom,
     # (given that this is the lsq6 alignment). If the target has a mask, or there was a mask
     # provided, we can add it to the resampled file.
     if resampled:
-        if not resampled.mask and mask_for_command:
-            resampled.mask = mask_for_command
+        if resampled.mask is None and target.mask is not None:
+            resampled.mask = target.mask
 
     return Result(stages=s,
                   output=XfmHandler(source=source,
@@ -1770,7 +1773,6 @@ def multilevel_minctracc(source: MincAtom,
     if len(conf.confs) == 0:  # not a "registration" at all; also, src_blur/target_blur will be undefined ...
         raise ValueError("No configurations supplied")
     s = Stages()
-    last_resampled = None
     for idx, conf_ in enumerate(conf.confs):
         transform_handler = s.defer(minctracc(source, target, conf=conf_,
                                               transform=transform,
@@ -1778,10 +1780,11 @@ def multilevel_minctracc(source: MincAtom,
                                               generation=idx,
                                               transform_name_wo_ext = transform_name_wo_ext,
                                               subdir='tmp' if idx < len(conf.confs) - 1 else None,
-                                              resample_source=resample_source))
+                                              # don't create intermediate resamplings that won't be used:
+                                              resample_source=resample_source if idx + 1 == len(conf.confs) else False))
         transform = transform_handler.xfm
         # why potentially throw away the resampled image?
-        last_resampled = transform_handler.resampled if resample_source else None
+    last_resampled = transform_handler.resampled if resample_source else None
     return Result(stages=s,
                   output=XfmHandler(xfm=transform,
                                     source=source,
@@ -2245,7 +2248,7 @@ def lsq6(imgs: List[MincAtom],
     imgs[i].output_sub_dir + "_lsq6.xfm"
     """
     s = Stages()
-    xfms_to_target = []  # type: List[XfmHandler]
+    xfms_to_target : List[XfmHandler]
 
     if post_alignment_xfm and not post_alignment_target:
         raise ValueError("You've provided a post alignment transformation to lsq6() but not a MincAtom indicating the target for this transformation.")
@@ -2688,10 +2691,7 @@ def registration_targets(lsq6_conf: LSQ6Conf,
         if target_file is not None:
             raise ValueError("BUG: bootstrap was chosen but a file was specified ...")
         if first_input_file is None:
-            raise ValueError("Bootstrap was chosen but no input files supplied "
-                             "(possibly a bug: I'm probably only looking at input files specified "
-                             "on the command line, so if you supplied them in a CSV "
-                             "I might not have noticed (or this might not make sense) ...")
+            raise ValueError("Bootstrap was chosen but no input files supplied?!")
         bootstrap_file = MincAtom(name=first_input_file,
                                   pipeline_sub_dir=os.path.join(output_dir, pipeline_name +
                                                                 "_bootstrap_file"))
@@ -2975,14 +2975,16 @@ def minc_label_ops(in_labels : MincAtom, op : LabelOp, op_arg : Optional[Union[M
     return Result(stages=Stages([s]), output=out_labels)
 
 def autocrop(img: MincAtom,
-             autocropped: MincAtom,
              isostep: float = None,
              nearest_neighbour: bool = False,
              x_pad: str = '0,0',
              y_pad: str = '0,0',
-             z_pad: str = '0,0',) -> Result[MincAtom]:
+             z_pad: str = '0,0',
+             suffix = "autocropped",
+             autocropped=None) -> Result[MincAtom]:
+    if autocropped is None:
+        autocropped = img.newname_with_suffix("_" + suffix)
     s = Stages()
-
     s.add(CmdStage(inputs=(img,), outputs=(autocropped,),
                  cmd=["autocrop", "-clobber"]
                      + (["-isostep ", isostep] if isostep else [])
