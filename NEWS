@@ -1,3 +1,13 @@
+New in Version 2.0.14
+=====================
+* fixes to reduce memory/vmem usage due to Numpy/OpenBLAS
+* rotational_minctracc.py now uses both source and target masks if present
+* bug fixes to output CSV file generation
+* improved help documentation for --restart and --smart-restart
+* minimum Python version is now correctly specified as 3.6 due to use of format strings
+* create fewer intermediate resamplings
+* various other small bugfixes and internals changes
+
 New in Version 2.0.13
 =====================
 * in the two-level pipeline, the inputs specified via --csv-file are now by default relative
