@@ -258,7 +258,7 @@ def minctracc(source: MincAtom,
                             if source.mask and conf.use_masks else [])
                          + (['-model_mask', target.mask.path]
                             if target.mask and conf.use_masks else [])
-                         + ([source_for_minctracc.path, target_for_minctracc.path, out_xfm.path]),
+                         + ([source_for_minctracc.path, "%s_%s" % (target_for_minctracc.path[:-8],"blur.mnc"), out_xfm.path] if ("nlin_MINCTRACC_fwhm" in target_for_minctracc.path and "blurmnc" in target_for_minctracc.path) else [source_for_minctracc.path, target_for_minctracc.path, out_xfm.path]),
                      inputs=(source_for_minctracc, target_for_minctracc) +
                             ((transform,) if transform else ()) +
                             ((source.mask,) if source.mask and conf.use_masks else ()) +
@@ -366,15 +366,23 @@ def mincblur(img: MincAtom,
     fwhm_str = "_fwhm%s" % fwhm
     out_img      = img.newname_with_suffix(fwhm_str + "_blur", subdir=subdir)
     out_gradient = img.newname_with_suffix(fwhm_str + "_dxyz", subdir=subdir)
-    stage = CmdStage(
-        inputs=(img,), outputs=(out_img,) + ((out_gradient,) if gradient else ()),
-        # drop last 9 chars from output filename since mincblur
-        # automatically adds "_blur.mnc" (or "_dxyz.mnc") and Python
-        # won't lift this length calculation automatically ...
-        cmd=shlex.split('mincblur -clobber -no_apodize -fwhm %s %s %s' % (fwhm, img.path, out_img.path[:-9]))
-            + (['-gradient'] if gradient else []))
-    #stage.set_log_file(os.path.join(out_img.dir, "..", "log",
-    #                                "%s_%s.log" % ("mincblur", out_img.filename_wo_ext)))
+if ("_nlin_MINCTRACC_fwhm0." in out_img.path): 
+        stage = CmdStage(
+            inputs=(img,), outputs=(out_img,) + ((out_gradient,) if gradient else ()),
+            cmd=shlex.split('mincblur -clobber -no_apodize -fwhm %s %s %s' % (fwhm, img.path, out_img.path[:-8]))
+                + (['-gradient'] if gradient else []))
+        #stage.set_log_file(os.path.join(out_img.dir, "..", "log",
+        #                                "%s_%s.log" % ("mincblur", out_img.filename_wo_ext)))
+    else: 
+        stage = CmdStage(
+            inputs=(img,), outputs=(out_img,) + ((out_gradient,) if gradient else ()),
+            # drop last 9 chars from output filename since mincblur
+            # automatically adds "_blur.mnc" (or "_dxyz.mnc") and Python
+            # won't lift this length calculation automatically ...
+            cmd=shlex.split('mincblur -clobber -no_apodize -fwhm %s %s %s' % (fwhm, img.path, out_img.path[:-9]))
+                + (['-gradient'] if gradient else []))
+        #stage.set_log_file(os.path.join(out_img.dir, "..", "log",
+        # 
 
     def set_memory(stage, mem_cfg):
         # we pass the stage itself as an argument since the stage will be converted to an old-style CmdStage,
