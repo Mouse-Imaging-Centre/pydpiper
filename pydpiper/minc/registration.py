@@ -3094,7 +3094,8 @@ class MincAlgorithms(Algorithms):
 
 
 class MINCTRACC(NLIN):
-    img_ext = xfm_ext = "mnc"
+    img_ext = ".mnc"
+    xfm_ext = ".xfm"
     Conf = MultilevelMinctraccConf
 
     # blech ... does this mean the 'multilevelconf' should be renamed 'hierarchicalconf' or similar? yes ...
