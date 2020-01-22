@@ -1,11 +1,13 @@
 New in Version 2.0.14
 =====================
+* fix a file naming bug when minctracc is used for average building
 * fixes to reduce memory/vmem usage due to Numpy/OpenBLAS
 * rotational_minctracc.py now uses both source and target masks if present
 * bug fixes to output CSV file generation
 * improved help documentation for --restart and --smart-restart
-* minimum Python version is now correctly specified as 3.6 due to use of format strings
 * create fewer intermediate resamplings
+* minimum Python version is now correctly specified as 3.6 due to use of format strings
+* typing module is removed as a dependency since it's present in 3.6 and incompatible with 3.8
 * various other small bugfixes and internals changes
 
 New in Version 2.0.13
