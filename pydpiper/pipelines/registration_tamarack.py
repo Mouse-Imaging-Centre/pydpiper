@@ -10,7 +10,7 @@ from pydpiper.minc.analysis import determinants_at_fwhms
 from pydpiper.pipelines.registration_chain import get_closest_model_from_pride_of_models
 
 from pydpiper.core.util import NamedTuple, maybe_deref_path
-from pydpiper.pipelines.MBM import mbm_parser, mbm, MBMConf
+from pydpiper.pipelines.MBM import mk_mbm_parser, mbm, MBMConf
 from pydpiper.core.stages import Result, Stages
 from pydpiper.core.arguments import (execution_parser, registration_parser, application_parser, parse, CompoundParser,
                                      AnnotatedParser, BaseParser)
@@ -18,7 +18,7 @@ from pydpiper.execution.application import execute
 from pydpiper.minc.registration import (
   check_MINC_input_files, lsq12_nlin, get_pride_of_models_mapping, TargetType,
   xfmconcat, concat_xfmhandlers, get_linear_configuration_from_options, LinearTransType,
-  get_nonlinear_configuration_from_options, MultilevelANTSConf, get_resolution_from_file, registration_targets,
+  get_resolution_from_file, registration_targets, get_nonlinear_component,
   mincresample, xfminvert, invert_xfmhandler, mincresample_new)
 from pydpiper.minc.files import MincAtom
 
@@ -43,7 +43,7 @@ def tamarack_pipeline(options):
                                             func=lambda r:
                                                    MincAtom(r.filename.strip(),
                                                             pipeline_sub_dir=os.path.join(first_level_dir,
-                                                                                          "%s_processed" % r.group.strip())))))
+                                                                                          "%s_processed" % r.group)))))
 
     check_MINC_input_files(files_df.file.apply(lambda img: img.path))
 
@@ -131,14 +131,8 @@ def tamarack(imgs : pd.DataFrame, options):
     # construction of the overall inter-average transforms will be done iteratively (for efficiency/aesthetics),
     # which doesn't really fit the DataFrame mold ...
 
+    nlin_component = get_nonlinear_component(reg_method=options.mbm.nlin.reg_method)
 
-    full_hierarchy = get_nonlinear_configuration_from_options(
-      nlin_protocol=options.mbm.nlin.nlin_protocol,
-      reg_method=options.mbm.nlin.reg_method,
-      file_resolution=options.registration.resolution)
-
-    # FIXME no good can come of this
-    nlin_protocol = full_hierarchy.confs[-1] if isinstance(full_hierarchy, MultilevelANTSConf) else full_hierarchy
     # first register consecutive averages together:
     average_registrations = (
         first_level_results[:-1]
@@ -151,7 +145,10 @@ def tamarack(imgs : pd.DataFrame, options):
                                                                      options.mbm.lsq12,
                                                                      transform_type=LinearTransType.lsq12,
                                                                      file_resolution=options.registration.resolution),
-                                                                 nlin_conf=nlin_protocol)))))
+                                                                 nlin_module=nlin_component,
+                                                                 resolution=options.registration.resolution,
+                                                                 nlin_options=options.mbm.nlin.nlin_protocol,
+                                                                 resample_source=True)))))
 
     # now compose the above transforms to produce transforms from each average to the common average:
     common_time_pt = options.tamarack.common_time_pt
@@ -218,9 +215,10 @@ def tamarack(imgs : pd.DataFrame, options):
 
     overall_xfms = inverted_overall_xfms.apply(lambda x: s.defer(invert_xfmhandler(x)))
 
-    overall_determinants = determinants_at_fwhms(xfms=overall_xfms,
-                                                 blur_fwhms=options.mbm.stats.stats_kernels,
-                                                 inv_xfms=inverted_overall_xfms)
+    overall_determinants = s.defer(
+                             determinants_at_fwhms(xfms=overall_xfms,
+                                                   blur_fwhms=options.mbm.stats.stats_kernels,
+                                                   inv_xfms=inverted_overall_xfms))
 
 
     # TODO turn off bootstrap as with two-level code?
@@ -250,7 +248,9 @@ def main(args):
            application_parser,
            registration_parser,
            tamarack_parser,
-           AnnotatedParser(parser=mbm_parser, namespace="mbm")])
+           AnnotatedParser(parser=mk_mbm_parser(with_common_space=False,
+                                                with_maget=True),
+                           namespace="mbm")])
 
     options = parse(p, args[1:])
     stages = tamarack_pipeline(options).stages
