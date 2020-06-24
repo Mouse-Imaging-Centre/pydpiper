@@ -707,7 +707,7 @@ def mincresample(img: MincAtom,
                                           new_name_wo_ext=new_name_wo_ext,
                                           subdir=subdir))
     new_img.mask = s.defer(mincresample_simple(img=img.mask, xfm=xfm, like=like,
-                                               extra_flags=extra_flags,
+                                               extra_flags=label_extra_flags,
                                                interpolation=Interpolation.nearest_neighbour,
                                                invert=invert,
                                                new_name_wo_ext=new_name_wo_ext + "_mask",
@@ -2430,6 +2430,7 @@ def lsq6_nuc_inorm(imgs: List[MincAtom],
         masks_in_native_space = [s.defer(mincresample(img=registration_targets.registration_standard.mask,
                                                       xfm=xfm_to_lsq6,
                                                       like=native_img,
+                                                      extra_flags=("-keep_real_range", "-labels"),
                                                       interpolation=Interpolation.nearest_neighbour,
                                                       invert=True))
                                    if not native_img.mask else native_img.mask
