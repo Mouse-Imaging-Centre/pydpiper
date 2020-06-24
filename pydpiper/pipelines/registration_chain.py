@@ -890,8 +890,8 @@ def main():
                 if timept != subject.intersubject_registration_time_pt:
                     # TODO: this is not really the proper way of dealing with things. If
                     # the code above changes (i.e., if the filenames change) this won't work anymore...
-                    from_subject_common_absolute = os.path.realpath(re.sub(".mnc", "_resampled_to_common.mnc", chain_output.determinants_from_subject_common_to_subject[subj_id].time_pt_dict[timept].ix[i].log_full_det.path))
-                    from_subject_common_relative = os.path.realpath(re.sub(".mnc", "_resampled_to_common.mnc", chain_output.determinants_from_subject_common_to_subject[subj_id].time_pt_dict[timept].ix[i].log_nlin_det.path))
+                    from_subject_common_absolute = os.path.realpath(re.sub(".mnc", "_resampled_to_common.mnc", chain_output.determinants_from_subject_common_to_subject[subj_id].time_pt_dict[timept].iloc[i].log_full_det.path))
+                    from_subject_common_relative = os.path.realpath(re.sub(".mnc", "_resampled_to_common.mnc", chain_output.determinants_from_subject_common_to_subject[subj_id].time_pt_dict[timept].iloc[i].log_nlin_det.path))
                 else:
                     from_subject_common_absolute = "NA"
                     from_subject_common_relative = "NA"
@@ -899,8 +899,8 @@ def main():
                                os.path.realpath(row.log_nlin_det.path), from_subject_common_absolute, from_subject_common_relative]),
                       file=analysis_csv)
                       #, ",",
-                      #chain_output.determinants_from_subject_common_to_subject[subj_id].time_pt_dict[timept].ix[i].log_full_det.path, ",",
-                      #chain_output.determinants_from_subject_common_to_subject[subj_id].time_pt_dict[timept].ix[i].log_nlin_det.path
+                      #chain_output.determinants_from_subject_common_to_subject[subj_id].time_pt_dict[timept].iloc[i].log_full_det.path, ",",
+                      #chain_output.determinants_from_subject_common_to_subject[subj_id].time_pt_dict[timept].iloc[i].log_nlin_det.path
                       #)
     analysis_csv.close()
     #import pdb; pdb.set_trace()
