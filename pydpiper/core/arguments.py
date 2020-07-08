@@ -678,6 +678,9 @@ def _mk_nlin_parser(p: ArgParser):
                             "applications_testing/test_data/minctracc_example_nlin_protocol.csv \n"
                             "applications_testing/test_data/mincANTS_example_nlin_protocol.csv \n"
                             "[Default = %(default)s]")
+    group.add_argument("--use-robust-averaging", dest="use_robust_averaging", action='store_true',
+                       help="use robust intensity averaging if possible")
+    p.set_defaults(use_robust_averaging = False)
     return p
 
 NLINConf = NamedTuple('NLINConf', [('reg_method', str),  # TODO make this an enumerated type

@@ -20,6 +20,7 @@ def build_model(reg_module : Type[NLIN]) -> Type[NLIN_BUILD_MODEL]:
     def f(imgs: List[MincAtom],
           initial_target: MincAtom,
           conf: reg_module.MultilevelConf,
+          use_robust_averaging: bool,
           nlin_dir: str,
           nlin_prefix: str,
           #algorithms : Type[Algorithms]
@@ -51,6 +52,7 @@ def build_model(reg_module : Type[NLIN]) -> Type[NLIN_BUILD_MODEL]:
                                                 resample_source=True))
                     for img, xfm in zip(imgs, xfms)]
             avg = s.defer(reg_module.Algorithms.average([xfm.resampled for xfm in xfms],
+                                                        robust=use_robust_averaging,
                                                         name_wo_ext='%s-nlin-%d' % (nlin_prefix, i),
                                                         output_dir=nlin_dir))
             avg_imgs.append(avg)
@@ -434,6 +436,7 @@ def mincify_build_model(base_build_model : Type[NLIN_BUILD_MODEL]) -> Type[NLIN_
                         conf,
                         nlin_dir,
                         nlin_prefix,
+                        use_robust_averaging,
                         initial_target,
                         output_name_wo_ext = None):
             s = Stages()
@@ -441,6 +444,7 @@ def mincify_build_model(base_build_model : Type[NLIN_BUILD_MODEL]) -> Type[NLIN_
             imgs = tuple(s.defer(mincify.from_mnc(img)) for img in imgs)
             result = s.defer(base_build_model.build_model(imgs=imgs, conf=conf,
                                                   nlin_dir=nlin_dir, nlin_prefix=nlin_prefix,
+                                                  use_robust_averaging=use_robust_averaging,
                                                   initial_target=s.defer(mincify.from_mnc(initial_target))
                                                   #output_name_wo_ext=output_name_wo_ext
                                                   ))

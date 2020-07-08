@@ -25,6 +25,7 @@ class Algorithms(Generic[I, X], metaclass=ABCMeta):
     def average(imgs : Sequence[I],
                 output_dir : str = '.',
                 name_wo_ext : str = "average",
+                robust : Optional[bool] = None,
                 avg_file : I = None) -> Result[I]:
         pass
 
@@ -131,6 +132,7 @@ class NLIN_BUILD_MODEL(NLIN, metaclass=ABCMeta):
                     nlin_dir : str,
                     nlin_prefix : str,
                     initial_target : I,
+                    robust_averaging: bool = None,
                     #mincaverage,
                     output_name_wo_ext : Optional[str] = None): pass
 

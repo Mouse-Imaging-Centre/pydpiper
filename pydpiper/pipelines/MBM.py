@@ -373,6 +373,7 @@ def mbm(imgs : List[MincAtom],
                                                        lsq12_dir=lsq12_dir,
                                                        nlin_dir=nlin_dir,
                                                        nlin_prefix=prefix,
+                                                       use_robust_averaging=options.mbm.nlin.use_robust_averaging,
                                                        resolution=resolution,
                                                        lsq12_conf=options.mbm.lsq12,
                                                        nlin_conf=nlin_conf))  #options.mbm.nlin

@@ -329,6 +329,7 @@ def chain(options):
         intersubj_xfms = s.defer(lsq12_nlin_build_model(imgs=list(s_id_to_intersubj_img_dict.values()),
                                                 lsq12_conf=options.lsq12,
                                                 nlin_conf=nlin_conf,
+                                                use_robust_averaging=options.nlin.use_robust_averaging,
                                                 resolution=options.registration.resolution,
                                                 lsq12_dir=pipeline_lsq12_common_dir,
                                                 nlin_module=build_model_component,

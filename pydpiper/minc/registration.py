@@ -499,8 +499,10 @@ def mincbigaverage(imgs : List[MincAtom],
     avg_cmd = CmdStage(inputs=tuple(imgs), outputs=(avg,),
                        cmd=["mincbigaverage", "-clobber"]
                            + (["--avgnum", avgnum] if avgnum else [])
-                           + (["--robust"] if robust else [])
-                           + (["--tmpdir", tmpdir] if tmpdir else [])
+                           + (["--robust",
+                               "--tmpdir",
+                              os.getenv("TMP", avg.newname("", subdir="tmp").path)]
+                              if robust else [])
                            + (["--sdfile", sdfile] if sdfile else [])
                            + sorted([img.path for img in imgs]) + [avg.path])
 
@@ -1384,6 +1386,8 @@ def get_nonlinear_component(reg_method : str):
     def _antsRegistration():
         import pydpiper.minc.antsRegistration as antsRegistration
         return antsRegistration.ANTSRegistration
+    def _minctracc():
+        return MINCTRACC
     #def _demons():
     #    import pydpiper.itk.demons as demons
     #    return demons.Demons
@@ -1393,18 +1397,19 @@ def get_nonlinear_component(reg_method : str):
     #def _elastix():
     #    import pydpiper.itk.elastix as elastix
     #    return elastix.Elastix
-    def _minctracc():
-        return MINCTRACC
     d = { "ANTS"             : _ANTS,
           "antsRegistration" : _antsRegistration,
           #"demons"           : _demons,
           #"DRAMMS"           : _DRAMMS,
           #"elastix"          : _elastix,
           "minctracc"        : _minctracc }
-    if reg_method in d:
-        return d[reg_method]()
-    else:
-        raise NotImplementedError("nonlinear registration via method '%s'" % reg_method)
+    def f(method):
+      if method in d:
+          return d[method]()
+      else:
+          raise NotImplementedError("nonlinear registration via method '%s'" % reg_method)
+    #return [f(m) for m in reg_methods]
+    return f(reg_method)
 
 
 def parse_many(parser, sep=','):
@@ -1798,6 +1803,7 @@ def multilevel_pairwise_minctracc(imgs: List[MincAtom],
                                   max_pairs : Optional[int],
                                   # max_pairs doesn't even make sense for a non-pairwise MinctraccConf,
                                   # suggesting that the pairwise conf being a list of confs is inappropriate
+                                  use_robust_averaging: bool,
                                   like: MincAtom = None,
                                   output_dir_for_avg: str = ".",
                                   mincaverage = mincbigaverage,
@@ -1849,7 +1855,8 @@ def multilevel_pairwise_minctracc(imgs: List[MincAtom],
                                          src_img=img, target_imgs=gen.sample(imgs, max_pairs)))
                     for img in imgs]
 
-    final_avg = s.defer(mincaverage([xfm.resampled for xfm in avg_xfms], avg_file=final_avg))
+    final_avg = s.defer(mincbigaverage([xfm.resampled for xfm in avg_xfms], avg_file=final_avg,
+                                       robust=use_robust_averaging))
 
     return Result(stages=s, output=WithAvgImgs(avg_imgs=[final_avg], avg_img=final_avg, output=avg_xfms))
 
@@ -1915,9 +1922,11 @@ def lsq12_pairwise(imgs: List[MincAtom],
                    # what to do if both it and a protocol file are supplied?
                    lsq12_conf: LSQ12Conf,
                    lsq12_dir: str,
+                   use_robust_averaging: bool,
                    create_qc_images: bool = True,
                    like: MincAtom = None,
-                   mincaverage = mincbigaverage) -> Result[WithAvgImgs[List[XfmHandler]]]:
+                   #mincaverage = mincbigaverage
+                  ) -> Result[WithAvgImgs[List[XfmHandler]]]:
 
     minctracc_conf = get_linear_configuration_from_options(conf=lsq12_conf,
                                                            transform_type=LinearTransType.lsq12,
@@ -1926,9 +1935,15 @@ def lsq12_pairwise(imgs: List[MincAtom],
     s = Stages()
 
     if lsq12_conf.run_lsq12:
-        avgs_and_xfms = s.defer(multilevel_pairwise_minctracc(imgs=imgs, conf=minctracc_conf, like=like,
-                                                              output_dir_for_avg=lsq12_dir, mincaverage=mincaverage,
-                                                              max_pairs=lsq12_conf.max_pairs))
+        avgs_and_xfms = s.defer(
+          multilevel_pairwise_minctracc(
+            imgs=imgs,
+            conf=minctracc_conf,
+            like=like,
+            use_robust_averaging=use_robust_averaging,
+            output_dir_for_avg=lsq12_dir,
+            mincaverage=mincbigaverage,
+            max_pairs=lsq12_conf.max_pairs))
         # TODO: instead of this case analysis, we could dispatch on overall LSQ12 module as we do for the nonlinear part
     else:
         final_avg = MincAtom(name=os.path.join(lsq12_dir, "lsq12_identity_avg.mnc"),
@@ -2005,6 +2020,7 @@ def lsq12_nlin_build_model(imgs       : List[MincAtom],
                            nlin_module: NLIN_BUILD_MODEL,
                            nlin_conf, # options object
                            resolution : float,
+                           use_robust_averaging : bool,
                            nlin_prefix : str = "") -> Result[WithAvgImgs[List[XfmHandler]]]:
     """
     Runs both a pairwise lsq12 registration followed by a non linear
@@ -2016,6 +2032,7 @@ def lsq12_nlin_build_model(imgs       : List[MincAtom],
     # it should be able to get this passed in....
     lsq12_result = s.defer(lsq12_pairwise(imgs=imgs, like=None,
                                           resolution=resolution,
+                                          use_robust_averaging=use_robust_averaging,
                                           lsq12_conf=lsq12_conf,
                                           lsq12_dir=lsq12_dir))
 
@@ -2052,9 +2069,9 @@ def lsq12_nlin_build_model(imgs       : List[MincAtom],
     nlin_result = s.defer(nlin_module.build_model(imgs=lsq12_resampled_imgs,
                                                   initial_target=target_for_nlin_stages,
                                                   #nlin_module=nlin_module,
-                                                  #conf=nlin_conf,
                                                   conf=nlin_conf,
                                                   nlin_dir=nlin_dir,
+                                                  use_robust_averaging=use_robust_averaging,
                                                   nlin_prefix=nlin_prefix))
 
     # concatenate the transformations from lsq12 and nlin before returning them
