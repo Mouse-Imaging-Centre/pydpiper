@@ -123,6 +123,12 @@ class Stages(ordered_set.OrderedSet):
     def defer(self, result : 'Result[T]') -> T:
         self.update(result.stages)
         return result.output
+    def defer_map(self, results : Tuple['Result[T]']) -> Tuple[T]:
+        # eventually this will have better semantics than `map defer`
+        results = tuple(results)  # TODO decide what type this should be (n-tuple, iterable, etc)
+        for result in results:
+          self.update(result.stages)
+        return tuple(result.output for result in results)
     # TODO this now remembers the order stages were added (due to use of the strangely-named `OrderedSet` package)
     # but due to randomization in iteration order over various data structures, the pipeline_stages files will
     # still be reordered across runs, which is annoying ... might want to fix the random seed or something ...
