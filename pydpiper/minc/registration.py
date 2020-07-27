@@ -2318,9 +2318,9 @@ def lsq6(imgs: List[MincAtom],
                                                            minctracc_conf=default_lsq6_minctracc_conf)
         else:
             mt_conf = conf_from_defaults(defaults)
-        xfms_to_target = [s.defer(multilevel_minctracc(source=img, target=target, conf=mt_conf,
-                                                       transform_info=["-est_center", "-est_translations"]))
-                          for img in imgs]
+        xfms_to_target = s.defer_map([multilevel_minctracc(source=img, target=target, conf=mt_conf,
+                                                       transform_info=["-est_center", "-est_translations"])
+                                     for img in imgs])
     elif conf.lsq6_method == "lsq6_simple":
         defaults = { 'blur_factors'    : [   17,    9,     4],
                      'simplex_factors' : [   40,   28,    16],
@@ -2336,24 +2336,24 @@ def lsq6(imgs: List[MincAtom],
         else:
             mt_conf = conf_from_defaults(defaults)  # FIXME print a warning?!
 
-        xfms_to_target = [s.defer(multilevel_minctracc(source=img,
+        xfms_to_target = s.defer_map([multilevel_minctracc(source=img,
                                                        target=target,
-                                                       conf=mt_conf))
-                          for img in imgs]
+                                                       conf=mt_conf)
+                                     for img in imgs])
     else:
         raise ValueError("bad lsq6 method: %s" % conf.lsq6_method)
 
     if post_alignment_xfm:
-        composed_xfms = [s.defer(xfmconcat([xfm.xfm, post_alignment_xfm],
-                                           name=xfm.xfm.output_sub_dir + "_lsq6"))
-                         for xfm in xfms_to_target]
-        resampled_imgs = ([s.defer(mincresample(img=native_img,
+        composed_xfms = s.defer_map([xfmconcat([xfm.xfm, post_alignment_xfm],
+                                           name=xfm.xfm.output_sub_dir + "_lsq6")
+                                    for xfm in xfms_to_target])
+        resampled_imgs = (s.defer_map([mincresample(img=native_img,
                                                 xfm=overall_xfm,
                                                 like=post_alignment_target,
                                                 interpolation=Interpolation.sinc,
                                                 new_name_wo_ext=native_img.filename_wo_ext + "_lsq6",
-                                                subdir=resample_subdir))
-                           for native_img, overall_xfm in zip(imgs, composed_xfms)]
+                                                subdir=resample_subdir)
+                                      for native_img, overall_xfm in zip(imgs, composed_xfms)])
                           if resample_images else [None] * len(imgs))
         final_xfmhs = [XfmHandler(xfm=overall_xfm,
                                   target=post_alignment_target,
