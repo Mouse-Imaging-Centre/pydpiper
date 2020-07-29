@@ -386,6 +386,8 @@ def _mk_execution_parser(p: ArgParser) -> ArgParser:
     group.add_argument("--defer-directory-creation", default=False,
                        action="store_true", dest="defer_directory_creation",
                        help="Create relevant directories when a stage is run instead of at startup [Default=%(default)s]")
+    group.add_argument("--generate-makeflow", dest="generate_makeflow", default=False, action="store_true",
+                       help="generate Makeflow instead of running")
     return p
 
 

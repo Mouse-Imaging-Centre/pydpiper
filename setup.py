@@ -32,7 +32,8 @@ setup(name='pydpiper',
         'Pyro4',
        # 'pytest',
        #TODO fix get_model_building_procedure in pydpiper/minc/registration_strategies.py. ref issue #387
-        'qbatch'
+        'qbatch',
+        'simplejson'
       ],
       #extras_require = { 'graphing' : ['pygraphviz']},  # could make pygraphviz optional, but then won't auto-install
       platforms="any",

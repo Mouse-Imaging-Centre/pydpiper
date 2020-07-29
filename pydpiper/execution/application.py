@@ -208,7 +208,13 @@ def mk_application(parsers: List[AnnotatedParser], pipeline: Callable[[Any], Res
 
 
 def backend(options):
-    return grid_only_execute if options.execution.submit_server and not options.execution.local else normal_execute
+    if options.execution.generate_makeflow:
+        return generate_makeflow
+
+    if options.execution.submit_server and not options.execution.local:
+        return grid_only_execute
+    else:
+        return normal_execute
 
 # TODO: should create_directories be added as a method to Pipeline?
 def create_directories(stages):
@@ -235,6 +241,25 @@ def normal_execute(pipeline, options):
         create_directories(pipeline.stages) # TODO: or whatever
     pipelineDaemon(pipeline, options, sys.argv[0])
     logger.info("Server has stopped.  Quitting...")
+
+def generate_makeflow(pipeline, options):
+    import simplejson
+    #if not options.execution.defer_directory_creation:  # does makeflow know how to do this?
+    create_directories(pipeline.stages)
+    with open(options.application.pipeline_name + "_makeflow.jx", 'w') as f:
+        f.write(simplejson.dumps(
+          { "rules" :
+            [
+              {
+                "command" : str(stage),
+                "inputs"  : stage.inputFiles,
+                "outputs" : stage.outputFiles
+              }
+              for stage in pipeline.stages
+            ]
+          },
+          indent = '  '
+        ))
 
 def grid_only_execute(pipeline, options):
     if options.execution.queue_type != 'pbs':
