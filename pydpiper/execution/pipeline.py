@@ -22,10 +22,7 @@ import functools
 import math
 from typing import Any
 
-try:
-    from sys import intern
-except:
-    "older Python doesn't namespace `intern`, so do nothing"
+from sys import intern
 
 # TODO move this and Pyro4 imports down into launchServer where pipeline name is available?
 #os.environ["PYRO_LOGLEVEL"] = os.getenv("PYRO_LOGLEVEL", "INFO")
@@ -155,6 +152,7 @@ class CmdStage(PipelineStage):
     def __init__(self, argArray):
         PipelineStage.__init__(self)
         self.cmd = [] # the input array converted to strings
+        self.categories = [] # type: List[str]
         self.parseArgs(argArray)
         #self.checkLogFile()
     def parseArgs(self, argArray):
