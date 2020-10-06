@@ -242,24 +242,31 @@ def normal_execute(pipeline, options):
     pipelineDaemon(pipeline, options, sys.argv[0])
     logger.info("Server has stopped.  Quitting...")
 
+
 def generate_makeflow(pipeline, options):
     import simplejson
-    #if not options.execution.defer_directory_creation:  # does makeflow know how to do this?
-    create_directories(pipeline.stages)
+
+    def remove_none_values(d):
+        return { k : v for k, v in d.items() if v is not None }
+
     with open(options.application.pipeline_name + "_makeflow.jx", 'w') as f:
         f.write(simplejson.dumps(
           { "rules" :
             [
-              {
-                "command" : str(stage),
-                "inputs"  : stage.inputFiles,
-                "outputs" : stage.outputFiles
-              }
+              remove_none_values({
+                "command"     : str(stage),
+                "inputs"      : stage.inputFiles + [ os.path.dirname(f) for f in stage.outputFiles ],
+                "outputs"     : stage.outputFiles,
+                "category"    : stage.category,
+                "environment" : stage.env_vars if stage.env_vars != {} else None
+              })
               for stage in pipeline.stages
-            ]
+            ] + list({ { "command" : f"mkdir -p os.path.dirname(f)", "inputs" : [], "outputs" : os.path.dirname(f) } for f in s.outputFiles for s in pipeline.stages }), # TODO redundant dirname() call!
+            "categories" : {}
           },
           indent = '  '
         ))
+
 
 def grid_only_execute(pipeline, options):
     if options.execution.queue_type != 'pbs':
