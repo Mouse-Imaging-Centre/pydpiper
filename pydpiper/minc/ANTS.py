@@ -206,6 +206,7 @@ class ANTS(NLIN):
         inputs=(source, target) + tuple(similarity_inputs) + cast(tuple, ((source.mask,) if source.mask else ())),
         # need to cast to tuple due to mypy bug; see mypy/issues/622
         outputs=(out_xfm,),
+        category = f"ANTS-{conf.iterations}",
         cmd=['ANTS', '3',
              '--number-of-affine-iterations', '0']
             + similarity_cmds
