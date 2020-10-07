@@ -9,6 +9,9 @@ from pydpiper.core.stages import Stages, Result
 from pydpiper.execution.application import mk_application
 from pydpiper.minc.registration import get_resolution_from_file, registration_targets, lsq6_nuc_inorm
 
+from pydpiper.minc.registration import MincAlgorithms
+from pydpiper.itk.tools import Algorithms as ITKAlgorithms
+
 # def generic_pipeline(options):
 #     s = Stages()
 #
@@ -32,6 +35,7 @@ from pydpiper.minc.registration import get_resolution_from_file, registration_ta
 #     options.registration = options.registration.replace(resolution=resolution)
 #     return (options, targets)
 
+
 def lsq6_pipeline(options):
     # TODO could also allow pluggable pipeline parts e.g. LSQ6 could be substituted out for the modified LSQ6
     # for the kidney tips, etc...
@@ -40,7 +44,11 @@ def lsq6_pipeline(options):
 
     # TODO this is tedious and annoyingly similar to the registration chain and MBM ...
     lsq6_dir      = os.path.join(output_dir, pipeline_name + "_lsq6")
+
+    image_algorithms = { 'minc' : MincAlgorithms, 'itk' : ITKAlgorithms }[options.registration.image_format]()  #reg_method=options.mbm.nlin.reg_method)
+
     imgs = get_imgs(options.application)
+
 
     s = Stages()
 
@@ -61,6 +69,7 @@ def lsq6_pipeline(options):
     lsq6_result = s.defer(lsq6_nuc_inorm(imgs=imgs,
                                          resolution=resolution,
                                          registration_targets=targets,
+                                         image_algorithms=image_algorithms,
                                          lsq6_dir=lsq6_dir,
                                          lsq6_options=options.lsq6))
 

@@ -5,7 +5,7 @@ import sys
 
 from setuptools import setup
 
-min_python_version = (3, 6)
+min_python_version = (3, 7)
 
 if sys.version_info < min_python_version:
     raise ValueError("Minimum Python version supported is %d.%d" %
@@ -22,7 +22,7 @@ setup(name='pydpiper',
       python_requires=">=3.6",
       install_requires=[
         'ConfigArgParse>=0.11.0',
-        'networkx>=2.0b1',
+        'networkx>=2.3',
         'ordered-set',
         'pandas',
         #'pydot',  # use nx.nx_pydot.write_dot to write graphviz files

@@ -421,6 +421,8 @@ def _mk_registration_parser(p: ArgParser) -> ArgParser:
                         "for multiple programs based on the overall size of the subject matter. Instead "
                         "of using the resolution of the files. Currently supported option is: \"mousebrain\" "
                         "[Default=%(default)s]")
+    g.add_argument("--image-format", dest="image_format", choices=["minc", "itk"],
+                   default = "minc", help = "image format [default=%(default)s]")
     return p  # g?
 
 
