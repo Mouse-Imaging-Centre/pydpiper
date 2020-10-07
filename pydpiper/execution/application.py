@@ -255,13 +255,14 @@ def generate_makeflow(pipeline, options):
             [
               remove_none_values({
                 "command"     : str(stage),
-                "inputs"      : stage.inputFiles + [ os.path.dirname(f) for f in stage.outputFiles ],
+                "inputs"      : stage.inputFiles + list({os.path.dirname(f) for f in stage.outputFiles}),
                 "outputs"     : stage.outputFiles,
                 "category"    : stage.category,
                 "environment" : stage.env_vars if stage.env_vars != {} else None
               })
               for stage in pipeline.stages
-            ] + list({ { "command" : f"mkdir -p os.path.dirname(f)", "inputs" : [], "outputs" : os.path.dirname(f) } for f in s.outputFiles for s in pipeline.stages }), # TODO redundant dirname() call!
+            ] + [ { "command" : f"mkdir -p {d}", "inputs" : [], "outputs" : [d] }
+                  for d in list({ os.path.dirname(f) for s in pipeline.stages for f in s.outputFiles }) ],
             "categories" : {}
           },
           indent = '  '
