@@ -68,6 +68,7 @@ class TargetType(AutoEnum):
 RegistrationConf = NamedTuple("RegistrationConf", [("input_space", InputSpace),
                                                    ("resolution", float),
                                                    ("subject_matter", Optional[str]),
+                                                   ("image_format", str)
                                                    #("target_type", TargetType),
                                                    #("target_file", Optional[str])
                                                    ])
@@ -2261,6 +2262,7 @@ def lsq6(imgs: List[MincAtom],
          target: MincAtom,
          resolution: float,
          conf: LSQ6Conf,
+         image_algorithms,
          resample_subdir: str = "resampled",
          resample_images: bool = False,
          post_alignment_xfm: XfmAtom = None,
@@ -2361,12 +2363,12 @@ def lsq6(imgs: List[MincAtom],
         composed_xfms = s.defer_all([xfmconcat([xfm.xfm, post_alignment_xfm],
                                            name=xfm.xfm.output_sub_dir + "_lsq6")
                                     for xfm in xfms_to_target])
-        resampled_imgs = (s.defer_all([mincresample(img=native_img,
-                                                xfm=overall_xfm,
-                                                like=post_alignment_target,
-                                                interpolation=Interpolation.sinc,
-                                                new_name_wo_ext=native_img.filename_wo_ext + "_lsq6",
-                                                subdir=resample_subdir)
+        resampled_imgs = (s.defer_all([image_algorithms.resample(img=native_img,
+                                                                 xfm=overall_xfm,
+                                                                 like=post_alignment_target,
+                                                                 #interpolation=Interpolation.sinc,
+                                                                 new_name_wo_ext=native_img.filename_wo_ext + "_lsq6",
+                                                                 subdir=resample_subdir)
                                       for native_img, overall_xfm in zip(imgs, composed_xfms)])
                           if resample_images else [None] * len(imgs))
         final_xfmhs = [XfmHandler(xfm=overall_xfm,
@@ -2384,12 +2386,12 @@ def lsq6(imgs: List[MincAtom],
         final_xfmhs = xfms_to_target
         if resample_images:
             for native_img, xfm in zip(imgs, final_xfmhs):  # is xfm.resampled even mutable ?!
-                xfm.resampled = s.defer(mincresample(img=native_img,
-                                                     xfm=xfm.xfm,
-                                                     like=xfm.target,
-                                                     interpolation=Interpolation.sinc,
-                                                     new_name_wo_ext=native_img.filename_wo_ext + "_lsq6",
-                                                     subdir=resample_subdir))
+                xfm.resampled = s.defer(image_algorithms.resample(img=native_img,
+                                                                  xfm=xfm.xfm,
+                                                                  like=xfm.target,
+                                                                  interpolation=Interpolation.sinc,
+                                                                  new_name_wo_ext=native_img.filename_wo_ext + "_lsq6",
+                                                                  subdir=resample_subdir))
 
     # we've just performed a 6 parameter alignment between a bunch of input files
     # and a target. The input files could have been the very initial input files to the
@@ -2431,6 +2433,7 @@ def lsq6_nuc_inorm(imgs: List[MincAtom],
                    resolution: float,
                    lsq6_options: LSQ6Conf,
                    lsq6_dir: str,
+                   image_algorithms,
                    create_qc_images: bool = True,
                    create_average: bool = True,
                    subject_matter: Optional[str] = None):
@@ -2439,12 +2442,14 @@ def lsq6_nuc_inorm(imgs: List[MincAtom],
     # run the actual 6 parameter registration
     init_target = registration_targets.registration_native or registration_targets.registration_standard
 
-    source_imgs_to_lsq6_target_xfms = s.defer(lsq6(imgs=imgs, target=init_target,
-                                                   resolution=resolution,
-                                                   conf=lsq6_options,
-                                                   resample_images=not (lsq6_options.nuc or lsq6_options.inormalize),
-                                                   post_alignment_xfm=registration_targets.xfm_to_standard,
-                                                   post_alignment_target=registration_targets.registration_standard))
+    source_imgs_to_lsq6_target_xfms = s.defer(
+      lsq6(imgs=imgs, target=init_target,
+           resolution=resolution,
+           image_algorithms=image_algorithms,
+           conf=lsq6_options,
+           resample_images=not (lsq6_options.nuc or lsq6_options.inormalize),
+           post_alignment_xfm=registration_targets.xfm_to_standard,
+           post_alignment_target=registration_targets.registration_standard))
 
     xfms_to_final_target_space = [xfm_handler.xfm for xfm_handler in source_imgs_to_lsq6_target_xfms]
 
@@ -2458,12 +2463,13 @@ def lsq6_nuc_inorm(imgs: List[MincAtom],
         # native space. Given that there is a mask, we should
         # resample it to that space using the inverse of the
         # lsq6 transformation we have so far
-        masks_in_native_space = [s.defer(mincresample(img=registration_targets.registration_standard.mask,
-                                                      xfm=xfm_to_lsq6,
-                                                      like=native_img,
-                                                      extra_flags=("-keep_real_range", "-labels"),
-                                                      interpolation=Interpolation.nearest_neighbour,
-                                                      invert=True))
+        masks_in_native_space = [s.defer(image_algorithms.resample(img=registration_targets.registration_standard.mask,
+                                                                   xfm=xfm_to_lsq6,
+                                                                   like=native_img,
+                                                                   #extra_flags=("-keep_real_range", "-labels"),
+                                                                   #interpolation=Interpolation.nearest_neighbour,
+                                                                   use_nn_interpolation=True,
+                                                                   invert=True))
                                    if not native_img.mask else native_img.mask
                                  for native_img, xfm_to_lsq6 in zip(imgs, xfms_to_final_target_space)]
 
@@ -2476,11 +2482,11 @@ def lsq6_nuc_inorm(imgs: List[MincAtom],
         # what we get back here is a list of MincAtoms with NUC files
         # we will always apply a final resampling to these files,
         # so these will always be temp files
-        nuc_imgs_in_native_space = [s.defer(nu_correct(src=native_img,
-                                                       resolution=resolution,
-                                                       mask=native_img_mask,
-                                                       subject_matter=subject_matter,
-                                                       subdir="tmp"))
+        nuc_imgs_in_native_space = [s.defer(image_algorithms.nu_correct(src=native_img,
+                                                                        resolution=resolution,
+                                                                        mask=native_img_mask,
+                                                                        subject_matter=subject_matter,
+                                                                        subdir="tmp"))
                                     for native_img, native_img_mask
                                     in zip(imgs,
                                            masks_in_native_space if masks_in_native_space
@@ -2494,10 +2500,10 @@ def lsq6_nuc_inorm(imgs: List[MincAtom],
         # same as with the NUC files, these intensity normalized files will be resampled
         # using the lsq6 transform no matter what, so these ones are temp files
         inorm_imgs_in_native_space = (
-            [s.defer(inormalize(src=nuc_img,
-                                conf=inorm_conf,
-                                mask=native_img_mask,
-                                subdir="tmp"))
+            [s.defer(image_algorithms.inormalize(src=nuc_img,
+                                                 conf=inorm_conf,
+                                                 mask=native_img_mask,
+                                                 subdir="tmp"))
              for nuc_img, native_img_mask in zip(input_imgs_for_inorm,
                                                  masks_in_native_space or [None] * len(input_imgs_for_inorm))])
 
@@ -2505,7 +2511,7 @@ def lsq6_nuc_inorm(imgs: List[MincAtom],
     if lsq6_options.inormalize:
         # the final resampled files should be the normalized files resampled with the 
         # lsq6 transformation
-        final_resampled_lsq6_files = [s.defer(mincresample(
+        final_resampled_lsq6_files = [s.defer(image_algorithms.resample(
                                                 img=inorm_img,
                                                 xfm=xfm_to_lsq6,
                                                 like=registration_targets.registration_standard,
@@ -2520,7 +2526,7 @@ def lsq6_nuc_inorm(imgs: List[MincAtom],
         # resampled with the lsq6 transformation
         nuc_filenames_wo_ext_lsq6 = [nuc_img.filename_wo_ext + "_lsq6" for nuc_img in
                                      nuc_imgs_in_native_space]
-        final_resampled_lsq6_files = [s.defer(mincresample(img=nuc_img,
+        final_resampled_lsq6_files = [s.defer(image_algorithms.resample(img=nuc_img,
                                                            xfm=xfm_to_lsq6,
                                                            like=registration_targets.registration_standard,
                                                            interpolation=Interpolation.sinc,
