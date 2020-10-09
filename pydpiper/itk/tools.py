@@ -1,13 +1,16 @@
 import copy
 import os
-from typing import Optional, Sequence
+from typing import Optional, Sequence, List, Union, Tuple
 from configargparse import Namespace
+from dataclasses import dataclass
 
 from pydpiper.minc.conversion import generic_converter
-from pydpiper.minc.files import ToMinc
+from pydpiper.minc.files import ToMinc, XfmAtom
 from pydpiper.minc.nlin import Algorithms
-from pydpiper.core.stages import Result, CmdStage, Stages
+from pydpiper.core.stages import Result, CmdStage, Stages, identity_result
 from pydpiper.core.files  import ImgAtom, FileAtom
+
+import SimpleITK as sitk
 
 
 # TODO delete ITK prefix?
@@ -62,7 +65,7 @@ class BSpline(Interpolation):
         self.order = order
     def render(self):
         return self.__class__.__name__ + (("[order=%d]" % self.order) if self.order is not None else "")
-class CosineWindowsSinc(Interpolation): pass
+class CosineWindowedSinc(Interpolation): pass
 class WelchWindowedSinc(Interpolation): pass
 class HammingWindowedSinc(Interpolation): pass
 class LanczosWindowedSinc(Interpolation): pass
@@ -129,13 +132,14 @@ def antsApplyTransforms(img,
             "--input", img.path,
             "--reference-image", reference_image.path,
             "--output", out_img.path]
-           + (["--transform", transform.path] if invert is None
-              else ["-t", "[%s,%d]" % (transform.path, invert)])
+           #+ (["--transform", transform.path] if invert is None
+           #   else ["-t", "[%s,%d]" % (transform.path, invert)])
+           + [serialize_transform(transform)]
            + (["--dimensionality", dimensionality] if dimensionality is not None else [])
            + (["--interpolation", interpolation.render()] if interpolation is not None else [])
            + (["--default-voxel-value", str(default_voxel_value)] if default_voxel_value is not None else []))
     s = CmdStage(cmd=cmd,
-                 inputs=(img, transform, reference_image),
+                 inputs=(img, reference_image) + inputs(transform),
                  outputs=(out_img,))
     return Result(stages=Stages([s]), output=out_img)
 
@@ -171,7 +175,7 @@ def resample(img,
     # to know what the main file will be resampled as
     if not new_name_wo_ext:
         # FIXME this is wrong when invert=True
-        new_name_wo_ext = xfm.filename_wo_ext + '-resampled'
+        new_name_wo_ext = os.path.basename(out_path(xfm)) + "-resampled"
 
     new_img = s.defer(resample_simple(img=img, xfm=xfm, like=like,
                                       invert=invert,
@@ -198,10 +202,16 @@ def resample(img,
 
 # is c3d or ImageMath better for this (memory)?
 def max(imgs : Sequence[ImgAtom], out_img : ImgAtom):
-    cmd = CmdStage(inputs = imgs, outputs = (out_img,),
-                   cmd = (['c3d'] + [img.path for img in imgs]
-                          + ['-accum', '-max', '-endaccum', '-o', out_img.path]))
-    return Result(stages=Stages((cmd,)), output=out_img)
+    if len(imgs) > 1:
+        cmd = CmdStage(inputs = imgs, outputs = (out_img,),
+                       cmd = (['c3d'] + [img.path for img in imgs]
+                              + ['-accum', '-max', '-endaccum', '-o', out_img.path]))
+        return Result(stages=Stages((cmd,)), output=out_img)
+    elif len(imgs) == 1:
+        # c3d needs at least two images with -accum
+        return identity_result(imgs[0])
+    else:
+        raise ValueError("need at least one image")
 
 
 def average_images(imgs        : Sequence[ImgAtom],
@@ -273,9 +283,117 @@ def xfmToImage(x : ITKXfmAtom):
     i.labels = None
     return i
 
+@dataclass
+class ConcatTransform:
+    """Since ITK doesn't seem to have a file format for composite transforms,
+     we simply store a list of them wrapped in this thin wrapper"""
+    transforms: List['Transform']
+    name: str
+
+@dataclass
+class IdentityTransform: pass
+
+@dataclass
+class InverseTransform:
+    transform: 'Transform'
+
+# the algebra of transformations:
+Transform = Union[ITKXfmAtom, ConcatTransform, InverseTransform, IdentityTransform]
+
+
+def canonicalize(t : Transform):
+    """Push all inversions as far into the leaves as possible"""
+    if isinstance(t, IdentityTransform):
+        return t
+    elif isinstance(t, InverseTransform):
+        if type(t.transform) == InverseTransform:
+            return canonicalize(t.transform)
+        elif type(t.transform) == IdentityTransform:
+            return IdentityTransform
+        elif type(t.transform) == ConcatTransform:
+            return reversed([canonicalize(InverseTransform(t)) for t in t.transforms])
+        else:
+            return t
+    elif isinstance(t, ConcatTransform):
+        return ConcatTransform([canonicalize(t) for t in t.transforms], name = t.name)
+    elif isinstance(t, XfmAtom):
+        return t
+    else:
+        raise TypeError(f"don't know what to do with this 'transform': {t}")
+
+
+def serialize_transform(t : Transform):
+    """Generate a string suitable for antsApplyTransforms"""
+    t = canonicalize(t)
+    if isinstance(t, IdentityTransform):
+        return ""
+    elif isinstance(t, InverseTransform):
+        return f"-t [{t.path}, 1]"
+    elif isinstance(t, ConcatTransform):
+        return " ".join([serialize_transform(u) for u in t.transforms])
+    elif isinstance(t, XfmAtom):
+        return f"-t {t.path}"
+    else:
+        raise TypeError(f"don't know what to do with this 'transform': {t}")
+
+def inputs(t : Transform) -> Tuple[ITKXfmAtom]:
+    if isinstance(t, XfmAtom): return (t,)
+    elif isinstance(t, IdentityTransform): return ()
+    elif isinstance(t, InverseTransform): return inputs(t.transform)
+    elif isinstance(t, ConcatTransform): return tuple(s for u in t.transforms for s in inputs(u))
+    else: raise TypeError("?!")
+
+def out_path(t : Transform) -> ITKXfmAtom:
+    if isinstance(t, XfmAtom):
+        return t.path
+    elif isinstance(t, IdentityTransform):
+        raise ValueError("shouldn't need to be here")
+    elif isinstance(t, ConcatTransform):
+        return t.name
+    elif isinstance(t, InverseTransform):
+        return t.transform.newname_with_suffix("_inv").path
+    else:
+        raise TypeError(f"{t}?")
+
+
 # TODO move this
 class Algorithms(Algorithms):
-    average   = average_images
+
+    @staticmethod
+    def concat(ts, name):
+        return identity_result(ConcatTransform(ts, name))
+
+    @staticmethod
+    def open(f):
+        return sitk.ReadImage(f)
+
+    @staticmethod
+    def get_resolution_from_file(f):
+        return min(sitk.ReadImage(f).GetSpacing())
+
+    @staticmethod
+    def average(*args, **kwargs): return average_images(*args, **kwargs)
+
+    #@staticmethod
+    #def compose_transforms(xfms): raise NotImplementedError
+    #  CLI tool doesn't seem to exist in the ITK world, just keep list of transforms around?
+
+    @staticmethod
+    def nu_correct(src,
+                   resolution,
+                   mask,
+                   # TODO add weights (-w)
+                   subject_matter,
+                   subdir="tmp"):
+
+        out_img = src.newname_with_suffix("_N")
+
+        cmd = CmdStage(cmd = ["N4BiasFieldCorrection", "-d 3", "-i", src.path, "-o", out_img.path] +
+                             (["-x", mask.path] if mask is not None else []),
+                       inputs = (src, mask),
+                       outputs = (out_img,))
+        return Result(stages=Stages((cmd,)), output=out_img)
+
     @staticmethod
     def blur(img, fwhm, gradient=True, subdir='tmp'):
         # note c3d can take voxel rather than fwhm specification, but the Algorithms interface
@@ -299,7 +417,8 @@ class Algorithms(Algorithms):
                       output=Namespace(img=out_img, gradient=out_gradient)
                                if gradient else Namespace(img=out_img))
 
-    resample = resample
+    @staticmethod
+    def resample(*args, **kwargs): return resample(*args, **kwargs)
 
     @staticmethod
     def scale_transform(xfm, scale, newname_wo_ext):

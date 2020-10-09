@@ -32,6 +32,7 @@ setup(name='pydpiper',
         'Pyro5',
        #TODO fix get_model_building_procedure in pydpiper/minc/registration_strategies.py. ref issue #387
         'qbatch',
+        'simpleitk>=2.0',
         'simplejson'
       ],
       extras_require=extras,
