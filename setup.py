@@ -19,7 +19,7 @@ setup(name='pydpiper',
       author='Miriam Friedel, Matthijs van Eede, Jason Lerch, Jon Pipitone, Fraser MacDonald, Ben Darwin, Nick Wang',
       maintainer_email='benjamin.darwin@sickkids.ca',
       url='https://github.com/Mouse-Imaging-Centre/pydpiper',
-      python_requires=">=3.6",
+      python_requires=">=3.7",
       install_requires=[
         'ConfigArgParse>=0.11.0',
         'networkx>=2.3',
@@ -33,6 +33,7 @@ setup(name='pydpiper',
        # 'pytest',
        #TODO fix get_model_building_procedure in pydpiper/minc/registration_strategies.py. ref issue #387
         'qbatch',
+        'simpleitk>=2.0',
         'simplejson'
       ],
       #extras_require = { 'graphing' : ['pygraphviz']},  # could make pygraphviz optional, but then won't auto-install

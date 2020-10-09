@@ -7,7 +7,7 @@ from pydpiper.pipelines.MAGeT import get_imgs
 from pydpiper.core.arguments import lsq6_parser
 from pydpiper.core.stages import Stages, Result
 from pydpiper.execution.application import mk_application
-from pydpiper.minc.registration import get_resolution_from_file, registration_targets, lsq6_nuc_inorm
+from pydpiper.minc.registration import registration_targets, lsq6_nuc_inorm
 
 from pydpiper.minc.registration import MincAlgorithms
 from pydpiper.itk.tools import Algorithms as ITKAlgorithms
@@ -45,10 +45,10 @@ def lsq6_pipeline(options):
     # TODO this is tedious and annoyingly similar to the registration chain and MBM ...
     lsq6_dir      = os.path.join(output_dir, pipeline_name + "_lsq6")
 
-    image_algorithms = { 'minc' : MincAlgorithms, 'itk' : ITKAlgorithms }[options.registration.image_format]()  #reg_method=options.mbm.nlin.reg_method)
+    image_algorithms = { 'minc' : MincAlgorithms,
+                         'itk'  : ITKAlgorithms }[options.registration.image_format]()  #reg_method=options.mbm.nlin.reg_method)
 
     imgs = get_imgs(options.application)
-
 
     s = Stages()
 
@@ -57,11 +57,12 @@ def lsq6_pipeline(options):
     targets = s.defer(registration_targets(lsq6_conf=options.lsq6,
                                            app_conf=options.application,
                                            reg_conf=options.registration,
+                                           image_algorithms=image_algorithms,
                                            first_input_file=imgs[0].path))
 
     # TODO this is quite tedious and duplicates stuff in the registration chain ...
     resolution = (options.registration.resolution or
-                    get_resolution_from_file(targets.registration_standard.path))
+                  image_algorithms.get_resolution_from_file(targets.registration_standard.path))
 
 
     # This must happen after calling registration_targets otherwise it will resample to options.registration.resolution

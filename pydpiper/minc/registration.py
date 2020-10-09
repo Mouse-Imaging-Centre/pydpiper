@@ -2347,7 +2347,7 @@ def lsq6(imgs: List[MincAtom],
         raise ValueError("bad lsq6 method: %s" % conf.lsq6_method)
 
     if post_alignment_xfm:
-        composed_xfms = s.defer_all([xfmconcat([xfm.xfm, post_alignment_xfm],
+        composed_xfms = s.defer_all([image_algorithms.concat([xfm.xfm, post_alignment_xfm],
                                            name=xfm.xfm.output_sub_dir + "_lsq6")
                                     for xfm in xfms_to_target])
         resampled_imgs = (s.defer_all([image_algorithms.resample(img=native_img,
@@ -2430,7 +2430,8 @@ def lsq6_nuc_inorm(imgs: List[MincAtom],
     init_target = registration_targets.registration_native or registration_targets.registration_standard
 
     source_imgs_to_lsq6_target_xfms = s.defer(
-      lsq6(imgs=imgs, target=init_target,
+      lsq6(imgs=imgs,
+           target=init_target,
            resolution=resolution,
            image_algorithms=image_algorithms,
            conf=lsq6_options,
@@ -2502,7 +2503,8 @@ def lsq6_nuc_inorm(imgs: List[MincAtom],
                                                 img=inorm_img,
                                                 xfm=xfm_to_lsq6,
                                                 like=registration_targets.registration_standard,
-                                                interpolation=Interpolation.sinc,
+                                                #interpolation=Interpolation.sinc,
+                                                use_nn_interpolation=False,
                                                 new_name_wo_ext=inorm_img.filename_wo_ext + "_lsq6",
                                                 subdir="resampled"))
                                       for inorm_img, xfm_to_lsq6
@@ -2516,7 +2518,8 @@ def lsq6_nuc_inorm(imgs: List[MincAtom],
         final_resampled_lsq6_files = [s.defer(image_algorithms.resample(img=nuc_img,
                                                            xfm=xfm_to_lsq6,
                                                            like=registration_targets.registration_standard,
-                                                           interpolation=Interpolation.sinc,
+                                                           #interpolation=Interpolation.sinc,
+                                                           use_nn_interpolation=False,
                                                            new_name_wo_ext=nuc_filename_wo_ext,
                                                            subdir="resampled"))
                                       for nuc_img, xfm_to_lsq6, nuc_filename_wo_ext
@@ -2544,12 +2547,8 @@ def lsq6_nuc_inorm(imgs: List[MincAtom],
                                 output_dir=lsq6_dir,
                                 copy_header_from_first_input=True))
         else:
-            s.defer(mincbigaverage(imgs=final_resampled_lsq6_files,
-                                   output_dir=lsq6_dir))
-        #s.defer(mincaverage(imgs=final_resampled_lsq6_files,
-        #                    output_dir=lsq6_dir,
-        #                    copy_header_from_first_input=lsq6_options.copy_header_info))
-
+            s.defer(image_algorithms.average(imgs=final_resampled_lsq6_files,
+                                             output_dir=lsq6_dir))
     if create_qc_images:
         s.defer(create_quality_control_images(imgs=final_resampled_lsq6_files,
                                               #montage_dir=lsq6_dir,  # FIXME
@@ -2694,6 +2693,7 @@ def verify_correct_lsq6_target_options(init_model: str,
 def registration_targets(lsq6_conf: LSQ6Conf,
                          app_conf,
                          reg_conf,
+                         image_algorithms,
                          first_input_file: Optional[str] = None) -> Result:
 
     target_type   = lsq6_conf.target_type
@@ -2706,8 +2706,13 @@ def registration_targets(lsq6_conf: LSQ6Conf,
     # if we are dealing with either an lsq6 target or a bootstrap model
     # create the appropriate directories for those
     if target_type == TargetType.target:
-        if not can_read_MINC_file(target_file):
-            raise ValueError("Cannot read MINC file: %s" % target_file)
+       # if not can_read_MINC_file(target_file):
+       #     raise ValueError("Cannot read MINC file: %s" % target_file)
+        try:
+            image_algorithms.open(target_file)
+        finally:
+            pass  # ?!
+
         target_file = MincAtom(name=target_file,
                                pipeline_sub_dir=os.path.join(output_dir, pipeline_name +
                                                              "_target_file"))
@@ -2770,6 +2775,7 @@ def is_number(s):
 
 def get_pride_of_models_mapping(pride_csv: str,
                                 output_dir: str,
+                                image_algorithms,
                                 pipeline_name: str):
     """
     Assumptions/requirements for a pride of models:
@@ -2808,13 +2814,13 @@ def get_pride_of_models_mapping(pride_csv: str,
 
         model_in_standard_space = row[model_file_index]
         if not common_resolution:
-            common_resolution = get_resolution_from_file(model_in_standard_space)
+            common_resolution = image_algorithms.get_resolution_from_file(model_in_standard_space)
         else:
-            if not common_resolution == get_resolution_from_file(model_in_standard_space):
+            if not common_resolution == image_algorithms.get_resolution_from_file(model_in_standard_space):
                 raise ValueError("Error: we currently require all the initial models in the "
                                  "pride of models to have the same resolution. The resolution of "
                                  "this file: " + str(model_in_standard_space) + " (" +
-                                 str(get_resolution_from_file(model_in_standard_space)) + ") is different "
+                                 str(image_algorithms.get_resolution_from_file(model_in_standard_space)) + ") is different "
                                  "from the resolution we found so far: " + str(common_resolution))
 
         pride_of_models_dict[float(time_point)] = get_registration_targets_from_init_model(init_model_standard_file=model_in_standard_space,
@@ -2825,17 +2831,7 @@ def get_pride_of_models_mapping(pride_csv: str,
     return pride_of_models_dict
 
 
-def get_resolution_from_file(input_file: str) -> float:
-    """
-    input_file -- string pointing to an existing MINC file
-    """
-    # quite important is that this file actually exists...
-    if not can_read_MINC_file(input_file):
-        raise IOError("\nError: can not read input file: %s\n" % input_file)
 
-    image_resolution = volumeFromFile(input_file).separations
-
-    return min([abs(x) for x in image_resolution])
 
 
 def create_quality_control_images(imgs: List[MincAtom],
@@ -3044,8 +3040,43 @@ def make_xfm_for_grid(grid : MincAtom):
 
 # TODO move?
 class MincAlgorithms(Algorithms):
-    blur     = mincblur
-    average  = mincbigaverage
+
+    @staticmethod
+    def open(f):
+        return volumeFromFile(f)
+
+    @staticmethod
+    def concat(ts, name):
+        return xfmconcat(ts, name)
+
+    @staticmethod
+    def get_resolution_from_file(input_file: str) -> float:
+        """
+        input_file -- string pointing to an existing MINC file
+        """
+        # quite important is that this file actually exists...
+        if not can_read_MINC_file(input_file):
+             raise IOError("\nError: can not read input file: %s\n" % input_file)
+
+        image_resolution = volumeFromFile(input_file).separations
+
+        return min([abs(x) for x in image_resolution])
+
+    @staticmethod
+    def inormalize(*args, **kwargs): return inormalize(*args, **kwargs)
+
+    @staticmethod
+    def nu_correct(*args, **kwargs): return nu_correct(*args, **kwargs)
+
+    @staticmethod
+    def blur(*args, **kwargs): return mincblur(*args, **kwargs)
+
+    @staticmethod
+    def average(*args, **kwargs): return mincbigaverage(*args, **kwargs)
+
+    #blur     = mincblur
+    #average  = mincbigaverage
+
     @staticmethod
     def resample(img,
                  xfm,  # TODO: update to handler?
@@ -3055,7 +3086,8 @@ class MincAlgorithms(Algorithms):
                  new_name_wo_ext = None,
                  subdir = None,
                  postfix = None):
-        return mincresample(img=img, xfm=xfm, like=like, invert=invert,
+        return mincresample(img=img, xfm=xfm,
+                            like=like, invert=invert,
                             interpolation=Interpolation.nearest_neighbour
                               if use_nn_interpolation else Interpolation.sinc,
                             extra_flags=(("-keep_real_range", "-labels") if use_nn_interpolation else ()),
