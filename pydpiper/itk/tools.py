@@ -1,5 +1,6 @@
 import copy
 import os
+import warnings
 from typing import Optional, Sequence, List, Union, Tuple
 from configargparse import Namespace
 from dataclasses import dataclass
@@ -257,6 +258,106 @@ def average_images(imgs        : Sequence[ImgAtom],
                    cmd = ["AverageImages", str(dimensions), avg.path, "%d" % normalize]
                          + [img.path for img in imgs]))
     return Result(stages=s, output=avg)
+
+@dataclass
+class Rigid:
+    gradientStep: float
+    def render(self):
+        return f"Rigid[{self.gradientStep}]"
+@dataclass
+class Affine:
+    gradientStep: float
+    def render(self):
+        return f"Affine[{self.gradientStep}]"
+@dataclass
+class Similarity:
+    gradientStep: float
+    def render(self):
+        return f"Similarity[{self.gradientStep}]"
+@dataclass
+class AlignGeometricCentres:
+    def render(self):
+        return "AlignGeometricCenters"
+@dataclass
+class AlignCentresOfMass:
+    def render(self):
+        return "AlignCentersOfMass"
+
+TransformType = Union[Rigid, Affine, Similarity, AlignGeometricCentres, AlignCentresOfMass]
+
+
+@dataclass
+class MI:
+    fixedImage : FileAtom
+    movingImage : FileAtom
+    numberOfBins : Optional[int]
+    # TODO add sampling
+    def render(self):
+        return (f"MI[{self.fixedImage.path},{self.movingImage.path}"
+                + (f",{self.numberOfBins}" if self.numberOfBins else "") + "]")
+class Mattes:
+    fixedImage : FileAtom
+    movingImage : FileAtom
+    numberOfBins : Optional[int]
+    def render(self):
+        return (f"Mattes[{self.fixedImage.path},{self.movingImage.path}"
+                + (f",{self.numberOfBins}" if self.numberOfBins else "") + "]")
+class GC:
+    """global correlation"""
+    fixedImage : FileAtom
+    movingImage : FileAtom
+    radius : Optional[float]
+    def render(self):
+        return (f"GC[{self.fixedImage.path},{self.movingImage.path}"
+                + (f",{self.radius}" if self.radius else "") + "]")
+
+AntsAIMetric = Union[MI, Mattes, GC]
+
+def antsAI(metrics : List[AntsAIMetric],
+           transform : TransformType,
+           #convergence,
+           fixedImageMask : Optional[FileAtom] = None,
+           movingImageMask : Optional[FileAtom] = None,
+           outputFileName : Optional[str] = None,
+           out_xfm : Optional[XfmAtom] = None,
+           transform_name_wo_ext : Optional[str] = None,
+           dimensionality : int = None):
+    out_file = outputFileName or NotImplemented
+    ex = metrics[0].movingImage
+
+    trans_output_dir = "transforms"
+    #if resample_source and resample_subdir == "tmp":
+    #    trans_output_dir = "tmp"
+
+    if transform_name_wo_ext:
+        name = os.path.join(ex.pipeline_sub_dir, ex.output_sub_dir, trans_output_dir,
+                            f"{transform_name_wo_ext}.xfm")
+    else:
+        name = os.path.join(
+            ex.pipeline_sub_dir,
+            ex.output_sub_dir, trans_output_dir,
+            "{metrics[0].fixedImage.filename_wo_ext}_antsAI_to_{metrics[0].movingImage.filename_wo_ext}.xfm")
+    out_xfm = XfmAtom(name=name, pipeline_sub_dir=ex.pipeline_sub_dir, output_sub_dir=ex.output_sub_dir)
+
+    if fixedImageMask:
+        if movingImageMask:
+            mask_str = f"[{fixedImageMask.path},{movingImageMask.path}]"
+        else:
+            mask_str = fixedImageMask.path
+    elif movingImageMask:
+        warnings.warn("antsAI seemingly can't use a movingImageMask without a fixedImageMask, ignoring")
+
+    s = CmdStage(cmd = ["antsAI"] + ([f"-d {dimensionality}"] if dimensionality is not None else [])
+                   + [f"-m {m.render()}" for m in metrics]
+                   + [f"-t {transform.render()}"]
+                   + ([f"-x {mask_str}"] if fixedImageMask is not None else [])
+                   + [f"-o {out_xfm.path}"],
+                 inputs = tuple(m.fixedImage for m in metrics)
+                          + tuple(m.movingImage for m in metrics)
+                          + ((fixedImageMask,) if fixedImageMask else None)
+                          + ((movingImageMask,) if movingImageMask else None),
+                 outputs = (out_xfm,))
+    return Result(stages=Stages([s]), output=out_xfm)
 
 
 class ToMinc(ToMinc):
