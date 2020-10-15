@@ -119,6 +119,7 @@ def antsApplyTransforms(img,
                         #float: bool = None
                         new_name_wo_ext: str = None,
                         subdir: str = None):
+    invert = not invert   # TODO REMOVE -- only in here due to MINC source/target conventions!!!
 
     if not subdir:
         subdir = 'resampled'
@@ -127,6 +128,8 @@ def antsApplyTransforms(img,
         out_img = img.newname(name=transform.filename_wo_ext + '-resampled', subdir=subdir)
     else:
         out_img = img.newname(name=new_name_wo_ext, subdir=subdir)
+
+    transform = InverseTransform(transform) if invert else transform
 
     # TODO add rest of --output options
     cmd = (["antsApplyTransforms",
@@ -412,7 +415,8 @@ def canonicalize(t : Transform):
         elif type(t.transform) == IdentityTransform:
             return IdentityTransform
         elif type(t.transform) == ConcatTransform:
-            return reversed([canonicalize(InverseTransform(t)) for t in t.transforms])
+            return ConcatTransform(reversed([canonicalize(InverseTransform(s)) for s in t.transform.transforms]),
+                                   name=t.transform.name + "-canon")
         else:
             return t
     elif isinstance(t, ConcatTransform):
@@ -429,7 +433,7 @@ def serialize_transform(t : Transform):
     if isinstance(t, IdentityTransform):
         return ""
     elif isinstance(t, InverseTransform):
-        return f"-t [{t.path}, 1]"
+        return f"-t [{t.transform.path},1]"
     elif isinstance(t, ConcatTransform):
         return " ".join([serialize_transform(u) for u in t.transforms])
     elif isinstance(t, XfmAtom):
