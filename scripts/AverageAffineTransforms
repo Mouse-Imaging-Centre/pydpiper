@@ -1,0 +1,64 @@
+#!/usr/bin/env python3
+
+import argparse
+import sys
+import warnings
+
+import numpy as np
+import scipy.linalg
+import SimpleITK as sitk
+
+
+def make_parser():
+  p = argparse.ArgumentParser()
+  p.add_argument("input_transforms", nargs="+")
+  p.add_argument("output_transform")
+  return p
+
+
+class NotALinearTransformError(TypeError): pass
+
+
+def augmented_matrix(t):
+  d = t.GetDimension()
+  m = np.array(t.GetMatrix()).reshape([d, d])
+  return np.hstack([np.vstack([m,
+                               np.zeros([1, d])]),
+                    np.array(t.GetTranslation() + (1,)).reshape([d + 1, 1])])
+
+def main(argv):
+  args = make_parser().parse_args(argv[1:])
+
+  matrices = []
+  for f in args.input_transforms:
+    t = sitk.ReadTransform(f)
+    if t.IsLinear():
+      t = t.Downcast()
+      matrices.append(augmented_matrix(t))
+      if not np.allclose(t.GetCenter(), 0):
+        raise NotImplementedError(f"nonzero centre (of '{f}') not yet supported")
+    else:
+      raise NotALinearTransformError(f)
+
+  # log-euclidian mean (as used in `xfmavg`).
+  # The idea here is that we cannot simply average the affine matrices since this may not
+  # preserve invertibility (or in the case of e.g., rigid motions,
+  # the property of being a rigid motion).
+  # Instead, we make use of the (matrix) Lie algebra associated to the Lie group of matrices.
+  # (in a not 1-1 fashion) by the matrix logarithm
+  # (see https://en.wikipedia.org/wiki/Lie_group%E2%80%93Lie_algebra_correspondence#Matrix_Lie_groups)
+
+  # TODO we could easily allow weights instead of a simple average.  
+  m = scipy.linalg.expm(sum([scipy.linalg.logm(m) for m in matrices])/len(matrices))
+  if not np.allclose(m.imag, 0):
+    warnings.warn("discarding non-zero complex part {m.imag} of m")
+  m = m.real #.astype('double')
+  d = m.shape[0] - 1
+  t = sitk.AffineTransform(m[:d, :d].reshape(-1),
+                           m[:-1, -1].reshape(-1))
+  # FIXME  need to set centre?
+  sitk.WriteTransform(t, args.output_transform)
+  
+
+if __name__ == '__main__':
+  main(sys.argv)
