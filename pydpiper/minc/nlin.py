@@ -75,7 +75,7 @@ class NLIN(Generic[I, X], metaclass=ABCMeta):
 
   class MultilevelConf: pass
 
-  class ToMinc(ToMinc): pass
+  class ToMinc(ToMinc): pass  # TODO remove ?
 
   class Algorithms(Algorithms): pass
 
@@ -119,6 +119,11 @@ class NLIN(Generic[I, X], metaclass=ABCMeta):
                transform_name_wo_ext : str = None,
                initial_source_transform : Optional[I] = None): pass
 
+# TODO possibly these can be the same class, thus also allowing NLIN_BUILD_MODEL -> BUILD_MODEL etc.
+# TODO everything in sight should probably use dataclasses instead of the 'class C( ... typevars A B C ...)' nonsense to simulate dependent records?
+class LIN(NLIN): pass
+
+class REG(NLIN): pass
 
 
 class NLIN_BUILD_MODEL(NLIN, metaclass=ABCMeta):
@@ -134,6 +139,7 @@ class NLIN_BUILD_MODEL(NLIN, metaclass=ABCMeta):
                     initial_target : I,
                     use_robust_averaging: bool = None,
                     #mincaverage,
+                    robust_averaging: bool = None,
                     output_name_wo_ext : Optional[str] = None): pass
 
     @staticmethod

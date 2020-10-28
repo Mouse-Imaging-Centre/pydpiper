@@ -527,6 +527,8 @@ class Algorithms(Algorithms):
 
     @staticmethod
     def scale_transform(xfm, scale, newname_wo_ext):
+        """scale a nonlinear transformation.
+           Note that a linear transformation to which this is applied is converted to a deformation."""
         s = Stages()
         defs = s.defer(as_deformation(transform=xfm.xfm, reference=xfm.source))
         scaled_defs = (defs.xfm.newname(newname_wo_ext) if newname_wo_ext else
@@ -534,6 +536,17 @@ class Algorithms(Algorithms):
         s.defer(CmdStage(cmd=['c3d', '-scale', str(scale), defs.path, "-o", scaled_defs.path],
                          inputs=(defs,), outputs=(scaled_defs,)))
         return Result(stages=s, output=scaled_defs)
+
+    @staticmethod
+    def average_affine_transformations(xfms, avg_xfm):
+        #if not output_filename_wo_ext:
+        #    output_filename_wo_ext = "average_xfm"
+        #if all_from_same_sub:
+        #    outf = xfms[0].newname(name=output_filename_wo_ext, subdir="transforms", ext=".xfm")
+
+        s = CmdStage(cmd=["AverageAffineTransforms"] + [x.path for x in xfms] + [avg_xfm],
+                     inputs = xfms, outputs = (avg_xfm,))
+        return Result(stages=Stages([s]), output=avg_xfm)
 
     @staticmethod
     def average_transforms(xfms, avg_xfm):
