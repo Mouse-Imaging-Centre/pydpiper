@@ -20,6 +20,7 @@ from pydpiper.minc.nlin import NLIN
 from pydpiper.minc.registration import (mincblur, mincresample, Interpolation,
                                         parse_many, parse_nullable, parse_bool, ParseError,
                                         all_equal, mincbigaverage, WithAvgImgs, MincAlgorithms, parse_n)
+from pydpiper.itk.tools import Algorithms as ITKAlgorithms
 
 SimilarityMetricConf = NamedTuple('SimilarityMetricConf',
                                   [("metric", str),
@@ -381,3 +382,6 @@ class ANTS(NLIN):
                                                                 resolution) for j in range(l)])
 
     return full_configuration
+
+class ANTS_ITK(ANTS):
+    Algorithms = ITKAlgorithms

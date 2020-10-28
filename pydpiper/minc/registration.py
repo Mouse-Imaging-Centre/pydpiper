@@ -19,7 +19,7 @@ from pydpiper.core.stages import CmdStage, Result, Stages, identity_result
 from pydpiper.core.util import pairs, AutoEnum, NamedTuple, raise_, flatten
 from pydpiper.minc.containers import XfmHandler
 from pydpiper.minc.files import MincAtom, XfmAtom, xfmToMinc, IdMinc, mincToXfm
-from pydpiper.minc.nlin import NLIN, NLIN_BUILD_MODEL, Algorithms
+from pydpiper.minc.nlin import NLIN, NLIN_BUILD_MODEL, Algorithms, REG
 
 
 def custom_formatwarning(msg, cat, filename, lineno, line=None):
@@ -1798,6 +1798,112 @@ def multilevel_minctracc(source: MincAtom,
                                     target=target,
                                     resampled=last_resampled))
 
+#class MultilevelRegistration(REG):
+#    Algorithms = REG.Algorithms
+#    Img = Algorithms.I
+#
+#    @staticmethod
+#    def multilevel_registration(): pass  # is multilevel machinery even needed for single source -> single target reg?
+#    # or is this just an artifact or minctracc which we could hide inside MINC classes?
+
+class MultilevelPairwiseRegistration():
+
+  class Reg(REG): pass  # raise NotImplementedError
+
+  #Algorithms = Reg.Algorithms
+  #Img = Algorithms.I
+
+  @classmethod
+  def avg_xfm_from(cls,
+                   conf: MultilevelMinctraccConf,  # TODO change!!
+                   like,  # TODO type these (but Algorithms doesn't have an 'Img' field :D)
+                   output_atom,
+                   src_img,
+                   target_imgs,
+                   affine: Optional[bool] = None):
+    s = Stages()
+
+    xfms = [s.defer(cls.Reg.Algorithms.register(src_img, target_img, conf=conf))
+            for target_img in target_imgs]
+
+    av = Algorithms.average_affine_transforms if affine else Algorithms.average_transforms
+
+    avg_xfm = s.defer(av([xfm.xfm for xfm in xfms],
+                         output_filename_wo_ext="%s_avg_lsq12" % src_img.filename_wo_ext))
+
+    res = s.defer(Algorithms.resample(img=src_img,
+                                      xfm=avg_xfm,
+                                      like=like or src_img,
+                                      use_nn_interpolation=False))
+    return Result(stages=s,
+                  output=XfmHandler(xfm=avg_xfm, source=src_img,
+                                    target=output_atom, resampled=res))
+
+  @classmethod
+  def pairwise_registrations(
+    cls,
+    imgs, #: List[Img],
+    conf,  #: MultilevelConf,  #?!?
+    # transforms : List[] = None,
+    max_pairs: Optional[int],
+    # max_pairs doesn't even make sense for a non-pairwise MinctraccConf,
+    # suggesting that the pairwise conf being a list of confs is inappropriate
+    use_robust_averaging: bool,
+    like = None, #: Optional[Img] = None,
+    affine: Optional[bool] = None,
+    output_dir_for_avg: str = ".",
+    output_name_for_avg: str = None) -> Result[WithAvgImgs[List[XfmHandler]]]:
+    """Pairwise registration of all images.
+    max_pairs - number of images to register each image against. (Currently we might register against one fewer.)
+
+    If no output_name_for_avg is supplied, the output name will be:
+
+    avg_{transform_type}                          -- in case all the configurations have the same transformation type
+    ave_{transform_type_1}_..._{transform_type_n} -- otherwise
+    """
+    s = Stages()
+
+    if max_pairs is not None and max_pairs < 2:
+        raise ValueError("must register at least two pairs")
+
+    if len(imgs) < 2:
+        raise ValueError("currently need at least two images")
+        # otherwise 0 imgs passed to mincavg (could special-case)
+
+    confs = conf.confs
+    # the name of the average file that is produced by this function:
+    if not output_name_for_avg:
+        all_same_transform_type = True
+        first_transform_type = confs[0].linear_conf.transform_type.name if confs[0].linear_conf else "nlin"
+        alternate_name = "avg"
+        for stage in confs:
+            current_transform_type = stage.linear_conf.transform_type.name if stage.linear_conf else "nlin"
+            if current_transform_type != first_transform_type:
+                all_same_transform_type = False
+            alternate_name += "_" + current_transform_type
+        if all_same_transform_type:
+            output_name_for_avg = "avg_" + first_transform_type
+        else:
+            output_name_for_avg = alternate_name
+
+    final_avg = FileAtom(name=os.path.join(output_dir_for_avg, output_name_for_avg + ".mnc"),
+                         pipeline_sub_dir=output_dir_for_avg)
+
+    if max_pairs is None or max_pairs >= len(imgs):
+        avg_xfms = [s.defer(cls.avg_xfm_from(conf=conf, like=like,
+                                             output_atom=final_avg, affine=affine,
+                                             src_img=img, target_imgs=imgs))
+                    for img in imgs]
+    else:
+        avg_xfms = [s.defer(avg_xfm_from(conf=conf, like=like,
+                                         output_atom=final_avg,
+                                         src_img=img, target_imgs=gen.sample(imgs, max_pairs)))
+                    for img in imgs]
+
+    final_avg = s.defer(Algorithms.average([xfm.resampled for xfm in avg_xfms], avg_file=final_avg,
+                                           robust=use_robust_averaging))
+
+    return Result(stages=s, output=WithAvgImgs(avg_imgs=[final_avg], avg_img=final_avg, output=avg_xfms))
 
 def multilevel_pairwise_minctracc(imgs: List[MincAtom],
                                   conf: MultilevelMinctraccConf,
@@ -1865,6 +1971,7 @@ def multilevel_pairwise_minctracc(imgs: List[MincAtom],
 # TODO rename to `register_to_average_of` or something greater ...
 # TODO this should be generalized to use a more general pairwise registration procedure
 # than `multilevel_pairwise_minctracc` since it could be used for many things ...
+# TODO this can be defined inside REG in terms of the functions there and doesn't need to exist separately
 def avg_xfm_from(conf: MultilevelMinctraccConf,
                  like: MincAtom,
                  output_atom: MincAtom,
@@ -1919,6 +2026,7 @@ def avg_xfm_from(conf: MultilevelMinctraccConf,
 # TODO eliminate/provide default val for resolutions, move resolutions into conf, finish conf ...
 def lsq12_pairwise(imgs: List[MincAtom],
                    resolution: float,
+                   image_algorithms: REG,  # TODO instead make `lsq12_pairwise` a method of REG!
                    #conf: MultilevelMinctraccConf,  # TODO: override transform_type field?
                    # FIXME the multilevel minctracc conf should still be programatically settable, but
                    # what to do if both it and a protocol file are supplied?
@@ -1930,27 +2038,31 @@ def lsq12_pairwise(imgs: List[MincAtom],
                    #mincaverage = mincbigaverage
                   ) -> Result[WithAvgImgs[List[XfmHandler]]]:
 
+    #algorithms = MultilevelPairwiseRegistration(image_algorithms)
+    class Reg(MultilevelPairwiseRegistration):
+        Algorithms = image_algorithms
+
     minctracc_conf = get_linear_configuration_from_options(conf=lsq12_conf,
                                                            transform_type=LinearTransType.lsq12,
                                                            file_resolution=resolution)
 
     s = Stages()
 
+
     if lsq12_conf.run_lsq12:
         avgs_and_xfms = s.defer(
-          multilevel_pairwise_minctracc(
+          Reg.pairwise_registrations(
             imgs=imgs,
             conf=minctracc_conf,
             like=like,
             use_robust_averaging=use_robust_averaging,
             output_dir_for_avg=lsq12_dir,
-            mincaverage=mincbigaverage,
             max_pairs=lsq12_conf.max_pairs))
         # TODO: instead of this case analysis, we could dispatch on overall LSQ12 module as we do for the nonlinear part
     else:
         final_avg = MincAtom(name=os.path.join(lsq12_dir, "lsq12_identity_avg.mnc"),
                              pipeline_sub_dir=lsq12_dir)
-        avg = s.defer(mincaverage([img for img in imgs], avg_file=final_avg))
+        avg = s.defer(image_algorithms.average([img for img in imgs], avg_file=final_avg))
         identity_xfm = s.defer(param2xfm(out_xfm=FileAtom(name=os.path.join(lsq12_dir, 'tmp', "identity.xfm"),
                                                           output_sub_dir=os.path.join(lsq12_dir, 'tmp'))))
         identity_xfms = [XfmHandler(source=img, target=avg, xfm=identity_xfm, resampled=img) for img in imgs]
@@ -3125,6 +3237,10 @@ class MincAlgorithms(Algorithms):
                              scaled_grid.path,
                              scaled_xfm.path])))
         return Result(stages=s, output=scaled_xfm)
+
+    @staticmethod
+    def average_affine_transformations(xfms, avg_xfm):
+        return xfmaverage(xfms, avg_xfm.basename_wo_ext)
 
     @staticmethod
     def average_transforms(xfms, avg_xfm):

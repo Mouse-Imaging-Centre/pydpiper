@@ -42,7 +42,8 @@ setup(name='pydpiper',
       data_files=[('config',
                    [os.path.join("config", f)
                     for f in ['CCM_HPF.cfg', 'MICe.cfg', 'MICe_dev.cfg', 'SciNet.cfg', 'SciNet_debug.cfg']])],
-      scripts=([os.path.join("pydpiper/execution", script) for script in
+      scripts=("scripts/AverageAffineTransforms" +
+               [os.path.join("pydpiper/execution", script) for script in
                 ['pipeline_executor.py', 'check_pipeline_status.py']] +
                [os.path.join("pydpiper/pipelines", f) for f in
                 ['asymmetry.py', 'LSQ12.py', 'LSQ6.py', 'MAGeT.py', 'MBM.py', 'NLIN.py',
