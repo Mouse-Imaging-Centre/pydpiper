@@ -9,8 +9,13 @@ from pydpiper.minc.files import MincAtom, ImgAtom, ToMinc
 I = TypeVar('I', bound=ImgAtom)
 X = TypeVar('X')
 
+#from dataclasses import dataclass
 
-class Algorithms(Generic[I, X], metaclass=ABCMeta):
+#@dataclass
+class Algorithms():  #(Generic[I, X], metaclass=ABCMeta):
+
+    I : type
+    X : type
 
     @staticmethod
     @abstractmethod
@@ -45,13 +50,15 @@ class Algorithms(Generic[I, X], metaclass=ABCMeta):
         pass
 
     # must be able to handle arbitrary (not simply pure linear or pure nonlinear) transformations.
-    # we should have a separate method for averaging purely affine transformations.
-    # also, we should track whether or not a transform is pure affine (either by inspecting it
-    # or via additional metadata in pydpiper) in order to use this more efficient functionality when possible
+    # [bug: some of the xfmavg and xfmavg_scipy.py scripts assume exactly zero or one of each of affine and grid!]
     @staticmethod
     @abstractmethod
-    def average_transforms(xfms : Sequence[GenericXfmHandler[I, X]], avg_xfm : I) -> X: pass
+    def average_transforms(xfms : Sequence[GenericXfmHandler[I, X]], avg_xfm : I) -> X: raise NotImplementedError
     # TODO: it seems a bit heavyweight to require XfmHandlers here simply for sampling purposes
+
+    @staticmethod
+    @abstractmethod
+    def average_affine_transforms(xfms, avg_xfm): raise NotImplementedError
 
     @staticmethod
     @abstractmethod
@@ -64,8 +71,11 @@ class Algorithms(Generic[I, X], metaclass=ABCMeta):
 
 
 # TODO not *actually* generic; should take a type as a field, but this is annoying to write down
-class NLIN(Generic[I, X], metaclass=ABCMeta):
+class NLIN():  #, metaclass=ABCMeta):
 #class NLIN(metaclass=ABCMeta):
+
+  I : type
+  X : type
 
   # TODO replace with actual I and X modules which include these extensions!
   img_ext = NotImplemented   # type: str
@@ -108,16 +118,17 @@ class NLIN(Generic[I, X], metaclass=ABCMeta):
   @abstractmethod
   def accepts_initial_transform(): pass
 
-  @classmethod
+  #@classmethod
+  @staticmethod
   @abstractmethod
-  def register(cls,
+  def register(#cls,
                source : I,
-               target : I,
+               target : I, *,
                conf : Conf,
                resample_source : bool,
                resample_subdir : str,
                transform_name_wo_ext : str = None,
-               initial_source_transform : Optional[I] = None): pass
+               initial_source_transform : Optional[I] = None): raise NotImplementedError
 
 # TODO possibly these can be the same class, thus also allowing NLIN_BUILD_MODEL -> BUILD_MODEL etc.
 # TODO everything in sight should probably use dataclasses instead of the 'class C( ... typevars A B C ...)' nonsense to simulate dependent records?
@@ -126,7 +137,7 @@ class LIN(NLIN): pass
 class REG(NLIN): pass
 
 
-class NLIN_BUILD_MODEL(NLIN, metaclass=ABCMeta):
+class NLIN_BUILD_MODEL(NLIN):  #, metaclass=ABCMeta):
 
     class BuildModelConf: pass
 

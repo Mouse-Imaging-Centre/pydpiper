@@ -15,10 +15,10 @@ from configargparse import Namespace
 
 from pyminc.volumes.factory import volumeFromFile  # type: ignore
 
-from pydpiper.core.files import FileAtom
-from pydpiper.core.stages import CmdStage, Result, Stages
-from pydpiper.core.util import AutoEnum, NamedTuple, raise_, flatten
+from pydpiper.core.files import FileAtom, ImgAtom
+from pydpiper.core.stages import CmdStage, Result, Stages, identity_result
 from pydpiper.core.templating import rendered_template_to_command, templating_env
+from pydpiper.core.util import pairs, AutoEnum, NamedTuple, raise_, flatten
 from pydpiper.minc.containers import XfmHandler
 from pydpiper.minc.files import MincAtom, XfmAtom, xfmToMinc, IdMinc, mincToXfm
 from pydpiper.minc.nlin import NLIN, NLIN_BUILD_MODEL, Algorithms, REG
@@ -68,7 +68,8 @@ class TargetType(AutoEnum):
 RegistrationConf = NamedTuple("RegistrationConf", [("input_space", InputSpace),
                                                    ("resolution", float),
                                                    ("subject_matter", Optional[str]),
-                                                   ("image_format", str)
+                                                   #("image_format", str),
+                                                   ("image_algorithms", str)
                                                    #("target_type", TargetType),
                                                    #("target_file", Optional[str])
                                                    ])
@@ -96,6 +97,7 @@ LSQ12Conf = NamedTuple('LSQ12Conf', [('run_lsq12', bool),
                                      ('max_pairs', Optional[int]),  # should these be handles, not strings?
                                      ('like_file', Optional[str]),   # in that case, parser could open the file...
                                      ('protocol', Optional[str]),
+                                     ('registration_method', str),
                                      ('generate_tournament_style_lsq12_avg', Optional[bool])])
 
 
@@ -1266,7 +1268,13 @@ def parse_minctracc_protocol(f, base_minctracc_conf, parsers, names,
                              modify : Callable[[MinctraccConf, Any], MinctraccConf]):
     params = list(parsers.keys())
 
-    registration_type = "linear" if type(base_minctracc_conf) == LinearMinctraccConf else "non-linear"
+    if type(base_minctracc_conf) == LinearMinctraccConf:
+        registration_type = "linear"
+    elif type(base_minctracc_conf) == NonlinearMinctraccConf:
+        registration_type = "nonlinear"
+    else:
+        raise TypeError(f"what sort of registration is {base_minctracc_conf}?")
+
     # build a mapping from (Python, not file) field names to a list of values (one for each generation)
     d = {}
     for l in f:
@@ -1288,11 +1296,14 @@ def parse_minctracc_protocol(f, base_minctracc_conf, parsers, names,
         raise ParseError("Invalid minctracc configuration: "
                          "all params must be given for the same number of generations.")
     if len(d) == 0:
-        raise ParseError("Empty file ...")   # TODO should this really be an error?
+        warnings.warn("Empty config file")   # formerly an error
     for k in d.copy():  # otherwise d changes size during iteration ...
         if is_ignored_key(k):
+            registration_type = "linear" if type(base_minctracc_conf) == LinearMinctraccConf else "non-linear"
             # TODO change to warn once:
-            warnings.warn("Note: the '%s' parameter is not used for %s minctracc registrations. It's specified in the protocol, but won't have any effect." % (k, registration_type))  # doesn't have to be same length -> can crash code below
+            warnings.warn("Note: the '%s' parameter is not used for %s minctracc registrations."
+                          "It's specified in the protocol, but won't have any effect." % (k, registration_type))
+            # doesn't have to be same length -> can crash code below
             del d[k]
 
     vs = list(d.values())
@@ -1365,7 +1376,7 @@ def parse_minctracc_linear_protocol(f, transform_type : LinearTransType,
 
     return parse_minctracc_protocol(f=f, names={}, parsers=parsers, is_ignored_key=is_ignored_key,
                                     modify=lambda b, c: b.replace(linear_conf=c),
-                                    base_minctracc_conf=base_minctracc_conf)
+                                    base_minctracc_conf=base_minctracc_conf(transform_type))
 
 
 def get_linear_configuration_from_options(conf, transform_type : LinearTransType, file_resolution : float) \
@@ -1836,18 +1847,22 @@ class MultilevelPairwiseRegistration():
                    affine: Optional[bool] = None):
     s = Stages()
 
-    xfms = [s.defer(cls.Reg.Algorithms.register(src_img, target_img, conf=conf))
+    xfms = [s.defer(cls.Reg.register(src_img, target_img,
+                                     resample_source=False,
+                                     resample_subdir="tmp",
+                                     conf=conf))
             for target_img in target_imgs]
 
-    av = Algorithms.average_affine_transforms if affine else Algorithms.average_transforms
+    av = cls.Reg.Algorithms.average_affine_transforms if affine else cls.Reg.Algorithms.average_transforms
 
-    avg_xfm = s.defer(av([xfm.xfm for xfm in xfms],
-                         output_filename_wo_ext="%s_avg_lsq12" % src_img.filename_wo_ext))
+    avg_xfm = s.defer(av(xfms,
+                         src_img.newname_with_suffix(suffix="_avg_lsq12", ext=".xfm")))
+                         #output_filename_wo_ext="%s_avg_lsq12" % src_img.filename_wo_ext))
 
-    res = s.defer(Algorithms.resample(img=src_img,
-                                      xfm=avg_xfm,
-                                      like=like or src_img,
-                                      use_nn_interpolation=False))
+    res = s.defer(cls.Reg.Algorithms.resample(img=src_img,
+                                              xfm=avg_xfm,
+                                              like=like or src_img,
+                                              use_nn_interpolation=False))
     return Result(stages=s,
                   output=XfmHandler(xfm=avg_xfm, source=src_img,
                                     target=output_atom, resampled=res))
@@ -1899,8 +1914,8 @@ class MultilevelPairwiseRegistration():
         else:
             output_name_for_avg = alternate_name
 
-    final_avg = FileAtom(name=os.path.join(output_dir_for_avg, output_name_for_avg + ".mnc"),
-                         pipeline_sub_dir=output_dir_for_avg)
+    final_avg = ImgAtom(name=os.path.join(output_dir_for_avg, output_name_for_avg + ".mnc"),
+                        pipeline_sub_dir=output_dir_for_avg)
 
     if max_pairs is None or max_pairs >= len(imgs):
         avg_xfms = [s.defer(cls.avg_xfm_from(conf=conf, like=like,
@@ -1908,13 +1923,13 @@ class MultilevelPairwiseRegistration():
                                              src_img=img, target_imgs=imgs))
                     for img in imgs]
     else:
-        avg_xfms = [s.defer(avg_xfm_from(conf=conf, like=like,
-                                         output_atom=final_avg,
-                                         src_img=img, target_imgs=gen.sample(imgs, max_pairs)))
+        avg_xfms = [s.defer(cls.avg_xfm_from(conf=conf, like=like,
+                                             output_atom=final_avg, affine=affine,
+                                             src_img=img, target_imgs=gen.sample(imgs, max_pairs)))
                     for img in imgs]
 
-    final_avg = s.defer(Algorithms.average([xfm.resampled for xfm in avg_xfms], avg_file=final_avg,
-                                           robust=use_robust_averaging))
+    final_avg = s.defer(cls.Reg.Algorithms.average([xfm.resampled for xfm in avg_xfms], avg_file=final_avg,
+                                                   robust=use_robust_averaging))
 
     return Result(stages=s, output=WithAvgImgs(avg_imgs=[final_avg], avg_img=final_avg, output=avg_xfms))
 
@@ -2053,21 +2068,24 @@ def lsq12_pairwise(imgs: List[MincAtom],
 
     #algorithms = MultilevelPairwiseRegistration(image_algorithms)
     class Reg(MultilevelPairwiseRegistration):
-        Algorithms = image_algorithms
+        Reg = image_algorithms
 
-    minctracc_conf = get_linear_configuration_from_options(conf=lsq12_conf,
-                                                           transform_type=LinearTransType.lsq12,
-                                                           file_resolution=resolution)
+    #conf = get_linear_configuration_from_options(conf=lsq12_conf,
+    #                                             transform_type=LinearTransType.lsq12,
+    #                                             file_resolution=resolution)
+    if lsq12_conf.protocol is None:
+        raise ValueError("lsq12 conf currently can't be none, welp")
+    conf = Reg.Reg.parse_multilevel_protocol_file(lsq12_conf.protocol, resolution=resolution)
 
     s = Stages()
-
 
     if lsq12_conf.run_lsq12:
         avgs_and_xfms = s.defer(
           Reg.pairwise_registrations(
             imgs=imgs,
-            conf=minctracc_conf,
+            conf=conf,
             like=like,
+            affine=True,
             use_robust_averaging=use_robust_averaging,
             output_dir_for_avg=lsq12_dir,
             max_pairs=lsq12_conf.max_pairs))
@@ -3252,8 +3270,8 @@ class MincAlgorithms(Algorithms):
         return Result(stages=s, output=scaled_xfm)
 
     @staticmethod
-    def average_affine_transformations(xfms, avg_xfm):
-        return xfmaverage(xfms, avg_xfm.basename_wo_ext)
+    def average_affine_transforms(xfms, avg_xfm):
+        return xfmaverage([xfm.xfm for xfm in xfms], avg_xfm.filename_wo_ext)
 
     @staticmethod
     def average_transforms(xfms, avg_xfm):
@@ -3328,3 +3346,10 @@ class MINCTRACC(NLIN):
                                     #subdir=resample_subdir,  # TODO broken
                                     resample_source=resample_source)
 
+class MINCTRACC_LSQ12(MINCTRACC):  # kinda silly since it hard codes 12 params
+    @staticmethod
+    def parse_multilevel_protocol_file(filename, resolution):
+        return parse_minctracc_linear_protocol_file(filename, transform_type=LinearTransType.lsq12)
+    @staticmethod
+    def parse_protocol_file(cls, filename, resolution):
+        return parse_minctracc_linear_protocol_file(filename, transform_type=LinearTransType.lsq12)
