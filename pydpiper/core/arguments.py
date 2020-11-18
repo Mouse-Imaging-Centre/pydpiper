@@ -366,7 +366,7 @@ def _mk_execution_parser(p: ArgParser) -> ArgParser:
                        help="Wrapper inside of which to run the command, e.g., '/usr/bin/time -v'. [Default='%(default)s']")
     group.add_argument("--check-input-files", dest="check_input_files", action="store_true",
                        help="Check overall pipeline inputs exist and, when applicable, "
-                            "are valid MINC files [Default=%(default)s]")
+                            "are valid image files [Default=%(default)s]")
     group.add_argument("--no-check-input-files", dest="check_input_files", action="store_false",
                        help="Opposite of --check-input-files")
     group.set_defaults(check_inputs=True)
@@ -421,8 +421,8 @@ def _mk_registration_parser(p: ArgParser) -> ArgParser:
                         "for multiple programs based on the overall size of the subject matter. Instead "
                         "of using the resolution of the files. Currently supported option is: \"mousebrain\" "
                         "[Default=%(default)s]")
-    g.add_argument("--image-format", dest="image_format", choices=["minc", "itk"],
-                   default = "minc", help = "image format [default=%(default)s]")
+    g.add_argument("--image-algorithms", dest="image_algorithms", choices=["minc", "itk"],
+                   default = "minc", help = "image processing algorithms to use [default=%(default)s]")
     return p  # g?
 
 
@@ -641,6 +641,9 @@ def _mk_lsq12_parser():
                         "Parameters must be specified as in the following example: \n"
                         "applications_testing/test_data/minctracc_example_linear_protocol.csv \n"
                         "[Default = %(default)s].")
+    p.add_argument("--lsq12-registration-method", dest="registration_method", choices=["minctracc", "ANTS"],
+                   default = "minctracc",
+                   help = "lsq12 registration program to use [Default = %(default)s]")
     #p.add_argument("--generate-tournament-style-lsq12-avg", dest="generate_tournament_style_lsq12_avg",
     #               action="store_true",
     #               help="Instead of creating the average of the lsq12 resampled files "
