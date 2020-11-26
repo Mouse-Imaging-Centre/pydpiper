@@ -15,7 +15,7 @@ from pydpiper.core.stages import Stages, Result, CmdStage
 from pydpiper.execution.application import mk_application
 from pydpiper.minc.analysis import voxel_vote
 from pydpiper.minc.files            import MincAtom, XfmAtom
-from pydpiper.minc.registration     import (check_MINC_input_files, lsq12_nlin, custom_formatwarning,
+from pydpiper.minc.registration     import (ensure_distinct_basenames, lsq12_nlin, custom_formatwarning,
                                             get_linear_configuration_from_options, LinearTransType,
                                             mincresample_new, mincmath, Interpolation, xfmconcat, xfminvert,
                                             get_nonlinear_component)
@@ -589,7 +589,7 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir, build_model_xfms=N
 def maget_pipeline(options):
 
     imgs = get_imgs(options.application)
-    check_MINC_input_files([img.path for img in imgs])
+    ensure_distinct_basenames([img.path for img in imgs])
     # TODO fixup masking protocols ...
 
     if options.application.csv_file is not None:

@@ -16,10 +16,10 @@ from pydpiper.core.arguments import (execution_parser, registration_parser, appl
                                      AnnotatedParser, BaseParser)
 from pydpiper.execution.application import execute
 from pydpiper.minc.registration import (
-  check_MINC_input_files, lsq12_nlin, get_pride_of_models_mapping, TargetType,
-  xfmconcat, concat_xfmhandlers, get_linear_configuration_from_options, LinearTransType,
-  get_resolution_from_file, registration_targets, get_nonlinear_component,
-  mincresample, xfminvert, invert_xfmhandler, mincresample_new)
+    ensure_distinct_basenames, lsq12_nlin, get_pride_of_models_mapping, TargetType,
+    xfmconcat, concat_xfmhandlers, get_linear_configuration_from_options, LinearTransType,
+    get_resolution_from_file, registration_targets, get_nonlinear_component,
+    mincresample, xfminvert, invert_xfmhandler, mincresample_new)
 from pydpiper.minc.files import MincAtom
 
 
@@ -45,7 +45,7 @@ def tamarack_pipeline(options):
                                                             pipeline_sub_dir=os.path.join(first_level_dir,
                                                                                           "%s_processed" % r.group)))))
 
-    check_MINC_input_files(files_df.file.apply(lambda img: img.path))
+    ensure_distinct_basenames(files_df.file.apply(lambda img: img.path))
 
     #grouped_files_df = pd.DataFrame({'file' : pd.concat([imgs])}).assign(group=lambda df: df.index)
 

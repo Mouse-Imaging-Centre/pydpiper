@@ -15,7 +15,7 @@ from pydpiper.pipelines.twolevel_model_building import two_level
 from pydpiper.core.arguments import (execution_parser, registration_parser, application_parser, parse, CompoundParser,
                                      AnnotatedParser)
 from pydpiper.execution.application import execute
-from pydpiper.minc.registration import volflip, check_MINC_input_files
+from pydpiper.minc.registration import volflip, ensure_distinct_basenames
 from pydpiper.minc.files import MincAtom
 
 
@@ -31,7 +31,7 @@ def asymmetry_pipeline(options):
 
     imgs_ = get_imgs(options.application)
 
-    check_MINC_input_files([img.path for img in imgs_])
+    ensure_distinct_basenames([img.path for img in imgs_])
 
     imgs  = pd.Series(imgs_, index=[img.filename_wo_ext for img in imgs_])
     flipped_imgs = imgs.apply(lambda img: s.defer(volflip(img)))  # TODO add flags to control flip axis ...
@@ -40,7 +40,7 @@ def asymmetry_pipeline(options):
     for f_i in flipped_imgs:
         f_i.output_sub_dir += "_flipped"
 
-    check_MINC_input_files(imgs.apply(lambda img: img.path))
+    ensure_distinct_basenames(imgs.apply(lambda img: img.path))
 
     grouped_files_df = pd.DataFrame({'file' : pd.concat([imgs, flipped_imgs])}).assign(group=lambda df: df.index)
 

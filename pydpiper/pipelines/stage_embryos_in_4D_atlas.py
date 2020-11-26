@@ -14,7 +14,7 @@ from pydpiper.core.stages           import Stages, Result
 from pydpiper.minc.analysis         import mincblob
 from pydpiper.pipelines.MAGeT       import get_imgs
 from pydpiper.minc.files            import MincAtom
-from pydpiper.minc.registration     import (check_MINC_input_files, lsq6_lsq12_nlin, LSQ6Conf,
+from pydpiper.minc.registration     import (ensure_distinct_basenames, lsq6_lsq12_nlin, LSQ6Conf,
                                             MinctraccConf, get_resolution_from_file,
                                             get_linear_configuration_from_options, LinearTransType,
                                             get_nonlinear_component, invert_xfmhandler, minc_displacement)
@@ -157,7 +157,7 @@ def stage_embryos_pipeline(options):
     imgs_and_rough_volume = pd.DataFrame({"mincatom" : imgs,
                                           "rough_volume" : pd.Series(rough_volume_imgs, dtype=float)})
 
-    check_MINC_input_files([img.path for img in imgs])
+    ensure_distinct_basenames([img.path for img in imgs])
 
     output_directory = options.application.output_directory
     output_sub_dir = os.path.join(output_directory,

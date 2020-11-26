@@ -2238,7 +2238,7 @@ def can_read_MINC_file(filename: str) -> bool:
     return subprocess.call(["mincinfo", filename], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) == 0
 
 
-def check_MINC_input_files(args: List[str]) -> None:
+def ensure_distinct_basenames(args: List[str]) -> None:
     """
     This is a general function that checks MINC input files to a pipeline. It uses
     the program mincinfo to test whether the input files are readable MINC files,
@@ -2250,16 +2250,6 @@ def check_MINC_input_files(args: List[str]) -> None:
     """
     if len(args) < 1:
         raise ValueError("\nNo input files are provided.\n")
-    # this part is disabled for now since `check_inputs` in `application.py` automatically checks _input_ minc files:
-    #else:
-    #    # here we should also check that the input files can be read
-    #    issuesWithInputs = False
-    #    for inputF in args:
-    #        if not can_read_MINC_file(inputF):  # FIXME this will be quite slow on SciNet, etc.
-    #            print("\nError: can not read input file: " + str(inputF) + "\n", file=sys.stderr)
-    #            issuesWithInputs = True
-    #    if issuesWithInputs:
-    #        raise ValueError("\nIssues reading input files.\n")
 
     # lastly we should check that the actual filenames are distinct, because
     # directories are made based on the basename
