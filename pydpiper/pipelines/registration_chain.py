@@ -16,7 +16,7 @@ from pydpiper.core.stages import Result
 from pydpiper.minc.nlin import NLIN
 from pydpiper.minc.registration import (Stages,
                                         mincaverage,
-                                        concat_xfmhandlers, check_MINC_input_files, registration_targets,
+                                        concat_xfmhandlers, ensure_distinct_basenames, registration_targets,
                                         lsq6_nuc_inorm, get_resolution_from_file, XfmHandler,
                                         InputSpace, lsq12_nlin_build_model, TargetType,
                                         MinctraccConf,
@@ -190,7 +190,7 @@ def chain(options):
         for subj_time_pt, subj_filename in subj.time_pt_dict.items():
             all_Minc_atoms.append(subj_filename)
     # check_MINC_input_files takes strings, so pass along those instead of the actual MincAtoms
-    check_MINC_input_files([minc_atom.path for minc_atom in all_Minc_atoms])
+    ensure_distinct_basenames([minc_atom.path for minc_atom in all_Minc_atoms])
 
     if options.registration.input_space == InputSpace.lsq6 or \
         options.registration.input_space == InputSpace.lsq12:

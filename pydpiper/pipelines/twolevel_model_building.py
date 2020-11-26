@@ -13,7 +13,7 @@ from pydpiper.pipelines.registration_chain import get_closest_model_from_pride_o
 
 from pydpiper.minc.analysis import determinants_at_fwhms
 from pydpiper.minc.files import MincAtom
-from pydpiper.minc.registration import (concat_xfmhandlers, invert_xfmhandler, mincresample_new, check_MINC_input_files,
+from pydpiper.minc.registration import (concat_xfmhandlers, invert_xfmhandler, mincresample_new, ensure_distinct_basenames,
                                         TargetType, get_pride_of_models_mapping, get_resolution_from_file,
                                         registration_targets)
 from pydpiper.pipelines.MBM import mbm, MBMConf, mk_mbm_parser
@@ -62,7 +62,7 @@ def two_level_pipeline(options : TwoLevelConf):
 
     # TODO is it actually sufficient that *within-study* filenames are distinct, as follows??
     for name, g in files_df.groupby("group"):   # TODO: collect the outputs
-        check_MINC_input_files(g.file.map(lambda x: x.path))
+        ensure_distinct_basenames(g.file.map(lambda x: x.path))
     #check_MINC_input_files(files_df.file.map(lambda x: x.path))
 
     pipeline = two_level(grouped_files_df=files_df, options=options)

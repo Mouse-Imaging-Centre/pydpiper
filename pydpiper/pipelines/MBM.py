@@ -19,12 +19,13 @@ from pydpiper.minc.thickness import cortical_thickness
 #TODO fix up imports, naming, stuff in registration vs. pipelines, ...
 from pydpiper.minc.files        import MincAtom, XfmAtom
 from pydpiper.minc.registration import (lsq6_nuc_inorm, lsq12_nlin_build_model, registration_targets,
-                                        LSQ6Conf, LSQ12Conf, get_resolution_from_file, concat_xfmhandlers,
-                                        invert_xfmhandler, check_MINC_input_files, lsq12_nlin,
+                                        LSQ6Conf, LSQ12Conf, concat_xfmhandlers,
+                                        invert_xfmhandler, ensure_distinct_basenames, lsq12_nlin,
                                         LinearTransType, get_linear_configuration_from_options, mincresample_new,
-                                        Interpolation, param2xfm, get_nonlinear_component)
+                                        Interpolation, param2xfm, get_nonlinear_component, MincAlgorithms)
 from pydpiper.minc.analysis     import determinants_at_fwhms, StatsConf
-from pydpiper.minc.thickness    import thickness_parser
+#from pydpiper.minc.thickness    import thickness_parser
+from pydpiper.itk.tools import Algorithms as ITKAlgorithms
 
 from pydpiper.pipelines.MAGeT import maget, maget_parsers, fixup_maget_options, maget_mask, get_imgs
 
@@ -34,13 +35,15 @@ MBMConf = NamedTuple('MBMConf', [('lsq6',  LSQ6Conf),
                                  ('nlin',  NLINConf),
                                  ('stats', StatsConf)])
 
-
 def mbm_pipeline(options : MBMConf):
     s = Stages()
 
     imgs = get_imgs(options.application)
 
-    check_MINC_input_files([img.path for img in imgs])
+    # TODO extract this part -- it duplicates part of the LSQ12 pipeline, etc.
+    algorithms = ({ 'minc' : MincAlgorithms(), 'itk' : ITKAlgorithms() }).get(options.registration.image_algorithms)
+
+    ensure_distinct_basenames([img.path for img in imgs])
 
     output_dir = options.application.output_directory
 

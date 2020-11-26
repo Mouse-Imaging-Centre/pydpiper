@@ -40,6 +40,8 @@ def LSQ12_pipeline(options):
 
     imgs = [ImgAtom(f, pipeline_sub_dir=processed_dir) for f in options.application.files]
 
+    # TODO check input files as in MBM etc. ...
+
     # determine LSQ12 settings by overriding defaults with
     # any settings present in protocol file, if it exists
     # could add a hook to print a message announcing completion, output files,
