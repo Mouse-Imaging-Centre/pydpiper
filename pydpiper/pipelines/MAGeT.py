@@ -11,7 +11,7 @@ import pandas as pd
 
 from pydpiper.core.arguments        import (lsq12_parser, nlin_parser, stats_parser,
                                             CompoundParser, AnnotatedParser, BaseParser)
-from pydpiper.core.stages import Stages, Result
+from pydpiper.core.stages import Stages, Result, CmdStage
 from pydpiper.execution.application import mk_application
 from pydpiper.minc.analysis import voxel_vote
 from pydpiper.minc.files            import MincAtom, XfmAtom
@@ -74,6 +74,23 @@ def find_by(f, xs, on_empty=None):  # TODO move to util
         raise ValueError("Nothing in iterable satisfies the predicate")
 
 
+def dilate(infile, voxels, subdir="tmp"):
+    out = infile.newname_with_suffix(f"_dilated_{voxels}", subdir = subdir)
+    c = CmdStage(cmd = ["mincmorph", "-clobber", "-successive", f"{'D'*voxels}", infile.path, out.path],
+                 inputs = (infile,), outputs = (out,))
+    return Result(stages=Stages([c]), output=out)
+
+
+def hard_mask(img, *, mask, dilation_voxels : int, subdir="tmp"):
+    s = Stages()
+    return Result(stages=s, output=s.defer(
+        mincmath('mul',
+                 vols=[img,
+                       s.defer(dilate(mask, dilation_voxels, subdir=subdir))
+                       if dilation_voxels else mask],
+                 out_atom=img.newname_with_suffix("_hard-masked", subdir="resampled"))))
+
+
 def get_atlases(maget_options, pipeline_sub_dir : str):
 
     atlas_dir, atlas_csv = maget_options.atlas_lib, maget_options.atlas_csv
@@ -93,12 +110,29 @@ def get_atlases(maget_options, pipeline_sub_dir : str):
     if len(atlases) == 0:
         raise ValueError("Zero atlases found in specified location '%s' ..." % (atlas_dir or atlas_csv))
 
+    s = Stages()
+    if maget_options.hard_mask:
+        hard_masked = atlases.apply(lambda img: s.defer(hard_mask(img, mask=img.mask,
+                                                                  dilation_voxels=maget_options.hard_mask_dilation)))
+        # TODO is anything necessary here (mostly masking after allowing dilated masks):
+        for ix, img in enumerate(hard_masked):
+            hard_masked[ix].mask = atlases[ix].mask  # seems redundant (hard and soft mask now equal)
+            setattr(hard_masked[ix], "hard_mask", atlases[ix].mask)  # need the hard mask to propagate to the subjects
+            hard_masked[ix].labels = atlases[ix].labels
+        atlases = hard_masked
+        del hard_masked  ##??
+
+    if maget_options.mask_dilation:
+        for im in atlases:
+            im.mask = s.defer(dilate(im.mask, voxels=maget_options.mask_dilation, subdir="tmp"))
+
     # TODO check the atlases exist (known in atlases_from_dir case!)/are readable files?!
     # TODO issue a warning if not all atlases used or if more atlases requested than available?
     # TODO also, doesn't slicing with a higher number (i.e., if max_templates > n) go to the end of the list anyway?
     # TODO arbitrary; could choose atlases better ...
     # TODO probably the [:max_templates] shouldn't be done here but in the application?
-    return atlases[:max_templates]
+
+    return Result(stages=s, output=atlases[:max_templates])
 
 # TODO should this obey --csv-paths-relative-to-csv ?
 def atlases_from_csv(atlas_csv : str, pipeline_sub_dir : str) -> pd.Series:
@@ -165,7 +199,7 @@ def maget_mask(imgs : List[MincAtom], maget_options, resolution : float,
 
     # TODO dereference maget_options -> maget_options.maget outside maget_mask call?
     if atlases is None:
-        atlases = get_atlases(maget_options.maget, pipeline_sub_dir=pipeline_sub_dir)
+        atlases = s.defer(get_atlases(maget_options.maget, pipeline_sub_dir=pipeline_sub_dir))
 
     lsq12_conf = get_linear_configuration_from_options(maget_options.lsq12,
                                                        LinearTransType.lsq12,
@@ -203,7 +237,7 @@ def maget_mask(imgs : List[MincAtom], maget_options, resolution : float,
                                       for img in imgs for atlas in atlases)
 
     # propagate a mask to each image using the above `alignments` as follows:
-    # - for each image, voxel_vote on the masks propagated to that image to get a suitable mask
+    # - for each image, voxel_vote (currently take max) on the masks propagated to that image to get a suitable mask
     # - run mincmath -clobber -mult <img> <voted_mask> to apply the mask to the files
     masked_img = (
         masking_alignments
@@ -233,6 +267,55 @@ def maget_mask(imgs : List[MincAtom], maget_options, resolution : float,
                                    subdir="tmp"))))
         .apply(axis=1, func=lambda row: row.img._replace(mask=row.voted_mask)))
 
+    # TODO check if initial-model mask is used for initial MAGeT masking reg after LSQ6 and if so add option to disable!!
+    # TODO this basically duplicates above process of soft mask application!!
+    if maget_options.maget.hard_mask:
+        # FIXME this is completely wrong.  We compute masks and hard masks but we can't assume the resulting Series are in the same order
+        hard_masked = (masking_alignments
+            .assign(resampled_hard_mask=lambda df: df.apply(axis=1, func=lambda row: s.defer(
+                        algorithms.resample(img=row.atlas.hard_mask,  # apply(lambda x: x.mask),
+                                            xfm=row.xfm.xfm,  # apply(lambda x: x.xfm),
+                                            like=row.img,
+                                            invert=True,
+                                            # interpolation=Interpolation.nearest_neighbour,
+                                            postfix="-input-hard-mask",
+                                            subdir="tmp",
+                                            # TODO annoying hack; fix mincresample(_mask) ...:
+                                            # new_name_wo_ext=df.apply(lambda row:
+                                            #    "%s_to_%s-input-mask" % (row.atlas.filename_wo_ext,
+                                            #                             row.img.filename_wo_ext),
+                                            #    axis=1),
+                                            use_nn_interpolation=True
+                                           ))))
+            .groupby('img', as_index=False)
+            .aggregate({'resampled_hard_mask': lambda masks: list(masks)})
+            .rename(columns={"resampled_hard_mask": "resampled_hard_masks"})
+            .assign(voted_hard_mask=lambda df: df.apply(axis=1,
+                                               func=lambda row:
+                                               # FIXME cannot use mincmath here !!!
+                                               s.defer(mincmath(op="max", vols=sorted(row.resampled_hard_masks),
+                                                                new_name="%s_max_hard_mask" % row.img.filename_wo_ext,
+                                                                subdir="tmp"))))
+            .apply(axis=1, func=lambda row: s.defer(
+                     hard_mask(row.img,
+                               mask = row.voted_hard_mask,
+                               dilation_voxels = maget_options.maget.hard_mask_dilation))))
+
+        # is this necessary or is the (soft) mask automatically propagated ?
+        for ix, img in enumerate(hard_masked):
+            assert hard_masked[ix].orig_path == masked_img[ix].orig_path
+            hard_masked[ix].mask = masked_img[ix].mask
+        #    hard_masked[ix].labels = masked_img.labels  # should be no labels yet
+        masked_img = hard_masked
+
+    # not needed: atlas masks are already dilated (note commuting dilation/resampling may have some small effect)
+    #if maget_options.maget.mask_dilation:
+    #    for im in masked_img:
+    #        im.mask = s.defer(dilate(im.mask, vox=maget_options.maget.mask_dilation, subdir="tmp"))
+
+    if maget_options.maget.hard_mask and not maget_options.maget.mask_dilation:
+        warnings.warn("hard and soft masks are the same size -- probably not what you want")
+
     # resample the atlas images back to the input images:
     # (note: this doesn't modify `masking_alignments`, but only stages additional outputs)
     masking_alignments.assign(resampled_img=lambda df: df.apply(axis=1, func=lambda row:
@@ -247,8 +330,9 @@ def maget_mask(imgs : List[MincAtom], maget_options, resolution : float,
                 #                          axis=1),
                 like=row.img, invert=True))))
 
-    for img in masked_img:
-        img.output_sub_dir = original_imgs.loc[img.path].output_sub_dir
+    # TODO the indexing should be correct here, hopefully, otherwise need to join on orig_path or something:
+    for ix, img in enumerate(masked_img):
+        img.output_sub_dir = original_imgs.iloc[ix].output_sub_dir
 
     return Result(stages=s, output=masked_img)
 
@@ -330,7 +414,7 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir, build_model_xfms=N
     pipeline_sub_dir = os.path.join(options.application.output_directory,
                                     options.application.pipeline_name + "_atlases")
 
-    atlases = get_atlases(maget_options, pipeline_sub_dir)
+    atlases = s.defer(get_atlases(maget_options, pipeline_sub_dir))
 
     lsq12_conf = get_linear_configuration_from_options(options.maget.lsq12,
                                                        transform_type=LinearTransType.lsq12,
@@ -346,7 +430,7 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir, build_model_xfms=N
     #                                                          reg_method=options.maget.nlin.reg_method,
     #                                                          file_resolution=resolution)
 
-    if maget_options.mask or maget_options.mask_only:
+    if maget_options.mask or maget_options.mask_only or maget_options.hard_mask:
 
         # this used to return alignments but doesn't currently do so
         masked_img = s.defer(maget_mask(imgs=imgs,
@@ -355,7 +439,7 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir, build_model_xfms=N
                                         resolution=resolution))
 
         # now propagate only the masked form of the images and atlases:
-        imgs    = masked_img
+        imgs = masked_img
         #atlases = masked_atlases  # TODO is this needed?
 
     if maget_options.mask_only:
@@ -435,8 +519,7 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir, build_model_xfms=N
                 imgs_and_templates
                 .rename(columns={ 'label_file' : 'template_label_file' })
                 # don't register template to itself, since otherwise atlases would vote on that template twice
-                .loc[lambda df: df.index.map(lambda ix: df.img[ix].path
-                                               != df.template[ix].path)]
+                .loc[lambda df: df.index.map(lambda ix: df.img[ix].path != df.template[ix].path)]
                 .assign(label_file=lambda df: df.apply(axis=1, func=lambda row:
                           s.defer(
                             # TODO switch to uses of nlin_component.whatever(...) in several places below?
@@ -526,7 +609,7 @@ def maget_pipeline(options):
 
     # TODO this should also be created by MBM and other pipelines that run MAGeT
     (pd.DataFrame({ 'img_file'   : result.output.apply(lambda row: row.path),
-                    'label_file' : result.output.apply(lambda row: row.labels.path),
+                    'label_file' : result.output.apply(lambda row: row.labels.path if row.labels else "NA"),
                     #'mask_file'  : result.output.apply(lambda row: row.mask.path if row.mask else "NA")
                   })
         .to_csv(os.path.join(options.application.output_directory, "segmentations.csv"), index=False))
@@ -542,6 +625,12 @@ def _mk_maget_parser(parser : ArgParser):
     group.add_argument("--atlas-csv", dest="atlas_csv", type=str,
                        help="CSV containing (at least) `file`, `mask_file`, `label_file` columns "
                             "(alternative to --atlas-library)")
+    group.add_argument("--hard-mask", dest="hard_mask", action="store_true", default=False,
+                       help = "hard-mask the images (i.e., multiply by the mask)")  # TODO also return the mask ?? or ??
+    group.add_argument("--mask-dilation", dest="mask_dilation", type=int, default=None,
+                       help = "number of voxels to dilate atlas masks for usual (soft) masking [Default=%(default)s]")
+    group.add_argument("--hard-mask-dilation", dest="hard_mask_dilation", type=int, default=None,
+                       help = "number of voxels to dilate atlas masks for hard masking [Default=%(default)s]")
     group.add_argument("--pairwise", dest="pairwise",
                        action="store_true",
                        help="""If specified, register inputs to each other pairwise. [Default]""")
