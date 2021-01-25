@@ -51,7 +51,8 @@ def tamarack_pipeline(options):
 
     tamarack_result = s.defer(tamarack(files_df, options=options))
 
-    tamarack_result.first_level_results.applymap(maybe_deref_path).to_csv("first_level_results.csv", index=False)
+    # first_level_results is currently a nested data structure, not a data frame
+    #tamarack_result.first_level_results.applymap(maybe_deref_path).to_csv("first_level_results.csv", index=False)
     tamarack_result.resampled_determinants.applymap(maybe_deref_path).to_csv("resampled_determinants.csv", index=False)
     tamarack_result.overall_determinants.applymap(maybe_deref_path).to_csv("overall_determinants.csv", index=False)
 
@@ -227,7 +228,7 @@ def tamarack(imgs : pd.DataFrame, options):
     return Result(stages=s, output=Namespace(first_level_results=first_level_results,
                                              overall_determinants=overall_determinants,
                                              resampled_determinants=resampled_determinants.drop(
-                                                 ['options'],
+                                                 ['options', 'build_model', 'files'],
                                                  axis=1)))
 
 def _mk_tamarack_parser(p):
