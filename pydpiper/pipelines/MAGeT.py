@@ -313,8 +313,10 @@ def maget_mask(imgs : List[MincAtom], maget_options, resolution : float,
     #    for im in masked_img:
     #        im.mask = s.defer(dilate(im.mask, vox=maget_options.maget.mask_dilation, subdir="tmp"))
 
-    if maget_options.maget.hard_mask and not maget_options.maget.mask_dilation:
-        warnings.warn("hard and soft masks are the same size -- probably not what you want")
+    if maget_options.maget.hard_mask and maget_options.maget.mask:
+        if ((maget_options.maget.hard_mask_dilation == maget_options.maget.mask_dilation)
+              or (not maget_options.maget.hard_mask and not maget_options.maget.mask_dilation)):
+            warnings.warn("hard and soft masks are the same size -- probably not what you want")
 
     # resample the atlas images back to the input images:
     # (note: this doesn't modify `masking_alignments`, but only stages additional outputs)

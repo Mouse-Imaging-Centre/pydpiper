@@ -1,6 +1,5 @@
 
 import csv
-import hashlib
 import os
 import random
 import shlex
@@ -200,22 +199,18 @@ def minctracc(source: MincAtom,
             trans_type = "nlin"
 
         out_xfm = XfmAtom(name=os.path.join(source.pipeline_sub_dir, source.output_sub_dir, subdir,
-                                            "%s_mt_to_%s_%s_%s_%s.xfm" %
+                                            "%s_mt_to_%s_%s_%s.xfm" %
                                             (source.filename_wo_ext,
-                                             #f"via_?_" if transform else "",  # hack
                                              target.filename_wo_ext,
                                              trans_type,
-                                             generation,
-                                             hashlib.sha256(f"{transform}{conf}".encode()).hexdigest()[:5])),
+                                             generation)),
                           pipeline_sub_dir=source.pipeline_sub_dir,
                           output_sub_dir=source.output_sub_dir)
     else:
         out_xfm = XfmAtom(name=os.path.join(source.pipeline_sub_dir, source.output_sub_dir, subdir,
-                                            "%s_mt_to_%s.xfm-%s" % (
+                                            "%s_mt_to_%s.xfm" % (
                                             source.filename_wo_ext,
-                                            #f"via_?_" if transform else "",
-                                            target.filename_wo_ext,
-                                            hashlib.sha256(f"{(transform,conf)}".encode()).hexdigest()[:5])),
+                                            target.filename_wo_ext)),
                           pipeline_sub_dir=source.pipeline_sub_dir,
                           output_sub_dir=source.output_sub_dir)
 
@@ -706,7 +701,7 @@ def mincresample(img: MincAtom,
     # to know what the main file will be resampled as
     if not new_name_wo_ext:
         # FIXME this is wrong when invert=True
-        new_name_wo_ext = xfm.filename_wo_ext + '-resampled'
+        new_name_wo_ext = xfm.filename_wo_ext + '-resampled' + (postfix if postfix is not None else '')
 
     new_img = s.defer(mincresample_simple(img=img, xfm=xfm, like=like,
                                           extra_flags=extra_flags,
