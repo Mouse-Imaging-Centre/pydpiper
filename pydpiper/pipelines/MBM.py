@@ -462,6 +462,15 @@ def mbm(imgs : List[MincAtom],
     if with_maget and options.mbm.segmentation.run_maget:
         output.maget_result = maget_result
 
+        nlin_maget = (
+            s.defer(maget([lsq12_nlin_result.avg_img],
+                      #[xfm.resampled for _ix, xfm in mbm_result.xfms.rigid_xfm.iteritems()],
+                      options=maget_options,
+                      prefix="%s_nlin_MAGeT" % prefix,
+                      output_dir=os.path.join(output_dir, prefix + "_processed")))).iloc[0] #.voted_labels
+        #output.avg_img.mask = nlin_maget.mask  # makes more sense, but might have weird effects elsewhere
+        output.avg_img.labels = nlin_maget.labels
+
     return Result(stages=s, output=output)
 
 
