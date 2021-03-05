@@ -12,7 +12,7 @@ if sys.version_info < min_python_version:
                        (min_python_version[0], min_python_version[1]))
 
 setup(name='pydpiper',
-      version='2.0.14',
+      version='2.0.15',
       license='Modified BSD',
       description='Python code for flexible pipeline control',
       long_description='Python code for flexible pipeline control',

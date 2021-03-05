@@ -1,3 +1,18 @@
+New in Version 2.0.15
+=====================
+* when MAGeT is enabled in MBM-type pipelines, nonlinear averages are automatically segmented via MAGeT by default
+* disable some choices for --registration-method that are not currently supported (DRAMMS, Elastix, Demons)
+* add --use-robust-averaging flag to nonlinear model building pipelines to downweight subjects with poor registrations
+  (uses the --robust flag of mincbigaverage; otherwise is a no-op)
+* internals: add and use a `defer_map` method on `Stages` in preference to iterated use of `defer` (currently equivalent,
+  but may gain improved distributed computing semantics in future)
+* MAGeT masking improvements to match recommendations from e.g. ANTsX developers:
+  - added a --mask-dilation which dilates input masks by a specified number of voxels
+  - added --hard-mask which hard-masks input images by multiplying them with MAGeT masks
+  - added a --hard-mask-dilation flag which dilates the MAGeT masks by a specified number of voxels before applying them
+  - by default these are not used (i.e. the results will be the same as before) until we make recommendations
+* fix a couple crashes in less popular pipelines
+
 New in Version 2.0.14
 =====================
 * fix a file naming bug when minctracc is used for average building
