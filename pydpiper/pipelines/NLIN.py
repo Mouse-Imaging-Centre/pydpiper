@@ -7,8 +7,9 @@ from pydpiper.core.stages import Stages, Result
 
 from pydpiper.minc.analysis import determinants_at_fwhms
 
-from pydpiper.minc.registration import (get_resolution_from_file, nlin_build_model,
-                                        get_nonlinear_configuration_from_options, invert_xfmhandler)
+from pydpiper.minc.registration import (get_resolution_from_file,
+                                        invert_xfmhandler,
+                                        get_nonlinear_component, registration_targets)
 from pydpiper.minc.files import MincAtom
 from pydpiper.execution.application import mk_application
 from pydpiper.core.arguments import (nlin_parser, stats_parser)
@@ -17,11 +18,11 @@ from pydpiper.core.arguments import (nlin_parser, stats_parser)
 # TODO in some sense all the code here (as with LSQ6_pipeline, LSQ12_pipeline) is redundant:
 # `NLIN_pipeline` should be expressible as a special case of `mbm_pipeline` by turning off certain parts
 # and setting certain parameters appropriately
+from pydpiper.minc.registration_strategies import get_model_building_procedure
+from pydpiper.pipelines.MAGeT import get_imgs
+
 
 def NLIN_pipeline(options):
-
-    if options.application.files is None:
-        raise ValueError("Please, some files! (or try '--help')")  # TODO make a util procedure for this
 
     output_dir    = options.application.output_directory
     pipeline_name = options.application.pipeline_name
@@ -33,36 +34,38 @@ def NLIN_pipeline(options):
     resolution = (options.registration.resolution  # TODO does using the finest resolution here make sense?
                   or min([get_resolution_from_file(f) for f in options.application.files]))
 
-    imgs = [MincAtom(f, pipeline_sub_dir=processed_dir) for f in options.application.files]
-
-    # determine NLIN settings by overriding defaults with
-    # any settings present in protocol file, if it exists
-    # could add a hook to print a message announcing completion, output files,
-    # add more stages here to make a CSV
+    imgs = get_imgs(options.application)
 
     initial_target_mask = MincAtom(options.nlin.target_mask) if options.nlin.target_mask else None
     initial_target = MincAtom(options.nlin.target, mask=initial_target_mask)
 
-    full_hierarchy = get_nonlinear_configuration_from_options(nlin_protocol=options.nlin.nlin_protocol,
-                                                              flag_nlin_protocol=next(iter(options.nlin.flags_.nlin_protocol)),
-                                                              reg_method=options.nlin.reg_method,
-                                                              file_resolution=resolution)
+    nlin_module = get_nonlinear_component(reg_method=options.nlin.reg_method)
+
+    nlin_build_model_component = get_model_building_procedure(options.nlin.reg_strategy,
+                                                              reg_module=nlin_module)
+
+    nlin_conf = (nlin_build_model_component.parse_build_model_protocol(
+                                              options.nlin.nlin_protocol, resolution=resolution)
+                 if options.nlin.nlin_protocol is not None
+                 else nlin_build_model_component.get_default_build_model_conf(resolution=resolution))
 
     s = Stages()
 
-    nlin_result = s.defer(nlin_build_model(imgs, initial_target=initial_target, conf=full_hierarchy, nlin_dir=nlin_dir))
+    nlin_result = s.defer(nlin_build_model_component.build_model(imgs=imgs,
+                                                  initial_target=initial_target,
+                                                  conf=nlin_conf,
+                                                  nlin_dir=nlin_dir,
+                                                  use_robust_averaging=options.nlin.use_robust_averaging,
+                                                  nlin_prefix=""))
 
-    # TODO return these?
     inverted_xfms = [s.defer(invert_xfmhandler(xfm)) for xfm in nlin_result.output]
 
     if options.stats.calc_stats:
-        # TODO: put the stats part behind a flag ...
 
-        determinants = [s.defer(determinants_at_fwhms(
-                                  xfm=inv_xfm,
-                                  inv_xfm=xfm,
+        determinants = s.defer(determinants_at_fwhms(
+                                  xfms=inverted_xfms,
+                                  inv_xfms=nlin_result.output,
                                   blur_fwhms=options.stats.stats_kernels))
-                        for xfm, inv_xfm in zip(nlin_result.output, inverted_xfms)]
 
         return Result(stages=s,
                       output=Namespace(nlin_xfms=nlin_result,
