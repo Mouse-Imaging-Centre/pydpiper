@@ -334,7 +334,11 @@ def maget_mask(imgs : List[MincAtom], maget_options, resolution : float,
 
     # TODO the indexing should be correct here, hopefully, otherwise need to join on orig_path or something:
     for ix, img in enumerate(masked_img):
-        img.output_sub_dir = original_imgs.iloc[ix].output_sub_dir
+        # TODO this is a hack (applying the masks causes the output_sub_dir to change ...)
+        # undoubtedly the condition (== "masking") chosen is bad, but any logic here should be unnecessary
+        if os.path.basename(img.output_sub_dir) == "masking":
+            img.output_sub_dir = os.path.dirname(img.output_sub_dir)
+        # n.b. `img` and `masked_img` may be out of order, so cannot copy output_sub_dir by index
 
     return Result(stages=s, output=masked_img)
 
