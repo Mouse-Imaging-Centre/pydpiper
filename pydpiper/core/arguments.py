@@ -689,6 +689,7 @@ def _mk_nlin_parser(p: ArgParser):
     group.add_argument("--registration-method", dest="reg_method",
                        default="ANTS", choices=["ANTS",
                                                 "antsRegistration",
+                                                "demons",
                                                 "minctracc"],
                        help="Specify algorithm used for non-linear registrations. "
                             "[Default = %(default)s]")
