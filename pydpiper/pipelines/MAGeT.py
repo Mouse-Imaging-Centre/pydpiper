@@ -15,12 +15,17 @@ from pydpiper.core.stages import Stages, Result, CmdStage
 from pydpiper.execution.application import mk_application
 from pydpiper.minc.analysis import voxel_vote
 from pydpiper.minc.files            import MincAtom, XfmAtom
-from pydpiper.minc.registration     import (ensure_distinct_basenames, lsq12_nlin, custom_formatwarning,
-                                            get_linear_configuration_from_options, LinearTransType,
-                                            mincresample_new, mincmath, Interpolation, xfmconcat, xfminvert,
-                                            get_nonlinear_component)
+from pydpiper.minc.registration import (ensure_distinct_basenames, lsq12_nlin, custom_formatwarning,
+                                        get_linear_configuration_from_options, LinearTransType,
+                                        mincresample_new, mincmath, Interpolation, xfmconcat, xfminvert,
+                                        get_nonlinear_component, MincAlgorithms)
+from pydpiper.itk.tools import Algorithms as ITKAlgorithms
 
 warnings.formatwarning = custom_formatwarning
+
+
+def get_algorithms(registration_options):
+    return ({ 'minc' : MincAlgorithms(), 'itk' : ITKAlgorithms() }).get(registration_options.image_algorithms)
 
 
 # TODO will be more reusable if this doesn't take the whole options object but separate pieces
