@@ -3,7 +3,6 @@ from collections import defaultdict
 import pkg_resources
 import logging
 import networkx as nx
-import pandas as pd
 import os
 import sys
 import shutil
