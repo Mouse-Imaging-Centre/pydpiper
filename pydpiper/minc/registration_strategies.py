@@ -34,22 +34,22 @@ def build_model(reg_module : Type[NLIN]) -> Type[NLIN_BUILD_MODEL]:
         avg_imgs = []
         xfms = [None] * len(imgs)
         for i, conf in enumerate(confs, start=1):
-            xfms = s.defer_all([reg_module.register(source=img,
+            xfms = s.defer_all([reg_module.register(moving=img,
                                                 # in the case the registration algorithm doesn't accept
                                                 # an initial transform,
                                                 # we could use the resampled output of the previous
                                                 # step for a more efficient registration process,
                                                 # although this would require more careful bookkeeping
                                                 # of transforms and incur additional resampling error
-                                                target=avg,
+                                                fixed=avg,
                                                 conf=conf,
-                                                initial_source_transform=xfm.xfm
+                                                initial_moving_transform=xfm.xfm
                                                               if reg_module.accepts_initial_transform()
                                                                    and (xfm is not None)
                                                               else None,
                                                 ##generation=i,
                                                 # TODO reduce unneeded resamplings if accepts_initial_transform?
-                                                resample_source=True)
+                                                resample_moving=True)
                     for img, xfm in zip(imgs, xfms)])
             avg = s.defer(reg_module.Algorithms.average([xfm.resampled for xfm in xfms],
                                                         robust=use_robust_averaging,
@@ -84,9 +84,9 @@ def nonlinear_midpoint_xfm(nlin_algorithm : Type[NLIN],
     #xfm_handlers_antsReg = s.defer(antsRegistration(source=img_A,
     #                                                target=img_B,
     #                                                subdir='tmp'))
-    A_to_B = s.defer(nlin_algorithm.register(source=img_A,
+    A_to_B = s.defer(nlin_algorithm.register(moving=img_A,
                                              # all the xfms have the same `resampled` field
-                                             target=img_B,
+                                             fixed=img_B,
                                              conf=conf,
                                              transform_name_wo_ext="%s_A_to_B" % out_name_wo_ext,
                                              ####resample_name_wo_ext="%s_A_to_B" % out_name_wo_ext,
@@ -247,12 +247,12 @@ def pairwise(nlin_module: NLIN, max_pairs: Optional[int] = None, max_images: Opt
                         pipeline_sub_dir=nlin_dir)
     final_avg.ext = nlin_module.img_ext  # FIXME
 
-    def avg_nlin_xfm_from(src_img: MincAtom,
-                          target_imgs: List[MincAtom]):
+    def avg_nlin_xfm_from(src_img: ImgAtom,
+                          target_imgs: List[ImgAtom]):
         # TODO: should there be another affine step here?  Two images registered in the best affine way
         # to the overall average might not be ideally affinely registered to each other ...
-        xfmHs = [s.defer(nlin_module.register(source=src_img,   ## TODO: add source resampling stuff !!
-                                              target=target_img,
+        xfmHs = [s.defer(nlin_module.register(moving=src_img,   ## TODO: add source resampling stuff !!
+                                              fixed=target_img,
                                               conf=conf,
                                               resample_subdir=nlin_dir))   ## TODO: is this subdir correct?
                  for target_img in target_imgs]

@@ -163,13 +163,13 @@ class NLIN():  #, metaclass=ABCMeta):
   @staticmethod
   @abstractmethod
   def register(#cls,
-               source : I,
-               target : I, *,
+               fixed : I,
+               moving : I, *,
                conf : Conf,
-               resample_source : bool,
+               resample_moving : bool,
                resample_subdir : str,
                transform_name_wo_ext : str = None,
-               initial_source_transform : Optional[I] = None): raise NotImplementedError
+               initial_moving_transform : Optional[I] = None): raise NotImplementedError
 
 # TODO possibly these can be the same class, thus also allowing NLIN_BUILD_MODEL -> BUILD_MODEL etc.
 # TODO everything in sight should probably use dataclasses instead of the 'class C( ... typevars A B C ...)' nonsense to simulate dependent records?
