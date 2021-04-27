@@ -27,7 +27,7 @@ def LSQ12_pipeline(options):
     try:
       reg_algorithms = { ('minc', 'ANTS') : ANTS,
                          ('minc', 'minctracc') : MINCTRACC_LSQ12,
-                         ('itk', 'ANTS') : ANTS_ITK }[(options.registration.image_algorithms, options.lsq12.registration_method)]
+                         ('itk',  'ANTS') : ANTS_ITK }[(options.registration.image_algorithms, options.lsq12.registration_method)]
     except KeyError:
       raise KeyError("unsupported combination of `options.registration.image_algorithms` and `options.lsq12.registration_method` specified")
     #class Reg(MultilevelPairwiseRegistration):
