@@ -48,27 +48,3 @@ def mincToXfm(mnc):
 
 
 I, X = TypeVar("T"), TypeVar("I")
-
-class ToMinc(Generic[I, X], metaclass=ABCMeta):
-  @abstractstaticmethod
-  def to_mnc(i : I) -> MincAtom: pass
-
-  @abstractstaticmethod
-  def from_mnc(i : MincAtom) -> I: pass
-
-  @abstractstaticmethod
-  def to_mni_xfm(x : X) -> XfmAtom: pass
-
-  @abstractstaticmethod
-  def from_mni_xfm(x : XfmAtom) -> X: pass
-
-
-class IdMinc(ToMinc):
-  @staticmethod
-  def to_mnc(i): return identity_result(i)
-  @staticmethod
-  def from_mnc(i): return identity_result(i)
-  @staticmethod
-  def to_mni_xfm(x): return identity_result(x)
-  @staticmethod
-  def from_mni_xfm(x): return identity_result(x)
