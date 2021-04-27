@@ -13,13 +13,13 @@ from pyminc.volumes.factory import volumeFromFile
 from pydpiper.core.stages import Result, CmdStage, Stages, identity_result
 from pydpiper.core.util import NamedTuple
 from pydpiper.minc.containers import XfmHandler
-from pydpiper.minc.files import XfmAtom, MincAtom, IdMinc
+from pydpiper.core.files import ImgAtom
+from pydpiper.minc.files import XfmAtom, MincAtom
 from pydpiper.minc.nlin import NLIN
 # TODO in order to remove circularity from the module import (which gives an exception at import time)
 # TODO we need to move some stuff around ...
-from pydpiper.minc.registration import (mincblur, mincresample, Interpolation,
-                                        parse_many, parse_nullable, parse_bool, ParseError,
-                                        all_equal, mincbigaverage, WithAvgImgs, MincAlgorithms, parse_n)
+from pydpiper.minc.registration import (parse_many, parse_nullable, parse_bool, ParseError,
+                                        all_equal, WithAvgImgs, MincAlgorithms, parse_n)
 from pydpiper.core.templating import rendered_template_to_command, templating_env
 from pydpiper.itk.tools import Algorithms as ITKAlgorithms
 
@@ -131,14 +131,15 @@ class ANTS(NLIN):
   @staticmethod
   def accepts_initial_transform(): return False
 
-  @staticmethod
-  def register(source: MincAtom,
-               target: MincAtom,
+  @classmethod
+  def register(cls,
+               moving: ImgAtom,
+               fixed: ImgAtom,
                conf: ANTSConf,
-               initial_source_transform: Optional[XfmAtom] = None,
+               initial_moving_transform: Optional[XfmAtom] = None,
                transform_name_wo_ext: str = None,
                generation: int = None,
-               resample_source: bool = False,
+               resample_moving: bool = False,
                #resample_name_wo_ext: Optional[str] = None,
                resample_subdir: str = "resampled") -> Result[XfmHandler]:
     """
@@ -154,25 +155,26 @@ class ANTS(NLIN):
     """
     s = Stages()
 
-    if initial_source_transform is not None:
+    if initial_moving_transform is not None:
         raise ValueError("ANTs doesn't accept an initial transform")
 
     # if we resample the source, and place it in the "tmp" directory, we should do
     # the same with the transformation that is created:
     trans_output_dir = "transforms"
-    if resample_source and resample_subdir == "tmp":
+    if resample_moving and resample_subdir == "tmp":
         trans_output_dir = "tmp"
 
     if transform_name_wo_ext:
-        name = os.path.join(source.pipeline_sub_dir, source.output_sub_dir, trans_output_dir,
+        name = os.path.join(moving.pipeline_sub_dir, moving.output_sub_dir, trans_output_dir,
                             "%s.xfm" % (transform_name_wo_ext))
     elif generation is not None:
-        name = os.path.join(source.pipeline_sub_dir, source.output_sub_dir, trans_output_dir,
-                            "%s_ANTS_nlin-%s.xfm" % (source.filename_wo_ext, generation))
+        name = os.path.join(moving.pipeline_sub_dir, moving.output_sub_dir, trans_output_dir,
+                            "%s_ANTS_nlin-%s.xfm" % (moving.filename_wo_ext, generation))
     else:
-        name = os.path.join(source.pipeline_sub_dir, source.output_sub_dir, trans_output_dir,
-                            "%s_ANTS_to_%s.xfm" % (source.filename_wo_ext, target.filename_wo_ext))
-    out_xfm = XfmAtom(name=name, pipeline_sub_dir=source.pipeline_sub_dir, output_sub_dir=source.output_sub_dir)
+        name = os.path.join(moving.pipeline_sub_dir, moving.output_sub_dir, trans_output_dir,
+                            "%s_ANTS_to_%s.xfm" % (moving.filename_wo_ext, fixed.filename_wo_ext))
+    out_xfm = XfmAtom(name=name, pipeline_sub_dir=moving.pipeline_sub_dir, output_sub_dir=moving.output_sub_dir)
+    out_xfm_inv = out_xfm.newname_with_suffix("_inverse")
 
     similarity_cmds = []
     similarity_inputs = set()
@@ -190,49 +192,60 @@ class ANTS(NLIN):
                                  "an intended nonnegative blur fwhm.")
             if gradient_blur_resolution <= 0:
                 warnings.warn("Not blurring the gradients as this was explicitly disabled")
-            src = s.defer(mincblur(source, fwhm=gradient_blur_resolution)).gradient
-            dest = s.defer(mincblur(target, fwhm=gradient_blur_resolution)).gradient
+            moving_processed = s.defer(cls.Algorithms.blur(moving, fwhm=gradient_blur_resolution)).gradient  # TODO use class ref to algs, not lexical scope??
+            fixed_processed = s.defer(cls.Algorithms.blur(fixed, fwhm=gradient_blur_resolution)).gradient
         else:
             # these are not gradient image terms; only blur if explicitly specified:
             if sim_metric_conf.blur is not None and sim_metric_conf.blur > 0:
-                src  = s.defer(mincblur(source, fwhm=sim_metric_conf.blur)).img
-                dest = s.defer(mincblur(source, fwhm=sim_metric_conf.blur)).img
+                moving_processed  = s.defer(cls.Algorithms.blur(moving, fwhm=sim_metric_conf.blur)).img
+                fixed_processed = s.defer(cls.Algorithms.blur(moving, fwhm=sim_metric_conf.blur)).img
             else:
-                src  = source
-                dest = target
+                moving_processed  = moving
+                fixed_processed = fixed
 
-        similarity_inputs.add(src)
-        similarity_inputs.add(dest)
-        inner = ','.join([src.path, dest.path,
+        similarity_inputs.add(fixed_processed)
+        similarity_inputs.add(moving_processed)
+        inner = ','.join([fixed_processed.path, moving_processed.path,
                           str(sim_metric_conf.weight), str(sim_metric_conf.radius_or_bins)])
         subcmd = '"\'"' + "".join([sim_metric_conf.metric, '[', inner, ']']) + '"\'"'
         similarity_cmds.extend(["-m", subcmd])
     if conf.use_mask and source.mask is None:
         warnings.warn("ANTS configured to use mask for registration but no mask available")
     stage = CmdStage(
-        inputs=(source, target) + tuple(similarity_inputs) + cast(tuple, ((source.mask,) if source.mask else ())),
+        inputs=(moving, fixed) + tuple(similarity_inputs) + cast(tuple, ((moving.mask,) if moving.mask else ())),
         # need to cast to tuple due to mypy bug; see mypy/issues/622
         outputs=(out_xfm,),
+<<<<<<< HEAD
         cmd=rendered_template_to_command(
               ants_template.render(conf = conf,
                                    out_xfm = out_xfm.path,
                                    similarity_cmds = similarity_cmds,
                                    source = source)))
+=======
+        cmd=['ANTS', '3',
+             '--number-of-affine-iterations', '0']
+            + similarity_cmds
+            + ['-t', conf.transformation_model,
+               '-r', conf.regularization,
+               '-i', conf.iterations,
+               '-o', out_xfm.path]
+            + (['-x', fixed.mask.path] if conf.use_mask and fixed.mask else []))
+>>>>>>> the great source/target -> moving/fixed refactor
 
     # see comments re: mincblur memory configuration
-    stage.when_runnable_hooks.append(lambda st: set_memory(st, source=source, conf=conf,
+    stage.when_runnable_hooks.append(lambda st: set_memory(st, source=fixed, conf=conf,
                                                            mem_cfg=default_ANTS_mem_cfg))
 
     s.add(stage)
-    resampled = (s.defer(mincresample(img=source, xfm=out_xfm, like=target,
-                                      interpolation=Interpolation.sinc,
-                                      #new_name_wo_ext=resample_name_wo_ext,
-                                      subdir=resample_subdir))
-                 if resample_source else None)  # type: Optional[MincAtom]
+    resampled = (s.defer(cls.Algorithms.resample(img=moving, xfm=out_xfm, like=fixed,
+                                                 #new_name_wo_ext=resample_name_wo_ext,
+                                                 subdir=resample_subdir))
+                 if resample_moving else None)  # type: Optional[MincAtom]
     return Result(stages=s,
-                  output=XfmHandler(source=source,
-                                    target=target,
+                  output=XfmHandler(source=moving,
+                                    target=fixed,
                                     xfm=out_xfm,
+                                    inverse=XfmHandler(source=fixed, target=moving, xfm=out_xfm_inv),
                                     resampled=resampled))
 
 
@@ -385,5 +398,33 @@ class ANTS(NLIN):
 
     return full_configuration
 
+<<<<<<< HEAD
 class ANTS_ITK(ANTS):
     Algorithms = ITKAlgorithms
+=======
+class ANTS_MINC(ANTS):
+
+    Algorithms = MincAlgorithms
+
+    @classmethod
+    def register(cls,
+                 moving: ImgAtom,
+                 fixed: ImgAtom,
+                 conf: ANTSConf,
+                 initial_moving_transform: Optional[XfmAtom] = None,
+                 transform_name_wo_ext: str = None,
+                 generation: int = None,
+                 resample_moving: bool = False,
+                 # resample_name_wo_ext: Optional[str] = None,
+                 resample_subdir: str = "resampled"):
+        return super().register(moving = moving,
+                                fixed = fixed,
+                                conf = conf,
+                                initial_moving_transform = initial_moving_transform,
+                                transform_name_wo_ext = transform_name_wo_ext,
+                                generation = generation,
+                                resample_moving = resample_moving,
+                                resample_subdir = resample_subdir)
+
+ANTS_ITK = ANTS
+>>>>>>> the great source/target -> moving/fixed refactor
