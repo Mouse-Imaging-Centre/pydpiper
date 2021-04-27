@@ -27,8 +27,7 @@ from pydpiper.minc.analysis     import determinants_at_fwhms, StatsConf
 #from pydpiper.minc.thickness    import thickness_parser
 from pydpiper.itk.tools import Algorithms as ITKAlgorithms
 
-from pydpiper.pipelines.MAGeT import maget, maget_parsers, fixup_maget_options, maget_mask, get_imgs
-
+from pydpiper.pipelines.MAGeT import maget, maget_parsers, fixup_maget_options, maget_mask, get_imgs, get_algorithms
 
 MBMConf = NamedTuple('MBMConf', [('lsq6',  LSQ6Conf),
                                  ('lsq12', LSQ12Conf),
@@ -41,13 +40,14 @@ def mbm_pipeline(options : MBMConf):
     imgs = get_imgs(options.application)
 
     # TODO extract this part -- it duplicates part of the LSQ12 pipeline, etc.
-    algorithms = ({ 'minc' : MincAlgorithms(), 'itk' : ITKAlgorithms() }).get(options.registration.image_algorithms)
+    algorithms = get_algorithms(options.registration)
 
     ensure_distinct_basenames([img.path for img in imgs])
 
     output_dir = options.application.output_directory
 
     mbm_result = s.defer(mbm(imgs=imgs, options=options,
+                             image_algorithms=algorithms,
                              prefix=options.application.pipeline_name,
                              output_dir=output_dir))
 
@@ -214,6 +214,7 @@ def common_space(mbm_result, options):
 def mbm(imgs : List[MincAtom],
         options : MBMConf,
         prefix : str,
+        image_algorithms,
         output_dir : str = "",
         with_maget : bool = True):
 
@@ -233,12 +234,13 @@ def mbm(imgs : List[MincAtom],
     # FIXME: why do we have to call registration_targets *outside* of lsq6_nuc_inorm? is it just because of the extra
     # options required?  Also, shouldn't options.registration be a required input (as it contains `input_space`) ...?
     targets = s.defer(registration_targets(lsq6_conf=options.mbm.lsq6,
-                                   app_conf=options.application, reg_conf=options.registration,
-                                   first_input_file=imgs[0].path))
+                                           app_conf=options.application, reg_conf=options.registration,
+                                           image_algorithms=image_algorithms,
+                                           first_input_file=imgs[0].path))
 
     # TODO this is quite tedious and duplicates stuff in the registration chain ...
     resolution = (options.registration.resolution or
-                  get_resolution_from_file(targets.registration_standard.path))
+                  image_algorithms.get_resolution_from_file(targets.registration_standard.path))
     options.registration = options.registration.replace(resolution=resolution)
 
 
@@ -288,6 +290,7 @@ def mbm(imgs : List[MincAtom],
         lsq6_result = s.defer(lsq6_nuc_inorm(imgs=imgs,
                                              resolution=resolution,
                                              registration_targets=targets,
+                                             image_algorithms=image_algorithms,
                                              lsq6_dir=lsq6_dir,
                                              lsq6_options=options.mbm.lsq6))
     else:
