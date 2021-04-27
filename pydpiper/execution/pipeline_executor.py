@@ -634,7 +634,7 @@ def main():
     default_config_file = os.getenv("PYDPIPER_CONFIG_FILE")
     if default_config_file is not None:
         try:
-            with open(PYDPIPER_CONFIG_FILE):
+            with open(default_config_file):
                 pass
         except:
             warnings.warn(f"PYDPIPER_CONFIG_FILE is set to '{default_config_file}', which can't be opened.")
