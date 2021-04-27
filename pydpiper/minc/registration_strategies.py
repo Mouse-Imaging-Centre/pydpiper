@@ -91,7 +91,7 @@ def nonlinear_midpoint_xfm(nlin_algorithm : Type[NLIN],
 
     # N.B.: this uses `invert_xfmhandler` magic in either extracting the inverse from A_to_B
     # if it's present or inverting the transform if not ... slightly uncomfortable with this for some reason.
-    B_to_A = s.defer(invert_xfmhandler(A_to_B))
+    B_to_A = s.defer(nlin_algorithm.Algorithms.invert_xfmhandler(A_to_B))
 
     algorithms = nlin_algorithm.Algorithms
     # generate halfway transformations
@@ -171,16 +171,18 @@ def tournament(reg_module : Type[NLIN]):
               xfms_to_midpoint = ([XfmHandler(source=xfm.source,
                                               target=avg_img,
                                               resampled=A_halfway_to_B.resampled,
-                                              xfm=s.defer(xfmconcat([xfm.xfm, A_halfway_to_B.xfm],
-                                                                    name="%s_%s" % (xfm.source.filename_wo_ext,
-                                                                                    name_wo_ext))))
+                                              xfm=s.defer(reg_module.concat_transforms(
+                                                            [xfm.xfm, A_halfway_to_B.xfm],
+                                                            name="%s_%s" % (xfm.source.filename_wo_ext,
+                                                                            name_wo_ext))))
                                    for xfm in first_half_result]
                                   + [XfmHandler(source=xfm.source,
                                                 target=avg_img,
                                                 resampled=B_halfway_to_A.resampled,
-                                                xfm=s.defer(xfmconcat([xfm.xfm, B_halfway_to_A.xfm],
-                                                                      name="%s_%s" % (xfm.source.filename_wo_ext,
-                                                                                      name_wo_ext))))
+                                                xfm=s.defer(reg_module.concat_transforms(
+                                                              [xfm.xfm, B_halfway_to_A.xfm],
+                                                              name="%s_%s" % (xfm.source.filename_wo_ext,
+                                                                              name_wo_ext))))
                                      for xfm in second_half_result])
               return xfms_to_midpoint
       identity_xfm = s.defer(param2xfm(out_xfm=XfmAtom(pipeline_sub_dir=imgs[0].pipeline_sub_dir,
