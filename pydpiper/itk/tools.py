@@ -133,6 +133,7 @@ def antsApplyTransforms(img,
 
     # TODO add rest of --output options
     cmd = (["antsApplyTransforms",
+            "--verbose",
             "--input", img.path,
             "--reference-image", reference_image.path,
             "--output", out_img.path]
@@ -224,12 +225,16 @@ def average_images(imgs        : Sequence[ImgAtom],
                    output_dir  : str = '.',
                    name_wo_ext : str = "average",
                    out_ext     : Optional[str] = None,
+                   robust      : Optional[bool] = None,
                    avg_file    : Optional[ITKImgAtom] = None) -> Result[ITKImgAtom]:
 
     s = Stages()
 
     if len(imgs) == 0:
         raise ValueError("`AverageImages` arg `imgs` is empty (can't average zero files)")
+
+    if robust:
+        warnings.warn("robust averaging not implemented")
 
     ext = out_ext or imgs[0].ext
 
@@ -523,11 +528,16 @@ class Algorithms(Algorithms):
            Note that a linear transformation to which this is applied is converted to a deformation."""
         s = Stages()
         defs = s.defer(as_deformation(transform=xfm.xfm, reference=xfm.source))
-        scaled_defs = (defs.xfm.newname(newname_wo_ext) if newname_wo_ext else
-                        defs.xfm.newname_with_suffix("_scaled_%s" % scale))
+        scaled_defs = (defs.newname(newname_wo_ext) if newname_wo_ext else
+                        defs.newname_with_suffix("_scaled_%s" % scale))
         s.defer(CmdStage(cmd=['c3d', '-scale', str(scale), defs.path, "-o", scaled_defs.path],
                          inputs=(defs,), outputs=(scaled_defs,)))
         return Result(stages=s, output=scaled_defs)
+
+    @staticmethod
+    def xfminvert(t, subdir = None):
+        return Result(stages = Stages(),
+                      output = InverseTransform(t) if not isinstance(t, InverseTransform) else t.transform)
 
     @staticmethod
     def average_affine_transformations(xfms, avg_xfm):
@@ -535,7 +545,7 @@ class Algorithms(Algorithms):
         #    output_filename_wo_ext = "average_xfm"
         #if all_from_same_sub:
         #    outf = xfms[0].newname(name=output_filename_wo_ext, subdir="transforms", ext=".xfm")
-
+        # TODO why not use ANTs' AverageAffineTransform instead of this presumably similar script?
         s = CmdStage(cmd=["AverageAffineTransforms"] + [x.path for x in xfms] + [avg_xfm],
                      inputs = xfms, outputs = (avg_xfm,))
         return Result(stages=Stages([s]), output=avg_xfm)
@@ -552,3 +562,12 @@ class Algorithms(Algorithms):
                                                 #                        "transforms")
                                                 )))
         return Result(stages=s, output=avg)
+
+    @staticmethod
+    def log_determinant(xfm):
+        s = Stages()
+        displacement_field = s.defer(as_deformation(xfm.xfm, reference_image = xfm.source))
+        out_file = xfm.xfm.newname_with_suffix("_log_det", ext = ".nii.gz")
+        s.add(CmdStage(cmd = ["CreateJacobianDeterminantImage", "3", displacement_field.path, out_file.path, "1", "0"],
+                       inputs = (xfm.xfm,), outputs = (out_file,)))
+        return Result(stages=s, output=out_file)

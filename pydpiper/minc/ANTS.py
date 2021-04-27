@@ -62,7 +62,7 @@ class MultilevelANTSConf(object):
         self.confs = confs
 
 
-def set_memory(st, source: MincAtom, conf: ANTSConf, mem_cfg):
+def set_memory(st, source: ImgAtom, conf: ANTSConf, mem_cfg):
     # see comments re: mincblur memory configuration
     voxels = reduce(mul, volumeFromFile(source.path).getSizes())
     mem_per_voxel = (mem_cfg.mem_per_voxel_coarse
@@ -107,9 +107,7 @@ class ANTS(NLIN):
 
   MultilevelConf = MultilevelANTSConf
 
-  ToMinc = IdMinc
-
-  Algorithms = MincAlgorithms
+  Algorithms = ITKAlgorithms
 
   # TODO I don't like all this weird class stuff -- complicated and seems unnecessary.
   # We should probably use generic NamedTuples instead, with the Python 3.6 syntax.
