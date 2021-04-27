@@ -20,7 +20,7 @@ from pydpiper.core.stages import CmdStage, Result, Stages, identity_result
 from pydpiper.core.templating import rendered_template_to_command, templating_env
 from pydpiper.core.util import pairs, AutoEnum, NamedTuple, raise_, flatten
 from pydpiper.minc.containers import XfmHandler
-from pydpiper.minc.files import MincAtom, XfmAtom, xfmToMinc, IdMinc, mincToXfm
+from pydpiper.minc.files import MincAtom, XfmAtom, xfmToMinc, mincToXfm
 from pydpiper.minc.nlin import NLIN, NLIN_BUILD_MODEL, Algorithms, REG
 
 
@@ -1015,37 +1015,37 @@ def xfminvert(xfm: XfmAtom,
     return Result(stages=Stages([s]), output=inv_xfm)
 
 
-def invert_xfmhandler(xfm: XfmHandler,
-                      subdir: str = "transforms") -> Result[XfmHandler]:
-    """
-    xfminvert lifted to work on XfmHandlers instead of MincAtoms
-    """
-    # TODO: are we potentially creating some issues here... consider the following case:
-    # TODO: minctracc src.mnc final_nlin.mnc some_trans.xfm
-    # TODO: the xfmhandler will have:
-    # TODO: source = src.mnc
-    # TODO: target = final_nlin.mnc
-    # TODO: xfm    = some_trans.xfm
-    #
-    # TODO: however, when we generate the inverse of this transform, we might want the
-    # TODO: result to be:
-    # TODO: source = src_resampled_to_final_nlin.mnc
-    # TODO: target = src.mnc
-    # TODO: xfm    = some_trans_inverted.xfm
-    #
-    # TODO: instead we have "final_nlin.mnc" as the source for this XfmHandler... we might
-    # TODO: run into issues here...
-    # TODO: we also discard any resampled field; we might want to use part of the original xfmh
-    # or do resampling here, but that seems like too much functionality to put here ... ??
-    s = Stages()
-    if xfm.has_inverse():
-        inv_xfm = xfm.inverse.xfm  # type: XfmAtom
-    else:
-        inv_xfm = s.defer(xfminvert(xfm.xfm, subdir=subdir))
-    return Result(stages=s,
-                  output=XfmHandler(xfm=inv_xfm,
-                                    source=xfm.target, target=xfm.source, resampled=None,
-                                    inverse=xfm))   # TODO is it correct to have the original resampled here?
+# def invert_xfmhandler(xfm: XfmHandler,
+#                       subdir: str = "transforms") -> Result[XfmHandler]:
+#     """
+#     xfminvert lifted to work on XfmHandlers instead of MincAtoms
+#     """
+#     # TODO: are we potentially creating some issues here... consider the following case:
+#     # TODO: minctracc src.mnc final_nlin.mnc some_trans.xfm
+#     # TODO: the xfmhandler will have:
+#     # TODO: source = src.mnc
+#     # TODO: target = final_nlin.mnc
+#     # TODO: xfm    = some_trans.xfm
+#     #
+#     # TODO: however, when we generate the inverse of this transform, we might want the
+#     # TODO: result to be:
+#     # TODO: source = src_resampled_to_final_nlin.mnc
+#     # TODO: target = src.mnc
+#     # TODO: xfm    = some_trans_inverted.xfm
+#     #
+#     # TODO: instead we have "final_nlin.mnc" as the source for this XfmHandler... we might
+#     # TODO: run into issues here...
+#     # TODO: we also discard any resampled field; we might want to use part of the original xfmh
+#     # or do resampling here, but that seems like too much functionality to put here ... ??
+#     s = Stages()
+#     if xfm.has_inverse():
+#         inv_xfm = xfm.inverse.xfm  # type: XfmAtom
+#     else:
+#         inv_xfm = s.defer(xfminvert(xfm.xfm, subdir=subdir))
+#     return Result(stages=s,
+#                   output=XfmHandler(xfm=inv_xfm,
+#                                     source=xfm.target, target=xfm.source, resampled=None,
+#                                     inverse=xfm))   # TODO is it correct to have the original resampled here?
 
 
 RotationalMinctraccConf = NamedTuple('RotationalMinctraccConf',
@@ -1662,17 +1662,21 @@ def lsq12_nlin(source: MincAtom,
     nlin_conf = (nlin_module.parse_protocol_file(nlin_options, resolution=resolution)
                   if nlin_options is not None else nlin_module.get_default_conf(resolution=resolution))
 
-    toMinc = nlin_module.ToMinc
+    #toMinc = nlin_module.ToMinc
 
     # TODO: extract this somewhere else if it doesn't already exist there
     # TODO and then also return a Result for consistency
     def to_mni_xfmh(xfmh):
         # TODO GenericXfmHandler?
         # TODO handle inverse_xfm
-        return XfmHandler(source=s.defer(toMinc.to_mnc(xfmh.source)),
-                          target=s.defer(toMinc.to_mnc(xfmh.target)),
-                          resampled=s.defer(toMinc.to_mnc(xfmh.resampled if xfmh.has_resampled() else None)),
-                          xfm=s.defer(toMinc.to_mni_xfm(xfmh.xfm)))
+        return XfmHandler(source = xfmh.source,
+                          target = xfmh.target,
+                          resampled = xfmh.resampled if xfmh.has_resampled() else None,
+                          xfm = xfmh.xfm)
+        #return XfmHandler(source=s.defer(toMinc.to_mnc(xfmh.source)),
+        #                  target=s.defer(toMinc.to_mnc(xfmh.target)),
+        #                  resampled=s.defer(toMinc.to_mnc(xfmh.resampled if xfmh.has_resampled() else None)),
+        #                  xfm=s.defer(toMinc.to_mni_xfm(xfmh.xfm)))
     #def from_mni_xfhm(xfmh):
     #    return XfmHandler(source=s.defer(toMnc.from_mnc(xfmh.source)),
     #                      target=s.defer(toMnc.from_mnc(xfmh.target)),
@@ -1685,12 +1689,11 @@ def lsq12_nlin(source: MincAtom,
                                                                conf=lsq12_conf,
                                                                # TODO allow a transform here?
                                                                resample_source=resample_source))
-        nlin_transform_handler = s.defer(nlin_module.register(source=s.defer(toMinc.from_mnc(source)),
-                                                              target=s.defer(toMinc.from_mnc(target)),
+        nlin_transform_handler = s.defer(nlin_module.register(source=source,
+                                                              target=target,
                                                               conf=nlin_conf,
-                                                              initial_source_transform=s.defer(
-                                                                toMinc.from_mni_xfm(
-                                                                  lsq12_transform_handler.xfm)),
+                                                              initial_source_transform=
+                                                                lsq12_transform_handler.xfm,
                                                               resample_source=resample_source))
         full_transform = to_mni_xfmh(nlin_transform_handler)  #FIXME convert to minc
     else:
@@ -1698,9 +1701,9 @@ def lsq12_nlin(source: MincAtom,
                                                                target=target,
                                                                conf=lsq12_conf,
                                                                resample_source=True))
-        nlin_transform_handler = s.defer(nlin_module.register(source=s.defer(toMinc.from_mnc(
-                                                                lsq12_transform_handler.resampled)),
-                                                              target=s.defer(toMinc.from_mnc(target)),
+        nlin_transform_handler = s.defer(nlin_module.register(source=
+                                                                lsq12_transform_handler.resampled,
+                                                              target=target,
                                                               conf=nlin_conf,
                                                               resample_source=resample_source))
         nlin_transform_handler = to_mni_xfmh(nlin_transform_handler)
@@ -3220,11 +3223,21 @@ class MincAlgorithms(Algorithms):
                  subdir = None,
                  postfix = None):
         return mincresample(img=img, xfm=xfm,
-                            like=like, invert=invert,
+                            like=like, invert=not invert,
                             interpolation=Interpolation.nearest_neighbour
                               if use_nn_interpolation else Interpolation.sinc,
                             extra_flags=(("-keep_real_range", "-labels") if use_nn_interpolation else ()),
                             new_name_wo_ext=new_name_wo_ext, subdir=subdir, postfix=postfix)
+
+    @staticmethod
+    def xfminvert(xfm: XfmAtom,
+                  subdir: str = "transforms") -> Result[XfmAtom]:
+        inv_xfm = xfm.newname_with_suffix('_inverted',
+                                          subdir=subdir)  # type: XfmAtom
+        s = CmdStage(inputs=(xfm,), outputs=(inv_xfm,),
+                     cmd=['xfminvert', '-clobber', xfm.path, inv_xfm.path])
+
+        return Result(stages=Stages([s]), output=inv_xfm)
 
     # TODO XfmHandler -> XfmHandler? XfmAtom, LikeFile -> XfmAtom ?
     def scale_transform(xfm : XfmHandler, scale : float, newname_wo_ext : str) -> XfmAtom:
@@ -3295,8 +3308,6 @@ class MINCTRACC(NLIN):
     # blech ... does this mean the 'multilevelconf' should be renamed 'hierarchicalconf' or similar? yes ...
     MultilevelConf = MultilevelMinctraccConf
 
-    ToMinc = IdMinc
-
     Algorithms = MincAlgorithms
 
     @staticmethod
@@ -3324,15 +3335,15 @@ class MINCTRACC(NLIN):
 
     @classmethod
     def register(cls,
-                 source : MincAtom,
-                 target : MincAtom,
+                 moving : MincAtom,
+                 fixed : MincAtom,
                  conf : Conf,
                  transform_name_wo_ext = None,
                  resample_source : bool = False,
                  resample_subdir : str = "resampled",
-                 initial_source_transform : Optional[MincAtom] = None):
-        return multilevel_minctracc(source=source, target=target, conf=conf,
-                                    transform=initial_source_transform,
+                 initial_moving_transform : Optional[MincAtom] = None):
+        return multilevel_minctracc(source=moving, target=fixed, conf=conf,
+                                    transform=initial_moving_transform,
                                     #subdir=resample_subdir,  # TODO broken
                                     resample_source=resample_source)
 

@@ -8,8 +8,10 @@ from pydpiper.core.stages import Stages, CmdStage, Result
 from pydpiper.core.util   import NamedTuple
 from pydpiper.minc.files  import MincAtom
 from pydpiper.minc.containers import XfmHandler
-from pydpiper.minc.registration import (concat_xfmhandlers, invert_xfmhandler, mincmath, minc_displacement)
+
+from pydpiper.minc.registration import concat_xfmhandlers, mincmath, minc_displacement
 from pydpiper.core.templating import rendered_template_to_command, templating_env
+from pydpiper.minc.registration import MincAlgorithms
 
 #TODO find the nicest API (currently determinants_at_fwhms, but still weird)
 #and write documentation indicating it
@@ -116,7 +118,7 @@ def nlin_part(xfm : XfmHandler, inv_xfm : Optional[XfmHandler] = None) -> Result
     keep a log of operations applied, so any preexisting inverse must be supplied explicitly.
     """
     s = Stages()
-    inv_xfm = inv_xfm or s.defer(invert_xfmhandler(xfm))
+    inv_xfm = inv_xfm or s.defer(MincAlgorithms.invert_xfmhandler(xfm))
     inv_lin_part = s.defer(lin_from_nlin(inv_xfm)) 
     xfm = s.defer(concat_xfmhandlers([xfm, inv_lin_part]))
     return Result(stages=s, output=xfm)
@@ -167,7 +169,7 @@ def determinants_at_fwhms(xfms       : List[XfmHandler],  # TODO change to pd.Se
     """
     s = Stages()
 
-    inv_xfms = [s.defer(invert_xfmhandler(xfm)) for xfm in xfms] if inv_xfms is None else inv_xfms
+    inv_xfms = [s.defer(MincAlgorithms.invert_xfmhandler(xfm)) for xfm in xfms] if inv_xfms is None else inv_xfms
 
     fwhms = [float(x) for x in blur_fwhms.split(',')]
 

@@ -74,8 +74,6 @@ class NLIN(Generic[I,X]):  # TODO inherit from something better; provide some de
 
   class MultilevelConf: ...
 
-  class ToMinc(ToMinc): ...
-
   @staticmethod
   def get_default_conf() -> Optional[Conf]: ...
 
@@ -140,17 +138,3 @@ class NLIN_BUILD_MODEL(NLIN):
 
     @staticmethod
     def parse_build_model_protocol(filename : str, resolution : float) -> BuildModelConf: ...
-
-
-class ToMinc(Generic[I, X]):
-  @staticmethod
-  def to_mnc(i : I) -> MincAtom: ...
-
-  @staticmethod
-  def from_mnc(i : MincAtom) -> I: ...
-
-  @staticmethod
-  def to_mni_xfm(x : X) -> XfmAtom: ...
-
-  @staticmethod
-  def from_mni_xfm(x : XfmAtom) -> X: ...
