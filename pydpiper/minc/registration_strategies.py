@@ -374,93 +374,6 @@ def pairwise_and_build_model(nlin_module : Type[NLIN]):
                                 parse_build_model_protocol=nlin_module.parse_multilevel_protocol_file)
 
 
-# is there any point to mincifying an NLIN module by itself ??  unsure ...
-# def wrap_build_model(build_model : Type[NLIN_BUILD_MODEL],
-#                      wrap_input_image,
-#                      #wrap_input_xfm,
-#                      wrap_output_image,
-#                      wrap_output_xfm) -> Type[NLIN_BUILD_MODEL]:
-#     class C(build_model):
-#         @classmethod
-#         def register(cls, *args, **kwargs):
-#             raise NotImplementedError(
-#                 "I didn't do this since going back and forth to .mnc seems dangerous")
-#
-#         @staticmethod
-#         def build_model(imgs,
-#                         conf,
-#                         nlin_dir,
-#                         nlin_prefix,
-#                         initial_target,
-#                         mincaverage,
-#                         output_name_wo_ext = None):
-#             s = Stages()
-#             #imgs = tuple(s.defer(convert(img, out_ext=".nii.gz") for img in imgs))
-#             imgs = tuple(s.defer(wrap_input_image(img) for img in imgs))
-#             result = build_model.build_model(imgs=imgs, conf=conf,
-#                                              nlin_dir=nlin_dir, nlin_prefix=nlin_prefix,
-#                                              initial_target=initial_target, mincaverage=mincaverage,
-#                                              output_name_wo_ext=output_name_wo_ext)
-#
-#             def wrap_output_xfmh(xfmh):
-#                 return XfmHandler(source=s.defer(wrap_output_image(xfmh.source)) if xfmh.source else None,
-#                                   target=s.defer(wrap_output_image(xfmh.target)) if xfmh.target else None,
-#                                   resampled=s.defer(wrap_output_image(xfmh.resampled)) if xfmh.resampled else None,
-#                                   xfm=s.defer(wrap_output_xfm(xfmh.xfm)),
-#                                   inverse_xfm=wrap_output_xfmh(xfmh.inverse_xfm))
-#
-#             return Result(stages=s, output=WithAvgImgs(avg_imgs=[s.defer(wrap_output_image(img))
-#                                                                  for img in result.avg_imgs],
-#                                                        avg_img=s.defer(wrap_output_image(result.avg_img)),
-#                                                        output=[s.defer(wrap_output_xfmh(x))
-#                                                                for x in result.xfms]))
-#     return C
-
-def mincify_build_model(base_build_model : Type[NLIN_BUILD_MODEL]) -> Type[NLIN_BUILD_MODEL]:
-    """Takes a model building component that inputs/outputs on a certain image format
-    and returns a new component that works on MINC files.  This isn't magic: the model building component
-    includes a ToMinc component."""
-    class C(base_build_model):
-        @classmethod
-        def register(cls, *args, **kwargs):
-            raise NotImplementedError(
-                "I didn't do this (yet) since going back and forth to .mnc seems annoying/dangerous")
-
-        ToMinc = IdMinc
-
-        @staticmethod
-        def build_model(imgs,
-                        conf,
-                        nlin_dir,
-                        nlin_prefix,
-                        use_robust_averaging,
-                        initial_target,
-                        output_name_wo_ext = None):
-            s = Stages()
-            mincify = base_build_model.ToMinc
-            imgs = tuple(s.defer(mincify.from_mnc(img)) for img in imgs)
-            result = s.defer(base_build_model.build_model(imgs=imgs, conf=conf,
-                                                  nlin_dir=nlin_dir, nlin_prefix=nlin_prefix,
-                                                  use_robust_averaging=use_robust_averaging,
-                                                  initial_target=s.defer(mincify.from_mnc(initial_target))
-                                                  #output_name_wo_ext=output_name_wo_ext
-                                                  ))
-
-            def wrap_output_xfmh(xfmh):
-                return XfmHandler(source=s.defer(mincify.to_mnc(xfmh.source)) if xfmh.source else None,
-                                  target=s.defer(mincify.to_mnc(xfmh.target)) if xfmh.target else None,
-                                  resampled=s.defer(mincify.to_mnc(xfmh.resampled)) if xfmh.has_resampled() else None,
-                                  xfm=s.defer(mincify.to_mni_xfm(xfmh.xfm)),
-                                  inverse=wrap_output_xfmh(xfmh.inverse) if xfmh.has_inverse() else None)
-
-            return Result(stages=s, output=WithAvgImgs(avg_imgs=[s.defer(mincify.to_mnc(img))
-                                                                 for img in result.avg_imgs],
-                                                       avg_img=s.defer(mincify.to_mnc(result.avg_img)),
-                                                       output=[wrap_output_xfmh(x)
-                                                               for x in result.output]))
-    return C()
-
-
 def get_model_building_procedure(strategy : str, reg_module : Type[NLIN]) -> Type[NLIN_BUILD_MODEL]:
     d = {
           'build_model' : build_model,
@@ -470,7 +383,7 @@ def get_model_building_procedure(strategy : str, reg_module : Type[NLIN]) -> Typ
           'pairwise_and_build_model'   : pairwise_and_build_model
         }
     try:
-        c = mincify_build_model(d[strategy](reg_module))
+        c = d[strategy](reg_module)
     except KeyError:
         raise ValueError("unknown strategy %s; choices are %s" % (strategy, d.keys()))
     else:
