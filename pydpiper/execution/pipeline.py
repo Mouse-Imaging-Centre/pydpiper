@@ -1084,7 +1084,7 @@ def launchServer(pipeline):
             jid    = os.environ["PBS_JOBID"]
             output = subprocess.check_output(['qstat', '-f', jid], stderr=subprocess.STDOUT)
 
-            time_left = int(re.search('Walltime.Remaining = (\d*)', output).group(1))
+            time_left = int(re.search(r'Walltime.Remaining = (\d+)', output).group(1))
             logger.debug("Time remaining: %d s" % time_left)
             time_to_live = time_left - shutdown_time
         except:
