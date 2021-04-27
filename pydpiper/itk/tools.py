@@ -7,7 +7,7 @@ from configargparse import Namespace
 from dataclasses import dataclass
 
 from pydpiper.minc.conversion import generic_converter
-from pydpiper.minc.files import ToMinc, XfmAtom
+from pydpiper.minc.files import XfmAtom
 from pydpiper.minc.nlin import Algorithms
 from pydpiper.core.stages import Result, CmdStage, Stages, identity_result
 from pydpiper.core.files  import ImgAtom, FileAtom
@@ -362,17 +362,6 @@ def antsAI(metrics : List[AntsAIMetric],
                           + ((movingImageMask,) if movingImageMask else None),
                  outputs = (out_xfm,))
     return Result(stages=Stages([s]), output=out_xfm)
-
-
-class ToMinc(ToMinc):
-    @staticmethod
-    def to_mnc(img): return convert(img, out_ext=".mnc")
-    @staticmethod
-    def from_mnc(img): return convert(img, out_ext=".nii.gz")
-    @staticmethod
-    def to_mni_xfm(xfm): return itk_convert_xfm(xfm, out_ext=".mnc")
-    @staticmethod
-    def from_mni_xfm(xfm): return itk_convert_xfm(xfm, out_ext=".nii.gz")
 
 def imageToXfm(i : ITKImgAtom) -> ITKXfmAtom:
     x = copy.deepcopy(i)
