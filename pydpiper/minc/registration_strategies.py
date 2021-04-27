@@ -6,10 +6,8 @@ import random
 
 from pydpiper.core.stages import (Result, Stages)  #, CmdStage, identity_result
 from pydpiper.minc.containers import XfmHandler
-from pydpiper.minc.registration import (WithAvgImgs, mincbigaverage, #Interpolation,
-                                        invert_xfmhandler, #minc_displacement, mincmath,
-                                        xfmconcat, param2xfm)
-from pydpiper.minc.files import MincAtom, XfmAtom, ImgAtom, IdMinc
+from pydpiper.minc.registration import (WithAvgImgs)
+from pydpiper.minc.files import XfmAtom, ImgAtom
 from pydpiper.minc.nlin import NLIN, NLIN_BUILD_MODEL   #, Algorithms
 
 gen = random.Random(42)
@@ -17,8 +15,8 @@ gen = random.Random(42)
 # TODO expand parameter list to be similar to ANTS_NLIN_build_model, possibly add resolution parameter?
 # use/pass generation parameter for naming ?!
 def build_model(reg_module : Type[NLIN]) -> Type[NLIN_BUILD_MODEL]:
-    def f(imgs: List[MincAtom],
-          initial_target: MincAtom,
+    def f(imgs: List[ImgAtom],
+          initial_target: ImgAtom,
           conf: reg_module.MultilevelConf,
           use_robust_averaging: bool,
           nlin_dir: str,
@@ -65,12 +63,11 @@ def build_model(reg_module : Type[NLIN]) -> Type[NLIN_BUILD_MODEL]:
 
 
 def nonlinear_midpoint_xfm(nlin_algorithm : Type[NLIN],
-                           img_A: MincAtom,
-                           img_B: MincAtom,
+                           img_A: ImgAtom,
+                           img_B: ImgAtom,
                            conf, #: nlin_algorithm.Conf,
                            out_name_wo_ext: str,
-                           out_dir: str,
-                           mincaverage = mincbigaverage) -> Result[MincAtom]:
+                           out_dir: str) -> Result[ImgAtom]:
     """
     :param img_A:
     :param img_B:
@@ -145,8 +142,8 @@ def tournament(reg_module : Type[NLIN]):
         6 ---|
     """
     # TODO: add weighting to the transforms in the case that the number of inputs is not a power of 2
-    def f(imgs: List[MincAtom],
-          initial_target: MincAtom,
+    def f(imgs: List[ImgAtom],
+          initial_target: ImgAtom,
           conf: reg_module.Conf,
           nlin_dir: str,
           nlin_prefix: str,
@@ -313,10 +310,10 @@ def pairwise(nlin_module: NLIN, max_pairs: Optional[int] = None, max_images: Opt
 # you'd think this is sort of unnecessary but at the moment command-line users have no way to
 # specify some combination of nlin modules, so:
 def tournament_and_build_model(nlin_module : Type[NLIN]):
-    def f(imgs: List[MincAtom],
+    def f(imgs: List[ImgAtom],
           nlin_dir: str,
           conf: nlin_module.MultilevelConf,
-          initial_target: MincAtom,
+          initial_target: ImgAtom,
           nlin_prefix: str,
           #output_dir_for_avg: str = None,
           #output_name_wo_ext: str = None
@@ -345,10 +342,10 @@ def tournament_and_build_model(nlin_module : Type[NLIN]):
 
 
 def pairwise_and_build_model(nlin_module : Type[NLIN]):
-    def f(imgs: List[MincAtom],
+    def f(imgs: List[ImgAtom],
           nlin_dir: str,
           conf: nlin_module.MultilevelConf,
-          initial_target: MincAtom,
+          initial_target: ImgAtom,
           nlin_prefix: str,
           #output_dir_for_avg: str = None,
           #output_name_wo_ext: str = None
