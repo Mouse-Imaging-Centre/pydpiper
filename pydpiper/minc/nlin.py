@@ -2,9 +2,9 @@
 from abc import ABCMeta, abstractmethod
 from typing import List, Generic, TypeVar, Optional, Sequence
 
-from pydpiper.core.stages import Result
+from pydpiper.core.stages import Result, Stages
 from pydpiper.minc.containers import GenericXfmHandler
-from pydpiper.minc.files import MincAtom, ImgAtom, ToMinc
+from pydpiper.minc.files import MincAtom, ImgAtom
 
 I = TypeVar('I', bound=ImgAtom)
 X = TypeVar('X')
@@ -64,10 +64,53 @@ class Algorithms():  #(Generic[I, X], metaclass=ABCMeta):
     @abstractmethod
     # a bit weird that this takes and XfmH but returns an XfmA, but the extra image data is used for sampling
     def scale_transform(xfm : Sequence[GenericXfmHandler[I, X]],
-                        newname_wo_ext : str, scale : float) -> X: pass
+                        newname_wo_ext : str, scale : float) -> Result[X]: pass
+
+    @staticmethod
+    @abstractmethod
+    def xfminvert(xfm, subdir: str = "transforms") -> Result[X]: pass  # TODO rename?
+
+    @classmethod
+    @abstractmethod
+    def invert_xfmhandler(cls,
+                          xfm: GenericXfmHandler[I, X],
+                          subdir: str = "transforms") -> Result[GenericXfmHandler[I, X]]:
+        """
+        xfminvert lifted to work on XfmHandlers instead of MincAtoms
+        """
+        # TODO: are we potentially creating some issues here... consider the following case:
+        # TODO: minctracc src.mnc final_nlin.mnc some_trans.xfm
+        # TODO: the xfmhandler will have:
+        # TODO: source = src.mnc
+        # TODO: target = final_nlin.mnc
+        # TODO: xfm    = some_trans.xfm
+        #
+        # TODO: however, when we generate the inverse of this transform, we might want the
+        # TODO: result to be:
+        # TODO: source = src_resampled_to_final_nlin.mnc
+        # TODO: target = src.mnc
+        # TODO: xfm    = some_trans_inverted.xfm
+        #
+        # TODO: instead we have "final_nlin.mnc" as the source for this XfmHandler... we might
+        # TODO: run into issues here...
+        # TODO: we also discard any resampled field; we might want to use part of the original xfmh
+        # or do resampling here, but that seems like too much functionality to put here ... ??
+        s = Stages()
+        if xfm.has_inverse():
+            inv_xfm = xfm.inverse.xfm
+        else:
+            inv_xfm = s.defer(cls.xfminvert(xfm.xfm, subdir=subdir))
+        return Result(stages=s,
+                      output=GenericXfmHandler(xfm=inv_xfm,
+                                               source=xfm.target, target=xfm.source, resampled=None,
+                                               inverse=xfm))  # TODO is it correct to have the original resampled here?
 
     #def concat_xfms(): pass
     #def invert_xfm(): pass
+
+    # seemingly needs to take an xfmhandler instead of an xfm since minc_displacement need a -like volume?
+    @staticmethod
+    def compute_log_determinant(xfm : GenericXfmHandler) -> I: pass   # TODO add fwhm argument
 
 
 # TODO not *actually* generic; should take a type as a field, but this is annoying to write down
@@ -84,8 +127,6 @@ class NLIN():  #, metaclass=ABCMeta):
   class Conf: pass
 
   class MultilevelConf: pass
-
-  class ToMinc(ToMinc): pass  # TODO remove ?
 
   class Algorithms(Algorithms): pass
 
