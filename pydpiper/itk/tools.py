@@ -1,4 +1,5 @@
 import copy
+import math
 import os
 import warnings
 from typing import Optional, Sequence, List, Union, Tuple
@@ -509,15 +510,18 @@ class Algorithms(Algorithms):
             return Result(stages=Stages(), output=Namespace(img=img))
 
         if gradient:
-            out_gradient = img.newname_with("_blur%s_grad" % fwhm)
+            out_gradient = img.newname_with_suffix("_blur%s_grad" % fwhm)
         else:
             out_gradient = None
 
-        out_img = img.newname_with("_blurred%s" % fwhm)
+        # c3d -smooth takes stdenv, not fwhm
+        stdev = "%.3g" % (fwhm / (2 * math.sqrt(2 * math.log(2))))
 
-        cmd = CmdStage(cmd=['c3d', '-smooth', "%smm" % fwhm, '-o', out_img.path, img.path]
+        out_img = img.newname_with_suffix("_blurred%s" % stdev)
+
+        cmd = CmdStage(cmd=['c3d', img.path, '-smooth', "%smm" % stdev, '-o', out_img.path]
                            + (['-gradient', '-o', out_gradient.path] if gradient else []),
-                       inputs=(img), outputs=(out_img, out_gradient) if gradient else (out_img,))
+                       inputs=(img,), outputs=(out_img, out_gradient) if gradient else (out_img,))
         return Result(stages=Stages((cmd,)),
                       output=Namespace(img=out_img, gradient=out_gradient)
                                if gradient else Namespace(img=out_img))
