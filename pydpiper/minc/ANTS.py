@@ -65,7 +65,7 @@ class MultilevelANTSConf(object):
         self.confs = confs
 
 
-def set_memory(st, source: MincAtom, conf: ANTSConf, mem_cfg):
+def set_memory(st, source: ImgAtom, conf: ANTSConf, mem_cfg):
     # see comments re: mincblur memory configuration
     voxels = reduce(mul, volumeFromFile(source.path).getSizes())
     mem_per_voxel = (mem_cfg.mem_per_voxel_coarse
@@ -111,9 +111,7 @@ class ANTS(NLIN):
 
   MultilevelConf = MultilevelANTSConf
 
-  ToMinc = IdMinc
-
-  Algorithms = MincAlgorithms
+  Algorithms = ITKAlgorithms
 
   # TODO I don't like all this weird class stuff -- complicated and seems unnecessary.
   # We should probably use generic NamedTuples instead, with the Python 3.6 syntax.
@@ -215,22 +213,19 @@ class ANTS(NLIN):
         inputs=(moving, fixed) + tuple(similarity_inputs) + cast(tuple, ((moving.mask,) if moving.mask else ())),
         # need to cast to tuple due to mypy bug; see mypy/issues/622
         outputs=(out_xfm,),
-<<<<<<< HEAD
         cmd=rendered_template_to_command(
               ants_template.render(conf = conf,
                                    out_xfm = out_xfm.path,
                                    similarity_cmds = similarity_cmds,
                                    source = source)))
-=======
-        cmd=['ANTS', '3',
-             '--number-of-affine-iterations', '0']
-            + similarity_cmds
-            + ['-t', conf.transformation_model,
-               '-r', conf.regularization,
-               '-i', conf.iterations,
-               '-o', out_xfm.path]
-            + (['-x', fixed.mask.path] if conf.use_mask and fixed.mask else []))
->>>>>>> the great source/target -> moving/fixed refactor
+        #cmd=['ANTS', '3',
+        #     '--number-of-affine-iterations', '0']
+        #    + similarity_cmds
+        #    + ['-t', conf.transformation_model,
+        #       '-r', conf.regularization,
+        #       '-i', conf.iterations,
+        #       '-o', out_xfm.path]
+        #    + (['-x', fixed.mask.path] if conf.use_mask and fixed.mask else []))
 
     # see comments re: mincblur memory configuration
     stage.when_runnable_hooks.append(lambda st: set_memory(st, source=fixed, conf=conf,
@@ -398,10 +393,7 @@ class ANTS(NLIN):
 
     return full_configuration
 
-<<<<<<< HEAD
-class ANTS_ITK(ANTS):
-    Algorithms = ITKAlgorithms
-=======
+
 class ANTS_MINC(ANTS):
 
     Algorithms = MincAlgorithms
@@ -426,5 +418,5 @@ class ANTS_MINC(ANTS):
                                 resample_moving = resample_moving,
                                 resample_subdir = resample_subdir)
 
+
 ANTS_ITK = ANTS
->>>>>>> the great source/target -> moving/fixed refactor
