@@ -120,7 +120,6 @@ def antsApplyTransforms(img,
                         #float: bool = None
                         new_name_wo_ext: str = None,
                         subdir: str = None):
-    invert = not invert   # TODO REMOVE -- only in here due to MINC source/target conventions!!!
 
     if not subdir:
         subdir = 'resampled'
