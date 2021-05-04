@@ -195,7 +195,7 @@ def tamarack(imgs : pd.DataFrame, options):
         pd.merge(left=first_level_determinants,
                  right=xfms_to_common.assign(source=lambda df: df.xfm_to_common.apply(
                                                               lambda x:
-                                                                x.source if x is not None else None)),
+                                                                x.moving if x is not None else None)),
                  left_on="first_level_avg", right_on='source')
         .assign(resampled_log_full_det=lambda df: df.apply(axis=1, func=lambda row:
                                          s.defer(mincresample_new(img=row.log_full_det,

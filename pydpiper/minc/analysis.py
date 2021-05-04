@@ -1,16 +1,15 @@
 from argparse import Namespace
-from typing import List, Optional, Tuple
+from typing import List, Optional
 import os
 
 import pandas as pd
 
 from pydpiper.core.stages import Stages, CmdStage, Result
 from pydpiper.core.util   import NamedTuple
+from pydpiper.core.templating import rendered_template_to_command, templating_env
 from pydpiper.minc.files  import MincAtom
 from pydpiper.minc.containers import XfmHandler
-
-from pydpiper.minc.registration import concat_xfmhandlers, mincmath, minc_displacement
-from pydpiper.core.templating import rendered_template_to_command, templating_env
+from pydpiper.minc.registration import concat_xfmhandlers, mincmath, minc_displacement, determinant
 from pydpiper.minc.registration import MincAlgorithms
 
 #TODO find the nicest API (currently determinants_at_fwhms, but still weird)
@@ -19,50 +18,13 @@ from pydpiper.minc.registration import MincAlgorithms
 def lin_from_nlin(xfm : XfmHandler) -> Result[XfmHandler]:
     # TODO add dir argument
     out_xfm = xfm.xfm.newname_with_suffix("_linear_part", subdir="tmp")
-    stage = CmdStage(inputs=(xfm.source, xfm.xfm), outputs=(out_xfm,),
+    stage = CmdStage(inputs=(xfm.moving, xfm.xfm), outputs=(out_xfm,),
                      cmd = (['lin_from_nlin', '-clobber', '-lsq12']
-                            + (['-mask', xfm.source.mask.path] if xfm.source.mask else [])
-                            + [xfm.target.path, xfm.xfm.path, out_xfm.path]))
+                            + (['-mask', xfm.moving.mask.path] if xfm.moving.mask else [])
+                            + [xfm.fixed.path, xfm.xfm.path, out_xfm.path]))
     return Result(stages=Stages([stage]),
-                  output=XfmHandler(xfm=out_xfm, source=xfm.source,
-                                    target=xfm.target))
-
-def mincblob(op : str, grid : MincAtom, subdir : str = "tmp") -> Result[MincAtom]:
-    """
-    Low-level mincblob wrapper with the one exception being the determinant option. By
-    default the inner clockwork of mincblob subtracts 1 from all determinant values that
-    are being calculated. As such, 1 needs to be added to the result of the mincblob call.
-    We will do that here, because it makes most sense here.
-    >>> stages = mincblob('determinant', MincAtom("/images/img_1.mnc", pipeline_sub_dir="/tmp")).stages
-    >>> for c in sorted({s.render() for s in stages}): print(c)
-    mincblob -clobber -determinant /images/img_1.mnc /tmp/img_1/tmp/img_1_temp_det.mnc
-    mincmath -clobber -2 -const 1 -add /tmp/img_1/tmp/img_1_temp_det.mnc /tmp/img_1/tmp/img_1_det.mnc
-    """
-    if op not in ["determinant", "trace", "translation", "magnitude"]:
-        raise ValueError('mincblob: invalid operation %s' % op)
-
-    # if we are calculating the determinant, the first file produced is a temp file:
-    if op == "determinant":
-        out_file = grid.newname_with_suffix("_temp_det", subdir=subdir)
-    else:
-        out_file = grid.newname_with_suffix('_' + op, subdir=subdir)
-
-    stage = CmdStage(inputs=(grid,), outputs=(out_file,),
-                     cmd=['mincblob', '-clobber', '-' + op, grid.path, out_file.path])
-
-    s = Stages([stage])
-    # now create the proper determinant if that's what was asked for
-    if op == "determinant":
-        result_file = s.defer(mincmath(op='add',
-                                       const=1,
-                                       vols=[out_file],
-                                       subdir=subdir,
-                                       new_name=grid.filename_wo_ext + "_det"))
-    else:
-        result_file = out_file
-
-    return Result(stages=s, output=result_file)
-    #TODO add a 'before' to newname_with, e.g., before="grid" -> disp._grid.mnc
+                  output=XfmHandler(xfm=out_xfm, source=xfm.moving,
+                                    target=xfm.fixed))
 
 
 def det_and_log_det(displacement_grid : MincAtom,
@@ -194,18 +156,6 @@ def determinants_at_fwhms(xfms       : List[XfmHandler],  # TODO change to pd.Se
     # TODO the return of this function is 'everything', not really just 'determinants_at_fwhms' ...
     return Result(stages=s, output=df)
 
-
-def determinant(displacement_grid : MincAtom) -> Result[MincAtom]:
-    """
-    Takes a displacement field (deformation grid, vector field, those are
-    all the same thing) and calculates the proper determinant (mincblob()
-    takes care of adding 1 to the silly output of running mincblob directly)
-    """
-    s = Stages()
-    det = s.defer(mincblob(op='determinant', grid=displacement_grid))
-    return Result(stages=s, output=det)
-
-smooth_vector_template = templating_env.get_template("smooth_vector.sh")
 
 def smooth_vector(source : MincAtom, fwhm : float) -> Result[MincAtom]:
     outf = source.newname_with_suffix("_smooth_fwhm%s" % fwhm, subdir="tmp") # TODO smooth_displacement_?

@@ -4,50 +4,53 @@ import os.path
 import warnings
 import pandas as pd
 from configargparse import Namespace, ArgParser
-from typing import List, TypeVar
+from typing import List
 from pydpiper.minc.containers import XfmHandler
 
 from pydpiper.core.arguments    import (lsq6_parser, lsq12_parser, nlin_parser, stats_parser, CompoundParser,
                                         AnnotatedParser, NLINConf, BaseParser, segmentation_parser)
-from pydpiper.core.files import FileAtom
 from pydpiper.core.util  import NamedTuple, maybe_deref_path
 from pydpiper.core.stages       import Result, Stages
 from pydpiper.execution.application    import mk_application
 
 from pydpiper.minc.registration_strategies import get_model_building_procedure
-from pydpiper.minc.thickness import cortical_thickness
 #TODO fix up imports, naming, stuff in registration vs. pipelines, ...
-from pydpiper.minc.files        import MincAtom, XfmAtom
+from pydpiper.minc.files        import MincAtom
 from pydpiper.minc.registration import (lsq6_nuc_inorm, lsq12_nlin_build_model, registration_targets,
                                         LSQ6Conf, LSQ12Conf, concat_xfmhandlers,
-                                        invert_xfmhandler, ensure_distinct_basenames, lsq12_nlin,
+                                        ensure_distinct_basenames, lsq12_nlin,
                                         LinearTransType, get_linear_configuration_from_options, mincresample_new,
-                                        Interpolation, param2xfm, get_nonlinear_component, MincAlgorithms)
+                                        get_nonlinear_component)
 from pydpiper.minc.analysis     import determinants_at_fwhms, StatsConf
 #from pydpiper.minc.thickness    import thickness_parser
-from pydpiper.itk.tools import Algorithms as ITKAlgorithms
+#from pydpiper.itk.tools import Algorithms as ITKAlgorithms
 
-from pydpiper.pipelines.MAGeT import maget, maget_parsers, fixup_maget_options, maget_mask, get_imgs, get_algorithms
+from pydpiper.pipelines.MAGeT import maget, maget_parsers, fixup_maget_options, maget_mask, get_imgs, \
+    get_registration_module
 
 MBMConf = NamedTuple('MBMConf', [('lsq6',  LSQ6Conf),
                                  ('lsq12', LSQ12Conf),
                                  ('nlin',  NLINConf),
                                  ('stats', StatsConf)])
 
+
 def mbm_pipeline(options : MBMConf):
     s = Stages()
 
     imgs = get_imgs(options.application)
 
-    # TODO extract this part -- it duplicates part of the LSQ12 pipeline, etc.
-    algorithms = get_algorithms(options.registration)
+    #algorithms = get_algorithms(options.registration)
+
+    #reg_method = get_nonlinear_component(options.nlin.reg_method)  # TODO move to options.registration?
+
+    reg_module = get_registration_module(options.registration.image_algorithms, options.mbm.nlin.reg_method)
 
     ensure_distinct_basenames([img.path for img in imgs])
 
     output_dir = options.application.output_directory
 
     mbm_result = s.defer(mbm(imgs=imgs, options=options,
-                             image_algorithms=algorithms,
+                             registration_algorithms=reg_module,
                              prefix=options.application.pipeline_name,
                              output_dir=output_dir))
 
@@ -57,10 +60,10 @@ def mbm_pipeline(options : MBMConf):
     # create useful CSVs (note the files listed therein won't yet exist ...):
 
     transforms = (mbm_result.xfms.assign(
-                            native_file=lambda df: df.rigid_xfm.apply(lambda x: x.source),
-                            lsq6_file=lambda df: df.lsq12_nlin_xfm.apply(lambda x: x.source),
+                            native_file=lambda df: df.rigid_xfm.apply(lambda x: x.moving),
+                            lsq6_file=lambda df: df.lsq12_nlin_xfm.apply(lambda x: x.moving),
                             lsq6_mask_file=lambda df:
-                              df.lsq12_nlin_xfm.apply(lambda x: x.source.mask if x.source.mask else ""),
+                              df.lsq12_nlin_xfm.apply(lambda x: x.moving.mask if x.moving.mask else ""),
                             nlin_file=lambda df: df.lsq12_nlin_xfm.apply(lambda x: x.resampled),
                             nlin_mask_file=lambda df:
                               df.lsq12_nlin_xfm.apply(lambda x: x.resampled.mask if x.resampled.mask else ""),
@@ -175,7 +178,7 @@ def common_space(mbm_result, options):
                              for rigid_xfm, nlin_xfm in zip(mbm_result.xfms.rigid_xfm,
                                                             mbm_result.xfms.lsq12_nlin_xfm)]
 
-    overall_xfms_to_common_inv = [s.defer(invert_xfmhandler(xfmhandler)) for xfmhandler in
+    overall_xfms_to_common_inv = [s.defer(algorithms.invert_xfmhandler(xfmhandler)) for xfmhandler in
                                   [s.defer(concat_xfmhandlers([rigid_xfm, nlin_xfm, model_to_common])) for rigid_xfm, nlin_xfm in
                                    zip(mbm_result.xfms.rigid_xfm, mbm_result.xfms.lsq12_nlin_xfm)]]
 
@@ -214,12 +217,14 @@ def common_space(mbm_result, options):
 def mbm(imgs : List[MincAtom],
         options : MBMConf,
         prefix : str,
-        image_algorithms,
+        registration_algorithms,
         output_dir : str = "",
         with_maget : bool = True):
 
     # TODO could also allow pluggable pipeline parts e.g. LSQ6 could be substituted out for the modified LSQ6
     # for the kidney tips, etc...
+
+    algorithms = registration_algorithms.Algorithms  # TODO fix nomenclature!!
 
     # TODO this is tedious and annoyingly similar to the registration chain ...
     lsq6_dir  = os.path.join(output_dir, prefix + "_lsq6")
@@ -235,12 +240,12 @@ def mbm(imgs : List[MincAtom],
     # options required?  Also, shouldn't options.registration be a required input (as it contains `input_space`) ...?
     targets = s.defer(registration_targets(lsq6_conf=options.mbm.lsq6,
                                            app_conf=options.application, reg_conf=options.registration,
-                                           image_algorithms=image_algorithms,
+                                           image_algorithms=algorithms,
                                            first_input_file=imgs[0].path))
 
     # TODO this is quite tedious and duplicates stuff in the registration chain ...
     resolution = (options.registration.resolution or
-                  image_algorithms.get_resolution_from_file(targets.registration_standard.path))
+                  algorithms.get_resolution_from_file(targets.registration_standard.path))
     options.registration = options.registration.replace(resolution=resolution)
 
 
@@ -290,7 +295,7 @@ def mbm(imgs : List[MincAtom],
         lsq6_result = s.defer(lsq6_nuc_inorm(imgs=imgs,
                                              resolution=resolution,
                                              registration_targets=targets,
-                                             image_algorithms=image_algorithms,
+                                             image_algorithms=algorithms,
                                              lsq6_dir=lsq6_dir,
                                              lsq6_options=options.mbm.lsq6))
     else:
@@ -298,13 +303,11 @@ def mbm(imgs : List[MincAtom],
         # be part of the lsq6 options rather than the MBM ones; see comments on #287.
         # TODO don't actually do this resampling if not required (i.e., if the imgs already have the same grids)??
         # however, for now need to add the masks:
-        identity_xfm = s.defer(param2xfm(out_xfm=FileAtom(name=os.path.join(lsq6_dir, 'tmp', "id.xfm"),
-                                                          pipeline_sub_dir=lsq6_dir,
-                                                          output_sub_dir='tmp')))
-        lsq6_result  = [XfmHandler(source=img, target=img, xfm=identity_xfm,
-                                   resampled=s.defer(mincresample_new(img=img,
-                                                                      like=targets.registration_standard,
-                                                                      xfm=identity_xfm)))
+        identity_xfm = s.defer(algorithms.identity_transform(output_sub_dir = os.path.join(lsq6_dir, "tmp")))
+        lsq6_result  = [XfmHandler(moving=img, fixed=img, xfm=identity_xfm,
+                                   resampled=s.defer(algorithms.resample(img=img,
+                                                                        like=targets.registration_standard,
+                                                                        xfm=identity_xfm)))
                         for img in imgs]
     # what about running nuc/inorm without a linear registration step??
 
@@ -338,11 +341,11 @@ def mbm(imgs : List[MincAtom],
     # TODO now the user has to call get_nonlinear_component followed by parse_<...>; previously various things
     # like lsq12_nlin_pairwise all branched on the reg_method so one didn't have to call get_nonlinear_component;
     # they could still do this if it can be done safety (i.e., not breaking assumptions of various nonlinear units)
-    nlin_module = get_nonlinear_component(reg_method=options.mbm.nlin.reg_method)
+    #nlin_module = get_nonlinear_component(reg_method=options.mbm.nlin.reg_method)
 
     nlin_build_model_component = get_model_building_procedure(options.mbm.nlin.reg_strategy,
                                                               # was: model_building.reg_strategy
-                                                              reg_module=nlin_module)
+                                                              reg_module=registration_algorithms)
 
     # does this belong here?
     # def model_building_with_initial_target_generation(prelim_model_building_component,
@@ -384,7 +387,7 @@ def mbm(imgs : List[MincAtom],
                                                        lsq12_conf=options.mbm.lsq12,
                                                        nlin_conf=nlin_conf))  #options.mbm.nlin
 
-    inverted_xfms = [s.defer(invert_xfmhandler(xfm)) for xfm in lsq12_nlin_result.output]
+    inverted_xfms = [s.defer(registration_algorithms.invert_xfmhandler(xfm)) for xfm in lsq12_nlin_result.output]
 
     if options.mbm.stats.stats_kernels:
         determinants = s.defer(determinants_at_fwhms(

@@ -11,21 +11,50 @@ import pandas as pd
 
 from pydpiper.core.arguments        import (lsq12_parser, nlin_parser, stats_parser,
                                             CompoundParser, AnnotatedParser, BaseParser)
-from pydpiper.core.stages import Stages, Result, CmdStage
+from pydpiper.core.stages import Stages, Result
 from pydpiper.execution.application import mk_application
 from pydpiper.minc.analysis import voxel_vote
-from pydpiper.minc.files            import MincAtom, XfmAtom
+from pydpiper.minc.files import MincAtom, XfmAtom
 from pydpiper.minc.registration import (ensure_distinct_basenames, lsq12_nlin, custom_formatwarning,
                                         get_linear_configuration_from_options, LinearTransType,
                                         mincresample_new, mincmath, Interpolation, xfmconcat, xfminvert,
                                         get_nonlinear_component, MincAlgorithms)
-from pydpiper.itk.tools import Algorithms as ITKAlgorithms
+#from pydpiper.itk.tools import Algorithms as ITKAlgorithms
 
 warnings.formatwarning = custom_formatwarning
 
+def get_registration_module(image_algorithms, reg_method):
+    def _ants_minc():
+        from pydpiper.minc.ANTS import ANTS_MINC
+        return ANTS_MINC
+    def _minctracc():
+        from pydpiper.minc.registration import MINCTRACC
+        return MINCTRACC
+    def _ants_itk():
+        from pydpiper.minc.ANTS import ANTS_ITK
+        return ANTS_ITK
+    def _demons():
+        from pydpiper.itk.demons import DEMONS
+        return DEMONS
+    def _demons_minc():
+        from pydpiper.itk.demons import DEMONS_MINC
+        return DEMONS_MINC
+    try:
+        reg_algorithms = {
+                           ('minc', 'ANTS')      : _ants_minc,
+                           ('minc', 'minctracc') : _minctracc,
+                           ('itk',  'ANTS')      : _ants_itk,
+                           ('itk',  'demons')    : _demons,
+                           ('minc', 'demons')    : _demons_minc,
+                         }[(image_algorithms, reg_method)]
+    except KeyError:
+        raise KeyError(
+            "unsupported combination of `image_algorithms` and `reg_method` specified")
+    else:
+        return reg_algorithms()
 
-def get_algorithms(registration_options):
-    return ({ 'minc' : MincAlgorithms(), 'itk' : ITKAlgorithms() }).get(registration_options.image_algorithms)
+#def get_algorithms(registration_options):
+#    return ({ 'minc' : MincAlgorithms(), 'itk' : ITKAlgorithms() }).get(registration_options.image_algorithms)
 
 
 # TODO will be more reusable if this doesn't take the whole options object but separate pieces
@@ -79,21 +108,14 @@ def find_by(f, xs, on_empty=None):  # TODO move to util
         raise ValueError("Nothing in iterable satisfies the predicate")
 
 
-def dilate(infile, voxels, subdir="tmp"):
-    out = infile.newname_with_suffix(f"_dilated_{voxels}", subdir = subdir)
-    c = CmdStage(cmd = ["mincmorph", "-clobber", "-successive", f"{'D'*voxels}", infile.path, out.path],
-                 inputs = (infile,), outputs = (out,))
-    return Result(stages=Stages([c]), output=out)
-
-
-def hard_mask(img, *, mask, dilation_voxels : int, subdir="tmp"):
+def hard_mask(img, *, algorithms, mask, dilation_voxels : int, subdir="tmp"):
     s = Stages()
-    return Result(stages=s, output=s.defer(
-        mincmath('mul',
-                 vols=[img,
-                       s.defer(dilate(mask, dilation_voxels, subdir=subdir))
-                       if dilation_voxels else mask],
-                 out_atom=img.newname_with_suffix("_hard-masked", subdir="resampled"))))
+    return Result(stages = s,
+                  output = s.defer(algorithms.hard_mask(
+                                     img,
+                                     mask = mask if not dilation_voxels
+                                              else s.defer(algorithms.dilate(mask, dilation_voxels, subdir=subdir)),
+                                     subdir = "resampled")))
 
 
 def get_atlases(maget_options, pipeline_sub_dir : str):
@@ -191,10 +213,15 @@ def process_atlas_files(filenames : List[str], pipeline_sub_dir) -> List[MincAto
     return pd.Series(list(grouped_atlas_files.values()))
 
 
-def maget_mask(imgs : List[MincAtom], maget_options, resolution : float,
+def maget_mask(imgs : List[MincAtom], options, resolution : float,
                pipeline_sub_dir : str, atlases=None):
 
     s = Stages()
+
+    maget_options = options.maget
+
+    masking_nlin_component = get_registration_module(options.registration.image_algorithms,
+                                                     options.maget.nlin.reg_method)
 
     original_imgs = imgs
     imgs = copy.deepcopy(imgs)
@@ -217,7 +244,7 @@ def maget_mask(imgs : List[MincAtom], maget_options, resolution : float,
     #                                                                  maget_options.maget.mask_method,
     #                                                                  resolution)
 
-    masking_nlin_component = get_nonlinear_component(reg_method=maget_options.maget.mask_method)
+    #masking_nlin_component = get_nonlinear_component(reg_method=maget_options.maget.mask_method)
     algorithms = masking_nlin_component.Algorithms
     #masking_nlin_conf = (masking_nlin_component.parse_protocol_file(
     #                       maget_options.maget.masking_nlin_protocol, resolution=resolution)
@@ -304,6 +331,7 @@ def maget_mask(imgs : List[MincAtom], maget_options, resolution : float,
             .apply(axis=1, func=lambda row: s.defer(
                      hard_mask(row.img,
                                mask = row.voted_hard_mask,
+                               algorithms=algorithms,
                                dilation_voxels = maget_options.maget.hard_mask_dilation))))
 
         # is this necessary or is the (soft) mask automatically propagated ?
@@ -418,6 +446,8 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir, build_model_xfms=N
 
     s = Stages()
 
+    reg_module = get_registration_module(options.registration.image_algorithms, options.maget.nlin.reg_method)
+
     maget_options = options.maget.maget
 
     resolution = options.registration.resolution  # TODO or get_resolution_from_file(...) -- only if file always exists!
@@ -425,7 +455,7 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir, build_model_xfms=N
     pipeline_sub_dir = os.path.join(options.application.output_directory,
                                     options.application.pipeline_name + "_atlases")
 
-    atlases = s.defer(get_atlases(maget_options, pipeline_sub_dir))
+    atlases = s.defer(get_atlases(maget_options, pipeline_sub_dir = pipeline_sub_dir))
 
     lsq12_conf = get_linear_configuration_from_options(options.maget.lsq12,
                                                        transform_type=LinearTransType.lsq12,
@@ -445,7 +475,7 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir, build_model_xfms=N
 
         # this used to return alignments but doesn't currently do so
         masked_img = s.defer(maget_mask(imgs=imgs,
-                                        maget_options=options.maget, atlases=atlases,
+                                        options=options, atlases=atlases,
                                         pipeline_sub_dir=pipeline_sub_dir + "_masking", # FIXME repeats all alignments!!!
                                         resolution=resolution))
 

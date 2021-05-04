@@ -352,7 +352,7 @@ def chain(options):
                                      conf=nlin_conf))
 
 
-    intersubj_img_to_xfm_to_common_avg_dict = { xfm.source : xfm for xfm in intersubj_xfms.output }
+    intersubj_img_to_xfm_to_common_avg_dict = {xfm.moving : xfm for xfm in intersubj_xfms.output}
 
     # create one more convenience data structure: a mapping from subject_ID to the xfm_handler
     # that contains the transformation from the subject at the common time point to the
@@ -436,7 +436,7 @@ def chain(options):
         for time_pt_n, time_pt_n_plus_1, transform in output_from_intra[0]:
             montage_chain = pipeline_montage_dir + "/quality_control_chain_ID_" + s_id + \
                             "_timepoint_" + str(time_pt_n) + "_to_" + str(time_pt_n_plus_1) + ".png"
-            chain_images = [transform.resampled, transform.target]
+            chain_images = [transform.resampled, transform.fixed]
             chain_verification_images = s.defer(create_quality_control_images(chain_images,
                                                                               montage_output=montage_chain,
                                                                               montage_dir=pipeline_montage_dir,

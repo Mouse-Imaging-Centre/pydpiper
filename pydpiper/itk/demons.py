@@ -2,19 +2,19 @@ import os
 import warnings
 from typing import Sequence, Optional
 
-#from pydpiper import itk
 from pydpiper.core.files import ImgAtom
 from pydpiper.core.stages import Result, CmdStage, Stages
 import pydpiper.itk.tools as itk
 from pydpiper.itk.tools import ITKXfmAtom
 from pydpiper.minc.containers import GenericXfmHandler
 from pydpiper.minc.nlin import NLIN
+from pydpiper.minc.registration import MincAlgorithms
 
 
 class DEMONS(NLIN):
 
   img_ext = ".nii.gz"
-  xfm_ext = ".txt"  # also could be .xfm
+  xfm_ext = "nii.gz"  # also could be .xfm
 
   Conf = str
 
@@ -55,7 +55,7 @@ class DEMONS(NLIN):
           return [l.strip().split(',') for l in f if len(l.strip()) > 0]
 
   @staticmethod
-  def accepts_initial_transform(): return True
+  def accepts_initial_transform(): return False  # might work for some formats e.g. .h5 but not .xfm
 
   @classmethod
   def register(cls,
@@ -78,17 +78,15 @@ class DEMONS(NLIN):
       else:
           trans_output_dir = "transforms"
 
-      # TODO instead of setting ext here manually, add to Algorithms/Types ... ?
-      xfm_ext = "h5"
       if transform_name_wo_ext:
           name = os.path.join(moving.pipeline_sub_dir, moving.output_sub_dir, trans_output_dir,
-                              f"{transform_name_wo_ext}.{xfm_ext}")
+                              f"{transform_name_wo_ext}.{cls.xfm_ext}")
       elif generation is not None:
           name = os.path.join(moving.pipeline_sub_dir, moving.output_sub_dir, trans_output_dir,
-                            f"%s_demons_nlin-%s.{xfm_ext}" % (moving.filename_wo_ext, generation))
+                            f"%s_demons_nlin-%s.{cls.xfm_ext}" % (moving.filename_wo_ext, generation))
       else:
           name = os.path.join(moving.pipeline_sub_dir, moving.output_sub_dir, trans_output_dir,
-                              f"%s_demons_to_%s.{xfm_ext}" % (moving.filename_wo_ext, fixed.filename_wo_ext))
+                              f"%s_demons_to_%s.{cls.xfm_ext}" % (moving.filename_wo_ext, fixed.filename_wo_ext))
       out_xfm = ITKXfmAtom(name=name, pipeline_sub_dir=moving.pipeline_sub_dir, output_sub_dir=moving.output_sub_dir)
 
       out_img = moving.newname_with_suffix("_to_%s" % fixed.filename_wo_ext)
@@ -104,6 +102,12 @@ class DEMONS(NLIN):
                           + ((fixed.mask,) if fixed.mask else ()),
                    outputs = (out_xfm, out_img))
 
-      xfm = GenericXfmHandler(source=moving, target=fixed, xfm=out_xfm,
+      xfm = GenericXfmHandler(moving=moving, fixed=fixed, xfm=out_xfm,
                               resampled=out_img)
       return Result(stages=Stages([s]), output=xfm)
+
+
+class DEMONS_MINC(DEMONS):
+  Algorithms = MincAlgorithms
+  img_ext = ".mnc"
+  xfm_ext = ".xfm"

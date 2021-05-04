@@ -38,14 +38,14 @@ class GenericXfmHandler(Generic[I, X]):
                  then the xfm applied, that file will be stored in resampled.
     """
     def __init__(self,
-                 source    : I,
+                 moving    : I,
                  xfm       : X,
-                 target    : I,
+                 fixed     : I,
                  resampled : Optional[I] = None,
                  inverse   : Optional['GenericXfmHandler'] = None) -> None:
-        self.source     = source
+        self.moving     = moving  # TODO rename self.source and self.target !!
         self.xfm        = xfm
-        self.target     = target
+        self.fixed     = fixed
         self._resampled = resampled
         self._inverse   = inverse
     # We thought about including an inverse transform which could be generated automagically (when/how??)

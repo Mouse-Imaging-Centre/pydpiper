@@ -272,8 +272,8 @@ def minctracc(source: MincAtom,
                  if resample_source else None)
 
     return Result(stages=s,
-                  output=XfmHandler(source=source,
-                                    target=target,
+                  output=XfmHandler(moving=source,
+                                    fixed=target,
                                     xfm=out_xfm,
                                     resampled=resampled))
 
@@ -325,8 +325,8 @@ def minc_displacement(xfm : XfmHandler, newname_wo_ext : Optional[str] = None) -
     output_grid = xfmToMinc(xfm.xfm.newname(newname_wo_ext, ext='.mnc', subdir="tmp")
                             if newname_wo_ext
                             else (xfm.xfm.newname_with_suffix("_displ", ext='.mnc', subdir="tmp")))
-    stage = CmdStage(inputs=(xfm.source, xfm.xfm), outputs=(output_grid,),
-                     cmd=['minc_displacement', '-clobber', xfm.source.path, xfm.xfm.path, output_grid.path])
+    stage = CmdStage(inputs=(xfm.moving, xfm.xfm), outputs=(output_grid,),
+                     cmd=['minc_displacement', '-clobber', xfm.moving.path, xfm.xfm.path, output_grid.path])
     return Result(stages=Stages([stage]), output=output_grid)
 
 
@@ -792,9 +792,11 @@ def xfmconcat(xfms: List[XfmAtom],
 #       the concept seems odd. It's a concat and a resample?
 #
 #
+# TODO alternately make default class method of Algorithms:
 def concat_xfmhandlers(xfms: List[XfmHandler],
+                       algorithms,
                        name: str = None,
-                       resample_source: bool = True,
+                       resample_moving: bool = True,  # False?
                        interpolation: Optional[Interpolation] = None,  # remove or make `sinc` default?
                        extra_flags: Tuple[str] = ()) -> Result[XfmHandler]:
     """
@@ -804,15 +806,15 @@ def concat_xfmhandlers(xfms: List[XfmHandler],
     of them creating the resampled file for the output XfmHandler
     """
     s = Stages()
-    t = s.defer(xfmconcat([t.xfm for t in xfms], name=name))
-    res = s.defer(mincresample(img=xfms[0].source,
-                               xfm=t,
-                               like=xfms[-1].target,
-                               interpolation=interpolation,
-                               extra_flags=extra_flags)) if resample_source else None
+    t = s.defer(algorithms.concat([t.xfm for t in xfms], name=name))
+    res = s.defer(algorithms.resample(img=xfms[0].moving,
+                                      xfm=t,
+                                      like=xfms[-1].fixed,
+                                      interpolation=interpolation,
+                                      extra_flags=extra_flags)) if resample_moving else None
     return Result(stages=s,
-                  output=XfmHandler(source=xfms[0].source,
-                                    target=xfms[-1].target,
+                  output=XfmHandler(moving=xfms[0].moving,
+                                    fixed=xfms[-1].fixed,
                                     xfm=t,
                                     resampled=res))
 
@@ -1173,8 +1175,8 @@ def rotational_minctracc(source: MincAtom,
             resampled.mask = target.mask
 
     return Result(stages=s,
-                  output=XfmHandler(source=source,
-                                    target=target,
+                  output=XfmHandler(moving=source,
+                                    fixed=target,
                                     xfm=out_xfm,
                                     resampled=resampled))
 
@@ -1376,7 +1378,7 @@ def parse_minctracc_linear_protocol(f, transform_type : LinearTransType,
 
     return parse_minctracc_protocol(f=f, names={}, parsers=parsers, is_ignored_key=is_ignored_key,
                                     modify=lambda b, c: b.replace(linear_conf=c),
-                                    base_minctracc_conf=base_minctracc_conf(transform_type))
+                                    base_minctracc_conf=base_minctracc_conf)  #=base_minctracc_conf(transform_type))
 
 
 def get_linear_configuration_from_options(conf, transform_type : LinearTransType, file_resolution : float) \
@@ -1414,6 +1416,9 @@ def get_nonlinear_component(reg_method : str):
         return antsRegistration.ANTSRegistration
     def _minctracc():
         return MINCTRACC
+    def _demons():
+        import pydpiper.itk.demons as demons
+        return demons.DEMONS
     #def _demons():
     #    import pydpiper.itk.demons as demons
     #    return demons.Demons
@@ -1425,7 +1430,7 @@ def get_nonlinear_component(reg_method : str):
     #    return elastix.Elastix
     d = { "ANTS"             : _ANTS,
           "antsRegistration" : _antsRegistration,
-          #"demons"           : _demons,
+          "demons"           : _demons,
           #"DRAMMS"           : _DRAMMS,
           #"elastix"          : _elastix,
           "minctracc"        : _minctracc }
@@ -1629,8 +1634,8 @@ def lsq6_lsq12_nlin(source: MincAtom,
 
 
 
-def lsq12_nlin(source: MincAtom,
-               target: MincAtom,
+def lsq12_nlin(source: ImgAtom,
+               target: ImgAtom,
                lsq12_conf: MinctraccConf,
                nlin_module: NLIN,
                resolution: float,
@@ -1669,8 +1674,8 @@ def lsq12_nlin(source: MincAtom,
     def to_mni_xfmh(xfmh):
         # TODO GenericXfmHandler?
         # TODO handle inverse_xfm
-        return XfmHandler(source = xfmh.source,
-                          target = xfmh.target,
+        return XfmHandler(fixed = xfmh.fixed,
+                          moving = xfmh.moving,
                           resampled = xfmh.resampled if xfmh.has_resampled() else None,
                           xfm = xfmh.xfm)
         #return XfmHandler(source=s.defer(toMinc.to_mnc(xfmh.source)),
@@ -1689,28 +1694,29 @@ def lsq12_nlin(source: MincAtom,
                                                                conf=lsq12_conf,
                                                                # TODO allow a transform here?
                                                                resample_source=resample_source))
-        nlin_transform_handler = s.defer(nlin_module.register(source=source,
-                                                              target=target,
+        nlin_transform_handler = s.defer(nlin_module.register(moving=source,
+                                                              fixed=target,
                                                               conf=nlin_conf,
-                                                              initial_source_transform=
+                                                              initial_moving_transform=
                                                                 lsq12_transform_handler.xfm,
-                                                              resample_source=resample_source))
-        full_transform = to_mni_xfmh(nlin_transform_handler)  #FIXME convert to minc
+                                                              resample_moving=resample_source))
+        full_transform = nlin_transform_handler
     else:
         lsq12_transform_handler = s.defer(multilevel_minctracc(source=source,
                                                                target=target,
                                                                conf=lsq12_conf,
                                                                resample_source=True))
-        nlin_transform_handler = s.defer(nlin_module.register(source=
+        nlin_transform_handler = s.defer(nlin_module.register(moving=
                                                                 lsq12_transform_handler.resampled,
-                                                              target=target,
+                                                              fixed=target,
                                                               conf=nlin_conf,
-                                                              resample_source=resample_source))
-        nlin_transform_handler = to_mni_xfmh(nlin_transform_handler)
-        full_transform = s.defer(concat_xfmhandlers(xfms=[lsq12_transform_handler, nlin_transform_handler],
-                                                    name=source.filename_wo_ext + "_to_" +
-                                                      target.filename_wo_ext + "_lsq12_ANTS_nlin",
-                                                    resample_source=resample_source))
+                                                              resample_moving=resample_source))
+        full_transform = s.defer(concat_xfmhandlers(
+            xfms=[lsq12_transform_handler, nlin_transform_handler],
+            algorithms=nlin_module.Algorithms,
+            name=source.filename_wo_ext + "_to_" +
+                   target.filename_wo_ext + "_lsq12_ANTS_nlin",
+            resample_moving=resample_source))
     return Result(stages=s, output=full_transform)
     # if isinstance(nlin_conf, MultilevelANTSConf):
     #     # if only a single level is specified inside this multilevel configuration, all is fine:
@@ -1821,8 +1827,8 @@ def multilevel_minctracc(source: MincAtom,
     last_resampled = transform_handler.resampled if resample_source else None
     return Result(stages=s,
                   output=XfmHandler(xfm=transform,
-                                    source=source,
-                                    target=target,
+                                    moving=source,
+                                    fixed=target,
                                     resampled=last_resampled))
 
 #class MultilevelRegistration(REG):
@@ -2094,11 +2100,10 @@ def lsq12_pairwise(imgs: List[MincAtom],
             max_pairs=lsq12_conf.max_pairs))
         # TODO: instead of this case analysis, we could dispatch on overall LSQ12 module as we do for the nonlinear part
     else:
-        final_avg = MincAtom(name=os.path.join(lsq12_dir, "lsq12_identity_avg.mnc"),
+        final_avg = ImgAtom(name=os.path.join(lsq12_dir, "lsq12_identity_avg.mnc"),
                              pipeline_sub_dir=lsq12_dir)
         avg = s.defer(image_algorithms.average([img for img in imgs], avg_file=final_avg))
-        identity_xfm = s.defer(param2xfm(out_xfm=FileAtom(name=os.path.join(lsq12_dir, 'tmp', "identity.xfm"),
-                                                          output_sub_dir=os.path.join(lsq12_dir, 'tmp'))))
+        identity_xfm = s.defer(image_algorithms.identity_transform(output_sub_dir = os.path.join(lsq12_dir, 'tmp')))
         identity_xfms = [XfmHandler(source=img, target=avg, xfm=identity_xfm, resampled=img) for img in imgs]
         avgs_and_xfms = WithAvgImgs(avg_imgs=[avg], avg_img=avg,
                                     output=identity_xfms)
@@ -2495,8 +2500,8 @@ def lsq6(imgs: List[MincAtom],
                                       for native_img, overall_xfm in zip(imgs, composed_xfms)])
                           if resample_images else [None] * len(imgs))
         final_xfmhs = [XfmHandler(xfm=overall_xfm,
-                                  target=post_alignment_target,
-                                  source=native_img,
+                                  fixed=post_alignment_target,
+                                  moving=native_img,
                                   # resample the input to the final lsq6 space
                                   # we should go back to basics in terms of the file name that we create here.
                                   # It should be fairly basic. Something along the lines of:
@@ -2511,7 +2516,7 @@ def lsq6(imgs: List[MincAtom],
             for native_img, xfm in zip(imgs, final_xfmhs):  # is xfm.resampled even mutable ?!
                 xfm.resampled = s.defer(image_algorithms.resample(img=native_img,
                                                                   xfm=xfm.xfm,
-                                                                  like=xfm.target,
+                                                                  like=xfm.fixed,
                                                                   interpolation=Interpolation.sinc,
                                                                   new_name_wo_ext=native_img.filename_wo_ext + "_lsq6",
                                                                   subdir=resample_subdir))
@@ -2616,18 +2621,16 @@ def lsq6_nuc_inorm(imgs: List[MincAtom],
                                            masks_in_native_space if masks_in_native_space
                                                                  else [None] * len(imgs))]
 
-    inorm_imgs_in_native_space = None  # type: List[MincAtom]
+    inorm_imgs_in_native_space = None  # type: List[ImgAtom]
     if lsq6_options.inormalize:
         # TODO: this is still static
-        inorm_conf = default_inormalize_conf
         input_imgs_for_inorm = nuc_imgs_in_native_space if nuc_imgs_in_native_space else imgs
         # same as with the NUC files, these intensity normalized files will be resampled
         # using the lsq6 transform no matter what, so these ones are temp files
         inorm_imgs_in_native_space = (
-            [s.defer(image_algorithms.inormalize(src=nuc_img,
-                                                 conf=inorm_conf,
-                                                 mask=native_img_mask,
-                                                 subdir="tmp"))
+            [s.defer(image_algorithms.intensity_normalize(src=nuc_img,
+                                                          mask=native_img_mask,
+                                                          subdir="tmp"))
              for nuc_img, native_img_mask in zip(input_imgs_for_inorm,
                                                  masks_in_native_space or [None] * len(input_imgs_for_inorm))])
 
@@ -2698,8 +2701,8 @@ def lsq6_nuc_inorm(imgs: List[MincAtom],
     #
     # TODO: potentially add more to this return. Perhaps we want to pass along 
     #       non uniformity corrected / intensity normalized files in native space?
-    return Result(stages=s, output=[XfmHandler(source=src_img,
-                                               target=registration_targets.registration_standard,
+    return Result(stages=s, output=[XfmHandler(moving=src_img,
+                                               fixed=registration_targets.registration_standard,
                                                xfm=lsq6_xfm,
                                                resampled=final_resampled)
                                     for src_img, lsq6_xfm, final_resampled in
@@ -3199,7 +3202,9 @@ class MincAlgorithms(Algorithms):
         return min([abs(x) for x in image_resolution])
 
     @staticmethod
-    def inormalize(*args, **kwargs): return inormalize(*args, **kwargs)
+    def intensity_normalize(src, mask, subdir = "tmp"):
+        return inormalize(src = src, mask = mask, subdir = subdir,
+                          conf = default_inormalize_conf)
 
     @staticmethod
     def nu_correct(*args, **kwargs): return nu_correct(*args, **kwargs)
@@ -3209,6 +3214,18 @@ class MincAlgorithms(Algorithms):
 
     @staticmethod
     def average(*args, **kwargs): return mincbigaverage(*args, **kwargs)
+
+    @staticmethod
+    def hard_mask(img, *, mask, subdir = "tmp"):
+        return mincmath('mul', vols=[img, mask],
+                        out_atom=img.newname_with_suffix("_hard-masked", subdir = subdir))
+
+    @staticmethod
+    def dilate_mask(mask, voxels, subdir = "tmp"):
+        out = mask.newname_with_suffix(f"_dilated_{voxels}", subdir=subdir)
+        c = CmdStage(cmd=["mincmorph", "-clobber", "-successive", f"{'D' * voxels}", mask.path, out.path],
+                     inputs=(mask,), outputs=(out,))
+        return Result(stages=Stages([c]), output=out)
 
     #blur     = mincblur
     #average  = mincbigaverage
@@ -3228,6 +3245,11 @@ class MincAlgorithms(Algorithms):
                               if use_nn_interpolation else Interpolation.sinc,
                             extra_flags=(("-keep_real_range", "-labels") if use_nn_interpolation else ()),
                             new_name_wo_ext=new_name_wo_ext, subdir=subdir, postfix=postfix)
+
+    @staticmethod
+    def identity_transform(output_sub_dir):
+        return param2xfm(out_xfm=FileAtom(name=os.path.join(output_sub_dir, "identity.xfm"),
+                                          output_sub_dir=output_sub_dir))
 
     @staticmethod
     def xfminvert(xfm: XfmAtom,
@@ -3299,6 +3321,15 @@ class MincAlgorithms(Algorithms):
 
         return Result(stages=s, output=avg_xfm)
 
+    @staticmethod
+    def log_determinant(xfm):
+        s = Stages()
+        displacement_grid = s.defer(minc_displacement(xfm.xfm))  # TODO fwhm stuff
+        output_filename_wo_ext = displacement_grid.filename_wo_ext + "_log_det"
+        log_det = s.defer(mincmath(op="log", vols=[s.defer(determinant(displacement_grid))],
+                                   subdir="stats-volumes", new_name=output_filename_wo_ext))
+        return Result(stages=s, output=log_det)
+
 
 class MINCTRACC(NLIN):
     img_ext = ".mnc"
@@ -3339,13 +3370,13 @@ class MINCTRACC(NLIN):
                  fixed : MincAtom,
                  conf : Conf,
                  transform_name_wo_ext = None,
-                 resample_source : bool = False,
+                 resample_moving : bool = False,
                  resample_subdir : str = "resampled",
                  initial_moving_transform : Optional[MincAtom] = None):
         return multilevel_minctracc(source=moving, target=fixed, conf=conf,
                                     transform=initial_moving_transform,
                                     #subdir=resample_subdir,  # TODO broken
-                                    resample_source=resample_source)
+                                    resample_source=resample_moving)
 
 class MINCTRACC_LSQ12(MINCTRACC):  # kinda silly since it hard codes 12 params
     @staticmethod
@@ -3354,3 +3385,51 @@ class MINCTRACC_LSQ12(MINCTRACC):  # kinda silly since it hard codes 12 params
     @staticmethod
     def parse_protocol_file(cls, filename, resolution):
         return parse_minctracc_linear_protocol_file(filename, transform_type=LinearTransType.lsq12)
+
+
+def mincblob(op : str, grid : MincAtom, subdir : str = "tmp") -> Result[MincAtom]:
+    """
+    Low-level mincblob wrapper with the one exception being the determinant option. By
+    default the inner clockwork of mincblob subtracts 1 from all determinant values that
+    are being calculated. As such, 1 needs to be added to the result of the mincblob call.
+    We will do that here, because it makes most sense here.
+    >>> stages = mincblob('determinant', MincAtom("/images/img_1.mnc", pipeline_sub_dir="/tmp")).stages
+    >>> [s.render() for s in stages]
+    ['mincblob -clobber -determinant /images/img_1.mnc /tmp/img_1/img_1_determinant.mnc']
+    """
+    if op not in ["determinant", "trace", "translation", "magnitude"]:
+        raise ValueError('mincblob: invalid operation %s' % op)
+
+    # if we are calculating the determinant, the first file produced is a temp file:
+    if op == "determinant":
+        out_file = grid.newname_with_suffix("_temp_det", subdir=subdir)
+    else:
+        out_file = grid.newname_with_suffix('_' + op, subdir=subdir)
+
+    stage = CmdStage(inputs=(grid,), outputs=(out_file,),
+                 cmd=['mincblob', '-clobber', '-' + op, grid.path, out_file.path])
+
+    s = Stages([stage])
+    # now create the proper determinant if that's what was asked for
+    if op == "determinant":
+        result_file = s.defer(mincmath(op='add',
+                                       const=1,
+                                       vols=[out_file],
+                                       subdir=subdir,
+                                       new_name=grid.filename_wo_ext + "_det"))
+    else:
+        result_file = out_file
+
+    return Result(stages=s, output=result_file)
+    #TODO add a 'before' to newname_with, e.g., before="grid" -> disp._grid.mnc
+
+
+def determinant(displacement_grid : MincAtom) -> Result[MincAtom]:
+    """
+    Takes a displacement field (deformation grid, vector field, those are
+    all the same thing) and calculates the proper determinant (mincblob()
+    takes care of adding 1 to the silly output of running mincblob directly)
+    """
+    s = Stages()
+    det = s.defer(mincblob(op='determinant', grid=displacement_grid))
+    return Result(stages=s, output=det)
