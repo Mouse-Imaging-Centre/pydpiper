@@ -13,8 +13,8 @@ from pydpiper.pipelines.registration_chain import get_closest_model_from_pride_o
 
 from pydpiper.minc.analysis import determinants_at_fwhms
 from pydpiper.minc.files import MincAtom
-from pydpiper.minc.registration import (concat_xfmhandlers, invert_xfmhandler, mincresample_new, ensure_distinct_basenames,
-                                        TargetType, get_pride_of_models_mapping, get_resolution_from_file,
+from pydpiper.minc.registration import (concat_xfmhandlers, mincresample_new, ensure_distinct_basenames,
+                                        TargetType, get_pride_of_models_mapping,
                                         registration_targets)
 from pydpiper.pipelines.MBM import mbm, MBMConf, mk_mbm_parser
 from pydpiper.execution.application import execute
@@ -63,7 +63,6 @@ def two_level_pipeline(options : TwoLevelConf):
     # TODO is it actually sufficient that *within-study* filenames are distinct, as follows??
     for name, g in files_df.groupby("group"):   # TODO: collect the outputs
         ensure_distinct_basenames(g.file.map(lambda x: x.path))
-    #check_MINC_input_files(files_df.file.map(lambda x: x.path))
 
     pipeline = two_level(grouped_files_df=files_df, options=options)
 
@@ -92,8 +91,8 @@ def two_level_pipeline(options : TwoLevelConf):
         "first_level_log_nlin_det_resampled" : "resampled_log_nlin_det"
     })
     (analysis
-     .merge(pd.merge(left = resampled.assign(target = lambda df: df.xfm.apply(lambda r: r.target)),
-                     right = overall.assign(target  = lambda df: df.xfm.apply(lambda r: r.target)),
+     .merge(pd.merge(left = resampled.assign(target = lambda df: df.xfm.apply(lambda r: r.fixed)),
+                     right = overall.assign(target  = lambda df: df.xfm.apply(lambda r: r.fixed)),
                      on = ['target', 'fwhm']),
             on = "native_file")
      .applymap(maybe_deref_path)
@@ -213,7 +212,7 @@ def two_level(grouped_files_df, options : TwoLevelConf):
     # If for some reason we want to output xfms in the future, just don't drop everything.
     first_level_xfms = pd.concat(list(first_level_results.build_model.apply(lambda x: x.xfms.assign(
         first_level_avg=x.avg_img))), ignore_index=True)[["lsq12_nlin_xfm", "rigid_xfm"]].assign(
-        native_file=lambda df:df.rigid_xfm.apply(lambda x: x.source.path))
+        native_file=lambda df:df.rigid_xfm.apply(lambda x: x.moving.path))
     if options.mbm.segmentation.run_maget:
         maget_df = pd.DataFrame([{"label_file" : x.labels.path, "native_file" : x.orig_path }  #, "_merge" : basename(x.orig_path)}
                                  for x in pd.concat([namespace.maget_result for namespace in first_level_results.build_model])])
@@ -227,7 +226,7 @@ def two_level(grouped_files_df, options : TwoLevelConf):
     resampled_determinants = (pd.merge(
         left=first_level_determinants,
         right=pd.DataFrame({'group_xfm' : second_level_results.xfms.overall_xfm})
-              .assign(source=lambda df: df.group_xfm.apply(lambda r: r.source)),
+              .assign(source=lambda df: df.group_xfm.apply(lambda r: r.moving)),
         left_on="first_level_avg",
         right_on="source")
         .assign(resampled_log_full_det=lambda df: defer(resample(img=df.log_full_det,

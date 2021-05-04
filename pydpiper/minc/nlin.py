@@ -36,6 +36,28 @@ class Algorithms():  #(Generic[I, X], metaclass=ABCMeta):
 
     @staticmethod
     @abstractmethod
+    def nu_correct(src : I,
+                   resolution,
+                   mask : Optional[I],
+                   # TODO add weights (-w)
+                   subject_matter : Optional[str],
+                   subdir : str = "tmp"):
+        pass
+
+    @staticmethod
+    @abstractmethod
+    def intensity_normalize(src : I, mask : I, subdir : str = "tmp"): pass
+
+    @staticmethod
+    @abstractmethod
+    def hard_mask(img : I, *, mask : I, subdir : str = "tmp") -> Result[I]: pass
+
+    @staticmethod
+    @abstractmethod
+    def dilate_mask(mask : I, voxels : int, subdir : str = "tmp") -> Result[I]: pass
+
+    @staticmethod
+    @abstractmethod
     def resample(img: I,
                  xfm: X,  # TODO: update to handler?
                  like: I,
@@ -48,6 +70,10 @@ class Algorithms():  #(Generic[I, X], metaclass=ABCMeta):
                  subdir: str = None,
                  postfix: str = None) -> Result[I]:
         pass
+
+    @staticmethod
+    @abstractmethod
+    def identity_transform() -> Result[GenericXfmHandler[I, X]]: raise NotImplementedError
 
     # must be able to handle arbitrary (not simply pure linear or pure nonlinear) transformations.
     # [bug: some of the xfmavg and xfmavg_scipy.py scripts assume exactly zero or one of each of affine and grid!]
@@ -102,7 +128,7 @@ class Algorithms():  #(Generic[I, X], metaclass=ABCMeta):
             inv_xfm = s.defer(cls.xfminvert(xfm.xfm, subdir=subdir))
         return Result(stages=s,
                       output=GenericXfmHandler(xfm=inv_xfm,
-                                               source=xfm.target, target=xfm.source, resampled=None,
+                                               moving=xfm.fixed, fixed=xfm.moving, resampled=None,
                                                inverse=xfm))  # TODO is it correct to have the original resampled here?
 
     #def concat_xfms(): pass

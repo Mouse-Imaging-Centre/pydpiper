@@ -168,20 +168,20 @@ def tournament(reg_module : Type[NLIN]):
                       nlin_algorithm=reg_module,
                       conf=conf,
                       out_dir=nlin_dir))
-              xfms_to_midpoint = ([XfmHandler(source=xfm.source,
+              xfms_to_midpoint = ([XfmHandler(source=xfm.moving,
                                               target=avg_img,
                                               resampled=A_halfway_to_B.resampled,
                                               xfm=s.defer(reg_module.concat_transforms(
                                                             [xfm.xfm, A_halfway_to_B.xfm],
-                                                            name="%s_%s" % (xfm.source.filename_wo_ext,
+                                                            name="%s_%s" % (xfm.moving.filename_wo_ext,
                                                                             name_wo_ext))))
                                    for xfm in first_half_result]
-                                  + [XfmHandler(source=xfm.source,
+                                  + [XfmHandler(source=xfm.moving,
                                                 target=avg_img,
                                                 resampled=B_halfway_to_A.resampled,
                                                 xfm=s.defer(reg_module.concat_transforms(
                                                               [xfm.xfm, B_halfway_to_A.xfm],
-                                                              name="%s_%s" % (xfm.source.filename_wo_ext,
+                                                              name="%s_%s" % (xfm.moving.filename_wo_ext,
                                                                               name_wo_ext))))
                                      for xfm in second_half_result])
               return xfms_to_midpoint
@@ -193,7 +193,7 @@ def tournament(reg_module : Type[NLIN]):
       initial_xfms = [XfmHandler(source=img, target=img,
                                  resampled=img, xfm=identity_xfm) for img in imgs]
       xfms_to_avg = h(initial_xfms, tournament_name_wo_ext)
-      avg_img = xfms_to_avg[0].target
+      avg_img = xfms_to_avg[0].fixed
       return Result(stages=s, output=WithAvgImgs(avg_img=avg_img, avg_imgs=[avg_img],
                                                  output=xfms_to_avg))
     return mk_build_model_class(nlin=reg_module,

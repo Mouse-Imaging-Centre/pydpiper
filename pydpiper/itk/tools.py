@@ -37,7 +37,7 @@ def convert(infile : ImgAtom, out_ext : str) -> Result[ImgAtom]:
 
 def itk_convert_xfm(xfm : ITKXfmAtom, out_ext : str) -> Result[ITKXfmAtom]:
     if xfm.ext == out_ext:
-        return Result(stages=Stages(), output=xfm)
+        return identity_result(xfm)
     else:
         out_xfm = xfm.newext(out_ext)
         cmd = CmdStage(inputs=(xfm,), outputs=(out_xfm,),
@@ -415,7 +415,7 @@ def canonicalize(t : Transform):
             return t
     elif isinstance(t, ConcatTransform):
         return ConcatTransform([canonicalize(t) for t in t.transforms], name = t.name)
-    elif isinstance(t, XfmAtom):
+    elif isinstance(t, FileAtom):
         return t
     else:
         raise TypeError(f"don't know what to do with this 'transform': {t}")
@@ -436,7 +436,7 @@ def serialize_transform(t : Transform):
         raise TypeError(f"don't know what to do with this 'transform': {t}")
 
 def inputs(t : Transform) -> Tuple[ITKXfmAtom]:
-    if isinstance(t, XfmAtom): return (t,)
+    if isinstance(t, FileAtom): return (t,)
     elif isinstance(t, IdentityTransform): return ()
     elif isinstance(t, InverseTransform): return inputs(t.transform)
     elif isinstance(t, ConcatTransform): return tuple(s for u in t.transforms for s in inputs(u))
@@ -494,20 +494,33 @@ class Algorithms(Algorithms):
         return Result(stages=Stages((cmd,)), output=out_img)
 
     @staticmethod
+    def intensity_normalize(src, mask, subdir : str = "tmp"):
+        warnings.warn("intensity normalization not implemented for ITK command-line tools; doing nothing")
+        return identity_result(src)
+
+    @staticmethod
+    def hard_mask(img, *, mask, subdir = "tmp"):
+        raise NotImplementedError
+
+    @staticmethod
+    def dilate_mask(mask, voxels, subdir = "tmp"):
+        raise NotImplementedError
+
+    @staticmethod
     def blur(img, fwhm, gradient=True, subdir='tmp'):
         # note c3d can take voxel rather than fwhm specification, but the Algorithms interface
         # currently doesn't allow this to be used ... maybe an argument from switching from mincblur
         if fwhm in (-1, 0, None):
             if gradient:
                 raise ValueError("can't compute gradient without a positive FWHM")
-            return Result(stages=Stages(), output=Namespace(img=img))
+            return identity_result(Namespace(img=img))
 
         if gradient:
             out_gradient = img.newname_with_suffix("_blur%s_grad" % fwhm)
         else:
             out_gradient = None
 
-        # c3d -smooth takes stdenv, not fwhm
+        # c3d -smooth takes stdev, not fwhm
         stdev = "%.3g" % (fwhm / (2 * math.sqrt(2 * math.log(2))))
 
         out_img = img.newname_with_suffix("_blurred%s" % stdev)
@@ -523,11 +536,15 @@ class Algorithms(Algorithms):
     def resample(*args, **kwargs): return resample(*args, **kwargs)
 
     @staticmethod
+    def identity_transform(): return identity_result(IdentityTransform)
+    # TODO: does this ever need to be materialized?
+
+    @staticmethod
     def scale_transform(xfm, scale, newname_wo_ext):
         """scale a nonlinear transformation.
-           Note that a linear transformation to which this is applied is converted to a deformation."""
+           Note that a transformation, even a linear one, to which this is applied is converted to a deformation."""
         s = Stages()
-        defs = s.defer(as_deformation(transform=xfm.xfm, reference=xfm.source))
+        defs = s.defer(as_deformation(transform=xfm.xfm, reference=xfm.moving))
         scaled_defs = (defs.newname(newname_wo_ext) if newname_wo_ext else
                         defs.newname_with_suffix("_scaled_%s" % scale))
         s.defer(CmdStage(cmd=['c3d', '-scale', str(scale), defs.path, "-o", scaled_defs.path],
@@ -553,7 +570,7 @@ class Algorithms(Algorithms):
     @staticmethod
     def average_transforms(xfms, avg_xfm):
         s = Stages()
-        defs = [s.defer(as_deformation(transform=xfm.xfm, reference_image=xfm.source)) for xfm in xfms]
+        defs = [s.defer(as_deformation(transform=xfm.xfm, reference_image=xfm.moving)) for xfm in xfms]
         #avg_img = NotImplemented
         avg = imageToXfm(s.defer(average_images(defs,
                                                 avg_file=xfmToImage(avg_xfm),
@@ -566,8 +583,8 @@ class Algorithms(Algorithms):
     @staticmethod
     def log_determinant(xfm):
         s = Stages()
-        displacement_field = s.defer(as_deformation(xfm.xfm, reference_image = xfm.source))
-        out_file = xfm.xfm.newname_with_suffix("_log_det", ext = ".nii.gz")
+        displacement_field = s.defer(as_deformation(xfm.xfm, reference_image = xfm.moving))  # xfm.target?
+        out_file = xfm.xfm.newname_with_suffix("_log_det", ext = ".mnc")
         s.add(CmdStage(cmd = ["CreateJacobianDeterminantImage", "3", displacement_field.path, out_file.path, "1", "0"],
-                       inputs = (xfm.xfm,), outputs = (out_file,)))
+                       inputs = (displacement_field,), outputs = (out_file,)))
         return Result(stages=s, output=out_file)

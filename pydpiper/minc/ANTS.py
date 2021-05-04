@@ -227,10 +227,10 @@ class ANTS(NLIN):
                                                  subdir=resample_subdir))
                  if resample_moving else None)  # type: Optional[MincAtom]
     return Result(stages=s,
-                  output=XfmHandler(source=moving,
-                                    target=fixed,
+                  output=XfmHandler(moving=moving,
+                                    fixed=fixed,
                                     xfm=out_xfm,
-                                    inverse=XfmHandler(source=fixed, target=moving, xfm=out_xfm_inv),
+                                    inverse=XfmHandler(moving=fixed, fixed=moving, xfm=out_xfm_inv),
                                     resampled=resampled))
 
 

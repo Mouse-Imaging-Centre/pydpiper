@@ -51,7 +51,7 @@ def NLIN_pipeline(options):
                   or min([reg_algorithms.Algorithms.get_resolution_from_file(f) for f in options.application.files]))
 
     initial_target_mask = ImgAtom(options.nlin.target_mask) if options.nlin.target_mask else None
-    initial_target = ImgAtom(options.nlin.target, mask=initial_target_mask)
+    initial_target = ImgAtom(options.nlin.fixed, mask=initial_target_mask)
 
     #nlin_module = get_nonlinear_component(reg_method=options.nlin.reg_method)
 
