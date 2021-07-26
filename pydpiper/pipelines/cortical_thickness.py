@@ -29,8 +29,8 @@ def cortical_thickness_pipeline(options):
     xfms = (pd.read_csv(options.thickness.xfm_csv)
             .apply(axis=1,  # TODO fill out <..>Atom(...) fields ...
                    func=lambda row: XfmHandler(
-                          source=MincAtom(row.source, pipeline_sub_dir=pipeline_sub_dir),
-                          target=MincAtom(row.target, pipeline_sub_dir=pipeline_sub_dir),
+                          source=MincAtom(row.moving, pipeline_sub_dir=pipeline_sub_dir),
+                          target=MincAtom(row.fixed, pipeline_sub_dir=pipeline_sub_dir),
                           resampled=None,   #MincAtom(row.resampled, pipeline_sub_dir=pipeline_sub_dir),
                           xfm=XfmAtom(row.xfm, pipeline_sub_dir=pipeline_sub_dir))))
     # TODO better way to unpack?

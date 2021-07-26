@@ -209,19 +209,19 @@ def cortical_thickness(xfms   : pd.Series,  # nlin avg -> subject XfmHandler (ii
         'xfm' : xfms,
         # resample the atlas files to each subject:
         'blurred_atlas_grid_resampled'  :
-            xfms.apply(lambda xfm: s.defer(mincresample_new(img=blurred_atlas, xfm=xfm.xfm, like=xfm.target))),
+            xfms.apply(lambda xfm: s.defer(mincresample_new(img=blurred_atlas, xfm=xfm.xfm, like=xfm.fixed))),
         'atlas_left_resampled'    :
             xfms.apply(lambda xfm: s.defer(transform_objects(input_obj=atlas_left_thickness, xfm=xfm.xfm))),
         'atlas_right_resampled'   :
             xfms.apply(lambda xfm: s.defer(transform_objects(input_obj=atlas_right_thickness, xfm=xfm.xfm))),
       })
         .assign(left_grid=lambda df: df.xfm.map(lambda xfm: s.defer(
-                    make_laplace_grid(input_labels=xfm.target,
+                    make_laplace_grid(input_labels=xfm.fixed,
                                       label_mapping=label_mapping,
                                       binary_closing=True,
                                       side=Side.left))),
                 right_grid=lambda df: df.xfm.map(lambda xfm: s.defer(
-                    make_laplace_grid(input_labels=xfm.target,
+                    make_laplace_grid(input_labels=xfm.fixed,
                                       label_mapping=label_mapping,
                                       binary_closing=True,
                                       side=Side.right))))

@@ -149,7 +149,7 @@ def tamarack(imgs : pd.DataFrame, options):
                                                                  nlin_module=nlin_component,
                                                                  resolution=options.registration.resolution,
                                                                  nlin_options=options.mbm.nlin.nlin_protocol,
-                                                                 resample_source=True)))))
+                                                                 resample_moving=True)))))
 
     # now compose the above transforms to produce transforms from each average to the common average:
     common_time_pt = options.tamarack.common_time_pt

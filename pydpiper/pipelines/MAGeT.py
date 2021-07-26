@@ -9,29 +9,74 @@ import os
 from typing import List
 import pandas as pd
 
-from pydpiper.core.arguments        import (lsq12_parser, nlin_parser, stats_parser,
+from pydpiper.core.arguments        import (lsq12_parser, nlin_parser,
                                             CompoundParser, AnnotatedParser, BaseParser)
+from pydpiper.core.files import ImgAtom
 from pydpiper.core.stages import Stages, Result
 from pydpiper.execution.application import mk_application
-from pydpiper.minc.analysis import voxel_vote
 from pydpiper.minc.files import MincAtom, XfmAtom
-from pydpiper.minc.registration import (ensure_distinct_basenames, lsq12_nlin, custom_formatwarning,
-                                        get_linear_configuration_from_options, LinearTransType,
-                                        mincresample_new, mincmath, Interpolation, xfmconcat, xfminvert,
-                                        get_nonlinear_component, MincAlgorithms)
-#from pydpiper.itk.tools import Algorithms as ITKAlgorithms
+from pydpiper.minc.registration import (ensure_distinct_basenames, lsq12_nlin, custom_formatwarning)
 
 warnings.formatwarning = custom_formatwarning
 
+
+def get_rigid_registration_module(image_algorithms, reg_method):
+    # TODO factor with get_registration_method
+    def _minctracc():
+        from pydpiper.minc.registration import MINCTRACC_LSQ6
+        return MINCTRACC_LSQ6
+    def _antsAI():
+        from pydpiper.itk.tools import AntsAI
+        return AntsAI
+    def _antsRegistrationQuick_sh():
+        from pydpiper.itk.antsRegistrationSyN_sh import AntsRegistrationSyNQuick_rigid
+        return AntsRegistrationSyNQuick_rigid
+    def _rotational_minctracc():
+        from pydpiper.minc.registration import RotationalMinctracc
+        return RotationalMinctracc
+    available_algorithms = {
+            ('itk', 'lsq6_simple') : _antsRegistrationQuick_sh,
+            ('itk', 'lsq6_large_rotations') : _antsAI,
+            ('minc', 'lsq6_simple') : _minctracc,
+            ('minc', 'lsq6_large_rotations') : _rotational_minctracc,
+        }
+    try:
+        reg_algorithms = available_algorithms[(image_algorithms, reg_method)]
+    except KeyError:
+        raise KeyError(
+            f"unsupported combination of `image_algorithms` and `reg_method` specified; choices are: {available_algorithms.keys()}")
+    else:
+        return reg_algorithms()
+
+def get_affine_registration_module(image_algorithms, reg_method):
+    # TODO factor with get_registration_method
+    def _minctracc():
+        from pydpiper.minc.registration import MINCTRACC_LSQ12
+        return MINCTRACC_LSQ12
+    def _antsRegistration_quick_affine():
+        from pydpiper.itk.antsRegistrationSyN_sh import AntsRegistrationSyNQuick_affine
+        return AntsRegistrationSyNQuick_affine
+    available_algorithms = {
+            ('itk', 'antsRegistration_sh') : _antsRegistration_quick_affine(),
+            ('minc', 'minctracc') : _minctracc,
+        }
+    try:
+        reg_algorithms = available_algorithms[(image_algorithms, reg_method)]
+    except KeyError:
+        raise KeyError(
+            f"unsupported combination of `image_algorithms` and `reg_method` specified; choices are: {available_algorithms.keys()}")
+    else:
+        return reg_algorithms()
+
 def get_registration_module(image_algorithms, reg_method):
     def _ants_minc():
-        from pydpiper.minc.ANTS import ANTS_MINC
+        from pydpiper.itk.ANTS import ANTS_MINC
         return ANTS_MINC
     def _minctracc():
         from pydpiper.minc.registration import MINCTRACC
         return MINCTRACC
     def _ants_itk():
-        from pydpiper.minc.ANTS import ANTS_ITK
+        from pydpiper.itk.ANTS import ANTS_ITK
         return ANTS_ITK
     def _demons():
         from pydpiper.itk.demons import DEMONS
@@ -77,21 +122,21 @@ def get_imgs(options):
         csv_base = os.path.dirname(options.csv_file) if not options.csv_paths_relative_to_wd else ""
 
         if hasattr(csv, 'mask_file'):
-            masks = [MincAtom(os.path.join(csv_base, mask.strip()),
+            masks = [ImgAtom(os.path.join(csv_base, mask.strip()),
                               pipeline_sub_dir=os.path.join(options.output_directory,
                                                             options.pipeline_name + "_processed"))
                      if isinstance(mask, str) else None  # better way to handle missing (nan) values?
                      for mask in csv.mask_file]
         else:
             masks = [None] * len(csv.file)
-        imgs = [MincAtom(os.path.join(csv_base, name.strip()), mask=mask,
-                         pipeline_sub_dir=os.path.join(options.output_directory,
-                                                       options.pipeline_name + "_processed"))
+        imgs = [ImgAtom(os.path.join(csv_base, name.strip()), mask=mask,
+                        pipeline_sub_dir=os.path.join(options.output_directory,
+                                                      options.pipeline_name + "_processed"))
                 # TODO does anything break if we make imgs a pd.Series?
                 for name, mask in zip(csv.file.astype("str"), masks)]
     elif options.files:
-        imgs = [MincAtom(name, pipeline_sub_dir=os.path.join(options.output_directory,
-                                                             options.pipeline_name + "_processed"))
+        imgs = [ImgAtom(name, pipeline_sub_dir=os.path.join(options.output_directory,
+                                                            options.pipeline_name + "_processed"))
                 for name in options.files]
     else:
         raise ValueError("No images supplied")
@@ -118,7 +163,7 @@ def hard_mask(img, *, algorithms, mask, dilation_voxels : int, subdir="tmp"):
                                      subdir = "resampled")))
 
 
-def get_atlases(maget_options, pipeline_sub_dir : str):
+def get_atlases(maget_options, algorithms, pipeline_sub_dir : str):
 
     atlas_dir, atlas_csv = maget_options.atlas_lib, maget_options.atlas_csv
     max_templates = maget_options.max_templates
@@ -139,7 +184,7 @@ def get_atlases(maget_options, pipeline_sub_dir : str):
 
     s = Stages()
     if maget_options.hard_mask:
-        hard_masked = atlases.apply(lambda img: s.defer(hard_mask(img, mask=img.mask,
+        hard_masked = atlases.apply(lambda img: s.defer(hard_mask(img, mask=img.mask, algorithms=algorithms,
                                                                   dilation_voxels=maget_options.hard_mask_dilation)))
         # TODO is anything necessary here (mostly masking after allowing dilated masks):
         for ix, img in enumerate(hard_masked):
@@ -151,7 +196,7 @@ def get_atlases(maget_options, pipeline_sub_dir : str):
 
     if maget_options.mask_dilation:
         for im in atlases:
-            im.mask = s.defer(dilate(im.mask, voxels=maget_options.mask_dilation, subdir="tmp"))
+            im.mask = s.defer(algorithms.dilate(im.mask, voxels=maget_options.mask_dilation, subdir="tmp"))
 
     # TODO check the atlases exist (known in atlases_from_dir case!)/are readable files?!
     # TODO issue a warning if not all atlases used or if more atlases requested than available?
@@ -166,13 +211,11 @@ def atlases_from_csv(atlas_csv : str, pipeline_sub_dir : str) -> pd.Series:
     d = os.path.dirname(atlas_csv)
     df = (pd.read_csv(atlas_csv, usecols=["file", "mask_file", "label_file"])
           .apply(axis=1, func=lambda row:
-                   MincAtom(name=os.path.join(d, row.file), pipeline_sub_dir=pipeline_sub_dir,
-                            mask=MincAtom(os.path.join(d, row.mask_file), pipeline_sub_dir=pipeline_sub_dir),
-                            labels=MincAtom(os.path.join(d, row.label_file), pipeline_sub_dir=pipeline_sub_dir))))
-
+                   ImgAtom(name=os.path.join(d, row.file), pipeline_sub_dir=pipeline_sub_dir,
+                           mask=ImgAtom(os.path.join(d, row.mask_file), pipeline_sub_dir=pipeline_sub_dir),
+                           labels=ImgAtom(os.path.join(d, row.label_file), pipeline_sub_dir=pipeline_sub_dir))))
     #if np.isnan(df).any().any():
     #    raise ValueError("missing values in atlas CSV, currently not supported")
-
     return df
 
 
@@ -213,15 +256,18 @@ def process_atlas_files(filenames : List[str], pipeline_sub_dir) -> List[MincAto
     return pd.Series(list(grouped_atlas_files.values()))
 
 
-def maget_mask(imgs : List[MincAtom], options, resolution : float,
+def maget_mask(imgs : List[MincAtom], maget_options, registration_options, resolution : float,
                pipeline_sub_dir : str, atlases=None):
 
     s = Stages()
 
-    maget_options = options.maget
+    #maget_options = options.maget
 
-    masking_nlin_component = get_registration_module(options.registration.image_algorithms,
-                                                     options.maget.nlin.reg_method)
+    masking_lsq12_component = get_affine_registration_module(registration_options.image_algorithms,
+                                                             maget_options.lsq12.reg_method)
+
+    masking_nlin_component = get_registration_module(registration_options.image_algorithms,
+                                                     maget_options.nlin.reg_method)
 
     original_imgs = imgs
     imgs = copy.deepcopy(imgs)
@@ -231,11 +277,14 @@ def maget_mask(imgs : List[MincAtom], options, resolution : float,
 
     # TODO dereference maget_options -> maget_options.maget outside maget_mask call?
     if atlases is None:
-        atlases = s.defer(get_atlases(maget_options.maget, pipeline_sub_dir=pipeline_sub_dir))
+        atlases = s.defer(get_atlases(maget_options.maget,masking_nlin_component.Algorithms,
+                                      pipeline_sub_dir=pipeline_sub_dir))
 
-    lsq12_conf = get_linear_configuration_from_options(maget_options.lsq12,
-                                                       LinearTransType.lsq12,
-                                                       resolution)
+    #lsq12_conf = get_linear_configuration_from_options(maget_options.lsq12,
+    #                                                   LinearTransType.lsq12,
+    #                                                   resolution)
+    lsq12_conf = masking_lsq12_component.parse_multilevel_protocol_file(maget_options.lsq12.protocol,
+                                                                resolution=resolution)
 
     #nlin_module = get_nonlinear_component(reg_method=options.mbm.nlin.reg_method)
 
@@ -259,25 +308,27 @@ def maget_mask(imgs : List[MincAtom], options, resolution : float,
     masking_alignments = pd.DataFrame({ 'img'   : img,
                                         'atlas' : atlas,
                                         'xfm'   : s.defer(
-                                          lsq12_nlin(source=img, target=atlas,
-                                                     lsq12_conf=lsq12_conf,
-                                                     nlin_options=maget_options.maget.masking_nlin_protocol,
-                                                     #masking_nlin_conf,
-                                                     resolution=resolution,
-                                                     nlin_module=masking_nlin_component,
-                                                     resample_source=False))}
+                                            # note that to warp the labels onto the template without inverting
+                                            # a transform we must have the atlas be the moving image!
+                                            lsq12_nlin(moving=atlas, fixed=img, lsq12_conf=lsq12_conf,
+                                                       lsq12_module=masking_lsq12_component,
+                                                       nlin_module=masking_nlin_component,
+                                                       run_lsq12=maget_options.lsq12.run_lsq12,
+                                                       resolution=resolution,
+                                                       nlin_options=maget_options.maget.masking_nlin_protocol,
+                                                       resample_moving=False))}
                                       for img in imgs for atlas in atlases)
 
     # propagate a mask to each image using the above `alignments` as follows:
-    # - for each image, voxel_vote (currently take max) on the masks propagated to that image to get a suitable mask
-    # - run mincmath -clobber -mult <img> <voted_mask> to apply the mask to the files
+    # - for each image, vote/union (currently take union) on the masks propagated to that image to get a suitable mask
+    # - apply the mask to the files
     masked_img = (
         masking_alignments
         .assign(resampled_mask=lambda df: df.apply(axis=1, func=lambda row:
            s.defer(algorithms.resample(img=row.atlas.mask, #apply(lambda x: x.mask),
                                        xfm=row.xfm.xfm,  #apply(lambda x: x.xfm),
                                        like=row.img,
-                                       invert=True,
+                                       #invert=True,
                                        #interpolation=Interpolation.nearest_neighbour,
                                        postfix="-input-mask",
                                        subdir="tmp",
@@ -294,9 +345,9 @@ def maget_mask(imgs : List[MincAtom], options, resolution : float,
         .assign(voted_mask=lambda df: df.apply(axis=1,
                                                func=lambda row:
                   # FIXME cannot use mincmath here !!!
-                  s.defer(mincmath(op="max", vols=sorted(row.resampled_masks),
-                                   new_name="%s_max_mask" % row.img.filename_wo_ext,
-                                   subdir="tmp"))))
+                  s.defer(algorithms.union_mask(imgs=row.resampled_masks,
+                                                new_name=f"{row.img.filename_wo_ext}_max_mask",
+                                                subdir="tmp"))))
         .apply(axis=1, func=lambda row: row.img._replace(mask=row.voted_mask)))
 
     # TODO check if initial-model mask is used for initial MAGeT masking reg after LSQ6 and if so add option to disable!!
@@ -308,8 +359,6 @@ def maget_mask(imgs : List[MincAtom], options, resolution : float,
                         algorithms.resample(img=row.atlas.hard_mask,  # apply(lambda x: x.mask),
                                             xfm=row.xfm.xfm,  # apply(lambda x: x.xfm),
                                             like=row.img,
-                                            invert=True,
-                                            # interpolation=Interpolation.nearest_neighbour,
                                             postfix="-input-hard-mask",
                                             subdir="tmp",
                                             # TODO annoying hack; fix mincresample(_mask) ...:
@@ -325,9 +374,9 @@ def maget_mask(imgs : List[MincAtom], options, resolution : float,
             .assign(voted_hard_mask=lambda df: df.apply(axis=1,
                                                func=lambda row:
                                                # FIXME cannot use mincmath here !!!
-                                               s.defer(mincmath(op="max", vols=sorted(row.resampled_hard_masks),
-                                                                new_name="%s_max_hard_mask" % row.img.filename_wo_ext,
-                                                                subdir="tmp"))))
+                                               s.defer(algorithms.union_mask(sorted(row.resampled_hard_masks),
+                                                                             new_name=f"{row.img.filename_wo_ext}_max_hard_mask",
+                                                                             subdir="tmp"))))
             .apply(axis=1, func=lambda row: s.defer(
                      hard_mask(row.img,
                                mask = row.voted_hard_mask,
@@ -363,7 +412,7 @@ def maget_mask(imgs : List[MincAtom], options, resolution : float,
                 #  "%s_to_%s-resampled" % (row.atlas.filename_wo_ext,
                 #                          row.img.filename_wo_ext),
                 #                          axis=1),
-                like=row.img, invert=True))))
+                like=row.img))))
 
     # TODO the indexing should be correct here, hopefully, otherwise need to join on orig_path or something:
     for ix, img in enumerate(masked_img):
@@ -446,7 +495,9 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir, build_model_xfms=N
 
     s = Stages()
 
-    reg_module = get_registration_module(options.registration.image_algorithms, options.maget.nlin.reg_method)
+    lsq12_module = get_affine_registration_module(options.registration.image_algorithms, options.maget.lsq12.reg_method)
+    nlin_module = get_registration_module(options.registration.image_algorithms, options.maget.nlin.reg_method)
+    algorithms = nlin_module.Algorithms
 
     maget_options = options.maget.maget
 
@@ -455,13 +506,14 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir, build_model_xfms=N
     pipeline_sub_dir = os.path.join(options.application.output_directory,
                                     options.application.pipeline_name + "_atlases")
 
-    atlases = s.defer(get_atlases(maget_options, pipeline_sub_dir = pipeline_sub_dir))
+    atlases = s.defer(get_atlases(maget_options, algorithms=algorithms, pipeline_sub_dir = pipeline_sub_dir))
 
-    lsq12_conf = get_linear_configuration_from_options(options.maget.lsq12,
-                                                       transform_type=LinearTransType.lsq12,
-                                                       file_resolution=resolution)
+    lsq12_conf = lsq12_module.parse_multilevel_protocol_file(options.maget.lsq12.protocol, resolution=resolution)
+    #lsq12_conf = get_linear_configuration_from_options(options.maget.lsq12,
+    #                                                   transform_type=LinearTransType.lsq12,
+    #                                                   file_resolution=resolution)
 
-    nlin_component = get_nonlinear_component(options.maget.nlin.reg_method)
+    #nlin_component = get_nonlinear_component(options.maget.nlin.reg_method)
 
     # TODO should this be here or outside `maget` call?
     #imgs = [s.defer(nlin_component.ToMinc.from_mnc(img)) for img in imgs]
@@ -475,7 +527,9 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir, build_model_xfms=N
 
         # this used to return alignments but doesn't currently do so
         masked_img = s.defer(maget_mask(imgs=imgs,
-                                        options=options, atlases=atlases,
+                                        maget_options=options.maget,
+                                        registration_options=options.registration,
+                                        atlases=atlases,
                                         pipeline_sub_dir=pipeline_sub_dir + "_masking", # FIXME repeats all alignments!!!
                                         resolution=resolution))
 
@@ -507,19 +561,18 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir, build_model_xfms=N
         atlas_labelled_imgs = (
             pd.DataFrame({ 'img'        : img,
                            'label_file' : s.defer(  # can't use `label` in a pd.DataFrame index!
-                              mincresample_new(img=atlas.labels,
-                                               xfm=s.defer(lsq12_nlin(source=img,
-                                                                      target=atlas,
-                                                                      nlin_module=nlin_component,
-                                                                      lsq12_conf=lsq12_conf,
-                                                                      nlin_options=options.maget.nlin.nlin_protocol,
-                                                                      resolution=resolution,
-                                                                      #nlin_conf=nlin_hierarchy,
-                                                                      resample_source=False)).xfm,
-                                               like=img,
-                                               invert=True,
-                                               interpolation=Interpolation.nearest_neighbour,
-                                               extra_flags=('-keep_real_range', '-labels')))}
+                              algorithms.resample(img=atlas.labels,
+                                                  xfm=s.defer(lsq12_nlin(moving=atlas, fixed=img, lsq12_conf=lsq12_conf,
+                                                                         lsq12_module=lsq12_module,
+                                                                         run_lsq12=options.maget.lsq12.run_lsq12,
+                                                                         # TODO should maget/mbm lsq12 options
+                                                                         # be separate? probably ...
+                                                                         nlin_module=nlin_module, resolution=resolution,
+                                                                         nlin_options=options.maget.nlin.nlin_protocol,
+                                                                         resample_moving=False)).xfm,
+                                                  like=img,
+                                                  use_nn_interpolation = True,
+                                                  )) }
                          for img in imgs for atlas in atlases)
         )
 
@@ -564,36 +617,29 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir, build_model_xfms=N
                 .assign(label_file=lambda df: df.apply(axis=1, func=lambda row:
                           s.defer(
                             # TODO switch to uses of nlin_component.whatever(...) in several places below?
-                            mincresample_new(
-                            #nlin_component.Algorithms.resample(
+                            algorithms.resample(
                               img=row.template_label_file,
                               xfm=s.defer(
-                                    lsq12_nlin(source=row.img,
-                                               target=row.template,
-                                               lsq12_conf=lsq12_conf,
-                                               resolution=resolution,
-                                               nlin_module=nlin_component,
-                                               nlin_options=options.maget.nlin.nlin_protocol,
-                                               #nlin_conf=nlin_hierarchy,
-                                               resample_source=False)).xfm
+                                  lsq12_nlin(moving=row.template, fixed=row.img, lsq12_conf=lsq12_conf,
+                                             lsq12_module=lsq12_module,
+                                             run_lsq12=options.maget.lsq12.run_lsq12,
+                                             nlin_module=nlin_module, resolution=resolution,
+                                             nlin_options=options.maget.nlin.nlin_protocol, resample_moving=False)).xfm
                                   if build_model_xfms is None
                                   # use transforms from model building if we have them:
-                                  else s.defer(
-                                         xfmconcat(
-                                         #nlin_component.Algorithms.concat(
-                                          [build_model_xfms[row.img.path],
-                                           s.defer(
-                                             xfminvert(
-                                             #nlin_component.Algorithms.invert(
-                                               build_model_xfms[row.template.path],
-                                               subdir="tmp"))])),
+                                  else NotImplementedError("TODO: need to invert these xfms ..."),
+                                       #old way (need to invert now):
+                                       #s.defer(
+                                       #  algorithms.concat(
+                                       #   [build_model_xfms[row.img.path],
+                                       #    s.defer(
+                                       #      algorithms.invert_transform(
+                                       #        build_model_xfms[row.template.path],
+                                       #        subdir="tmp"))])),
                               like=row.img,
-                              invert=True,
-                              #use_nn_interpolation=True
-                              interpolation=Interpolation.nearest_neighbour,
-                              extra_flags=('-keep_real_range', '-labels')
-                            ))))
-            ) if len(imgs) > 1 else pd.DataFrame({ 'img' : [], 'label_file' : [] })
+                              use_nn_interpolation=True)
+                            )))
+             ) if len(imgs) > 1 else pd.DataFrame({ 'img' : [], 'label_file' : [] })
               # ... as no distinct templates to align if only one image supplied (#320)
 
             imgs_with_all_labels = pd.concat([atlas_labelled_imgs[['img', 'label_file']],
@@ -612,9 +658,10 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir, build_model_xfms=N
                 .rename(columns={ 'label_file' : 'label_files' })
                 .reset_index()
                 .assign(voted_labels=lambda df: df.apply(axis=1, func=lambda row:
-                          s.defer(voxel_vote(label_files=row.label_files,
-                                             output_dir=os.path.join(row.img.pipeline_sub_dir, row.img.output_sub_dir),
-                                             name=row.img.filename_wo_ext+"_voted"))))
+                          s.defer(algorithms.label_vote(
+                              label_files=row.label_files,
+                              output_dir=os.path.join(row.img.pipeline_sub_dir, row.img.output_sub_dir),
+                              name=row.img.filename_wo_ext+"_voted"+row.label_files[0].ext))))
                 .apply(axis=1, func=lambda row: row.img._replace(labels=row.voted_labels))
         )
 

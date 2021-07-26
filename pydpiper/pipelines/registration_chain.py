@@ -143,7 +143,7 @@ def intrasubject_registrations(subj: Subject,
                                            nlin_options=nlin_options,
                                            resolution=resolution,
                                            #nlin_conf=nlin_conf,
-                                           resample_source=True)))
+                                           resample_moving=True)))
                        for source_index, (src, dest) in enumerate(pairs(timepts))]
     return Result(stages=s, output=(time_pt_to_xfms, index_of_common_time_pt))
 

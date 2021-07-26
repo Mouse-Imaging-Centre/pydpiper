@@ -660,7 +660,8 @@ def _mk_lsq12_parser():
                         "Parameters must be specified as in the following example: \n"
                         "applications_testing/test_data/minctracc_example_linear_protocol.csv \n"
                         "[Default = %(default)s].")
-    p.add_argument("--lsq12-registration-method", dest="registration_method", choices=["minctracc", "ANTS"],
+    p.add_argument("--lsq12-registration-method", dest="reg_method",
+                   choices=["minctracc", "antsRegistration_sh"],  # TODO this is repetitive ... fix
                    default = "minctracc",
                    help = "lsq12 registration program to use [Default = %(default)s]")
     #p.add_argument("--generate-tournament-style-lsq12-avg", dest="generate_tournament_style_lsq12_avg",

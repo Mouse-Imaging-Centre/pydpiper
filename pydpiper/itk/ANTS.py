@@ -14,7 +14,7 @@ from pydpiper.core.stages import Result, CmdStage, Stages, identity_result
 from pydpiper.core.util import NamedTuple
 from pydpiper.minc.containers import XfmHandler
 from pydpiper.core.files import ImgAtom
-from pydpiper.minc.files import XfmAtom, MincAtom
+from pydpiper.minc.files import XfmAtom
 from pydpiper.minc.nlin import NLIN
 # TODO in order to remove circularity from the module import (which gives an exception at import time)
 # TODO we need to move some stuff around ...
@@ -102,6 +102,7 @@ default_ANTS_mem_cfg = ANTSMemCfg(base_mem=0.177, mem_per_voxel_coarse=1.385e-7,
 
 ants_template = templating_env.get_template("ANTS.sh")
 
+#def mk_ANTS(algs):  # TODO is this functional parameterization needed or is safe to produce ANTS_ITK and ANTS_MINC as before?
 class ANTS(NLIN):
 
   img_ext = ".mnc"
@@ -235,7 +236,7 @@ class ANTS(NLIN):
     resampled = (s.defer(cls.Algorithms.resample(img=moving, xfm=out_xfm, like=fixed,
                                                  #new_name_wo_ext=resample_name_wo_ext,
                                                  subdir=resample_subdir))
-                 if resample_moving else None)  # type: Optional[MincAtom]
+                 if resample_moving else None)
     return Result(stages=s,
                   output=XfmHandler(moving=moving,
                                     fixed=fixed,

@@ -24,6 +24,7 @@ setup(name='pydpiper',
         'Jinja2',
         'networkx',
         'ordered-set',
+        'omegaconf',
         'pandas',
         #'pydot',  # use nx.nx_pydot.write_dot to write graphviz files
         #'pygraphviz',
