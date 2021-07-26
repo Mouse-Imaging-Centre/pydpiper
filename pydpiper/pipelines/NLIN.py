@@ -6,12 +6,7 @@ from configargparse import Namespace
 
 from pydpiper.core.files import ImgAtom
 from pydpiper.core.stages import Stages, Result
-from pydpiper.itk.demons import DEMONS
-from pydpiper.minc.ANTS import ANTS_MINC, ANTS_ITK
 
-from pydpiper.minc.analysis import determinants_at_fwhms
-
-from pydpiper.minc.registration import (MINCTRACC)
 from pydpiper.execution.application import mk_application
 from pydpiper.core.arguments import (nlin_parser, stats_parser)
 
@@ -20,7 +15,7 @@ from pydpiper.core.arguments import (nlin_parser, stats_parser)
 # `NLIN_pipeline` should be expressible as a special case of `mbm_pipeline` by turning off certain parts
 # and setting certain parameters appropriately
 from pydpiper.minc.registration_strategies import get_model_building_procedure
-from pydpiper.pipelines.MAGeT import (get_imgs)
+from pydpiper.pipelines.MAGeT import (get_imgs, get_registration_module)
 
 
 def NLIN_pipeline(options):
@@ -35,23 +30,24 @@ def NLIN_pipeline(options):
     imgs = get_imgs(options.application)
     #image_algorithms = get_algorithms(options.registration)
 
-    try:
-        reg_algorithms = {
-                           ('minc', 'ANTS') : ANTS_MINC,
-                           ('minc', 'minctracc'): MINCTRACC,
-                           ('itk', 'ANTS') : ANTS_ITK,
-                           ('itk', 'demons') : DEMONS,
-                         }[(options.registration.image_algorithms,
-                                                      options.nlin.reg_method)]
-    except KeyError:
-        raise KeyError(
-            "unsupported combination of `options.registration.image_algorithms` and `options.nlin.reg_method` specified")
+    #try:
+    #    reg_algorithms = {
+    #                       ('minc', 'ANTS') : ANTS_MINC,
+    #                       ('minc', 'minctracc'): MINCTRACC,
+    #                       ('itk', 'ANTS') : ANTS_ITK,
+    #                       ('itk', 'demons') : DEMONS,
+    #                     }[(options.registration.image_algorithms,
+    #                                                  options.nlin.reg_method)]
+    #except KeyError:
+    #    raise KeyError(
+    #        "unsupported combination of `options.registration.image_algorithms` and `options.nlin.reg_method` specified")
+    reg_algorithms = get_registration_module(options.registration.image_algorithms, options.nlin.reg_method)
 
     resolution = (options.registration.resolution  # TODO does using the finest resolution here make sense?
                   or min([reg_algorithms.Algorithms.get_resolution_from_file(f) for f in options.application.files]))
 
     initial_target_mask = ImgAtom(options.nlin.target_mask) if options.nlin.target_mask else None
-    initial_target = ImgAtom(options.nlin.fixed, mask=initial_target_mask)
+    initial_target = ImgAtom(options.nlin.target, mask=initial_target_mask)
 
     #nlin_module = get_nonlinear_component(reg_method=options.nlin.reg_method)
 
@@ -72,19 +68,12 @@ def NLIN_pipeline(options):
                                                   use_robust_averaging=options.nlin.use_robust_averaging,
                                                   nlin_prefix=""))
 
-    inverted_xfms = [s.defer(nlin_build_model_component.Algorithms.invert_xfmhandler(xfm)) for xfm in nlin_result.output]
-
     if options.stats.calc_stats:
 
         # TODO use defer_map
+        # TODO also compute blurred and 'nonlinear' determinants (according to options.stats.stats_kernels)
         determinants = [s.defer(nlin_build_model_component.Algorithms.log_determinant(xfm))
                         for xfm in nlin_result.output]
-
-        # TODO this was the old way -- restore blurred/unblurred determinants!!
-        #determinants = s.defer(determinants_at_fwhms(
-        #                          xfms=inverted_xfms,
-        #                          inv_xfms=nlin_result.output,
-        #                          blur_fwhms=options.stats.stats_kernels))
 
         return Result(stages=s,
                       output=Namespace(nlin_xfms=nlin_result,

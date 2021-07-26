@@ -5,15 +5,14 @@ from functools import reduce
 from operator import mul
 from typing import Optional, Tuple, Sequence
 
-from pyminc.volumes.factory import volumeFromFile
-
-from pydpiper.minc.ANTS import ANTSMemCfg
+from pydpiper.itk.ANTS import ANTSMemCfg
 from pydpiper.core.util import AutoEnum, NamedTuple, flatten
 from pydpiper.minc.nlin import NLIN
 from pydpiper.minc.containers import XfmHandler
 from pydpiper.minc.registration import mincresample, Interpolation, mincblur, MincAlgorithms
-from pydpiper.core.stages import Stages, CmdStage, Result, identity_result
-from pydpiper.minc.files import MincAtom, XfmAtom, IdMinc
+from pydpiper.core.stages import Stages, CmdStage, Result
+from pydpiper.core.files import ImgAtom
+from pydpiper.minc.files import XfmAtom
 
 ConvergenceCriteria = NamedTuple("ConvergenceCriteria",
                                  [("convergence_threshold", float),

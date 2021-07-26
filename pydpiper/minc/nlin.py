@@ -19,6 +19,10 @@ class Algorithms():  #(Generic[I, X], metaclass=ABCMeta):
 
     @staticmethod
     @abstractmethod
+    def get_resolution_from_file(input_file: str) -> float: raise NotImplementedError
+
+    @staticmethod
+    @abstractmethod
     def blur(img : I,
              fwhm : float,
              gradient : bool = True,
@@ -58,6 +62,14 @@ class Algorithms():  #(Generic[I, X], metaclass=ABCMeta):
 
     @staticmethod
     @abstractmethod
+    def label_vote(imgs, output_dir, name : str) -> Result[I]: pass
+
+    @staticmethod
+    @abstractmethod
+    def union_mask(imgs, new_name : str, subdir : str) -> Result[I]: pass
+
+    @staticmethod
+    @abstractmethod
     def resample(img: I,
                  xfm: X,  # TODO: update to handler?
                  like: I,
@@ -73,7 +85,7 @@ class Algorithms():  #(Generic[I, X], metaclass=ABCMeta):
 
     @staticmethod
     @abstractmethod
-    def identity_transform() -> Result[GenericXfmHandler[I, X]]: raise NotImplementedError
+    def identity_transform(output_sub_dir=None) -> Result[GenericXfmHandler[I, X]]: raise NotImplementedError
 
     # must be able to handle arbitrary (not simply pure linear or pure nonlinear) transformations.
     # [bug: some of the xfmavg and xfmavg_scipy.py scripts assume exactly zero or one of each of affine and grid!]
@@ -134,9 +146,9 @@ class Algorithms():  #(Generic[I, X], metaclass=ABCMeta):
     #def concat_xfms(): pass
     #def invert_xfm(): pass
 
-    # seemingly needs to take an xfmhandler instead of an xfm since minc_displacement need a -like volume?
     @staticmethod
-    def compute_log_determinant(xfm : GenericXfmHandler) -> I: pass   # TODO add fwhm argument
+    @abstractmethod
+    def log_determinant(xfm : GenericXfmHandler) -> I: raise NotImplementedError   # TODO add fwhm argument
 
 
 # TODO not *actually* generic; should take a type as a field, but this is annoying to write down

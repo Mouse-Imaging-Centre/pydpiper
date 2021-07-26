@@ -6,9 +6,11 @@ from typing import Optional, Sequence, List, Union, Tuple
 from configargparse import Namespace
 from dataclasses import dataclass
 
+from pydpiper.core.util import AutoEnum
+from pydpiper.minc.containers import XfmHandler
 from pydpiper.minc.conversion import generic_converter
 from pydpiper.minc.files import XfmAtom
-from pydpiper.minc.nlin import Algorithms
+from pydpiper.minc.nlin import Algorithms, NLIN
 from pydpiper.core.stages import Result, CmdStage, Stages, identity_result
 from pydpiper.core.files  import ImgAtom, FileAtom
 
@@ -180,8 +182,10 @@ def resample(img,
     # to know what the main file will be resampled as
     if not new_name_wo_ext:
         # FIXME this is wrong when invert=True
-        new_name_wo_ext = os.path.basename(out_path(xfm)) + "-resampled"
-
+        if isinstance(xfm, ImgAtom):
+            new_name_wo_ext = os.path.basename(out_path(xfm)) + "-resampled"
+        else:
+            new_name_wo_ext = f"{os.path.basename(img.path)}_{os.path.basename(like.path)}-resampled"
     new_img = s.defer(resample_simple(img=img, xfm=xfm, like=like,
                                       invert=invert,
                                       use_nn_interpolation=use_nn_interpolation,
@@ -296,56 +300,82 @@ TransformType = Union[Rigid, Affine, Similarity, AlignGeometricCentres, AlignCen
 
 @dataclass
 class MI:
-    fixedImage : FileAtom
-    movingImage : FileAtom
-    numberOfBins : Optional[int]
+    fixed : ImgAtom
+    moving : ImgAtom
+    numberOfBins : Optional[int] = None
     # TODO add sampling
     def render(self):
-        return (f"MI[{self.fixedImage.path},{self.movingImage.path}"
+        return (f"MI[{self.fixed.path},{self.moving.path}"
                 + (f",{self.numberOfBins}" if self.numberOfBins else "") + "]")
 class Mattes:
-    fixedImage : FileAtom
-    movingImage : FileAtom
-    numberOfBins : Optional[int]
+    fixed : ImgAtom
+    moving : ImgAtom
+    numberOfBins : Optional[int] = None
     def render(self):
-        return (f"Mattes[{self.fixedImage.path},{self.movingImage.path}"
+        return (f"Mattes[{self.fixed.path},{self.moving.path}"
                 + (f",{self.numberOfBins}" if self.numberOfBins else "") + "]")
 class GC:
     """global correlation"""
-    fixedImage : FileAtom
-    movingImage : FileAtom
-    radius : Optional[float]
+    fixed : ImgAtom
+    moving : ImgAtom
+    radius : Optional[float] = None
     def render(self):
-        return (f"GC[{self.fixedImage.path},{self.movingImage.path}"
+        return (f"GC[{self.fixed.path},{self.moving.path}"
                 + (f",{self.radius}" if self.radius else "") + "]")
+
+class ConvergenceParams:
+    threshold : float
+    window : int
+
+class Convergence:
+    iterations : int
+    params : Optional[ConvergenceParams]
+    def render(self):
+        if self.params is not None:
+            return f"[{self.iterations},{self.params.threshold},{self.params.window}]"
+        else:
+            return f"[{self.iterations}]"
+
+
+#class MetricType(AutoEnum):
+#    mi = mattes = gc = ()
+def parse_metric(name):
+    d = { 'MI' : MI, 'Mattes' : Mattes, 'GC' : GC }
+    try:
+        return d[name]
+    except KeyError:
+        return ValueError(f'unknown metric type {name}; need one of {d.keys()}')
 
 AntsAIMetric = Union[MI, Mattes, GC]
 
+
 def antsAI(metrics : List[AntsAIMetric],
            transform : TransformType,
-           #convergence,
-           fixedImageMask : Optional[FileAtom] = None,
-           movingImageMask : Optional[FileAtom] = None,
+           convergence : Convergence,
+           fixedImageMask : Optional[ImgAtom] = None,
+           movingImageMask : Optional[ImgAtom] = None,
            outputFileName : Optional[str] = None,
            out_xfm : Optional[XfmAtom] = None,
            transform_name_wo_ext : Optional[str] = None,
-           dimensionality : int = None):
+           dimensionality : Optional[int] = 3):   # antsAI claims not to need -d but fails otherwise
+    # TODO add -p/-b (principal axis, blobs)!!!
     out_file = outputFileName or NotImplemented
-    ex = metrics[0].movingImage
+    ex = metrics[0].moving
 
     trans_output_dir = "transforms"
     #if resample_source and resample_subdir == "tmp":
     #    trans_output_dir = "tmp"
 
+    # antsAI claims to be able to generate only ITK .mat files
     if transform_name_wo_ext:
         name = os.path.join(ex.pipeline_sub_dir, ex.output_sub_dir, trans_output_dir,
-                            f"{transform_name_wo_ext}.xfm")
+                            f"{transform_name_wo_ext}.mat")
     else:
         name = os.path.join(
             ex.pipeline_sub_dir,
             ex.output_sub_dir, trans_output_dir,
-            "{metrics[0].fixedImage.filename_wo_ext}_antsAI_to_{metrics[0].movingImage.filename_wo_ext}.xfm")
-    out_xfm = XfmAtom(name=name, pipeline_sub_dir=ex.pipeline_sub_dir, output_sub_dir=ex.output_sub_dir)
+            f"{metrics[0].moving.filename_wo_ext}_antsAI_to_{metrics[0].fixed.filename_wo_ext}.mat")
+    out_xfm = out_xfm or ITKXfmAtom(name=name, pipeline_sub_dir=ex.pipeline_sub_dir, output_sub_dir=ex.output_sub_dir)
 
     if fixedImageMask:
         if movingImageMask:
@@ -358,14 +388,29 @@ def antsAI(metrics : List[AntsAIMetric],
     s = CmdStage(cmd = ["antsAI"] + ([f"-d {dimensionality}"] if dimensionality is not None else [])
                    + [f"-m {m.render()}" for m in metrics]
                    + [f"-t {transform.render()}"]
+                   + ([f"-c {convergence.render()}"] if convergence is not None else [])
                    + ([f"-x {mask_str}"] if fixedImageMask is not None else [])
                    + [f"-o {out_xfm.path}"],
-                 inputs = tuple(m.fixedImage for m in metrics)
-                          + tuple(m.movingImage for m in metrics)
-                          + ((fixedImageMask,) if fixedImageMask else None)
-                          + ((movingImageMask,) if movingImageMask else None),
+                 inputs = tuple(m.fixed for m in metrics)
+                          + tuple(m.moving for m in metrics)
+                          + ((fixedImageMask,) if fixedImageMask else ())
+                          + ((movingImageMask,) if movingImageMask else ()),
                  outputs = (out_xfm,))
-    return Result(stages=Stages([s]), output=out_xfm)
+    return Result(stages=Stages([s]),
+                  output=XfmHandler(fixed=metrics[0].fixed, moving=metrics[0].moving, xfm=out_xfm))
+                  # TODO using metrics[0].fixed here is a hack -- seemingly we should refactor antsAI(...)
+                  # to take fixed, moving images, but clearly there may not be a single fixed, moving due to multiple
+                  # metrics, so generalization should be pursued (e.g. allowing fixed, moving to be lists of images)
+
+@dataclass
+class AntsAIConf:
+    transform : TransformType
+    metric : str
+    convergence : Optional[Convergence] = None
+
+# FIXME move up ?
+from omegaconf import OmegaConf
+
 
 def imageToXfm(i : ITKImgAtom) -> ITKXfmAtom:
     x = copy.deepcopy(i)
@@ -407,9 +452,9 @@ def canonicalize(t : Transform):
         if type(t.transform) == InverseTransform:
             return canonicalize(t.transform)
         elif type(t.transform) == IdentityTransform:
-            return IdentityTransform
+            return IdentityTransform()
         elif type(t.transform) == ConcatTransform:
-            return ConcatTransform(reversed([canonicalize(InverseTransform(s)) for s in t.transform.transforms]),
+            return ConcatTransform(tuple(reversed([canonicalize(InverseTransform(s)) for s in t.transform.transforms])),
                                    name=t.transform.name + "-canon")
         else:
             return t
@@ -421,16 +466,17 @@ def canonicalize(t : Transform):
         raise TypeError(f"don't know what to do with this 'transform': {t}")
 
 
+
 def serialize_transform(t : Transform):
     """Generate a string suitable for antsApplyTransforms"""
     t = canonicalize(t)
     if isinstance(t, IdentityTransform):
-        return ""
+        return ""  # raise error / return None ?
     elif isinstance(t, InverseTransform):
         return f"-t [{t.transform.path},1]"
     elif isinstance(t, ConcatTransform):
-        return " ".join([serialize_transform(u) for u in t.transforms])
-    elif isinstance(t, XfmAtom):
+        return " ".join([serialize_transform(u) for u in reversed(t.transforms)])
+    elif isinstance(t, FileAtom):
         return f"-t {t.path}"
     else:
         raise TypeError(f"don't know what to do with this 'transform': {t}")
@@ -446,7 +492,8 @@ def out_path(t : Transform) -> ITKXfmAtom:
     if isinstance(t, XfmAtom):
         return t.path
     elif isinstance(t, IdentityTransform):
-        raise ValueError("shouldn't need to be here")
+        return "id"
+        #raise ValueError("shouldn't need to be here")
     elif isinstance(t, ConcatTransform):
         return t.name
     elif isinstance(t, InverseTransform):
@@ -504,6 +551,25 @@ class Algorithms(Algorithms):
 
     @staticmethod
     def dilate_mask(mask, voxels, subdir = "tmp"):
+        out_file = mask.newname_with_suffix(f"_dilated_{voxels}", subdir=subdir)
+        c = CmdStage(cmd = ["ImageMath", "3", out_file.path, "MD", str(voxels), mask.path])
+        return Result(stages=Stages([c]), output=out_file)
+
+    @staticmethod
+    def label_vote(label_files, output_dir, name):
+        # TODO change API to relative output dir
+        if len(label_files) == 0:
+            raise ValueError("can't vote with 0 files")
+        elif len(label_files) == 1:
+            return identity_result(label_files[0])  # ImageMath MajorityVoting silently fails with 1 image (as of 2.3.4)
+        else:
+            out_file = ImgAtom(os.path.join(output_dir, name))  # TODO get proper dir!!!
+            c = CmdStage(cmd = ["ImageMath", "3", out_file.path, "MajorityVoting"] + [f.path for f in sorted(label_files)],
+                         inputs = label_files, outputs = (out_file,))
+            return Result(stages=Stages([c]), output=out_file)
+
+    @staticmethod
+    def union_mask(imgs, new_name, subdir):
         raise NotImplementedError
 
     @staticmethod
@@ -536,7 +602,7 @@ class Algorithms(Algorithms):
     def resample(*args, **kwargs): return resample(*args, **kwargs)
 
     @staticmethod
-    def identity_transform(): return identity_result(IdentityTransform)
+    def identity_transform(output_sub_dir=None): return identity_result(IdentityTransform())
     # TODO: does this ever need to be materialized?
 
     @staticmethod
@@ -557,14 +623,24 @@ class Algorithms(Algorithms):
                       output = InverseTransform(t) if not isinstance(t, InverseTransform) else t.transform)
 
     @staticmethod
-    def average_affine_transformations(xfms, avg_xfm):
+    def average_affine_transforms(xfms, avg_xfm):
         #if not output_filename_wo_ext:
         #    output_filename_wo_ext = "average_xfm"
         #if all_from_same_sub:
         #    outf = xfms[0].newname(name=output_filename_wo_ext, subdir="transforms", ext=".xfm")
         # TODO why not use ANTs' AverageAffineTransform instead of this presumably similar script?
-        s = CmdStage(cmd=["AverageAffineTransforms"] + [x.path for x in xfms] + [avg_xfm],
-                     inputs = xfms, outputs = (avg_xfm,))
+        #s = CmdStage(cmd=["AverageAffineTransforms"] + [x.xfm.path for x in xfms] + [avg_xfm.path],
+        #             inputs = [x.xfm for x in xfms], outputs = (avg_xfm,))
+        def render(t):
+            t = canonicalize(t)
+            if isinstance(t, FileAtom):
+                return t.path
+            elif isinstance(t, InverseTransform) and isinstance(t.transform, FileAtom):
+                return f"-i {t.path}"
+            else:
+                raise ValueError("only a .mat or inverse of a .mat are supported")
+        s = CmdStage(cmd=["AverageAffineTransform", "3", avg_xfm.path] + [render(t.xfm) for t in xfms],
+                     inputs = tuple(x.xfm for x in xfms), outputs = (avg_xfm,))
         return Result(stages=Stages([s]), output=avg_xfm)
 
     @staticmethod
@@ -588,3 +664,52 @@ class Algorithms(Algorithms):
         s.add(CmdStage(cmd = ["CreateJacobianDeterminantImage", "3", displacement_field.path, out_file.path, "1", "0"],
                        inputs = (displacement_field,), outputs = (out_file,)))
         return Result(stages=s, output=out_file)
+
+class AntsAI(NLIN):
+
+    img_ext = ".nii.gz"
+    xfm_ext = ".mat"
+
+    Conf = AntsAIConf
+    MultilevelConf = List[AntsAIConf]
+
+    Algorithms = Algorithms
+
+    @staticmethod
+    def get_default_conf(resolution): return AntsAIConf(transform=Rigid(0.1), metric={'name' : 'MI'})
+
+    @staticmethod
+    def get_default_multilevel_conf(resolution):
+        return [AntsAIConf(transform=Rigid(0.1), metric={'name' : "MI"})]
+
+    def hierarchical_to_single(m): return m[-1]
+
+    @staticmethod
+    def accepts_initial_transform(): return False
+
+    @classmethod
+    def parse_protocol_file(cls, filename: str, resolution: float): return OmegaConf.load(filename)
+
+    @classmethod
+    def parse_multilevel_protocol_file(cls, filename: str, resolution: float): return OmegaConf.load(filename)
+
+    @staticmethod
+    def register(fixed,
+                 moving, *,
+                 conf,
+                 resample_moving,
+                 resample_subdir,
+                 generation=None,
+                 transform_name_wo_ext=None,
+                 initial_moving_transform=None):
+        metric_type = parse_metric(conf.metric['name'])
+        params = conf.metric.copy()
+        del params['name']
+        metric = metric_type(fixed=fixed, moving=moving, **params)
+        return antsAI(metrics=[metric],
+                      transform=conf.transform,
+                      convergence=conf.convergence,
+                      fixedImageMask=fixed.mask,
+                      movingImageMask=moving.mask,
+                      outputFileName=None,
+                      transform_name_wo_ext=transform_name_wo_ext)

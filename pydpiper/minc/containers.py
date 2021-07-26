@@ -51,6 +51,7 @@ class GenericXfmHandler(Generic[I, X]):
     # We thought about including an inverse transform which could be generated automagically (when/how??)
     # although s.defer(XfmHandler(...)) to collect the relevant stages is a bit nasty ...
     # update: we now include this field!
+    # TODO replace the resampled with resampled_fixed and resampled_moving fields!
 
     def __repr__(self) -> str:
         return "%s(xfm=%s)" % (self.__class__, self.xfm.path) 

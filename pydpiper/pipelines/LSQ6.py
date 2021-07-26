@@ -2,7 +2,7 @@
 
 import os
 
-from pydpiper.pipelines.MAGeT import get_imgs
+from pydpiper.pipelines.MAGeT import get_imgs, get_rigid_registration_module
 
 from pydpiper.core.arguments import lsq6_parser
 from pydpiper.core.stages import Stages, Result
@@ -45,8 +45,10 @@ def lsq6_pipeline(options):
     # TODO this is tedious and annoyingly similar to the registration chain and MBM ...
     lsq6_dir      = os.path.join(output_dir, pipeline_name + "_lsq6")
 
-    image_algorithms = { 'minc' : MincAlgorithms,
-                         'itk'  : ITKAlgorithms }[options.registration.image_format]()  #reg_method=options.mbm.nlin.reg_method)
+    reg_algorithms = get_rigid_registration_module(image_algorithms=options.registration.image_algorithms,
+                                                   reg_method=options.lsq6.lsq6_method
+                                                   )
+    image_algorithms = reg_algorithms.Algorithms
 
     imgs = get_imgs(options.application)
 
@@ -64,13 +66,13 @@ def lsq6_pipeline(options):
     resolution = (options.registration.resolution or
                   image_algorithms.get_resolution_from_file(targets.registration_standard.path))
 
-
     # This must happen after calling registration_targets otherwise it will resample to options.registration.resolution
     options.registration = options.registration.replace(resolution=resolution)
+
     lsq6_result = s.defer(lsq6_nuc_inorm(imgs=imgs,
                                          resolution=resolution,
                                          registration_targets=targets,
-                                         image_algorithms=image_algorithms,
+                                         reg_algorithms=reg_algorithms,
                                          lsq6_dir=lsq6_dir,
                                          lsq6_options=options.lsq6))
 

@@ -1,4 +1,4 @@
-from pydpiper.execution.pipeline import CmdStage, InputFile, OutputFile
+from pydpiper.execution.pipeline import CmdStage
 
 def convertCmdStage(cmd_stage):
     c = CmdStage([])

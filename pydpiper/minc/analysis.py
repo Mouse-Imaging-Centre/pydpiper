@@ -1,6 +1,5 @@
 from argparse import Namespace
 from typing import List, Optional
-import os
 import pandas as pd
 
 from pydpiper.core.stages import Stages, CmdStage, Result
@@ -104,8 +103,7 @@ def nlin_displacement(xfm : XfmHandler, inv_xfm : Optional[XfmHandler] = None) -
 
 def determinants_at_fwhms(xfms       : List[XfmHandler],  # TODO change to pd.Series to get indexing (hence safer inv_xfm)?
                           blur_fwhms : str, # TODO: change back to List[float]; should unblurred dets be found automatically?
-                          inv_xfms   : Optional[List[XfmHandler]] = None)   \
-                       -> Result[pd.DataFrame]:  # TODO how to write down a Pandas type here ?!
+                          algorithms) -> Result[pd.DataFrame]:  # TODO how to write down a Pandas type here ?!
     """
     The most common way to use this function is by providing
     it with transformations that go from the final average
@@ -130,23 +128,24 @@ def determinants_at_fwhms(xfms       : List[XfmHandler],  # TODO change to pd.Se
     """
     s = Stages()
 
-    inv_xfms = [s.defer(MincAlgorithms.invert_xfmhandler(xfm)) for xfm in xfms] if inv_xfms is None else inv_xfms
+    #inv_xfms = [s.defer(MincAlgorithms.invert_xfmhandler(xfm)) for xfm in xfms] if inv_xfms is None else inv_xfms
 
     fwhms = [float(x) for x in blur_fwhms.split(',')]
 
-    df = pd.DataFrame([{"xfm" : xfm, "inv_xfm" : inv_xfm, "fwhm" : fwhm,
+    df = pd.DataFrame([{"xfm" : xfm,
+                        "fwhm" : fwhm,
                         "nlin_det" : nlin_det, "log_nlin_det" : nlin_log_det,
                         "full_det" : full_det, "log_full_det" : full_log_det }
                        for fwhm in fwhms + [0]  # was: None, but this turns to NaN in Pandas ...
-                       for xfm, inv_xfm in zip(xfms, inv_xfms)
+                       for xfm in xfms  #, inv_xfm in zip(xfms, inv_xfms)
                        for full_det_and_log_det in
                          [s.defer(det_and_log_det(displacement_grid=s.defer(minc_displacement(xfm)),
                                                   fwhm=fwhm,
                                                   annotation="_abs"))]
                        for full_det, full_log_det in [(full_det_and_log_det.det, full_det_and_log_det.log_det)]
                        for nlin_det_and_log_det in
-                         [s.defer(det_and_log_det(displacement_grid=s.defer(nlin_displacement(xfm,
-                                                                                              inv_xfm=inv_xfm)),
+                         [s.defer(det_and_log_det(displacement_grid=s.defer(nlin_displacement(xfm)),
+                                                                                             # inv_xfm=inv_xfm)),
                                                   fwhm=fwhm,
                                                   annotation="_rel"))]
                        for nlin_det, nlin_log_det in [(nlin_det_and_log_det.det, nlin_det_and_log_det.log_det)]])
@@ -166,16 +165,3 @@ def smooth_vector(source : MincAtom, fwhm : float) -> Result[MincAtom]:
 StatsConf = NamedTuple("StatsConf", [('stats_kernels', str)])
 
 
-def voxel_vote(label_files : List[MincAtom], output_dir : str, name : str = "voted"):  # TODO too stringy ...
-
-    if len(label_files) == 0:
-        raise ValueError("can't vote with 0 files")
-
-    out = MincAtom(name=os.path.join(output_dir, "%s.mnc" % name),
-                   output_sub_dir=output_dir)  # FIXME better naming
-
-    s = CmdStage(cmd=["voxel_vote", "--clobber"] + [l.path for l in sorted(label_files)] + [out.path],
-                 inputs=tuple(label_files),
-                 outputs=(out,))
-
-    return Result(stages=Stages([s]), output=out)

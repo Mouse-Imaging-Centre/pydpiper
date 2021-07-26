@@ -1,8 +1,6 @@
 import copy
 import os
-import warnings
 from pathlib import Path
-
 from typing import Callable, Union, Tuple
 
 
@@ -16,7 +14,10 @@ def explode(filename: str) -> Tuple[str, str, str]:
     >>> explode('file')
     ('', 'file', '')
     """
-    base, ext = os.path.splitext(filename)
+    if filename.endswith(".nii.gz"):  # HACK
+        base, ext = filename[:-7], ".nii.gz"
+    else:
+        base, ext = os.path.splitext(filename)
     directory, name = os.path.split(base)
     return (directory, name, ext)
 
@@ -192,3 +193,22 @@ class ImgAtom(FileAtom):
     # behaviour for free if the FileAtom.newname_with used copy.copy() internally
     # some operations (blurring) preserve mask/labels, but others don't (resampling) ... add a preserve_labels=<bool> arg?
 
+
+class XfmAtom(FileAtom):
+    pass
+
+
+def xfmToImg(xfm):
+    mnc = copy.deepcopy(xfm)
+    mnc.__class__ = ImgAtom
+    mnc.mask = None
+    mnc.labels = None
+    return mnc
+
+
+def imgToXfm(mnc):
+    xfm = copy.deepcopy(mnc)
+    del xfm.mask
+    del xfm.labels
+    xfm.__class__ = XfmAtom
+    return xfm

@@ -7,6 +7,7 @@ import subprocess
 import sys
 import time
 import warnings
+from dataclasses import dataclass
 from functools import reduce
 from operator import mul
 from typing import Any, cast, Dict, Generic, List, Optional, Tuple, TypeVar, Union, Callable
@@ -16,7 +17,7 @@ from pyminc.volumes.factory import volumeFromFile  # type: ignore
 
 from pydpiper.core.files import FileAtom, ImgAtom
 from pydpiper.core.stages import CmdStage, Result, Stages, identity_result
-from pydpiper.core.util import pairs, AutoEnum, NamedTuple, raise_, flatten
+from pydpiper.core.util import AutoEnum, NamedTuple, raise_, flatten
 from pydpiper.minc.containers import XfmHandler
 from pydpiper.minc.files import MincAtom, XfmAtom, xfmToMinc, mincToXfm
 from pydpiper.minc.nlin import NLIN, NLIN_BUILD_MODEL, Algorithms, REG
@@ -283,7 +284,8 @@ def minctracc(source: MincAtom,
     # (by property magic, but would be similar using getters),
     # so the possibility of `resampled` being None isn't as annoying as it looks
     resampled = (s.defer(mincresample(img=source, xfm=out_xfm, like=target,
-                                      interpolation=Interpolation.sinc))
+                                      #interpolation=Interpolation.sinc
+                                      ))
                  if resample_source else None)
 
     return Result(stages=s,
@@ -695,7 +697,7 @@ def mincresample(img: MincAtom,
 
     # don't scale label values:
     label_extra_flags = (extra_flags
-                         + (('-keep_real_range',) if "-keep_real_range"
+                         + (('-keep_real_range', '-labels') if "-keep_real_range"
                                                     not in extra_flags else ()))
 
     # we need to get the filename without extension here in case we have
@@ -798,8 +800,10 @@ def concat_xfmhandlers(xfms: List[XfmHandler],
                        algorithms,
                        name: str = None,
                        resample_moving: bool = True,  # False?
+                       use_nn_interpolation: bool = False,
                        interpolation: Optional[Interpolation] = None,  # remove or make `sinc` default?
-                       extra_flags: Tuple[str] = ()) -> Result[XfmHandler]:
+                       #extra_flags: Tuple[str] = ()
+                       ) -> Result[XfmHandler]:
     """
     xfmconcat lifted to work on XfmHandlers instead of XfmAtoms.
     To avoid unnecessary resamplings, we will resample the source
@@ -811,8 +815,10 @@ def concat_xfmhandlers(xfms: List[XfmHandler],
     res = s.defer(algorithms.resample(img=xfms[0].moving,
                                       xfm=t,
                                       like=xfms[-1].fixed,
-                                      interpolation=interpolation,
-                                      extra_flags=extra_flags)) if resample_moving else None
+                                      use_nn_interpolation=use_nn_interpolation,
+                                      #interpolation=interpolation,
+                                      #extra_flags=extra_flags
+                                      )) if resample_moving else None
     return Result(stages=s,
                   output=XfmHandler(moving=xfms[0].moving,
                                     fixed=xfms[-1].fixed,
@@ -976,15 +982,15 @@ def xfmaverage(xfms: List[XfmAtom],
     # TODO: the path here is probably not right...
     if not output_filename_wo_ext:
         output_filename_wo_ext= "average_xfm"
-    if all_from_same_sub:
-        outf = xfms[0].newname(name=output_filename_wo_ext, subdir="transforms", ext=".xfm")
-    else:
-        # it's actually not very clear at this point what to do... will this ever
-        # be used? Hope not... :-)
-        raise NotImplementedError("Aha... you are trying to use xfmaverage on "
-                                  "a list of transformations that are located "
-                                  "in several directories. We currently have not "
-                                  "implemented the code to deal with this.")
+    #if all_from_same_sub:
+    outf = xfms[0].newname(name=output_filename_wo_ext, subdir="transforms", ext=".xfm")
+    #else:
+    #    # it's actually not very clear at this point what to do... will this ever
+    #    # be used? Hope not... :-)
+    #    raise NotImplementedError("Aha... you are trying to use xfmaverage on "
+    #                              "a list of transformations that are located "
+    #                              "in several directories. We currently have not "
+    #                              "implemented the code to deal with this.")
     #else:
     #    outf = XfmAtom(name=os.path.join(output_dir, 'transforms', output_filename), orig_name=None)
 
@@ -1040,6 +1046,7 @@ def xfminvert(xfm: XfmAtom,
 
 RotationalMinctraccConf = NamedTuple('RotationalMinctraccConf',
                                      [("blur_factor", float),
+                                      ("file_resolution", Optional[float]),
                                       ("resample_step_factor", float),
                                       ("registration_step_factor", float),
                                       ("w_translations_factor", float),
@@ -1049,6 +1056,7 @@ RotationalMinctraccConf = NamedTuple('RotationalMinctraccConf',
 
 default_rotational_minctracc_conf = RotationalMinctraccConf(
     blur_factor=5,
+    file_resolution=None,
     resample_step_factor=4,
     registration_step_factor=10,
     w_translations_factor=8,
@@ -1161,6 +1169,8 @@ def rotational_minctracc(source: MincAtom,
         if resampled.mask is None and target.mask is not None:
             resampled.mask = target.mask
 
+    # NBN this XfmH is 'incorrect' wrt use of ITK conventions due to use of mincresample!
+    # this is fixed in the RotationalMinctracc adapting class
     return Result(stages=s,
                   output=XfmHandler(moving=source,
                                     fixed=target,
@@ -1288,7 +1298,12 @@ def parse_minctracc_protocol(f, base_minctracc_conf, parsers, names,
         warnings.warn("Empty config file")   # formerly an error
     for k in d.copy():  # otherwise d changes size during iteration ...
         if is_ignored_key(k):
-            registration_type = "linear" if type(base_minctracc_conf) == LinearMinctraccConf else "non-linear"
+            if type(base_minctracc_conf) == LinearMinctraccConf:
+                registration_type = "linear"
+            elif type(base_minctracc_conf) == NonlinearMinctraccConf:
+                registration_type = "non-linear"
+            else:
+                raise ValueError("?!")
             # TODO change to warn once:
             warnings.warn("Note: the '%s' parameter is not used for %s minctracc registrations."
                           "It's specified in the protocol, but won't have any effect." % (k, registration_type))
@@ -1365,7 +1380,7 @@ def parse_minctracc_linear_protocol(f, transform_type : LinearTransType,
 
     return parse_minctracc_protocol(f=f, names={}, parsers=parsers, is_ignored_key=is_ignored_key,
                                     modify=lambda b, c: b.replace(linear_conf=c),
-                                    base_minctracc_conf=base_minctracc_conf)  #=base_minctracc_conf(transform_type))
+                                    base_minctracc_conf=base_minctracc_conf(transform_type)) #(transform_type))  #=base_minctracc_conf
 
 
 def get_linear_configuration_from_options(conf, transform_type : LinearTransType, file_resolution : float) \
@@ -1396,10 +1411,10 @@ def get_linear_configuration_from_options(conf, transform_type : LinearTransType
 
 def get_nonlinear_component(reg_method : str):
     def _ANTS():
-        import pydpiper.minc.ANTS as ANTS
+        import pydpiper.itk.ANTS as ANTS
         return ANTS.ANTS
     def _antsRegistration():
-        import pydpiper.minc.antsRegistration as antsRegistration
+        import pydpiper.itk.antsRegistration as antsRegistration
         return antsRegistration.ANTSRegistration
     def _minctracc():
         return MINCTRACC
@@ -1598,20 +1613,17 @@ def lsq6_lsq12_nlin(source: MincAtom,
 
 
     # then run the linear and nonlinear alignment:
-    rigid_source_lsq12_and_nlin_xfm = s.defer(lsq12_nlin(source=source_resampled,
-                                                         target=target,
-                                                         lsq12_conf=lsq12_conf,
-                                                         nlin_module=nlin_module,
-                                                         resolution=resolution,
-                                                         nlin_options=nlin_options,
-                                                         resample_source=True if not resampled_post_fix_string else False))
+    rigid_source_lsq12_and_nlin_xfm = s.defer(
+        lsq12_nlin(moving=source_resampled, fixed=target, lsq12_conf=lsq12_conf, nlin_module=nlin_module,
+                   resolution=resolution, nlin_options=nlin_options,
+                   resample_moving=True if not resampled_post_fix_string else False))
 
     # resample the source file manually if an resampled_post_fix_string was provided:
     if resampled_post_fix_string:
         source_resampled_final = s.defer(mincresample(img=source_resampled,
                                                       xfm=rigid_source_lsq12_and_nlin_xfm.xfm,
                                                       like=target,
-                                                      interpolation=Interpolation.sinc,
+                                                      #interpolation=Interpolation.sinc,
                                                       new_name_wo_ext=source.filename_wo_ext + "_lsq6_lsq12_and_nlin_to_" + resampled_post_fix_string,
                                                       subdir="resampled"))
         rigid_source_lsq12_and_nlin_xfm.resampled = source_resampled_final
@@ -1620,15 +1632,16 @@ def lsq6_lsq12_nlin(source: MincAtom,
     return Result(stages=s, output=rigid_source_lsq12_and_nlin_xfm)
 
 
-
-def lsq12_nlin(source: ImgAtom,
-               target: ImgAtom,
+# FIXME --no-run-lsq12 currently doesn't work -- where is the best place to put the logic for this?!
+def lsq12_nlin(moving: ImgAtom,
+               fixed: ImgAtom,
                lsq12_conf: MinctraccConf,
+               lsq12_module: NLIN,
                nlin_module: NLIN,
                resolution: float,
-               nlin_options,  # nlin_module.Conf,  ??  want an nlin_module.Conf here ...
-               #nlin_conf: Union[MultilevelMinctraccConf, MultilevelANTSConf, ANTSConf],  # sigh ... ...
-               resample_source: bool = True):
+               run_lsq12: bool,
+               nlin_options,
+               resample_moving: bool = False):
     """
     Runs a 12 parameter (or really any) linear registration followed by a nonlinear registration
     (minctracc or ANTS, depending on the supplied nonlinear configuration)
@@ -1654,56 +1667,44 @@ def lsq12_nlin(source: ImgAtom,
     nlin_conf = (nlin_module.parse_protocol_file(nlin_options, resolution=resolution)
                   if nlin_options is not None else nlin_module.get_default_conf(resolution=resolution))
 
-    #toMinc = nlin_module.ToMinc
-
-    # TODO: extract this somewhere else if it doesn't already exist there
-    # TODO and then also return a Result for consistency
-    def to_mni_xfmh(xfmh):
-        # TODO GenericXfmHandler?
-        # TODO handle inverse_xfm
-        return XfmHandler(fixed = xfmh.fixed,
-                          moving = xfmh.moving,
-                          resampled = xfmh.resampled if xfmh.has_resampled() else None,
-                          xfm = xfmh.xfm)
-        #return XfmHandler(source=s.defer(toMinc.to_mnc(xfmh.source)),
-        #                  target=s.defer(toMinc.to_mnc(xfmh.target)),
-        #                  resampled=s.defer(toMinc.to_mnc(xfmh.resampled if xfmh.has_resampled() else None)),
-        #                  xfm=s.defer(toMinc.to_mni_xfm(xfmh.xfm)))
-    #def from_mni_xfhm(xfmh):
-    #    return XfmHandler(source=s.defer(toMnc.from_mnc(xfmh.source)),
-    #                      target=s.defer(toMnc.from_mnc(xfmh.target)),
-    #                      resampled=s.defer(toMnc.from_mnc(xfmh.resampled)),
-    #                      xfm=s.defer(toMnc.from_mni_xfm(xfmh.xfm)))
-
-    if nlin_module.accepts_initial_transform():
-        lsq12_transform_handler = s.defer(multilevel_minctracc(source=source,
-                                                               target=target,
-                                                               conf=lsq12_conf,
-                                                               # TODO allow a transform here?
-                                                               resample_source=resample_source))
-        nlin_transform_handler = s.defer(nlin_module.register(moving=source,
-                                                              fixed=target,
+    if not run_lsq12:
+        full_transform = s.defer(nlin_module.register(moving=moving, fixed=fixed, conf=nlin_conf,
+                                                      initial_moving_transform=None,
+                                                      resample_moving=resample_moving))
+        # TODO lsq12 being identity should probably be handled inside the lsq12 module?
+    elif nlin_module.accepts_initial_transform():
+        lsq12_transform_handler = s.defer(lsq12_module.register(moving=moving,
+                                                                fixed=fixed,
+                                                                conf=lsq12_conf,
+                                                                # TODO allow a transform here?
+                                                                resample_moving=resample_moving))
+        nlin_transform_handler = s.defer(nlin_module.register(moving=moving,
+                                                              fixed=fixed,
                                                               conf=nlin_conf,
-                                                              initial_moving_transform=
-                                                                lsq12_transform_handler.xfm,
-                                                              resample_moving=resample_source))
+                                                              initial_moving_transform=lsq12_transform_handler.xfm,
+                                                              resample_moving=resample_moving))
         full_transform = nlin_transform_handler
     else:
-        lsq12_transform_handler = s.defer(multilevel_minctracc(source=source,
-                                                               target=target,
-                                                               conf=lsq12_conf,
-                                                               resample_source=True))
-        nlin_transform_handler = s.defer(nlin_module.register(moving=
-                                                                lsq12_transform_handler.resampled,
-                                                              fixed=target,
+        lsq12_transform_handler = s.defer(lsq12_module.register(moving=moving,
+                                                                fixed=fixed,
+                                                                conf=lsq12_conf,
+                                                                resample_moving=True))
+        # NOW REPAIRED?  testing ...
+        # hack because we don't trust MINCTRACC to put in the right 'resampled' field into an xfmhandler at the moment:
+        # (but this could be fixed locally in the MINCTRACC class)
+        # FIXME the accepts_initial_transform case is probably similarly broken
+        #lsq12_resampled = s.defer(lsq12_module.Algorithms.resample(img=moving, xfm=lsq12_transform_handler.xfm,
+        #                                                           like=fixed, use_nn_interpolation=False))
+        nlin_transform_handler = s.defer(nlin_module.register(moving=lsq12_transform_handler.resampled,
+                                                              fixed=fixed,
                                                               conf=nlin_conf,
-                                                              resample_moving=resample_source))
+                                                              resample_moving=resample_moving))
         full_transform = s.defer(concat_xfmhandlers(
             xfms=[lsq12_transform_handler, nlin_transform_handler],
             algorithms=nlin_module.Algorithms,
-            name=source.filename_wo_ext + "_to_" +
-                   target.filename_wo_ext + "_lsq12_ANTS_nlin",
-            resample_moving=resample_source))
+            name=moving.filename_wo_ext + "_to_" +
+                 fixed.filename_wo_ext + "_lsq12_ANTS_nlin",  # FIXME ANTS -> registration class
+            resample_moving=resample_moving))
     return Result(stages=s, output=full_transform)
     # if isinstance(nlin_conf, MultilevelANTSConf):
     #     # if only a single level is specified inside this multilevel configuration, all is fine:
@@ -1799,9 +1800,11 @@ def multilevel_minctracc(source: MincAtom,
                          resample_source: bool = False) -> Result[XfmHandler]:
     if len(conf.confs) == 0:  # not a "registration" at all; also, src_blur/target_blur will be undefined ...
         raise ValueError("No configurations supplied")
+    if transform is not None:
+        raise ValueError("Currently not supported due to transform convention confusion")
     s = Stages()
     for idx, conf_ in enumerate(conf.confs):
-        transform_handler = s.defer(minctracc(source, target, conf=conf_,
+        transform_handler = s.defer(minctracc(source=source, target=target, conf=conf_,
                                               transform=transform,
                                               transform_info=transform_info if idx == 0 else None,
                                               generation=idx,
@@ -1811,12 +1814,18 @@ def multilevel_minctracc(source: MincAtom,
                                               resample_source=resample_source if idx + 1 == len(conf.confs) else False))
         transform = transform_handler.xfm
         # why potentially throw away the resampled image?
-    last_resampled = transform_handler.resampled if resample_source else None
+    #last_resampled = transform_handler.resampled if resample_source else None
+    last_resampled = s.defer(mincresample(img=target, xfm=transform, like=source, invert=True))\
+                     if resample_source else None
     return Result(stages=s,
                   output=XfmHandler(xfm=transform,
-                                    moving=source,
-                                    fixed=target,
-                                    resampled=last_resampled))
+                                    moving=target,
+                                    fixed=source,
+                                    resampled=last_resampled
+                                    # n.b. this is the resampled source due to ITK/minc mismatch!
+                                    # n.b.: minctracc/MINC stuff uses xfmhandlers wrong internally!
+                                    # TODO make a separate MincXfmHandler and conversion functionality ?!
+                                    ))
 
 #class MultilevelRegistration(REG):
 #    Algorithms = REG.Algorithms
@@ -1826,7 +1835,8 @@ def multilevel_minctracc(source: MincAtom,
 #    def multilevel_registration(): pass  # is multilevel machinery even needed for single source -> single target reg?
 #    # or is this just an artifact or minctracc which we could hide inside MINC classes?
 
-class MultilevelPairwiseRegistration():
+
+class PairwiseRegistration():
 
   class Reg(REG): pass  # raise NotImplementedError
 
@@ -1835,39 +1845,41 @@ class MultilevelPairwiseRegistration():
 
   @classmethod
   def avg_xfm_from(cls,
-                   conf: MultilevelMinctraccConf,  # TODO change!!
-                   like,  # TODO type these (but Algorithms doesn't have an 'Img' field :D)
-                   output_atom,
-                   src_img,
-                   target_imgs,
-                   affine: Optional[bool] = None):
+                 conf,
+                 like,
+                 output_atom,
+                 fixed_img,  # TODO should be fixed_imgs, moving_img
+                 moving_imgs,
+                 affine: Optional[bool] = None):  # FIXME make is_affine() a class method of REG
     s = Stages()
 
-    xfms = [s.defer(cls.Reg.register(src_img, target_img,
-                                     resample_source=False,
+    xfms = [s.defer(cls.Reg.register(fixed=fixed_img, moving=moving,
+                                     resample_moving=False,
                                      resample_subdir="tmp",
                                      conf=conf))
-            for target_img in target_imgs]
+            for moving in moving_imgs]
 
     av = cls.Reg.Algorithms.average_affine_transforms if affine else cls.Reg.Algorithms.average_transforms
 
-    avg_xfm = s.defer(av(xfms,
-                         src_img.newname_with_suffix(suffix="_avg_lsq12", ext=".xfm")))
+    avg_xfm_to_fixed = s.defer(av(xfms,
+                                  fixed_img.newname_with_suffix(suffix="_avg_lsq12", ext=".xfm")))
                          #output_filename_wo_ext="%s_avg_lsq12" % src_img.filename_wo_ext))
+    avg_xfm = s.defer(cls.Reg.Algorithms.xfminvert(avg_xfm_to_fixed))
 
-    res = s.defer(cls.Reg.Algorithms.resample(img=src_img,
+    res = s.defer(cls.Reg.Algorithms.resample(img=fixed_img,
                                               xfm=avg_xfm,
-                                              like=like or src_img,
-                                              use_nn_interpolation=False))
+                                              like=like or fixed_img,
+                                              invert=False))
     return Result(stages=s,
-                  output=XfmHandler(xfm=avg_xfm, source=src_img,
-                                    target=output_atom, resampled=res))
+                  output=XfmHandler(xfm=avg_xfm, fixed=output_atom,
+                                    moving=fixed_img, resampled=res))
+
 
   @classmethod
   def pairwise_registrations(
     cls,
     imgs, #: List[Img],
-    conf,  #: MultilevelConf,  #?!?
+    conf,
     # transforms : List[] = None,
     max_pairs: Optional[int],
     # max_pairs doesn't even make sense for a non-pairwise MinctraccConf,
@@ -1894,21 +1906,23 @@ class MultilevelPairwiseRegistration():
         raise ValueError("currently need at least two images")
         # otherwise 0 imgs passed to mincavg (could special-case)
 
-    confs = conf.confs
+    #confs = conf.confs
     # the name of the average file that is produced by this function:
+    #if not output_name_for_avg:
+    #    all_same_transform_type = True
+    #    first_transform_type = confs[0].linear_conf.transform_type.name if confs[0].linear_conf else "nlin"
+    #    alternate_name = "avg"
+    #    for stage in confs:
+    #        current_transform_type = stage.linear_conf.transform_type.name if stage.linear_conf else "nlin"
+    #        if current_transform_type != first_transform_type:
+    #            all_same_transform_type = False
+    #        alternate_name += "_" + current_transform_type
+    #    if all_same_transform_type:
+    #        output_name_for_avg = "avg_" + first_transform_type
+    #    else:
+    #        output_name_for_avg = alternate_name
     if not output_name_for_avg:
-        all_same_transform_type = True
-        first_transform_type = confs[0].linear_conf.transform_type.name if confs[0].linear_conf else "nlin"
-        alternate_name = "avg"
-        for stage in confs:
-            current_transform_type = stage.linear_conf.transform_type.name if stage.linear_conf else "nlin"
-            if current_transform_type != first_transform_type:
-                all_same_transform_type = False
-            alternate_name += "_" + current_transform_type
-        if all_same_transform_type:
-            output_name_for_avg = "avg_" + first_transform_type
-        else:
-            output_name_for_avg = alternate_name
+        output_name_for_avg = "avg"  # TODO give registration modules a 'rigid/affine/nonlinear' property!
 
     final_avg = ImgAtom(name=os.path.join(output_dir_for_avg, output_name_for_avg + ".mnc"),
                         pipeline_sub_dir=output_dir_for_avg)
@@ -1916,12 +1930,12 @@ class MultilevelPairwiseRegistration():
     if max_pairs is None or max_pairs >= len(imgs):
         avg_xfms = [s.defer(cls.avg_xfm_from(conf=conf, like=like,
                                              output_atom=final_avg, affine=affine,
-                                             src_img=img, target_imgs=imgs))
+                                             fixed_img=img, moving_imgs=imgs))
                     for img in imgs]
     else:
         avg_xfms = [s.defer(cls.avg_xfm_from(conf=conf, like=like,
                                              output_atom=final_avg, affine=affine,
-                                             src_img=img, target_imgs=gen.sample(imgs, max_pairs)))
+                                             fixed_img=img, moving_imgs=gen.sample(imgs, max_pairs)))
                     for img in imgs]
 
     final_avg = s.defer(cls.Reg.Algorithms.average([xfm.resampled for xfm in avg_xfms], avg_file=final_avg,
@@ -2063,7 +2077,8 @@ def lsq12_pairwise(imgs: List[MincAtom],
                   ) -> Result[WithAvgImgs[List[XfmHandler]]]:
 
     #algorithms = MultilevelPairwiseRegistration(image_algorithms)
-    class Reg(MultilevelPairwiseRegistration):
+    # FIXME is this used enough to be relevant?
+    class Reg(PairwiseRegistration):
         Reg = image_algorithms
 
     #conf = get_linear_configuration_from_options(conf=lsq12_conf,
@@ -2091,7 +2106,7 @@ def lsq12_pairwise(imgs: List[MincAtom],
                              pipeline_sub_dir=lsq12_dir)
         avg = s.defer(image_algorithms.average([img for img in imgs], avg_file=final_avg))
         identity_xfm = s.defer(image_algorithms.identity_transform(output_sub_dir = os.path.join(lsq12_dir, 'tmp')))
-        identity_xfms = [XfmHandler(source=img, target=avg, xfm=identity_xfm, resampled=img) for img in imgs]
+        identity_xfms = [XfmHandler(moving=img, fixed=avg, xfm=identity_xfm, resampled=img) for img in imgs]
         avgs_and_xfms = WithAvgImgs(avg_imgs=[avg], avg_img=avg,
                                     output=identity_xfms)
 
@@ -2157,6 +2172,7 @@ def lsq12_nlin_build_model(imgs       : List[MincAtom],
                            lsq12_conf : LSQ12Conf,
                            lsq12_dir  : str,
                            nlin_dir   : str,
+                           lsq12_module,
                            nlin_module: NLIN_BUILD_MODEL,
                            nlin_conf, # options object
                            resolution : float,
@@ -2172,6 +2188,7 @@ def lsq12_nlin_build_model(imgs       : List[MincAtom],
     # it should be able to get this passed in....
     lsq12_result = s.defer(lsq12_pairwise(imgs=imgs, like=None,
                                           resolution=resolution,
+                                          image_algorithms=lsq12_module,
                                           use_robust_averaging=use_robust_averaging,
                                           lsq12_conf=lsq12_conf,
                                           lsq12_dir=lsq12_dir))
@@ -2184,7 +2201,7 @@ def lsq12_nlin_build_model(imgs       : List[MincAtom],
     #                                                            tournament_dir=lsq12_dir[0:len(lsq12_dir)-6] + "_tournament"))
     #else:
     # TODO restore NLIN tournament before, not replacing, regular nlin model building!!
-    target_for_nlin_stages = lsq12_result.avg_img
+    #target_for_nlin_stages = lsq12_result.avg_img
 
     if False:  #TODO: fix!!!
     #if lsq12_conf.generate_tournament_style_lsq12_avg and (nlin_build_module == pairwise):  # TODO implement
@@ -2207,7 +2224,7 @@ def lsq12_nlin_build_model(imgs       : List[MincAtom],
     # FIXME why doesn't this accept the lsq12 transforms if the nlin component can use them
     # and then not concatenate with the lsq12 transforms? (note the cost function is different in this case)
     nlin_result = s.defer(nlin_module.build_model(imgs=lsq12_resampled_imgs,
-                                                  initial_target=target_for_nlin_stages,
+                                                  initial_target=lsq12_result.avg_img,
                                                   #nlin_module=nlin_module,
                                                   conf=nlin_conf,
                                                   nlin_dir=nlin_dir,
@@ -2216,7 +2233,8 @@ def lsq12_nlin_build_model(imgs       : List[MincAtom],
 
     # concatenate the transformations from lsq12 and nlin before returning them
     from_imgs_to_nlin_xfms = [s.defer(concat_xfmhandlers(xfms=[lsq12_xfmh, nlin_xfmh],
-                                                         name=img.filename_wo_ext + "_lsq12_and_nlin")) for
+                                                         name=img.filename_wo_ext + "_lsq12_and_nlin",
+                                                         algorithms=nlin_module.Algorithms)) for
                               lsq12_xfmh, nlin_xfmh, img in zip(lsq12_result.output,
                                                                 nlin_result.output,
                                                                 imgs)]
@@ -2336,6 +2354,7 @@ def get_parameters_for_rotational_minctracc(resolution,  # TODO why do most argu
                      w_translation factor]
     """
     rotational_configuration = default_rotational_minctracc_conf.maybe_replace(
+                                 file_resolution=resolution,
                                  temp_dir=rotation_tmp_dir,
                                  rotational_range=rotation_range,
                                  rotational_interval=rotation_interval)
@@ -2373,18 +2392,18 @@ def to_lsq6_conf(lsq6_args : Namespace) -> LSQ6Conf:
     return LSQ6Conf(**new_args)
 
 
-def lsq6(imgs: List[MincAtom],
-         target: MincAtom,
+def lsq6(imgs: List[ImgAtom],
+         target: ImgAtom,
          resolution: float,
          conf: LSQ6Conf,
-         image_algorithms,
+         reg_algorithms,
          resample_subdir: str = "resampled",
          resample_images: bool = False,
          post_alignment_xfm: XfmAtom = None,
          propagate_masks: bool = True,
          post_alignment_target: MincAtom = None) -> Result[List[XfmHandler]]:
     """
-    post_alignment_xfm -- this is a transformation you want to concatenate with the
+    post_alignment_xfm -- this is a transformation *whose inverse* you want to concatenate with the
                           output of the transform aligning the imgs to the target.
                           The most obvious example is a native_to_standard.xfm transformation
                           from an initial model.
@@ -2397,6 +2416,7 @@ def lsq6(imgs: List[MincAtom],
     """
     s = Stages()
     xfms_to_target : List[XfmHandler]
+    image_algorithms = reg_algorithms.Algorithms
 
     if post_alignment_xfm and not post_alignment_target:
         raise ValueError("You've provided a post alignment transformation to lsq6() but not a MincAtom indicating the target for this transformation.")
@@ -2404,84 +2424,95 @@ def lsq6(imgs: List[MincAtom],
     if not conf.run_lsq6:
         raise ValueError("You silly person... you've called lsq6(), but also specified --no-run-lsq6. That's not a very sensible combination of things.")
 
-    # FIXME this is a stupid function: it's not very safe (note lack of type of argument) and rather redundant ...
-    def conf_from_defaults(defaults) -> MultilevelMinctraccConf:
-        conf = MultilevelMinctraccConf(
-            [MinctraccConf(step_sizes=[defaults["blur_factors"][i] * resolution] * 3,
-                           blur_resolution=defaults["blur_factors"][i] * resolution,
-                           use_gradient=defaults["gradients"][i],
-                           use_masks=True,
-                           linear_conf=(default_linear_minctracc_conf(LinearTransType.lsq6)
-                                        .replace(w_translations=[defaults["translations"][i]] * 3,
-                                                 simplex=defaults["simplex_factors"][i] * resolution)),
-                           nonlinear_conf=None)
-             for i in range(len(defaults["blur_factors"]))])  # FIXME: don't assume all lengths are equal
-        return conf
-
-    ############################################################################
-    # alignment - switch on lsq6_method
-    ############################################################################
-    if conf.lsq6_method == "lsq6_large_rotations":
-        # still not convinced this shouldn't go inside rotational_minctracc somehow,
-        # though you may want to override ...
-        rotational_configuration, resolution_for_rot = \
-            get_parameters_for_rotational_minctracc(resolution=resolution,
-                                                    rotation_tmp_dir=conf.rotation_tmp_dir,
-                                                    rotation_range=conf.rotation_range,
-                                                    rotation_interval=conf.rotation_interval,
-                                                    rotation_params=conf.rotation_params)
-        # now call rotational_minctracc on all input images 
-        xfms_to_target = [s.defer(rotational_minctracc(source=img, target=target,
-                                                       conf=rotational_configuration,
-                                                       resolution=resolution_for_rot,
-                                                       output_name_wo_ext=None if post_alignment_xfm else
-                                                                          img.output_sub_dir + "_lsq6"))
-                          for img in imgs]
-    elif conf.lsq6_method == "lsq6_centre_estimation":
-        defaults = { 'blur_factors'    : [   90,    35,    17,    9,     4],
-                     'simplex_factors' : [  128,    64,    40,   28,    16],
-                     'step_factors'    : [   90,    35,    17,    9,     4],
-                     'gradients'       : [False, False, False, True, False],
-                     'translations'    : [  0.4,   0.4,   0.4,  0.4,   0.4] }
-        if conf.protocol_file is not None:
-            mt_conf = parse_minctracc_linear_protocol_file(filename=conf.protocol_file,
-                                                           transform_type=LinearTransType.lsq6,
-                                                           minctracc_conf=default_lsq6_minctracc_conf)
-        else:
-            mt_conf = conf_from_defaults(defaults)
-        xfms_to_target = s.defer_all([multilevel_minctracc(source=img, target=target, conf=mt_conf,
-                                                       transform_info=["-est_center", "-est_translations"])
-                                     for img in imgs])
-    elif conf.lsq6_method == "lsq6_simple":
-        defaults = { 'blur_factors'    : [   17,    9,     4],
-                     'simplex_factors' : [   40,   28,    16],
-                     'step_factors'    : [   17,    9,     4],
-                     'gradients'       : [False, True, False],
-                     'translations'    : [  0.4,  0.4,   0.4] }
-
-
-        if conf.protocol_file is not None:  # FIXME the proliferations of LSQ6Confs vs. MultilevelMinctraccConfs here is very confusing ...
-            mt_conf = parse_minctracc_linear_protocol_file(filename=conf.protocol_file,
-                                                           transform_type=LinearTransType.lsq6,
-                                                           minctracc_conf=default_lsq6_minctracc_conf)
-        else:
-            mt_conf = conf_from_defaults(defaults)  # FIXME print a warning?!
-
-        xfms_to_target = s.defer_all([multilevel_minctracc(source=img,
-                                                       target=target,
-                                                       conf=mt_conf)
-                                     for img in imgs])
+    # # FIXME this is a stupid function: it's not very safe (note lack of type of argument) and rather redundant ...
+    # def conf_from_defaults(defaults) -> MultilevelMinctraccConf:
+    #     conf = MultilevelMinctraccConf(
+    #         [MinctraccConf(step_sizes=[defaults["blur_factors"][i] * resolution] * 3,
+    #                        blur_resolution=defaults["blur_factors"][i] * resolution,
+    #                        use_gradient=defaults["gradients"][i],
+    #                        use_masks=True,
+    #                        linear_conf=(default_linear_minctracc_conf(LinearTransType.lsq6)
+    #                                     .replace(w_translations=[defaults["translations"][i]] * 3,
+    #                                              simplex=defaults["simplex_factors"][i] * resolution)),
+    #                        nonlinear_conf=None)
+    #          for i in range(len(defaults["blur_factors"]))])  # FIXME: don't assume all lengths are equal
+    #     return conf
+    if conf.protocol_file is not None:
+        conf = reg_algorithms.parse_protocol_file(conf.protocol_file, resolution=resolution)
     else:
-        raise ValueError("bad lsq6 method: %s" % conf.lsq6_method)
+        conf = reg_algorithms.get_default_conf(resolution=resolution)
+
+    xfms_to_target = s.defer_all([reg_algorithms.register(moving = img, fixed = target,
+                                                          conf = conf,
+                                                          resample_moving = resample_images,
+                                                          resample_subdir = resample_subdir,
+                                                          transform_name_wo_ext=None if post_alignment_xfm
+                                                                                else img.output_sub_dir)
+                                  for img in imgs])
+    # ############################################################################
+    # # alignment - switch on lsq6_method
+    # ############################################################################
+    # if conf.lsq6_method == "lsq6_large_rotations":
+    #     # still not convinced this shouldn't go inside rotational_minctracc somehow,
+    #     # though you may want to override ...
+    #     rotational_configuration, resolution_for_rot = \
+    #         get_parameters_for_rotational_minctracc(resolution=resolution,
+    #                                                 rotation_tmp_dir=conf.rotation_tmp_dir,
+    #                                                 rotation_range=conf.rotation_range,
+    #                                                 rotation_interval=conf.rotation_interval,
+    #                                                 rotation_params=conf.rotation_params)
+    #     # now call rotational_minctracc on all input images
+    #     xfms_to_target = [s.defer(rotational_minctracc(source=img, target=target,
+    #                                                    conf=rotational_configuration,
+    #                                                    resolution=resolution_for_rot,
+    #                                                    output_name_wo_ext=None if post_alignment_xfm else
+    #                                                                       img.output_sub_dir + "_lsq6"))
+    #                       for img in imgs]
+    # elif conf.lsq6_method == "lsq6_centre_estimation":
+    #     defaults = { 'blur_factors'    : [   90,    35,    17,    9,     4],
+    #                  'simplex_factors' : [  128,    64,    40,   28,    16],
+    #                  'step_factors'    : [   90,    35,    17,    9,     4],
+    #                  'gradients'       : [False, False, False, True, False],
+    #                  'translations'    : [  0.4,   0.4,   0.4,  0.4,   0.4] }
+    #     if conf.protocol_file is not None:
+    #         mt_conf = parse_minctracc_linear_protocol_file(filename=conf.protocol_file,
+    #                                                        transform_type=LinearTransType.lsq6,
+    #                                                        minctracc_conf=default_lsq6_minctracc_conf)
+    #     else:
+    #         mt_conf = conf_from_defaults(defaults)
+    #     xfms_to_target = s.defer_all([multilevel_minctracc(source=img, target=target, conf=mt_conf,
+    #                                                    transform_info=["-est_center", "-est_translations"])
+    #                                  for img in imgs])
+    # elif conf.lsq6_method == "lsq6_simple":
+    #     defaults = { 'blur_factors'    : [   17,    9,     4],
+    #                  'simplex_factors' : [   40,   28,    16],
+    #                  'step_factors'    : [   17,    9,     4],
+    #                  'gradients'       : [False, True, False],
+    #                  'translations'    : [  0.4,  0.4,   0.4] }
+    #
+    #
+    #     if conf.protocol_file is not None:  # FIXME the proliferations of LSQ6Confs vs. MultilevelMinctraccConfs here is very confusing ...
+    #         mt_conf = parse_minctracc_linear_protocol_file(filename=conf.protocol_file,
+    #                                                        transform_type=LinearTransType.lsq6,
+    #                                                        minctracc_conf=default_lsq6_minctracc_conf)
+    #     else:
+    #         mt_conf = conf_from_defaults(defaults)  # FIXME print a warning?!
+    #
+    #     xfms_to_target = s.defer_all([multilevel_minctracc(source=img,
+    #                                                    target=target,
+    #                                                    conf=mt_conf)
+    #                                  for img in imgs])
+    # else:
+    #     raise ValueError("bad lsq6 method: %s" % conf.lsq6_method)
 
     if post_alignment_xfm:
-        composed_xfms = s.defer_all([image_algorithms.concat([xfm.xfm, post_alignment_xfm],
-                                           name=xfm.xfm.output_sub_dir + "_lsq6")
-                                    for xfm in xfms_to_target])
+        composed_xfms = s.defer_all([image_algorithms.concat([xfm_to_target.xfm,
+                                                              s.defer(image_algorithms.xfminvert(post_alignment_xfm))],
+                                           name=xfm_to_target.moving.output_sub_dir + "_lsq6")
+                                    for xfm_to_target in xfms_to_target])
         resampled_imgs = (s.defer_all([image_algorithms.resample(img=native_img,
                                                                  xfm=overall_xfm,
                                                                  like=post_alignment_target,
-                                                                 #interpolation=Interpolation.sinc,
                                                                  new_name_wo_ext=native_img.filename_wo_ext + "_lsq6",
                                                                  subdir=resample_subdir)
                                       for native_img, overall_xfm in zip(imgs, composed_xfms)])
@@ -2504,7 +2535,6 @@ def lsq6(imgs: List[MincAtom],
                 xfm.resampled = s.defer(image_algorithms.resample(img=native_img,
                                                                   xfm=xfm.xfm,
                                                                   like=xfm.fixed,
-                                                                  interpolation=Interpolation.sinc,
                                                                   new_name_wo_ext=native_img.filename_wo_ext + "_lsq6",
                                                                   subdir=resample_subdir))
 
@@ -2526,34 +2556,49 @@ def lsq6(imgs: List[MincAtom],
     return Result(stages=s, output=final_xfmhs)
 
 
-class RegistrationTargets(object):
+# class RegistrationTargets(object):
+#     """
+#     This class can be used for the following options:
+#     --init-model
+#     --lsq6-target
+#     --bootstrap
+#     """
+#     def __init__(self,
+#                  registration_standard: MincAtom,
+#                  xfm_to_standard: Optional[XfmAtom] = None,
+#                  registration_native: Optional[MincAtom] = None) -> None:
+#         self.registration_native = registration_native  # type : MincAtom
+#         self.registration_standard = registration_standard  # type : Optional[MincAtom]
+#         self.xfm_to_standard = xfm_to_standard  # type : Optional[XfmAtom]
+
+@dataclass
+class RegistrationTargets:
     """
-    This class can be used for the following options:
-    --init-model
-    --lsq6-target
-    --bootstrap
+    Used to represent the various pieces of a MICe-style initial model, consisting of a target in 'scanner space'
+    to which images are initially registered, a transform to a 'standard space',
+    the target resampled into standard space, and associated masks.
+    This dataclass works with any of the usual LSQ6 registration types
+    (--init-model, --lsq6-target, --bootstrap)
     """
-    # TODO rename registration_standard to standard_space_target or similar?
-    def __init__(self,
-                 registration_standard: MincAtom,
-                 xfm_to_standard: Optional[XfmAtom] = None,
-                 registration_native: Optional[MincAtom] = None) -> None:
-        self.registration_native = registration_native  # type : MincAtom
-        self.registration_standard = registration_standard  # type : Optional[MincAtom]
-        self.xfm_to_standard = xfm_to_standard  # type : Optional[XfmAtom]
+    # TODO rename registration_standard to standard_space_target etc.?
+    registration_standard  : ImgAtom
+    registration_native    : Optional[ImgAtom] = None
+    # called '_native_to_standard' in MICe initial models but actually the opposite due to mincresample weirdness:
+    xfm_standard_to_native : Optional[XfmAtom] = None
 
 
-def lsq6_nuc_inorm(imgs: List[MincAtom],
+def lsq6_nuc_inorm(imgs: List[ImgAtom],
                    registration_targets: RegistrationTargets,
                    resolution: float,
                    lsq6_options: LSQ6Conf,
                    lsq6_dir: str,
-                   image_algorithms,
+                   reg_algorithms,
                    create_qc_images: bool = True,
                    create_average: bool = True,
                    subject_matter: Optional[str] = None):
     s = Stages()
 
+    image_algorithms = reg_algorithms.Algorithms
     # run the actual 6 parameter registration
     init_target = registration_targets.registration_native or registration_targets.registration_standard
 
@@ -2561,10 +2606,10 @@ def lsq6_nuc_inorm(imgs: List[MincAtom],
       lsq6(imgs=imgs,
            target=init_target,
            resolution=resolution,
-           image_algorithms=image_algorithms,
+           reg_algorithms=reg_algorithms,
            conf=lsq6_options,
            resample_images=not (lsq6_options.nuc or lsq6_options.inormalize),
-           post_alignment_xfm=registration_targets.xfm_to_standard,
+           post_alignment_xfm=registration_targets.xfm_standard_to_native,
            post_alignment_target=registration_targets.registration_standard))
 
     xfms_to_final_target_space = [xfm_handler.xfm for xfm_handler in source_imgs_to_lsq6_target_xfms]
@@ -2572,9 +2617,9 @@ def lsq6_nuc_inorm(imgs: List[MincAtom],
     # resample the mask from the initial model to native space
     # we can use it for either the non uniformity correction or
     # for intensity normalization later on
-    masks_in_native_space = None  # type: List[MincAtom]
-    if registration_targets.registration_standard.mask and \
-        (lsq6_options.nuc or lsq6_options.inormalize):
+    masks_in_native_space = None
+    if (registration_targets.registration_standard.mask and
+        (lsq6_options.nuc or lsq6_options.inormalize)):
         # we should apply the non uniformity correction in
         # native space. Given that there is a mask, we should
         # resample it to that space using the inverse of the
@@ -2582,8 +2627,6 @@ def lsq6_nuc_inorm(imgs: List[MincAtom],
         masks_in_native_space = [s.defer(image_algorithms.resample(img=registration_targets.registration_standard.mask,
                                                                    xfm=xfm_to_lsq6,
                                                                    like=native_img,
-                                                                   #extra_flags=("-keep_real_range", "-labels"),
-                                                                   #interpolation=Interpolation.nearest_neighbour,
                                                                    use_nn_interpolation=True,
                                                                    invert=True))
                                    if not native_img.mask else native_img.mask
@@ -2725,15 +2768,17 @@ def get_registration_targets_from_init_model(init_model_standard_file: str,
     else:
         init_model_output_dir = os.path.join(output_dir, pipeline_name + "_" + timepoint +"_init_model")
 
+    # TODO previously had MINC file checking here; replace with general file read checking (add to image_algorithms?)
+    # hopefully general input checking should catch this!
     # first things first, is this a nice MINC file:
-    if not can_read_MINC_file(init_model_standard_file):
-        raise ValueError("Error: can not read the following initial model file: %s" % init_model_standard_file)
+    #if not can_read_MINC_file(init_model_standard_file):
+    #    raise ValueError("Error: can not read the following initial model file: %s" % init_model_standard_file)
     init_model_dir, standard_file_base = os.path.split(os.path.splitext(init_model_standard_file)[0])
     init_model_standard_mask = os.path.join(init_model_dir, standard_file_base + "_mask.mnc")
     # this mask file is a prerequisite, so we need to test it
-    if not can_read_MINC_file(init_model_standard_mask):
-        raise ValueError("Error (initial model): can not read/find the mask file for the standard space: %s"
-                         % init_model_standard_mask)
+    #if not can_read_MINC_file(init_model_standard_mask):
+    #    raise ValueError("Error (initial model): can not read/find the mask file for the standard space: %s"
+    #                     % init_model_standard_mask)
 
     registration_standard = MincAtom(name=init_model_standard_file,
                                      mask=MincAtom(name=init_model_standard_mask,
@@ -2743,7 +2788,7 @@ def get_registration_targets_from_init_model(init_model_standard_file: str,
     # check to see if we are dealing with option 2), an initial model with native files
     init_model_native_file = os.path.join(init_model_dir, standard_file_base + "_native.mnc")
     init_model_native_mask = os.path.join(init_model_dir, standard_file_base + "_native_mask.mnc")
-    init_model_native_to_standard = os.path.join(init_model_dir, standard_file_base + "_native_to_standard.xfm")
+    init_model_standard_to_native = os.path.join(init_model_dir, standard_file_base + "_native_to_standard.xfm")
     if os.path.exists(init_model_native_file):
         if not can_read_MINC_file(init_model_native_file):
             raise ValueError("Error: can not read the following initial model file: %s" % init_model_native_file)
@@ -2756,18 +2801,18 @@ def get_registration_targets_from_init_model(init_model_standard_file: str,
                                                      orig_name=init_model_output_dir,
                                                      pipeline_sub_dir=init_model_output_dir),
                                        pipeline_sub_dir=init_model_output_dir)
-        if not os.path.exists(init_model_native_to_standard):
+        if not os.path.exists(init_model_standard_to_native):
             raise ValueError(
                 "\nError: can not read the following initial model file (required transformation when native "
-                "files exist): %s\n" % init_model_native_to_standard)
-        xfm_to_standard = XfmAtom(name=init_model_native_to_standard,
-                                  orig_name=init_model_native_to_standard,
-                                  pipeline_sub_dir=init_model_output_dir)
+                "files exist): %s\n" % init_model_standard_to_native)
+        xfm_to_native = XfmAtom(name=init_model_standard_to_native,
+                                orig_name=init_model_standard_to_native,
+                                pipeline_sub_dir=init_model_output_dir)
     else:
-        registration_native = xfm_to_standard = None
+        registration_native = xfm_to_native = None
 
     return RegistrationTargets(registration_standard=registration_standard,
-                               xfm_to_standard=xfm_to_standard,
+                               xfm_standard_to_native=xfm_to_native,
                                registration_native=registration_native)
 
 # TODO should this just accept an object with the three relevant fields?
@@ -2839,9 +2884,8 @@ def registration_targets(lsq6_conf: LSQ6Conf,
         finally:
             pass  # ?!
 
-        target_file = MincAtom(name=target_file,
-                               pipeline_sub_dir=os.path.join(output_dir, pipeline_name +
-                                                             "_target_file"))
+        target_file = ImgAtom(name=target_file,
+                              pipeline_sub_dir=os.path.join(output_dir, pipeline_name + "_target_file"))
         target = RegistrationTargets(registration_standard=target_file)
     elif target_type == TargetType.bootstrap:
         if target_file is not None:
@@ -2863,11 +2907,12 @@ def registration_targets(lsq6_conf: LSQ6Conf,
     # TODO write a when runnable hook to let the user know
     s = Stages()
     if reg_conf.resolution:
-        autocropped = MincAtom(os.path.join(output_dir, pipeline_name + "_reg_target_resampled",
+        # FIXME this is MINC-specific!!
+        autocropped = ImgAtom(os.path.join(output_dir, pipeline_name + "_reg_target_resampled",
                                                 target.registration_standard.filename_wo_ext +
                                                 "_%smicron_resampled.mnc" % int(reg_conf.resolution*1000)),
                                 output_sub_dir=os.path.join(output_dir, pipeline_name + "_reg_target_resampled"),
-                                mask = MincAtom(os.path.join(output_dir, pipeline_name + "_reg_target_resampled",
+                                mask = ImgAtom(os.path.join(output_dir, pipeline_name + "_reg_target_resampled",
                                                                 target.registration_standard.mask.filename_wo_ext +
                                                                 "_%smicron_resampled.mnc" % int(reg_conf.resolution*1000)),
                                                 output_sub_dir = os.path.join(output_dir, pipeline_name + "_reg_target_resampled"))
@@ -2876,21 +2921,22 @@ def registration_targets(lsq6_conf: LSQ6Conf,
                                                         img = target.registration_standard,
                                                         autocropped = autocropped))
         if target.registration_native is not None:
-            autocropped = MincAtom(os.path.join(output_dir, pipeline_name + "_reg_target_resampled",
+            autocropped = ImgAtom(os.path.join(output_dir, pipeline_name + "_reg_target_resampled",
                                                     target.registration_native.filename_wo_ext +
                                                     "_%smicron_resampled.mnc" % int(reg_conf.resolution * 1000)),
                                     output_sub_dir=os.path.join(output_dir, pipeline_name + "_reg_target_resampled"),
-                                    mask=MincAtom(os.path.join(output_dir, pipeline_name + "_reg_target_resampled",
-                                                            target.registration_native.mask.filename_wo_ext +
+                                    mask=ImgAtom(os.path.join(output_dir, pipeline_name + "_reg_target_resampled",
+                                                              target.registration_native.mask.filename_wo_ext +
                                                                 "_%smicron_resampled.mnc" % int(reg_conf.resolution * 1000))
                                 if target.registration_native.mask else None))
             target.registration_native = s.defer(autocrop(isostep=reg_conf.resolution,
                                                             img=target.registration_native,
                                                             autocropped=autocropped))
+            # FIXME dangerous mutation of target here ?!
 
     return Result(stages = s, output = (RegistrationTargets(registration_standard = target.registration_standard,
-                               xfm_to_standard = target.xfm_to_standard,
-                               registration_native = target.registration_native)))
+                                                            xfm_standard_to_native = target.xfm_standard_to_native,
+                                                            registration_native = target.registration_native)))
 
 def is_number(s):
     try:
@@ -3173,7 +3219,7 @@ class MincAlgorithms(Algorithms):
 
     @staticmethod
     def concat(ts, name):
-        return xfmconcat(ts, name)
+        return xfmconcat(list(reversed(ts)), name)  # FIXME is this right??  `reversed` added 27 Aug
 
     @staticmethod
     def get_resolution_from_file(input_file: str) -> float:
@@ -3192,6 +3238,24 @@ class MincAlgorithms(Algorithms):
     def intensity_normalize(src, mask, subdir = "tmp"):
         return inormalize(src = src, mask = mask, subdir = subdir,
                           conf = default_inormalize_conf)
+
+    @staticmethod
+    def label_vote(label_files, output_dir, name):
+        # TODO refactor - this is just pasted from itk.tools.ITKAlgorithms.label_vote
+        # TODO change API to relative output dir
+        if len(label_files) == 0:
+            raise ValueError("can't vote on 0 files")
+        elif len(label_files) == 1:  # ImageMath MajorityVoting fails silently on 1 file (as of 2.3.4)
+            return identity_result(label_files[0])
+        else:
+            out_file = ImgAtom(os.path.join(output_dir, name))  # TODO get proper dir!!!
+            c = CmdStage(cmd = ["ImageMath", "3", out_file.path, "MajorityVoting"] + [f.path for f in sorted(label_files)],
+                         inputs = label_files, outputs = (out_file,))
+            return Result(stages=Stages([c]), output=out_file)
+
+    @staticmethod
+    def union_mask(imgs, new_name, subdir):
+        return mincmath(op="max", vols=sorted(imgs), new_name=new_name, subdir=subdir)
 
     @staticmethod
     def nu_correct(*args, **kwargs): return nu_correct(*args, **kwargs)
@@ -3226,10 +3290,10 @@ class MincAlgorithms(Algorithms):
                  new_name_wo_ext = None,
                  subdir = None,
                  postfix = None):
-        return mincresample(img=img, xfm=xfm,
+        return mincresample_new(img=img, xfm=xfm,
                             like=like, invert=not invert,
                             interpolation=Interpolation.nearest_neighbour
-                              if use_nn_interpolation else Interpolation.sinc,
+                              if use_nn_interpolation else Interpolation.trilinear,  # TODO was Interpolation.sinc - slower,
                             extra_flags=(("-keep_real_range", "-labels") if use_nn_interpolation else ()),
                             new_name_wo_ext=new_name_wo_ext, subdir=subdir, postfix=postfix)
 
@@ -3311,7 +3375,7 @@ class MincAlgorithms(Algorithms):
     @staticmethod
     def log_determinant(xfm):
         s = Stages()
-        displacement_grid = s.defer(minc_displacement(xfm.xfm))  # TODO fwhm stuff
+        displacement_grid = s.defer(minc_displacement(xfm))  # TODO fwhm stuff
         output_filename_wo_ext = displacement_grid.filename_wo_ext + "_log_det"
         log_det = s.defer(mincmath(op="log", vols=[s.defer(determinant(displacement_grid))],
                                    subdir="stats-volumes", new_name=output_filename_wo_ext))
@@ -3349,7 +3413,8 @@ class MINCTRACC(NLIN):
 
     @staticmethod
     def accepts_initial_transform():
-        return True
+        #return True
+        return False  # FIXME the -transform argument of mincresample corresponds to an initial fixed and not an initial moving transform
 
     @classmethod
     def register(cls,
@@ -3360,10 +3425,17 @@ class MINCTRACC(NLIN):
                  resample_moving : bool = False,
                  resample_subdir : str = "resampled",
                  initial_moving_transform : Optional[MincAtom] = None):
-        return multilevel_minctracc(source=moving, target=fixed, conf=conf,
-                                    transform=initial_moving_transform,
-                                    #subdir=resample_subdir,  # TODO broken
-                                    resample_source=resample_moving)
+        s = Stages()
+        m = s.defer(multilevel_minctracc(source=fixed, target=moving, conf=conf,
+                                         transform=None,
+                                         #transform=initial_moving_transform,  # TODO borked -- see registration wiki page
+                                         #subdir=resample_subdir,  # TODO broken
+                                         resample_source=False))
+        # note resample_source in multilevel_minctracc goes in the wrong direction see; see MICe registration wikipage
+        resampled = (s.defer(cls.Algorithms.resample(img = m.moving, xfm = m.xfm, like = m.fixed))
+                     if resample_moving else None)
+        return Result(stages=s, output=XfmHandler(moving = moving, fixed = fixed, xfm = m.xfm, resampled = resampled))
+
 
 class MINCTRACC_LSQ12(MINCTRACC):  # kinda silly since it hard codes 12 params
     @staticmethod
@@ -3372,6 +3444,49 @@ class MINCTRACC_LSQ12(MINCTRACC):  # kinda silly since it hard codes 12 params
     @staticmethod
     def parse_protocol_file(cls, filename, resolution):
         return parse_minctracc_linear_protocol_file(filename, transform_type=LinearTransType.lsq12)
+
+def conf_from_defaults(resolution, defaults) -> MultilevelMinctraccConf:
+        conf = MultilevelMinctraccConf(
+            [MinctraccConf(step_sizes=[defaults["blur_factors"][i] * resolution] * 3,
+                           blur_resolution=defaults["blur_factors"][i] * resolution,
+                           use_gradient=defaults["gradients"][i],
+                           use_masks=True,
+                           linear_conf=(default_linear_minctracc_conf(LinearTransType.lsq6)
+                                        .replace(w_translations=[defaults["translations"][i]] * 3,
+                                                 simplex=defaults["simplex_factors"][i] * resolution)),
+                           nonlinear_conf=None)
+             for i in range(len(defaults["blur_factors"]))])  # FIXME: don't assume all lengths are equal
+        return conf
+
+
+class MINCTRACC_LSQ6(MINCTRACC):
+
+    @staticmethod
+    def get_default_conf(resolution):
+        return conf_from_defaults(resolution, { 'blur_factors'    : [   17,    9,     4],
+              'simplex_factors' : [   40,   28,    16],
+              'step_factors'    : [   17,    9,     4],
+              'gradients'       : [False, True, False],
+              'translations'    : [  0.4,  0.4,   0.4] })
+
+    @staticmethod
+    def get_default_multilevel_conf(resolution):
+        return [conf_from_defaults(
+            resolution,
+            { 'blur_factors'    : [   17,    9,     4],
+              'simplex_factors' : [   40,   28,    16],
+              'step_factors'    : [   17,    9,     4],
+              'gradients'       : [False, True, False],
+              'translations'    : [  0.4,  0.4,   0.4] })]
+
+    @classmethod
+    def parse_protocol_file(cls, filename, resolution):
+        return parse_minctracc_linear_protocol_file(filename, transform_type=LinearTransType.lsq6)
+
+    @classmethod
+    def parse_multilevel_protocol_file(cls, filename, resolution):
+        return parse_minctracc_linear_protocol_file(filename, transform_type=LinearTransType.lsq6)
+
 
 
 def mincblob(op : str, grid : MincAtom, subdir : str = "tmp") -> Result[MincAtom]:
@@ -3420,3 +3535,65 @@ def determinant(displacement_grid : MincAtom) -> Result[MincAtom]:
     s = Stages()
     det = s.defer(mincblob(op='determinant', grid=displacement_grid))
     return Result(stages=s, output=det)
+
+
+def voxel_vote(label_files : List[MincAtom], output_dir : str, name : str = "voted"):  # TODO too stringy ...
+
+    if len(label_files) == 0:
+        raise ValueError("can't vote with 0 files")
+
+    out = MincAtom(name=os.path.join(output_dir, "%s.mnc" % name),
+                   output_sub_dir=output_dir)  # FIXME better naming
+
+    s = CmdStage(cmd=["voxel_vote", "--clobber"] + [l.path for l in sorted(label_files)] + [out.path],
+                 inputs=tuple(label_files),
+                 outputs=(out,))
+
+    return Result(stages=Stages([s]), output=out)
+
+
+class RotationalMinctracc(MINCTRACC_LSQ6):
+
+    Conf = RotationalMinctraccConf
+    MultilevelConf = List[RotationalMinctraccConf]
+
+    @staticmethod
+    def accepts_initial_transform(): return True
+
+    @staticmethod
+    def parse_protocol_file(filename, resolution): raise ValueError("welp")
+
+    @staticmethod
+    def hierarchical_to_single(conf): raise ValueError("welp")
+
+    # TODO print warning if lsq6 flags are used at command line
+
+    @staticmethod
+    def parse_multilevel_protocol_file(filename, resolution): raise ValueError("welp")
+
+    def get_default_conf(resolution):
+        return get_parameters_for_rotational_minctracc(resolution)[0]
+
+    def get_default_multilevel_conf(resolution):
+        return get_parameters_for_rotational_minctracc(resolution)[0]  # TODO don't return as a tuple
+
+    @classmethod
+    def register(cls,
+                 moving : MincAtom,
+                 fixed : MincAtom,
+                 conf : Conf,
+                 transform_name_wo_ext = None,
+                 resample_moving : bool = False,
+                 resample_subdir : str = "resampled",
+                 initial_moving_transform : Optional[MincAtom] = None):
+        s = Stages()
+        res = s.defer(rotational_minctracc(source = moving, target = fixed,
+                                           conf = conf,
+                                           resolution=conf.file_resolution,  # TODO remove resolution arg b/c of conf arg ?
+                                           resample_source = resample_moving,
+                                           output_name_wo_ext = transform_name_wo_ext))
+        inv_xfm = s.defer(xfminvert(res.xfm))
+        return Result(stages=s,
+                      output=XfmHandler(xfm = inv_xfm, fixed = fixed, moving = moving,
+                                        inverse = XfmHandler(moving = res.fixed, fixed = res.moving, xfm = res.xfm),
+                                        resampled = res.resampled if res.has_resampled() else None))
