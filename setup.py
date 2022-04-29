@@ -5,14 +5,14 @@ import sys
 
 from setuptools import setup
 
-min_python_version = (3, 7)
+min_python_version = (3, 8)
 
 if sys.version_info < min_python_version:
     raise ValueError("Minimum Python version supported is %d.%d" %
                        (min_python_version[0], min_python_version[1]))
 
 setup(name='pydpiper',
-      version='2.0.15',
+      version='2.1.0',
       license='Modified BSD',
       description='Python code for flexible pipeline control',
       long_description='Python code for flexible pipeline control',
@@ -22,6 +22,7 @@ setup(name='pydpiper',
       python_requires=">=3.7",
       install_requires=[
         'ConfigArgParse>=0.11.0',
+        'intensity-normalization',
         'networkx>=2.3',
         'ordered-set',
         'omegaconf',
@@ -43,7 +44,7 @@ setup(name='pydpiper',
       data_files=[('config',
                    [os.path.join("config", f)
                     for f in ['CCM_HPF.cfg', 'MICe.cfg', 'MICe_dev.cfg', 'SciNet.cfg', 'SciNet_debug.cfg']])],
-      scripts=("scripts/AverageAffineTransforms" +
+      scripts=(#"scripts/AverageAffineTransforms" +
                [os.path.join("pydpiper/execution", script) for script in
                 ['pipeline_executor.py', 'check_pipeline_status.py']] +
                [os.path.join("pydpiper/pipelines", f) for f in
