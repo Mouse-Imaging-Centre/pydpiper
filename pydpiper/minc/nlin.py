@@ -151,6 +151,9 @@ class Algorithms():  #(Generic[I, X], metaclass=ABCMeta):
     def log_determinant(xfm : GenericXfmHandler) -> I: raise NotImplementedError   # TODO add fwhm argument
 
 
+# TODO we could add a Backwards(...) class to flip all arrows as we previously did
+
+
 # TODO not *actually* generic; should take a type as a field, but this is annoying to write down
 class NLIN():  #, metaclass=ABCMeta):
 #class NLIN(metaclass=ABCMeta):
@@ -205,6 +208,7 @@ class NLIN():  #, metaclass=ABCMeta):
                moving : I, *,
                conf : Conf,
                resample_moving : bool,
+               # TODO add generation?
                resample_subdir : str,
                transform_name_wo_ext : str = None,
                initial_moving_transform : Optional[I] = None): raise NotImplementedError

@@ -86,6 +86,11 @@ class AntsRegistrationSyNQuick_affine(NLIN):
         # moving_resampled, out_xfm must be in same dir (since antsRegistrationSyNQuick.sh forces use of output prefix
         # could try moving_resampled = xfmToImg(out_xfm.newname_....) instead
 
+        # NB moving_resampled seems to have some issue with MINC/NIfTI coordinate flipping, so resample ourselves:
+        s = Stages()
+        moving_resampled_ants = s.defer(
+            cls.Algorithms.resample(img = moving, xfm = out_xfm, like = fixed, subdir = 'resampled'))
+
         if initial_moving_transform and not hasattr(initial_moving_transform, "path"):
             raise ValueError("currently don't handle a non-file initial transform, sorry")
 
@@ -96,9 +101,10 @@ class AntsRegistrationSyNQuick_affine(NLIN):
                      inputs=(fixed, moving) + ((fixed.mask,) if fixed.mask else ()) +
                             ((initial_moving_transform,) if initial_moving_transform else ()),
                      outputs=(out_xfm, moving_resampled))
+        s.add(c)
 
-        return Result(stages=Stages([c]),
-                      output=XfmHandler(xfm=out_xfm, resampled=moving_resampled, fixed=fixed, moving=moving))
+        return Result(stages=s,
+                      output=XfmHandler(xfm=out_xfm, resampled=moving_resampled_ants, fixed=fixed, moving=moving))
 
 
 class AntsRegistrationSyNQuick_rigid(AntsRegistrationSyNQuick_affine):

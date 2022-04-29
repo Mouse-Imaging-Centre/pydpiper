@@ -11,13 +11,13 @@ import re
 from typing import Callable, Dict, List, TypeVar, Iterator, Generic, Optional, Tuple, Type
 
 from pydpiper.core.util import pairs
-from pydpiper.minc.analysis import determinants_at_fwhms, invert_xfmhandler
+from pydpiper.minc.analysis import determinants_at_fwhms
 from pydpiper.core.stages import Result
 from pydpiper.minc.nlin import NLIN
 from pydpiper.minc.registration import (Stages,
                                         mincaverage,
                                         concat_xfmhandlers, ensure_distinct_basenames, registration_targets,
-                                        lsq6_nuc_inorm, get_resolution_from_file, XfmHandler,
+                                        lsq6_nuc_inorm, XfmHandler,
                                         InputSpace, lsq12_nlin_build_model, TargetType,
                                         MinctraccConf,
                                         create_quality_control_images,

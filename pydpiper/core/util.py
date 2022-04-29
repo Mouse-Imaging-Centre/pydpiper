@@ -14,7 +14,10 @@ def maybe_deref_path(x):
     #    return x.xfm.path
     # workaround:
     if hasattr(x, 'xfm'):
-        return x.xfm.path
+        if hasattr(x.xfm, 'path'):
+            return x.xfm.path
+        else:
+            return x.xfm
     elif hasattr(x, 'path'):
         return x.path
     else:

@@ -453,13 +453,16 @@ def fixup_maget_options(lsq12_options, nlin_options, maget_options):
 
     # if both the maget_options.lsq12.protocol and the lsq12_options
     if maget_options.lsq12.protocol is None:
-        maget_options.lsq12.protocol = lsq12_options.protocol
+        if maget_options.lsq12.reg_method == lsq12_options.reg_method:
+            maget_options.lsq12.protocol = lsq12_options.protocol
+        else:
+            warnings.warn("MAGeT LSQ12 protocol not specified; I'd use the general lsq12 protocol but different programs are specified")
 
     if maget_options.nlin.nlin_protocol is None:
         if maget_options.nlin.reg_method == nlin_options.reg_method:
             maget_options.nlin.nlin_protocol = nlin_options.nlin_protocol
         else:
-            raise ValueError("I'd use the nlin protocol for MAGeT as well but different programs are specified")
+            warnings.warn("MAGeT nonlinear protocol not specified; I'd use the nlin protocol for MAGeT as well but different programs are specified")
 
     if maget_options.maget.masking_nlin_protocol is None:
         if maget_options.maget.mask_method == maget_options.nlin.reg_method:
