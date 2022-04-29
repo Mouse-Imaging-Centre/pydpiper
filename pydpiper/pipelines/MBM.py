@@ -53,6 +53,7 @@ def mbm_pipeline(options : MBMConf):
     output_dir = options.application.output_directory
 
     mbm_result = s.defer(mbm(imgs=imgs, options=options,
+                             lsq6_module=lsq6_module,
                              lsq12_module=lsq12_module,
                              registration_algorithms=reg_module,
                              prefix=options.application.pipeline_name,
@@ -224,6 +225,7 @@ def common_space(mbm_result, options):
 def mbm(imgs : List[MincAtom],
         options : MBMConf,
         prefix : str,
+        lsq6_module,
         lsq12_module,
         registration_algorithms,
         output_dir : str = "",
@@ -304,7 +306,9 @@ def mbm(imgs : List[MincAtom],
         lsq6_result = s.defer(lsq6_nuc_inorm(imgs=imgs,
                                              resolution=resolution,
                                              registration_targets=targets,
-                                             reg_algorithms=registration_algorithms,
+                                             # FIXME this is the nonlinear algorithms, not just the image algorithms!
+                                             # need to determine lsq6-specific options somewhere!!
+                                             reg_algorithms=lsq6_module,
                                              lsq6_dir=lsq6_dir,
                                              lsq6_options=options.mbm.lsq6))
     else:
@@ -361,27 +365,6 @@ def mbm(imgs : List[MincAtom],
 
     algorithms = nlin_build_model_component.Algorithms
 
-    # does this belong here?
-    # def model_building_with_initial_target_generation(prelim_model_building_component,
-    #                                                   final_model_building_component):
-    #     class C(final_model_building_component):
-    #         @staticmethod
-    #         def build_model(imgs,
-    #                         conf     : BuildModelConf,
-    #                         nlin_dir,
-    #                         nlin_prefix,
-    #                         initial_target,
-    #                         output_name_wo_ext = None): pass
-    #
-    #     return C
-
-    #if options.mbm.model_building.prelim_reg_strategy is not None:
-    #    prelim_nlin_build_model_component = get_model_building_procedure(options.mbm.model_building.prelim_reg_strategy,
-    #                                                                     reg_module=nlin_module)
-    #    nlin_build_model_component = model_building_with_initial_target_generation(
-    #                                   final_model_building_component=nlin_build_model_component,
-    #                                   prelim_model_building_component=prelim_nlin_build_model_component)
-
     # TODO don't use name 'x_module' for something that's technically not a module ... perhaps unit/component?
 
 
@@ -402,15 +385,16 @@ def mbm(imgs : List[MincAtom],
                                                        lsq12_conf=options.mbm.lsq12,
                                                        nlin_conf=nlin_conf))  #options.mbm.nlin
 
-    #inverted_xfms = [s.defer(registration_algorithms.invert_xfmhandler(xfm)) for xfm in lsq12_nlin_result.output]
-
     if options.mbm.stats.calc_stats:
         #determinants = s.defer(determinants_at_fwhms(
         #                           xfms=lsq12_nlin_result.output,
         #                           blur_fwhms=options.mbm.stats.stats_kernels,
         #                           algorithms=algorithms))
-        determinants = pd.DataFrame({ 'log_full_det' :
-                                          [algorithms.log_determinant(x) for x in lsq12_nlin_result.output]})
+        determinants = (pd.DataFrame({ 'lsq12_nlin_xfm' : x } for x in lsq12_nlin_result.output)
+                        .assign(log_full_det = lambda df:
+                                  df.lsq12_nlin_xfm.apply(lambda x: s.defer(algorithms.log_determinant(x)))))
+        #determinants = pd.DataFrame({ 'log_full_det' :
+        #                                  [algorithms.log_determinant(x) for x in lsq12_nlin_result.output]})
     else:
         determinants = None
 

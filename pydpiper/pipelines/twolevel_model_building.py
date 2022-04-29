@@ -9,6 +9,9 @@ from pathlib import Path
 import numpy as np
 from configargparse import Namespace
 import pandas as pd
+
+from pydpiper.pipelines.MAGeT import get_rigid_registration_module, get_affine_registration_module, \
+    get_registration_module
 from pydpiper.pipelines.registration_chain import get_closest_model_from_pride_of_models
 
 from pydpiper.minc.analysis import determinants_at_fwhms
@@ -67,12 +70,10 @@ def two_level_pipeline(options : TwoLevelConf):
     pipeline = two_level(grouped_files_df=files_df, options=options)
 
     # TODO write these into the appropriate subdirectory ...
-    overall = (pipeline.output.overall_determinants
-        .drop('inv_xfm', axis=1))
+    overall = (pipeline.output.overall_determinants)
     overall.to_csv("overall_determinants.csv", index=False)
 
-    resampled = (pipeline.output.resampled_determinants
-        .drop(['inv_xfm', 'full_det', 'nlin_det'], axis=1))
+    resampled = (pipeline.output.resampled_determinants)
     resampled.to_csv("resampled_determinants.csv", index=False)
 
     # rename/drop some columns, bind the dfs and write to "analysis.csv" as it should be.
@@ -81,8 +82,9 @@ def two_level_pipeline(options : TwoLevelConf):
     analysis = pd.read_csv(options.application.csv_file).assign(native_file=lambda df:
                  df.file.apply(relativize_path))
 
-    overall = (overall.drop(["full_det", "nlin_det"], axis=1)
-        .rename(columns={"overall_xfm" : "xfm"}))
+    #overall = (overall.drop(["full_det", "nlin_det"], axis=1)
+    #    .rename(columns={"overall_xfm" : "xfm"}))
+    overall = overall.rename(columns = {"overall_xfm" : "xfm"})
     resampled = resampled.rename(columns={
         "first_level_log_full_det" : "log_full_det",
         "first_level_log_nlin_det" : "log_nlin_det",
@@ -91,9 +93,9 @@ def two_level_pipeline(options : TwoLevelConf):
         "first_level_log_nlin_det_resampled" : "resampled_log_nlin_det"
     })
     (analysis
-     .merge(pd.merge(left = resampled.assign(target = lambda df: df.xfm.apply(lambda r: r.fixed)),
-                     right = overall.assign(target  = lambda df: df.xfm.apply(lambda r: r.fixed)),
-                     on = ['target', 'fwhm']),
+     .merge(pd.merge(left = resampled.assign(moving = lambda df: df.lsq12_nlin_xfm.apply(lambda r: r.moving)),
+                     right = overall.assign(moving  = lambda df: df.xfm.apply(lambda r: r.moving)),
+                     on = ['moving']),   # FIXME  'fwhm'
             on = "native_file")
      .applymap(maybe_deref_path)
      .to_csv("analysis.csv", index=False))
@@ -111,6 +113,11 @@ def two_level(grouped_files_df, options : TwoLevelConf):
     if grouped_files_df.isnull().values.any():
         raise ValueError("NaN values in input dataframe; can't go")
 
+    lsq6_module = get_rigid_registration_module(options.registration.image_algorithms, options.mbm.lsq6.lsq6_method)
+    lsq12_module = get_affine_registration_module(options.registration.image_algorithms, options.mbm.lsq12.reg_method)
+    reg_module = get_registration_module(options.registration.image_algorithms, options.mbm.nlin.reg_method)
+    image_algorithms = reg_module.Algorithms
+
     if options.mbm.lsq6.target_type == TargetType.bootstrap:
         # won't work since the second level part tries to get the resolution of *its* "first input file", which
         # hasn't been created.  We could instead pass in a resolution to the `mbm` function,
@@ -119,6 +126,7 @@ def two_level(grouped_files_df, options : TwoLevelConf):
                          "just specify an initial target instead")
     elif options.mbm.lsq6.target_type == TargetType.pride_of_models:
         pride_of_models_mapping = get_pride_of_models_mapping(pride_csv=options.mbm.lsq6.target_file,
+                                                              image_algorithms=image_algorithms,
                                                               output_dir=options.application.output_directory,
                                                               pipeline_name=options.application.pipeline_name)
 
@@ -138,10 +146,11 @@ def two_level(grouped_files_df, options : TwoLevelConf):
             targets = s.defer(registration_targets(lsq6_conf=options.mbm.lsq6,
                                                    app_conf=options.application,
                                                    reg_conf=options.registration,
+                                                   image_algorithms=image_algorithms,
                                                    first_input_file=grouped_files_df.file.iloc[0]))
 
         resolution = (options.registration.resolution
-                        or get_resolution_from_file(targets.registration_standard.path))
+                        or image_algorithms.get_resolution_from_file(targets.registration_standard.path))
         # This must happen after calling registration_targets otherwise it will resample to options.registration.resolution
         options.registration = options.registration.replace(resolution=resolution)
         # no need to check common space settings here since they're turned off at the parser level
@@ -157,6 +166,9 @@ def two_level(grouped_files_df, options : TwoLevelConf):
                               df.apply(axis=1,
                                        func=lambda row:
                                               s.defer(mbm(imgs=row.files,
+                                                          lsq6_module=lsq6_module,
+                                                          lsq12_module=lsq12_module,
+                                                          registration_algorithms=reg_module,
                                                           options=group_options(options, row.group),
                                                           prefix="%s" % row.group,
                                                           output_dir=os.path.join(
@@ -189,15 +201,18 @@ def two_level(grouped_files_df, options : TwoLevelConf):
 
     second_level_results = s.defer(mbm(imgs=first_level_results.build_model.map(lambda m: m.avg_img),
                                        options=second_level_options,
+                                       lsq6_module=lsq6_module,
+                                       lsq12_module=lsq12_module,
+                                       registration_algorithms=reg_module,
                                        prefix=os.path.join(options.application.output_directory,
                                                            options.application.pipeline_name + "_second_level")))
 
     # FIXME sadly, `mbm` doesn't return a pd.Series of xfms, so we don't have convenient indexing ...
-    overall_xfms = [s.defer(concat_xfmhandlers([xfm_1, xfm_2]))
+    overall_xfms = [s.defer(concat_xfmhandlers([xfm_1, xfm_2], algorithms=image_algorithms))
                     for xfms_1, xfm_2 in zip([r.xfms.lsq12_nlin_xfm for r in first_level_results.build_model],
                                              second_level_results.xfms.overall_xfm)
                     for xfm_1 in xfms_1]
-    resample  = np.vectorize(mincresample_new, excluded={"extra_flags"})
+    resample  = np.vectorize(image_algorithms.resample, excluded={"extra_flags"})
     defer     = np.vectorize(s.defer)
 
     # TODO using the avg_img here is a bit clunky -- maybe better to propagate group indices ...
@@ -212,7 +227,7 @@ def two_level(grouped_files_df, options : TwoLevelConf):
     # If for some reason we want to output xfms in the future, just don't drop everything.
     first_level_xfms = pd.concat(list(first_level_results.build_model.apply(lambda x: x.xfms.assign(
         first_level_avg=x.avg_img))), ignore_index=True)[["lsq12_nlin_xfm", "rigid_xfm"]].assign(
-        native_file=lambda df:df.rigid_xfm.apply(lambda x: x.moving.path))
+        native_file=lambda df: df.rigid_xfm.apply(lambda x: x.moving.path))
     if options.mbm.segmentation.run_maget:
         maget_df = pd.DataFrame([{"label_file" : x.labels.path, "native_file" : x.orig_path }  #, "_merge" : basename(x.orig_path)}
                                  for x in pd.concat([namespace.maget_result for namespace in first_level_results.build_model])])
@@ -220,33 +235,38 @@ def two_level(grouped_files_df, options : TwoLevelConf):
                                     right=maget_df, on="native_file")
 
     first_level_determinants = (pd.merge(left=first_level_determinants, right=first_level_xfms,
-                                         left_on="inv_xfm", right_on="lsq12_nlin_xfm")
-                                .drop(["rigid_xfm", "lsq12_nlin_xfm"], axis=1))
+                                         on="lsq12_nlin_xfm"))
+                               # .drop(["rigid_xfm", "lsq12_nlin_xfm"], axis=1))
 
     resampled_determinants = (pd.merge(
         left=first_level_determinants,
         right=pd.DataFrame({'group_xfm' : second_level_results.xfms.overall_xfm})
-              .assign(source=lambda df: df.group_xfm.apply(lambda r: r.moving)),
+              .assign(group_avg=lambda df: df.group_xfm.apply(lambda r: r.moving)),
         left_on="first_level_avg",
-        right_on="source")
+        right_on="group_avg")
         .assign(resampled_log_full_det=lambda df: defer(resample(img=df.log_full_det,
                                                                  xfm=df.group_xfm.apply(lambda x: x.xfm),
-                                                                 like=second_level_results.avg_img)),
-                resampled_log_nlin_det=lambda df: defer(resample(img=df.log_nlin_det,
-                                                                 xfm=df.group_xfm.apply(lambda x: x.xfm),
                                                                  like=second_level_results.avg_img))))
+                #,
+                #resampled_log_nlin_det=lambda df: defer(resample(img=df.log_nlin_det,
+                #                                                 xfm=df.group_xfm.apply(lambda x: x.xfm),
+                #                                                 like=second_level_results.avg_img))))
     # TODO only resamples the log determinants, but still a bit ugly ... abstract somehow?
     # TODO shouldn't be called resampled_determinants since this is basically the whole (first_level) thing ...
 
-    inverted_overall_xfms = [s.defer(invert_xfmhandler(xfm)) for xfm in overall_xfms]
-
-    overall_determinants = (s.defer(determinants_at_fwhms(
-                                     xfms=inverted_overall_xfms,
-                                     inv_xfms=overall_xfms,
-                                     blur_fwhms=options.mbm.stats.stats_kernels))
-                            .assign(overall_log_full_det=lambda df: df.log_full_det,
-                                    overall_log_nlin_det=lambda df: df.log_nlin_det)
-                            .drop(['log_full_det', 'log_nlin_det'], axis=1))
+    # FIXME restore!!!
+    # overall_determinants = (s.defer(determinants_at_fwhms(
+    #                                  xfms=overall_xfms,
+    #                                  algorithms=image_algorithms,
+    #                                  blur_fwhms=options.mbm.stats.stats_kernels))
+    #                         .assign(overall_log_full_det=lambda df: df.log_full_det)
+    #                         .drop(['log_full_det'], axis=1)
+    #                                 #, overall_log_nlin_det=lambda df: df.log_nlin_det)
+    #                         #.drop(['log_full_det', 'log_nlin_det'], axis=1))
+    #                         )
+    overall_determinants = (pd.DataFrame({ 'overall_xfm' : overall_xfms })
+                            .assign(overall_log_full_det = lambda df:
+                                      df.overall_xfm.apply(lambda x: s.defer(image_algorithms.log_determinant(x)))))
 
     # TODO return some MAGeT stuff from two_level function ??
     # FIXME running MAGeT from within the `two_level` function has the same problem as running it from within `mbm`:

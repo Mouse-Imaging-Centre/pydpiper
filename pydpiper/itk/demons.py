@@ -71,7 +71,7 @@ class DEMONS(NLIN):
 
   @classmethod
   def parse_multilevel_protocol_file(cls, filename, resolution):
-      return OmegaConf.load(filename).confs
+      return OmegaConf.load(filename)
 
   @staticmethod
   def accepts_initial_transform(): return False  # might work for some formats e.g. .h5 but not .xfm
@@ -114,15 +114,10 @@ class DEMONS(NLIN):
       s = Stages()
 
       def option(flag, val):
-          if val is not None:
-              return [flag, str(val)]
-          else:
-              return []
+          return [flag, str(val)] if val is not None else []
+
       def option_flag(flag, b):
-          if b:
-              return [flag]
-          else:
-              return []
+          return [flag] if b else []
 
       cmd = (['DemonsRegistration', '-f', fixed.path, '-m', moving.path]
               + (["--fixed-mask", fixed.mask.path] if fixed.mask else [])

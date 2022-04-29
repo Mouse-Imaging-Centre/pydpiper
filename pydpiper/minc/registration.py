@@ -1677,7 +1677,8 @@ def lsq12_nlin(moving: ImgAtom,
                                                                 fixed=fixed,
                                                                 conf=lsq12_conf,
                                                                 # TODO allow a transform here?
-                                                                resample_moving=resample_moving))
+                                                                # reduce file proliferation and attendant name clashes:
+                                                                resample_moving=False))
         nlin_transform_handler = s.defer(nlin_module.register(moving=moving,
                                                               fixed=fixed,
                                                               conf=nlin_conf,
@@ -1706,54 +1707,6 @@ def lsq12_nlin(moving: ImgAtom,
                  fixed.filename_wo_ext + "_lsq12_ANTS_nlin",  # FIXME ANTS -> registration class
             resample_moving=resample_moving))
     return Result(stages=s, output=full_transform)
-    # if isinstance(nlin_conf, MultilevelANTSConf):
-    #     # if only a single level is specified inside this multilevel configuration, all is fine:
-    #     if len(nlin_conf.confs) == 1:
-    #         # and we can just extract that single level
-    #         nlin_conf = nlin_conf.confs[0]
-    #     else:
-    #         # we can take the last configuration, and return a warning to the user that
-    #         # potentially they want to specify a custom protocol
-    #         nlin_conf = nlin_conf.confs[len(nlin_conf.confs) - 1]
-    #         warning_msg = "The function lsq12_nlin was provided with a MultilevelANTSConf with more than 1 " \
-    #                       "level. This is a function performing a source to target registration, and thus should " \
-    #                       "only run a single level of ANTS (with its internal iterations option). We will use the " \
-    #                       "last configuration from the protocol:\n" + \
-    #                       nlin_conf.transformation_model + ", " + \
-    #                       nlin_conf.regularization  + ", " + \
-    #                       nlin_conf.iterations
-    #         warnings.warn(warning_msg)
-    #
-    #
-    # if isinstance(nlin_conf, ANTSConf):
-    #     lsq12_transform_handler = s.defer(multilevel_minctracc(source=source,
-    #                                                            target=target,
-    #                                                            conf=lsq12_conf,
-    #                                                            resample_source=True))
-    #     nlin_transform_handler = s.defer(ANTS(source=lsq12_transform_handler.resampled,
-    #                                           target=target,
-    #                                           conf=nlin_conf,
-    #                                           resample_source=resample_source))
-    #     full_transform = s.defer(concat_xfmhandlers(xfms=[lsq12_transform_handler, nlin_transform_handler],
-    #                                                 name=source.filename_wo_ext + "_to_" +
-    #                                                   target.filename_wo_ext + "_lsq12_ANTS_nlin",
-    #                                                 resample_source=resample_source))
-    # elif isinstance(nlin_conf, MultilevelMinctraccConf):
-    #     lsq12_transform_handler = s.defer(multilevel_minctracc(source=source,
-    #                                                            target=target,
-    #                                                            conf=lsq12_conf,
-    #                                                            # TODO allow a transform here?
-    #                                                            resample_source=resample_source))
-    #     nlin_transform_handler = s.defer(multilevel_minctracc(source=source,
-    #                                                           target=target,
-    #                                                           conf=nlin_conf,
-    #                                                           transform=lsq12_transform_handler.xfm,
-    #                                                           resample_source=resample_source))
-    #     full_transform = nlin_transform_handler
-    # else:
-    #     raise ValueError("Expected one of the following 3 options: 1) a MultilevelANTSConf with a single "
-    #                      "level inside of it, 2) a ANTSConf, or 3) a MultilevelMinctraccConf. The nlin_conf "
-    #                      "that we got has type: " + type(nlin_conf))
 
 
 # TODO: this is very static right now, but I just want to get things running
@@ -1845,12 +1798,12 @@ class PairwiseRegistration():
 
   @classmethod
   def avg_xfm_from(cls,
-                 conf,
-                 like,
-                 output_atom,
-                 fixed_img,  # TODO should be fixed_imgs, moving_img
-                 moving_imgs,
-                 affine: Optional[bool] = None):  # FIXME make is_affine() a class method of REG
+                   conf,
+                   like,
+                   output_atom,
+                   fixed_img,  # TODO should be fixed_imgs, moving_img ?
+                   moving_imgs,
+                   affine: Optional[bool] = None):  # FIXME make is_affine() a class method of REG
     s = Stages()
 
     xfms = [s.defer(cls.Reg.register(fixed=fixed_img, moving=moving,
@@ -1868,6 +1821,7 @@ class PairwiseRegistration():
 
     res = s.defer(cls.Reg.Algorithms.resample(img=fixed_img,
                                               xfm=avg_xfm,
+                                              postfix="av_xfm_resampled",
                                               like=like or fixed_img,
                                               invert=False))
     return Result(stages=s,
@@ -1928,15 +1882,15 @@ class PairwiseRegistration():
                         pipeline_sub_dir=output_dir_for_avg)
 
     if max_pairs is None or max_pairs >= len(imgs):
-        avg_xfms = [s.defer(cls.avg_xfm_from(conf=conf, like=like,
-                                             output_atom=final_avg, affine=affine,
-                                             fixed_img=img, moving_imgs=imgs))
-                    for img in imgs]
+        moving_imgs = imgs
     else:
-        avg_xfms = [s.defer(cls.avg_xfm_from(conf=conf, like=like,
-                                             output_atom=final_avg, affine=affine,
-                                             fixed_img=img, moving_imgs=gen.sample(imgs, max_pairs)))
-                    for img in imgs]
+        moving_imgs = gen.sample(imgs, max_pairs)
+
+    avg_xfms = [s.defer(cls.avg_xfm_from(conf=conf, like=like,
+                                         output_atom=final_avg, affine=affine,
+                                         fixed_img=img, moving_imgs=moving_imgs))
+                for img in imgs]
+    del moving_imgs
 
     final_avg = s.defer(cls.Reg.Algorithms.average([xfm.resampled for xfm in avg_xfms], avg_file=final_avg,
                                                    robust=use_robust_averaging))
@@ -2085,7 +2039,8 @@ def lsq12_pairwise(imgs: List[MincAtom],
     #                                             transform_type=LinearTransType.lsq12,
     #                                             file_resolution=resolution)
     if lsq12_conf.protocol is None:
-        raise ValueError("lsq12 conf currently can't be none, welp")
+        warnings.warn('lsq12 conf is none')
+    #    raise ValueError("lsq12 conf currently can't be none, welp")
     conf = Reg.Reg.parse_multilevel_protocol_file(lsq12_conf.protocol, resolution=resolution)
 
     s = Stages()
@@ -2641,7 +2596,7 @@ def lsq6_nuc_inorm(imgs: List[ImgAtom],
         # what we get back here is a list of MincAtoms with NUC files
         # we will always apply a final resampling to these files,
         # so these will always be temp files
-        nuc_imgs_in_native_space = [s.defer(image_algorithms.nu_correct(src=native_img,
+        nuc_imgs_in_native_space = [s.defer(image_algorithms.nu_correct(img=native_img,
                                                                         resolution=resolution,
                                                                         mask=native_img_mask,
                                                                         subject_matter=subject_matter,

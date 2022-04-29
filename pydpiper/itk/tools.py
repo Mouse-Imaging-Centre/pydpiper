@@ -88,21 +88,25 @@ def as_deformation(transform, reference_image, interpolation: Interpolation = No
     ext = ext or ".nii.gz"
 
     if not new_name_wo_ext:
-        out_xfm = xfmToImage(transform.newname(name=transform.filename_wo_ext + '_def', subdir=subdir, ext=ext))
-    else:
+        new_name_wo_ext = os.path.basename(out_path(transform)) + "_def"
+   #     ...
+    #else:
+
+    if not new_name_wo_ext and hasattr(transform, 'newname'):
         out_xfm = xfmToImage(transform.newname(name=new_name_wo_ext, subdir=subdir, ext=ext))
+    else:
+        out_xfm = xfmToImage(reference_image.newname(name=new_name_wo_ext, subdir=subdir, ext=ext))
 
     # TODO add rest of --output options
     cmd = (["antsApplyTransforms",
             "--reference-image", reference_image.path,
             "--output", "[%s,1]" % out_xfm.path]
-           + (["--transform", transform.path] if invert is None
-              else ["-t", "[%s,%d]" % (transform.path, invert)])
+           + [serialize_transform(transform if invert is None else InverseTransform(transform))]
            + (["--dimensionality", dimensionality] if dimensionality is not None else [])
            + (["--interpolation", interpolation.render()] if interpolation is not None else [])
            + (["--default-voxel-value", str(default_voxel_value)] if default_voxel_value is not None else []))
     s = CmdStage(cmd=cmd,
-                 inputs=(transform, reference_image),
+                 inputs=inputs(transform) + (reference_image,),
                  outputs=(out_xfm,))
     return Result(stages=Stages([s]), output=out_xfm)
 
@@ -126,10 +130,11 @@ def antsApplyTransforms(img,
     if not subdir:
         subdir = 'resampled'
 
-    if not new_name_wo_ext:
-        out_img = img.newname(name=transform.filename_wo_ext + '-resampled', subdir=subdir)
+    if new_name_wo_ext:
+        out_img = img.newname(name=new_name_wo_ext + ("-invert" if invert else ""), subdir=subdir)
     else:
-        out_img = img.newname(name=new_name_wo_ext, subdir=subdir)
+        out_img = img.newname(name=transform.filename_wo_ext + ('-invert' if invert else "") + '-resampled',
+                              subdir=subdir)
 
     transform = InverseTransform(transform) if invert else transform
 
@@ -183,9 +188,9 @@ def resample(img,
     if not new_name_wo_ext:
         # FIXME this is wrong when invert=True
         if isinstance(xfm, ImgAtom):
-            new_name_wo_ext = os.path.basename(out_path(xfm)) + "-resampled"
+            new_name_wo_ext = os.path.basename(out_path(xfm)) + "-resampled-" + postfix
         else:
-            new_name_wo_ext = f"{os.path.basename(img.path)}_{os.path.basename(like.path)}-resampled"
+            new_name_wo_ext = f"{os.path.basename(img.path)}_{os.path.basename(like.path)}-resampled-{postfix or ''}"
     new_img = s.defer(resample_simple(img=img, xfm=xfm, like=like,
                                       invert=invert,
                                       use_nn_interpolation=use_nn_interpolation,
@@ -525,18 +530,18 @@ class Algorithms(Algorithms):
     #  CLI tool doesn't seem to exist in the ITK world, just keep list of transforms around?
 
     @staticmethod
-    def nu_correct(src,
+    def nu_correct(img,
                    resolution,
                    mask,
                    # TODO add weights (-w)
                    subject_matter,
                    subdir="tmp"):
 
-        out_img = src.newname_with_suffix("_N")
+        out_img = img.newname_with_suffix("_N")
 
-        cmd = CmdStage(cmd = ["N4BiasFieldCorrection", "-d 3", "-i", src.path, "-o", out_img.path] +
+        cmd = CmdStage(cmd = ["N4BiasFieldCorrection", "-d 3", "-i", img.path, "-o", out_img.path] +
                              (["-x", mask.path] if mask is not None else []),
-                       inputs = (src, mask),
+                       inputs = (img, mask),
                        outputs = (out_img,))
         return Result(stages=Stages((cmd,)), output=out_img)
 
@@ -660,7 +665,10 @@ class Algorithms(Algorithms):
     def log_determinant(xfm):
         s = Stages()
         displacement_field = s.defer(as_deformation(xfm.xfm, reference_image = xfm.moving))  # xfm.target?
-        out_file = xfm.xfm.newname_with_suffix("_log_det", ext = ".mnc")
+        if hasattr(xfm.xfm, 'newname_with_suffix'):
+            out_file = xfm.xfm.newname_with_suffix("_log_det")
+        elif hasattr(xfm.xfm, 'name'):
+            out_file = xfm.moving.newname_with_suffix(f"_to_{xfm.fixed}_log_det")
         s.add(CmdStage(cmd = ["CreateJacobianDeterminantImage", "3", displacement_field.path, out_file.path, "1", "0"],
                        inputs = (displacement_field,), outputs = (out_file,)))
         return Result(stages=s, output=out_file)
