@@ -11,7 +11,7 @@ extras = {
 
 
 setup(name='pydpiper',
-      version='2.0.19.1',
+      version='2.1.0',
       license='Modified BSD',
       description='Python code for flexible pipeline control',
       long_description='Python code for flexible pipeline control',
@@ -23,6 +23,7 @@ setup(name='pydpiper',
         'ConfigArgParse>=0.11.0',
         'Jinja2',
         'networkx',
+        'intensity-normalization',
         'ordered-set',
         'omegaconf',
         'pandas',
