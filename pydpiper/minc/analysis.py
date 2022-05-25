@@ -1,15 +1,15 @@
 from argparse import Namespace
 from typing import List, Optional, Tuple
 import os
+
 import pandas as pd
 
 from pydpiper.core.stages import Stages, CmdStage, Result
 from pydpiper.core.util   import NamedTuple
 from pydpiper.minc.files  import MincAtom
 from pydpiper.minc.containers import XfmHandler
-from pydpiper.minc.registration import concat_xfmhandlers, invert_xfmhandler, mincmath, minc_displacement
-
-
+from pydpiper.minc.registration import (concat_xfmhandlers, invert_xfmhandler, mincmath, minc_displacement)
+from pydpiper.core.templating import rendered_template_to_command, templating_env
 
 #TODO find the nicest API (currently determinants_at_fwhms, but still weird)
 #and write documentation indicating it
@@ -45,7 +45,7 @@ def mincblob(op : str, grid : MincAtom, subdir : str = "tmp") -> Result[MincAtom
         out_file = grid.newname_with_suffix('_' + op, subdir=subdir)
 
     stage = CmdStage(inputs=(grid,), outputs=(out_file,),
-                 cmd=['mincblob', '-clobber', '-' + op, grid.path, out_file.path])
+                     cmd=['mincblob', '-clobber', '-' + op, grid.path, out_file.path])
 
     s = Stages([stage])
     # now create the proper determinant if that's what was asked for
@@ -202,15 +202,18 @@ def determinant(displacement_grid : MincAtom) -> Result[MincAtom]:
     det = s.defer(mincblob(op='determinant', grid=displacement_grid))
     return Result(stages=s, output=det)
 
+smooth_vector_template = templating_env.get_template("smooth_vector.sh")
+
 def smooth_vector(source : MincAtom, fwhm : float) -> Result[MincAtom]:
     outf = source.newname_with_suffix("_smooth_fwhm%s" % fwhm, subdir="tmp") # TODO smooth_displacement_?
-    cmd  = ['smooth_vector', '--clobber', '--filter', '--fwhm=%s' % fwhm,
-            source.path, outf.path]
+    cmd  = rendered_template_to_command(
+        smooth_vector_template.render(source = source.path, outf = outf.path, fwhm = fwhm))
     stage = CmdStage(inputs=(source,), outputs=(outf,), cmd=cmd)
     return Result(stages=Stages([stage]), output=outf)
 
 StatsConf = NamedTuple("StatsConf", [('stats_kernels', str)])
 
+voxel_vote_template = templating_env.get_template("voxel_vote.sh")
 
 def voxel_vote(label_files : List[MincAtom], output_dir : str, name : str = "voted"):  # TODO too stringy ...
 
@@ -220,8 +223,10 @@ def voxel_vote(label_files : List[MincAtom], output_dir : str, name : str = "vot
     out = MincAtom(name=os.path.join(output_dir, "%s.mnc" % name),
                    output_sub_dir=output_dir)  # FIXME better naming
 
-    s = CmdStage(cmd=["voxel_vote", "--clobber"] + [l.path for l in sorted(label_files)] + [out.path],
-                 inputs=tuple(label_files),
+    s = CmdStage(cmd=rendered_template_to_command(voxel_vote_template.render(
+                     label_files = [l.path for l in sorted(label_files)],
+                     out = out.path)),
+                 inputs = tuple(label_files),
                  outputs=(out,))
 
     return Result(stages=Stages([s]), output=out)

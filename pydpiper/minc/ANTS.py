@@ -20,6 +20,7 @@ from pydpiper.minc.nlin import NLIN
 from pydpiper.minc.registration import (mincblur, mincresample, Interpolation,
                                         parse_many, parse_nullable, parse_bool, ParseError,
                                         all_equal, mincbigaverage, WithAvgImgs, MincAlgorithms, parse_n)
+from pydpiper.core.templating import rendered_template_to_command, templating_env
 
 SimilarityMetricConf = NamedTuple('SimilarityMetricConf',
                                   [("metric", str),
@@ -46,10 +47,12 @@ ANTSConf = NamedTuple("ANTSConf",
 
 # we don't supply a resolution default here because it's preferable
 # to take resolution from initial target instead
+# n.b. - we will need less quoting of transformation_model/regularization/cost function
+# if we call with shell=False
 ANTS_default_conf = ANTSConf(
     iterations="100x100x100x150",
-    transformation_model="'SyN[0.1]'",
-    regularization="'Gauss[2,1]'",
+    transformation_model='"\'SyN[0.1]\'"',
+    regularization='"\'Gauss[2,1]\'"',
     use_mask=True,
     file_resolution=None,
     sim_metric_confs=[default_similarity_metric_conf,
@@ -96,6 +99,7 @@ ANTSMemCfg = NamedTuple("ANTSMemCfg",
 
 default_ANTS_mem_cfg = ANTSMemCfg(base_mem=0.177, mem_per_voxel_coarse=1.385e-7, mem_per_voxel_fine=2.1e-7)
 
+ants_template = templating_env.get_template("ANTS.sh")
 
 class ANTS(NLIN):
 
@@ -200,20 +204,17 @@ class ANTS(NLIN):
         similarity_inputs.add(dest)
         inner = ','.join([src.path, dest.path,
                           str(sim_metric_conf.weight), str(sim_metric_conf.radius_or_bins)])
-        subcmd = "'" + "".join([sim_metric_conf.metric, '[', inner, ']']) + "'"
+        subcmd = '"\'"' + "".join([sim_metric_conf.metric, '[', inner, ']']) + '"\'"'
         similarity_cmds.extend(["-m", subcmd])
     stage = CmdStage(
         inputs=(source, target) + tuple(similarity_inputs) + cast(tuple, ((source.mask,) if source.mask else ())),
         # need to cast to tuple due to mypy bug; see mypy/issues/622
         outputs=(out_xfm,),
-        cmd=['ANTS', '3',
-             '--number-of-affine-iterations', '0']
-            + similarity_cmds
-            + ['-t', conf.transformation_model,
-               '-r', conf.regularization,
-               '-i', conf.iterations,
-               '-o', out_xfm.path]
-            + (['-x', source.mask.path] if conf.use_mask and source.mask else []))
+        cmd=rendered_template_to_command(
+              ants_template.render(conf = conf,
+                                   out_xfm = out_xfm.path,
+                                   similarity_cmds = similarity_cmds,
+                                   source = source)))
 
     # see comments re: mincblur memory configuration
     stage.when_runnable_hooks.append(lambda st: set_memory(st, source=source, conf=conf,

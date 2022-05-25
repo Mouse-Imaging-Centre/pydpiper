@@ -12,11 +12,13 @@ from operator import mul
 from typing import Any, cast, Dict, Generic, List, Optional, Tuple, TypeVar, Union, Callable
 
 from configargparse import Namespace
+
 from pyminc.volumes.factory import volumeFromFile  # type: ignore
 
 from pydpiper.core.files import FileAtom
-from pydpiper.core.stages import CmdStage, Result, Stages, identity_result
-from pydpiper.core.util import pairs, AutoEnum, NamedTuple, raise_, flatten
+from pydpiper.core.stages import CmdStage, Result, Stages
+from pydpiper.core.util import AutoEnum, NamedTuple, raise_, flatten
+from pydpiper.core.templating import rendered_template_to_command, templating_env
 from pydpiper.minc.containers import XfmHandler
 from pydpiper.minc.files import MincAtom, XfmAtom, xfmToMinc, IdMinc, mincToXfm
 from pydpiper.minc.nlin import NLIN, NLIN_BUILD_MODEL, Algorithms
@@ -140,6 +142,7 @@ MinctraccMemCfg = NamedTuple("MinctraccMemCfg",
 
 default_minctracc_mem_cfg = MinctraccMemCfg(base_mem=3e-1, mem_per_voxel=6e-7)
 
+minctracc_template = templating_env.get_template("minctracc.sh")
 
 # TODO: add memory estimation hook
 def minctracc(source: MincAtom,
@@ -214,7 +217,6 @@ def minctracc(source: MincAtom,
                           pipeline_sub_dir=source.pipeline_sub_dir,
                           output_sub_dir=source.output_sub_dir)
 
-
     if conf.blur_resolution not in (-1, 0, None):
         img_or_grad = lambda result: result.gradient if conf.use_gradient else result.img
         source_for_minctracc = img_or_grad(s.defer(mincblur(source, conf.blur_resolution)))
@@ -227,44 +229,27 @@ def minctracc(source: MincAtom,
     # if we're not going to allow these, we should probably wrap this in a try/catch to give a better error
     # and/or start with a 'default' linear/nonlinear/both minctracc conf as appropriate and `replace` all
     # fields with the user-supplied ones.
-    stage = CmdStage(cmd=['minctracc', '-clobber', '-debug']
-                         + (['-%s' % lin_conf.objective.name] if lin_conf and lin_conf.objective else [])
-                         + (['-transformation', transform.path] if transform
-                            else (transform_info if transform_info else ["-identity"]))
-                         + (['-' + lin_conf.transform_type.name]
-                            if lin_conf and lin_conf.transform_type else [])
-                         + (['-use_simplex']
-                            if nlin_conf and nlin_conf.use_simplex is not None else [])
-                         + (['-step'] + space_sep(conf.step_sizes))
-                         + ((['-simplex', str(lin_conf.simplex)]
-                             + ['-tol', str(lin_conf.tolerance)]
-                             + ['-w_shear'] + space_sep(lin_conf.w_shear)
-                             + ['-w_scales'] + space_sep(lin_conf.w_scales)
-                             + ['-w_rotations'] + space_sep(lin_conf.w_rotations)
-                             + ['-w_translations'] + space_sep(lin_conf.w_translations))
-                            if lin_conf is not None else [])
-                         + ((['-iterations', str(nlin_conf.iterations)]
-                             + ['-similarity_cost_ratio', str(nlin_conf.similarity)]
-                             + ['-weight', str(nlin_conf.weight)]
-                             + ['-stiffness', str(nlin_conf.stiffness)]
-                             + ['-sub_lattice', str(nlin_conf.sub_lattice)]
-                             + (['-lattice_diameter']
-                                + (space_sep(nlin_conf.lattice_diameter)
-                                   if nlin_conf.lattice_diameter is not None
-                                   else space_sep((3 * s for s in conf.step_sizes)))))
-                            if nlin_conf is not None else [])
-                         + (['-nonlinear %s' % (nlin_conf.objective.name if nlin_conf.objective else '')]
-                            if nlin_conf else [])
-                         + (['-source_mask', source.mask.path]
-                            if source.mask and conf.use_masks else [])
-                         + (['-model_mask', target.mask.path]
-                            if target.mask and conf.use_masks else [])
-                         + ([source_for_minctracc.path, target_for_minctracc.path, out_xfm.path]),
-                     inputs=(source_for_minctracc, target_for_minctracc) +
-                            ((transform,) if transform else ()) +
-                            ((source.mask,) if source.mask and conf.use_masks else ()) +
-                            ((target.mask,) if target.mask and conf.use_masks else ()),
-                     outputs=(out_xfm,))
+    stage = CmdStage(cmd = rendered_template_to_command(
+                       minctracc_template.render(
+                         transform = transform,
+                         transform_info = transform_info,
+                         source = source_for_minctracc,
+                         source_mask = source.mask,
+                         target = target_for_minctracc,
+                         target_mask = target.mask,
+                         out_xfm = out_xfm.path,
+                         conf = conf,
+                         lin_conf = lin_conf,
+                         nlin_conf = nlin_conf,
+                         lattice_diameter = (nlin_conf.lattice_diameter
+                                            if nlin_conf and nlin_conf.lattice_diameter
+                                             else tuple(3 * s for s in conf.step_sizes))
+                       )),
+                      inputs=(source_for_minctracc, target_for_minctracc) +
+                             ((transform,) if transform else ()) +
+                             ((source.mask,) if source.mask and conf.use_masks else ()) +
+                             ((target.mask,) if target.mask and conf.use_masks else ()),
+                      outputs=(out_xfm,))
 
     if nlin_conf is not None:  # TODO at the moment basically ignore resource requirements for linear stages ...
         def set_memory(st, cfg):
@@ -342,6 +327,9 @@ def minc_displacement(xfm : XfmHandler, newname_wo_ext : Optional[str] = None) -
     return Result(stages=Stages([stage]), output=output_grid)
 
 
+
+mincblur_template = templating_env.get_template("mincblur.sh")
+
 def mincblur(img: MincAtom,
              fwhm: float,
              gradient: bool = True,
@@ -372,8 +360,8 @@ def mincblur(img: MincAtom,
         # drop last 9 chars from output filename since mincblur
         # automatically adds "_blur.mnc" (or "_dxyz.mnc") and Python
         # won't lift this length calculation automatically ...
-        cmd=shlex.split('mincblur -clobber -no_apodize -fwhm %s %s %s' % (fwhm, img.path, out_img.path[:-9]))
-            + (['-gradient'] if gradient else []))
+        cmd = rendered_template_to_command(
+                mincblur_template.render(img=img, out_img=out_img, fwhm=fwhm, gradient=gradient)))
     #stage.set_log_file(os.path.join(out_img.dir, "..", "log",
     #                                "%s_%s.log" % ("mincblur", out_img.filename_wo_ext)))
 
@@ -452,11 +440,11 @@ def mincaverage(imgs: List[MincAtom],
     if nocheck_dimensions: additional_flags.append("-nocheck_dimensions")
 
     avg_cmd = CmdStage(inputs=tuple(imgs), outputs=(avg, sdfile),
-                       cmd=['mincaverage', '-clobber'] + (['-normalize'] if normalize else []) + ['-max_buffer_size_in_kb', '409620'] +
-                           additional_flags +
-                           ['-sdfile', sdfile.path] +
-                           sorted([img.path for img in imgs]) +
-                           [avg.path])
+                       cmd = rendered_template_to_command(mincaverage_template.render(
+                           imgs=sorted([img.path for img in imgs]),
+                           avg=avg.path,
+                           sdfile=sdfile.path,
+                           normalize=normalize)))
     # averages in a pipeline often indicate important progress. Let's report that back to the user
     # in terms of a status update:
     status_update_message = "\n\n*\n* * *\n* * * * *\n* * * * * * *\nStatus update: \nFinished creating the following average:\n" \
@@ -471,6 +459,7 @@ def mincaverage(imgs: List[MincAtom],
 PMincAverageMemCfg = NamedTuple("PMincAverageMemCfg", [('base_mem', float), ('mem_per_voxel', float)])
 default_pmincaverage_mem_cfg = PMincAverageMemCfg(base_mem=0.5, mem_per_voxel=14.0/(430*13158000.0))
 
+mincbigaverage_template = templating_env.get_template("mincbigaverage.sh")
 
 def mincbigaverage(imgs : List[MincAtom],
                    name_wo_ext: str = "average",
@@ -498,14 +487,14 @@ def mincbigaverage(imgs : List[MincAtom],
 
     # TODO use --filelist instead of putting all files on command line?
     avg_cmd = CmdStage(inputs=tuple(imgs), outputs=(avg,),
-                       cmd=["mincbigaverage", "-clobber"]
-                           + (["--avgnum", avgnum] if avgnum else [])
-                           + (["--robust",
-                               "--tmpdir",
-                              os.getenv("TMP", avg.newname("", subdir="tmp").path)]
-                              if robust else [])
-                           + (["--sdfile", sdfile] if sdfile else [])
-                           + sorted([img.path for img in imgs]) + [avg.path])
+                       cmd = rendered_template_to_command(mincbigaverage_template.render(
+                           imgs = sorted([img.path for img in imgs]),
+                           robust = robust,
+                           avgnum = avgnum,
+                           tmpdir = os.getenv("TMPDIR", avg.newname("", subdir="tmp").path),
+                           sdfile = sdfile,
+                           avg_path = avg.path
+                       )))  # TODO move sort into template?
 
     # if all input files have masks associated with them, add the combined mask to the average:
     all_inputs_have_masks = all((img.mask for img in imgs))
@@ -612,6 +601,7 @@ def mincreshape(img : MincAtom, args : List[str]):
 class Interpolation(AutoEnum):
     trilinear = tricubic = sinc = nearest_neighbour = ()
 
+mincresample_template = templating_env.get_template("mincresample.sh")
 
 def mincresample_simple(img: MincAtom,
                         xfm: XfmAtom,
@@ -644,12 +634,15 @@ def mincresample_simple(img: MincAtom,
     stage = CmdStage(
         inputs=(xfm, like, img),
         outputs=(outf,),
-        cmd=(['mincresample', '-clobber', '-2']
-             + (['-' + interpolation.name] if interpolation else [])
-             + (['-invert'] if invert else [])
-             + list(extra_flags)
-             + (['-transform %s' % xfm.path]) #if xfm is not identity else [])
-             + ['-like %s' % like.path, img.path, outf.path]))
+        cmd=rendered_template_to_command(mincresample_template.render(
+            img=img,
+            xfm = xfm,
+            like = like,
+            outf=outf,
+            invert = invert,
+            extra_flags = extra_flags,
+            interpolation = interpolation,
+        )))
 
     return Result(stages=Stages([stage]), output=outf)
 
@@ -748,6 +741,7 @@ def mincresample_new(img: MincAtom,
                                                                                 postfix if postfix else "")),
                         subdir=subdir)
 
+xfmconcat_template = templating_env.get_template("xfmconcat.sh")
 
 def xfmconcat(xfms: List[XfmAtom],
               name: str = None) -> Result[XfmAtom]:
@@ -779,7 +773,8 @@ def xfmconcat(xfms: List[XfmAtom],
                    # could do names[1:] if dirname contains names[0]?
         stage = CmdStage(
             inputs=tuple(xfms), outputs=(outf,),
-            cmd=shlex.split('xfmconcat -clobber %s %s' % (' '.join([x.path for x in xfms]), outf.path)))
+            cmd=rendered_template_to_command(xfmconcat_template.render(xfms = [x.path for x in xfms],
+                                                                       outf = outf.path)))
 
         return Result(stages=Stages([stage]), output=outf)
 
@@ -814,6 +809,7 @@ def concat_xfmhandlers(xfms: List[XfmHandler],
                                     xfm=t,
                                     resampled=res))
 
+nu_estimate_template = templating_env.get_template("nu_estimate.sh")
 
 def nu_estimate(src: MincAtom,
                 resolution: float,
@@ -848,12 +844,13 @@ def nu_estimate(src: MincAtom,
 
     cmd = CmdStage(inputs=(src,) + ((mask_for_nu_est,) if mask_for_nu_est else ()),
                    outputs=(out,),
-                   cmd=shlex.split(
-                       "nu_estimate -clobber -iterations 100 -stop 0.001 -fwhm 0.15 -shrink 4 -lambda 5.0e-02")
-                       + ["-distance", str(distance_value)] + (
-                       ['-mask', mask_for_nu_est.path] if mask_for_nu_est else []) + [src.path, out.path])
-
+                   cmd = rendered_template_to_command(nu_estimate_template.render(src = src.path,
+                                                                                  out = out.path,
+                                                                                  distance = distance_value,
+                                                                                  mask = mask)))
     return Result(stages=Stages([cmd]), output=out)
+
+mincmath_template = templating_env.get_template("mincmath.sh")
 
 def mincmath(op       : str,
              vols     : List[MincAtom],
@@ -882,9 +879,12 @@ def mincmath(op       : str,
         outf = out_atom
 
     s = CmdStage(inputs=tuple(vols), outputs=(outf,),
-                 cmd=(['mincmath', '-clobber', '-2']
-                   + (['-const', _const] if _const else [])
-                   + ['-' + op] + [v.path for v in vols] + [outf.path]))
+                 cmd=rendered_template_to_command(
+                     mincmath_template.render(const = _const,
+                                              op = op,
+                                              vols = [v.path for v in vols],
+                                              outf = outf.path))
+                 )
 
     return Result(stages=Stages([s]), output=outf)
 
@@ -929,6 +929,8 @@ default_inormalize_conf = INormalizeConf(const=1000, method=INormalizeMethod.rat
 # should we put defaults into the classes or populate with None (which will often raise an error if disallowed)
 # and create default objects?
 
+inormalize_template = templating_env.get_template("inormalize.sh")
+
 def inormalize(src: MincAtom,
                conf: INormalizeConf,
                mask: Optional[MincAtom] = None,
@@ -940,16 +942,19 @@ def inormalize(src: MincAtom,
     """
     out = src.newname_with_suffix('_I', subdir=subdir)
 
-    mask_for_inormalize = mask or src.mask
+    mask = mask or src.mask
 
-    cmd = CmdStage(inputs=(src, mask_for_inormalize) if mask_for_inormalize else (src,),  # issue a warning if no mask?
+    cmd = CmdStage(inputs=(src, mask) if mask else (src,),  # issue a warning if no mask?
                    outputs=(out,),
-                   cmd=shlex.split('inormalize -clobber -const %s -%s' % (conf.const, conf.method.name))
-                       + (['-mask', mask_for_inormalize.path] if mask_for_inormalize else [])
-                       + [src.path, out.path])
+                   cmd=rendered_template_to_command(
+                       inormalize_template.render(src = src.path,
+                                                  out = out.path,
+                                                  mask = mask.path if mask else None,
+                                                  conf = conf)))
 
     return Result(stages=Stages([cmd]), output=out)
 
+xfmaverage_template = templating_env.get_template("xfmaverage.sh")
 
 def xfmaverage(xfms: List[XfmAtom],
                output_dir: str = None,
@@ -984,18 +989,21 @@ def xfmaverage(xfms: List[XfmAtom],
     #    outf = XfmAtom(name=os.path.join(output_dir, 'transforms', output_filename), orig_name=None)
 
     stage = CmdStage(inputs=tuple(xfms), outputs=(outf,),
-                     cmd=["xfmavg_scipy.py", "--verbose", "--clobber"]
-                         + sorted([x.path for x in xfms]) + [outf.path])
+                     cmd=rendered_template_to_command(
+                         xfmaverage_template.render(xfms = sorted([x.path for x in xfms]),
+                                                    outf = outf.path)))
 
     return Result(stages=Stages([stage]), output=outf)
 
+xfminvert_template = templating_env.get_template("xfminvert.sh")
 
 def xfminvert(xfm: XfmAtom,
               subdir: str = "transforms") -> Result[XfmAtom]:
     inv_xfm = xfm.newname_with_suffix('_inverted',
                                       subdir=subdir)  # type: XfmAtom
     s = CmdStage(inputs=(xfm,), outputs=(inv_xfm,),
-                 cmd=['xfminvert', '-clobber', xfm.path, inv_xfm.path])
+                 cmd=rendered_template_to_command(
+                     xfminvert_template.render(xfm = xfm.path, inv_xfm = inv_xfm.path)))
 
     return Result(stages=Stages([s]), output=inv_xfm)
 
@@ -1051,6 +1059,7 @@ default_rotational_minctracc_conf = RotationalMinctraccConf(
     rotational_interval=10,
     temp_dir="/dev/shm")
 
+rotational_minctracc_template = templating_env.get_template("rotational_minctracc.sh")
 
 # FIXME consistently require that masks are explicitly added to inputs array (or not?)
 def rotational_minctracc(source: MincAtom,
@@ -1128,20 +1137,20 @@ def rotational_minctracc(source: MincAtom,
                           + cast(tuple, ((target.mask,) if target.mask is not None else ())),
                    # if-expression not recognized as a tuple; see mypy/issues/622
                    outputs=(out_xfm,),
-                   cmd=["rotational_minctracc.py",
-                        "-t", conf.temp_dir,  # TODO don't use a given option if not supplied (i.e., None)
-                        "-w", ','.join([str(w_translation_stepsize)]*3),
-                        "-s", str(resample_stepsize),
-                        "-g", str(registration_stepsize),
-                        "-r", str(conf.rotational_range),
-                        "-i", str(conf.rotational_interval),
-                        "--simplex", str(resolution * 20),
-                        blurred_src.path,
-                        blurred_dest.path,
-                        out_xfm.path,
-                        "/dev/null"]
-                       + (['-m', target.mask.path] if target.mask else [])
-                       + (['--source-mask', source.mask.path] if source.mask else []))
+                   cmd=rendered_template_to_command(
+                       rotational_minctracc_template.render(
+                           blurred_src = blurred_src.path,
+                           blurred_dest = blurred_dest.path,
+                           out_xfm = out_xfm.path,
+                           target_mask = target.mask.path if target.mask else None,
+                           source_mask = source.mask.path if source.mask else None,
+                           conf = conf,
+                           simplex = resolution * 20,  # TODO hard-coded factor
+                           resample_stepsize = resample_stepsize,
+                           registration_stepsize = registration_stepsize,
+                           w_translation_stepsizes = (w_translation_stepsize,) * 3
+
+                       )))
 
     s.update(Stages([cmd]))
 
