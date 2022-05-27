@@ -1,3 +1,8 @@
+New in Version 2.0.16
+=====================
+* user-editable shell command templates with Jinja2 (see README.md for usage)
+* fix a bug where files could be created in incorrect subdirectory (but in correct row of generated .csv files)
+
 New in Version 2.0.15
 =====================
 * when MAGeT is enabled in MBM-type pipelines, nonlinear averages are automatically segmented via MAGeT by default
