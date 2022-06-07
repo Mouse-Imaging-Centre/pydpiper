@@ -7,6 +7,7 @@ import pandas as pd
 import os
 import sys
 import shutil
+import subprocess
 import time
 
 from typing import NamedTuple, List, Callable, Any
@@ -117,11 +118,23 @@ def ensure_distinct_outputs(stages):
         raise ValueError("Conflicting outputs:", bad_outputs)
 
 
-def ensure_commands_exist(stages):
+def ensure_commands_exist(stages, use_singularity, container_path, container_args):
     cmds = set((s.to_array()[0] for s in stages))
-    bad_cmds = [cmd for cmd in cmds if shutil.which(cmd) is None]
+    if use_singularity:
+        if not container_path:
+            raise ValueError("container_path needed")
+        bad_cmds = [cmd for cmd in cmds
+                    if subprocess.run(['singularity', 'exec']
+                                       + ([container_args] if container_args else [])
+                                       + [container_path, 'which', cmd],
+                                      capture_output=True).returncode != 0]
+    else:
+        bad_cmds = [cmd for cmd in cmds if shutil.which(cmd) is None]
     if len(bad_cmds) > 0:
         raise ValueError("Missing executables: %s" % bad_cmds)
+
+def check_container_options(use_singularity, container_path):
+    assert not (use_singularity and not container_path), "need --container-path=... with --use-singularity"
 
 
 #TODO: change this to ...(static_pipeline, options)?
@@ -149,11 +162,21 @@ def execute(stages, options):
                                        str(options.application.pipeline_name) + "_labeled-tree-alternate.dot")
         logger.debug("Done.")
 
+    # TODO some of these checks could come even earlier
+    check_container_options(use_singularity=options.execution.use_singularity,
+                            container_path=options.execution.container_path)
+
+    if options.execution.check_commands_exist:
+        ensure_commands_exist(stages,
+                              use_singularity=options.execution.use_singularity,
+                              container_path=options.execution.container_path,
+                              container_args=options.execution.container_args)
+
     # for debugging reasons, it's best if these come after writing stages, drawing graph, ...
     ensure_short_output_paths(stages)  # TODO convert to new `CmdStage`s
     ensure_output_paths_in_dir(stages, options.application.output_directory)
     ensure_distinct_outputs([convertCmdStage(s) for s in stages])
-    ensure_commands_exist(stages)
+
 
     if not options.application.execute:
         print("Not executing the command (--no-execute is specified).\nDone.")

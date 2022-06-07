@@ -583,7 +583,7 @@ class Pipeline(object):
         self.removeFromRunning(index, clientURI, new_status = None)
         self.enqueue(index)
 
-    def setStageFailed(self, index, clientURI):
+    def setStageFailed(self, index, clientURI, exc=None):
         # given an index, sets stage to failed, adds to failed stages array
         # But... only if this stage has already been retried twice (<- for now static)
         # Once in while retrying a stage makes sense, because of some odd I/O
@@ -608,6 +608,7 @@ class Pipeline(object):
             # This is something we should also directly report back to the user:
             print("\nERROR in Stage %s: %s" % (str(index), str(self.stages[index])))
             print("Logfile for (potentially) more information:\n%s\n" % self.stages[index].logFile)
+            if exc: print(exc)
             sys.stdout.flush()
             self.failedStages.append(index)
             for i in nx.dfs_successors(self.G, index).keys():

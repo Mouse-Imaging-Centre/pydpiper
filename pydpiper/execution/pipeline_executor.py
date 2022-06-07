@@ -159,15 +159,32 @@ Pyro4.util.SerializerBase.register_dict_to_class("pydpiper.execution.pipeline_ex
 class MissingOutputs(ValueError): pass
 
 def runStage(*, clientURI    : str, stage,
+                use_singularity : bool,
+                container_path : str,
+                container_args : str,
                 cmd_wrapper  : str, fs_delay : float, check_outputs : bool, mkdirs : bool):
-        ix = stage.ix
-
-        logger.info("Running stage %i (on %s). Memory requested: %.2f", ix, clientURI, stage.mem)
+        # n.b.: normally we'd make the `try` block as small as possible, but in this case we
+        # want to avoid raising an error since apply_async's error_callback doesn't know which stage
+        # caused the error
         try:
-            command_to_run  = ((cmd_wrapper + ' ') if cmd_wrapper else '') + ' '.join(stage.cmd)
+            ix = stage.ix
 
+            logger.info("Running stage %i (on %s). Memory requested: %.2f", ix, clientURI, stage.mem)
+
+            if use_singularity:
+                # this should have been previously checked, but assert anyway
+                # TODO better to make a type properly constraining these possibilities:
+                if container_path is None:
+                    raise ValueError("can't use singularity without --container-path")
+                args = [container_args] if container_args is not None else []
+                singularity_prefix = (["singularity", "exec"]
+                                              + ([container_args] if container_args is not None else [])
+                                              + [container_path])
+            else:
+                singularity_prefix = []
+
+            command_to_run = " ".join(singularity_prefix + [cmd_wrapper] + stage.cmd)
             logger.info(command_to_run)
-
             # TODO this isn't too efficient:
             #   there is no global cache (yet) of the directories that have been created ...
             if mkdirs:
@@ -175,7 +192,6 @@ def runStage(*, clientURI    : str, stage,
                 for d in set([os.path.dirname(f) for f in stage.output_files]):
                     os.makedirs(d, exist_ok=True)
 
-            # log file for the stage
             with open(stage.log_file, 'a') as of:
                 of.write("Stage " + str(ix) + " running on " + socket.gethostname()
                          + " (" + clientURI + ") at " + datetime.isoformat(datetime.now(), " ") + ":\n")
@@ -253,6 +269,9 @@ class pipelineExecutor(object):
         self.queue_opts = options.queue_opts
         self.cmd_wrapper = options.cmd_wrapper
         self.executor_wrapper = options.executor_wrapper
+        self.use_singularity = options.use_singularity
+        self.container_path = options.container_path
+        self.container_args = options.container_args
         self.ns = options.use_ns
         self.uri_file = options.urifile
         self.fs_delay = options.fs_delay
@@ -478,7 +497,7 @@ class pipelineExecutor(object):
     #            self.runningChildren.remove(child)
 
     #@Pyro4.oneway
-    def notifyStageTerminated(self, i, returncode=None):
+    def notifyStageTerminated(self, i, returncode=None, exc=None):
         #try:
             if returncode == 0:
                 logger.debug("Setting stage %d finished on the server side", i)
@@ -487,7 +506,7 @@ class pipelineExecutor(object):
             else:
                 # a None returncode is also considered a failure
                 logger.debug("Setting stage %d failed on the server side. Return code: %s", i, returncode)
-                self.wrapPyroCall(lambda p: p.setStageFailed, i, self.clientURI)
+                self.wrapPyroCall(lambda p: p.setStageFailed, i, self.clientURI, exc)
                 logger.debug("Done setting stage failed")
             # the server may have shutdown or otherwise become unavailable
             # (currently this is expected when a long-running job completes;
@@ -599,6 +618,7 @@ class pipelineExecutor(object):
                     # instead, but we need to know the index of the stage we were attempting to run, so we'd have
                     # to catch the exception anyway to stuff the index into it ... this seems cleaner (no re-raising).
                     self.notifyStageTerminated(ix)
+                    logger.info(f"exception: {res}")
                 logger.debug("Freeing up resources for stage %i.", ix)
                 stage = self.runningChildren[ix]
                 with self.lock:
@@ -613,7 +633,11 @@ class pipelineExecutor(object):
             result = self.pool.apply_async(runStage, args=(),
                                            kwds={ "clientURI" : self.clientURI, "stage" : stage,
                                                   "cmd_wrapper" : self.cmd_wrapper,
-                                                  "fs_delay" : self.fs_delay, "check_outputs" : self.check_outputs,
+                                                  "use_singularity" : self.use_singularity,
+                                                  "container_args" : self.container_args,
+                                                  "container_path" : self.container_path,
+                                                  "fs_delay" : self.fs_delay,
+                                                  "check_outputs" : self.check_outputs,
                                                   "mkdirs" : self.defer_directory_creation },
                                            callback=process_result)
             self.runningChildren[i] = ChildProcess(i, result, stage.mem, stage.procs)

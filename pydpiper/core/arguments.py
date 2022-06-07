@@ -361,6 +361,17 @@ def _mk_execution_parser(p: ArgParser) -> ArgParser:
                        help="Overall factor by which to scale all memory estimates/requests (including default job memory, "
                             "but not executor totals (--mem)), say due to system differences or overcommitted nodes. "
                             "[Default=%(default)s]")
+    # TODO generalize --singularity to other container types (apptainer, docker, podman) e.g. via
+    # Jinja2 templating as done for shell commands
+    group.add_argument("--use-singularity", dest="use_singularity", action="store_true",
+                       help="Run commands inside a Singularity container (requires --container-path)")
+    group.add_argument("--no-use-singularity", dest="use_singularity", action='store_false',
+                       help="Opposite of --use-singularity")
+    group.set_defaults(use_singularity=False)
+    group.add_argument("--container-path", dest="container_path", type=str, default=None,
+                       help="Path to a container in which to execute commands (required if --container-engine is set)")
+    group.add_argument("--container-args", dest="container_args", type=str, default=None,
+                       help="Arguments to pass to container engine, e.g., '--bind=/projects,/scratch'")
     group.add_argument("--cmd-wrapper", dest="cmd_wrapper",
                        type=str, default="",
                        help="Wrapper inside of which to run the command, e.g., '/usr/bin/time -v'. [Default='%(default)s']")
@@ -380,6 +391,12 @@ def _mk_execution_parser(p: ArgParser) -> ArgParser:
     group.add_argument("--fs-delay", dest="fs_delay",
                        type=float, default=5,
                        help="Time (sec) to allow for NFS to become consistent after stage completion [Default=%(default)s]")
+    group.add_argument("--check-commands-exist", dest="check_commands_exist", action="store_true",
+                       help="Check commands exist (in Singularity container, if application [Defult=%(default)s]"
+                            " (note: --command-wrapper is not considered)")
+    group.add_argument("--no-check-commands-exist", dest="check_commands_exist", action="store_false",
+                       help="Opposite of --check-commands-exist")
+    group.set_defaults(check_commands_exist=True)
     group.add_argument("--executor_wrapper", dest="executor_wrapper",
                        type=str, default="",
                        help="Command inside of which to run the executor. [Default='%(default)s']")
