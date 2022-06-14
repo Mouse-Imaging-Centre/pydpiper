@@ -2,7 +2,7 @@ minctracc -clobber -debug
   {% if lin_conf and lin_conf.objective %} -{{ lin_conf.objective.name }} {% endif %}
   {# TODO reorder/consolidate some stuff (e.g. lin_conf and nlin_conf stuff) to remove some conditionals #}
   {% if transform %} -transformation {{ transform.path }}
-  {% elif transform_info %} {{ transform_info }}
+  {% elif transform_info %} {{ transform_info|join(" ") }}
   {% else %} -identity
   {% endif %}
   {% if lin_conf and lin_conf.transform_type %} -{{ lin_conf.transform_type.name }} {% endif %}
