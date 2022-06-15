@@ -7,7 +7,7 @@ from setuptools import setup
 
 
 setup(name='pydpiper',
-      version='2.0.16',
+      version='2.0.17',
       license='Modified BSD',
       description='Python code for flexible pipeline control',
       long_description='Python code for flexible pipeline control',

@@ -1,3 +1,9 @@
+New in Version 2.0.17
+=====================
+* add Singularity support via --use-singularity, --container-path, --container-args (easy to extend to Apptainer, Docker, Podman, ...)
+* minor executor internal changes and improved logging
+* fix a bug in the default minctracc template created for 2.0.16
+
 New in Version 2.0.16
 =====================
 * user-editable shell command templates with Jinja2 (see README.md for usage)
