@@ -17,7 +17,9 @@ import socket
 import signal
 import threading
 os.environ["PYRO_LOGLEVEL"] = os.getenv("PYRO_LOGLEVEL", "INFO")
-import Pyro4       # type: ignore
+
+import Pyro5
+import Pyro5.api
 from typing import Any
 
 if os.getenv("OMP_NUM_THREADS") is None:  # for #378 (very large vmem usage)
@@ -26,14 +28,13 @@ if os.getenv("OMP_NUM_THREADS") is None:  # for #378 (very large vmem usage)
 from pyminc.volumes.volumes import mincException
 
 
-Pyro4.config.REQUIRE_EXPOSE = False
-Pyro4.config.SERVERTYPE = "multiplex"
+Pyro5.config.SERVERTYPE = "multiplex"
 
 class SubmitError(ValueError): pass
 
 for boring_exception, name in [(mincException, "mincException"), (SubmitError, "SubmitError"), (KeyError, "KeyError")]:
-    Pyro4.util.SerializerBase.register_dict_to_class(name, lambda _classname, dict: boring_exception)
-    Pyro4.util.SerializerBase.register_class_to_dict(boring_exception, lambda obj: { "__class__" : name })
+    Pyro5.api.SerializerBase.register_dict_to_class(name, lambda _classname, dict: boring_exception)
+    Pyro5.api.SerializerBase.register_class_to_dict(boring_exception, lambda obj: { "__class__" : name })
 
 
 #TODO add these to executorArgumentGroup as options, pass into pipelineExecutor
@@ -44,7 +45,7 @@ HEARTBEAT_INTERVAL = EXECUTOR_MAIN_LOOP_INTERVAL  # Logically necessary since th
 logger = logging # type: Any
 #logger = logging.getLogger(__name__)
 
-sys.excepthook = Pyro4.util.excepthook  # type: ignore
+sys.excepthook = Pyro5.errors.excepthook  # type: ignore
 
 
 def ensure_exec_specified(numExec):
@@ -59,35 +60,35 @@ def launchExecutor(executor):
 
     # getIpAddress is similar to socket.gethostbyname(...) 
     # but uses a hack to attempt to avoid returning localhost (127....)
-    network_address = Pyro4.socketutil.getIpAddress(socket.gethostname(),
-                                                    workaround127 = True, ipVersion = 4)
-    daemon = Pyro4.core.Daemon(host=network_address)
+    network_address = Pyro5.socketutil.get_ip_address(socket.gethostname(),
+                                                      workaround127 = True, version = 4)
+    daemon = Pyro5.api.Daemon(host=network_address)
     clientURI = daemon.register(executor)
 
     # find the URI of the server:
     if executor.ns:
-        ns = Pyro4.locateNS()
+        ns = Pyro5.api.locate_ns()
         #ns.register("executor", executor, safe=True)
         serverURI = ns.lookup("pipeline")
     else:
         try:
             uf = open(executor.uri_file)
-            serverURI = Pyro4.URI(uf.readline())
+            serverURI = Pyro5.api.URI(uf.readline())
             uf.close()
         except:
             logger.exception("Problem opening the specified uri file:")
             raise
 
-    p = Pyro4.Proxy(serverURI)
+    p = Pyro5.api.Proxy(serverURI)
     # Register the executor with the pipeline
     # the following command only works if the server is alive. Currently if that's
     # not the case, the executor will die which is okay, but this should be
     # more properly handled: a more elegant check to verify the server is running
-    p.registerClient(clientURI.asString(), executor.mem)
+    p.registerClient(str(clientURI), executor.mem)
 
     executor.registeredWithServer()
-    executor.setClientURI(clientURI.asString())
-    executor.setServerURI(serverURI.asString())
+    executor.setClientURI(str(clientURI))
+    executor.setServerURI(str(serverURI))
     executor.setProxyForServer(p)
     
     logger.info("Connected to %s",  serverURI)
@@ -151,9 +152,8 @@ def stageinfo_dict_to_class(classname, d):
     return StageInfo(mem=d['mem'], procs=d['procs'], ix=d['ix'], cmd=d['cmd'], log_file=d['log_file'],
                      output_files=d['output_files'], env_vars=d['env_vars'])
 
-
-Pyro4.util.SerializerBase.register_dict_to_class("pydpiper.execution.pipeline_executor.StageInfo",
-                                                 stageinfo_dict_to_class)
+Pyro5.api.SerializerBase.register_dict_to_class("pydpiper.execution.pipeline_executor.StageInfo",
+                                                stageinfo_dict_to_class)
 
 
 class MissingOutputs(ValueError): pass
@@ -322,7 +322,7 @@ class pipelineExecutor(object):
             # will pass the new proxy to p. At the same time, pycharm is still able
             # to type check things.
             logger.debug("wrapPyroCall: %s", func)
-            with Pyro4.Proxy(self.serverURI) as one_time_proxy:
+            with Pyro5.api.Proxy(self.serverURI) as one_time_proxy:
                 return func(one_time_proxy)(*args, **kwargs)
         except:
             logger.exception("Exception while placing a Pyro call at the server: %s", func)
@@ -331,11 +331,9 @@ class pipelineExecutor(object):
     def registeredWithServer(self):
         self.registered_with_server = True
 
-    #@Pyro4.oneway
     #def addPIDtoRunningList(self, pid):
     #    self.current_running_job_pids.append(pid)
 
-    #@Pyro4.oneway
     #def removePIDfromRunningList(self, pid):
     #    self.current_running_job_pids.remove(pid)
 
@@ -496,7 +494,6 @@ class pipelineExecutor(object):
     #            self.runningProcs -= child.procs
     #            self.runningChildren.remove(child)
 
-    #@Pyro4.oneway
     def notifyStageTerminated(self, i, returncode=None, exc=None):
         #try:
             if returncode == 0:

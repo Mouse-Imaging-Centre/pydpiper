@@ -22,12 +22,9 @@ import functools
 import math
 from typing import Any
 
-try:
-    from sys import intern
-except:
-    "older Python doesn't namespace `intern`, so do nothing"
+from sys import intern
 
-# TODO move this and Pyro4 imports down into launchServer where pipeline name is available?
+# TODO move this and Pyro5 imports down into launchServer where pipeline name is available?
 #os.environ["PYRO_LOGLEVEL"] = os.getenv("PYRO_LOGLEVEL", "INFO")
 #os.environ["PYRO_LOGFILE"]  = os.path.splitext(os.path.basename(__file__))[0] + ".log"
 # TODO name the server logfile more descriptively
@@ -38,17 +35,17 @@ logger.basicConfig(filename="pipeline.log", level=os.getenv("PYDPIPER_LOGLEVEL",
                    datefmt="%Y-%m-%d %H:%M:%S",
                    format="[%(asctime)s.%(msecs)03d,"
                           +__name__+",%(levelname)s] %(message)s")  # type: ignore
-                
-import Pyro4  # type: ignore
+
+import Pyro5
 from . import pipeline_executor as pe
 from pydpiper.execution.queueing import create_uri_filename_from_options
 
-Pyro4.config.SERVERTYPE = pe.Pyro4.config.SERVERTYPE
+Pyro5.config.SERVERTYPE = pe.Pyro5.config.SERVERTYPE
 
 LOOP_INTERVAL = 5
 STAGE_RETRY_INTERVAL = 1
 
-sys.excepthook = Pyro4.util.excepthook # type: ignore
+sys.excepthook = Pyro5.errors.excepthook # type: ignore
 
 class PipelineFile(object):
     def __init__(self, filename):
@@ -295,9 +292,11 @@ class Pipeline(object):
             self.enqueue(n)
        
     # expose methods to get/set shutdown_ev via Pyro (setter not needed):
+    @Pyro5.api.expose
     def set_shutdown_ev(self):
         self.shutdown_ev.set()
 
+    @Pyro5.api.expose
     def get_shutdown_ev(self):
         return self.shutdown_ev
 
@@ -391,6 +390,7 @@ class Pipeline(object):
         endtime = time.time()
         logger.info("Create Edges time: " + str(endtime-starttime))
 
+    @Pyro5.api.expose
     def get_stage_info(self, i):
         s = self.stages[i]
         return pe.StageInfo(mem=s.mem, procs=s.procs, ix=i, cmd=s.cmd, log_file=s.logFile,
@@ -419,6 +419,7 @@ class Pipeline(object):
     lines to getRunnableStageIndex) and update server's internal view of client.
     This is highly stateful, being a resource-tracking wrapper around
     getRunnableStageIndex and hence a glorified Set.pop."""
+    @Pyro5.api.expose
     def getCommand(self, clientURIstr, clientMemFree, clientProcsFree):
         if self.is_time_to_drain():
             return ("shutdown_abnormally", None)
@@ -494,7 +495,7 @@ class Pipeline(object):
                 logger.exception("Could not remove stage index from running stages list")
                 raise
 
-    #@Pyro4.oneway
+    @Pyro5.api.expose
     def setStageStarted(self, index, clientURI):
         URIstring = "(" + str(clientURI) + ")"
         logger.info("Starting Stage " + str(index) + ": " + str(self.stages[index]) + URIstring)
@@ -514,6 +515,7 @@ class Pipeline(object):
         #logger.debug("Stage %s Runnable: %s", str(index), str(canRun))
         return canRun
 
+    @Pyro5.api.expose
     def setStageFinished(self, index, clientURI, save_state = True,
                          checking_pipeline_status = False):
         """given an index, sets corresponding stage to finished and adds successors to the runnable set"""
@@ -577,12 +579,14 @@ class Pipeline(object):
         self.removeRunningStageFromClient(clientURI, index)
         self.stages[index].status = new_status
 
+    @Pyro5.api.expose
     def setStageLost(self, index, clientURI):
         """Clean up a stage lost due to unresponsive client"""
         logger.warning("Lost Stage %d: %s: ", index, self.stages[index])
         self.removeFromRunning(index, clientURI, new_status = None)
         self.enqueue(index)
 
+    @Pyro5.api.expose
     def setStageFailed(self, index, clientURI, exc=None):
         # given an index, sets stage to failed, adds to failed stages array
         # But... only if this stage has already been retried twice (<- for now static)
@@ -647,6 +651,7 @@ class Pipeline(object):
         stages and the addition of launched/registered executors is smaller than
         the max number of executors it can launch
     """
+    @Pyro5.api.expose
     def continueLoop(self):
         if self.verbose:
             print('.', end="", flush=True)
@@ -707,7 +712,7 @@ class Pipeline(object):
           else:
             return True
 
-    #@Pyro4.oneway
+    @Pyro5.api.expose
     def updateClientTimestamp(self, clientURI, tick):
         t = time.time()  # use server clock for consistency
         try:
@@ -730,6 +735,7 @@ class Pipeline(object):
         return self.highest_memory_stage(stages).mem  # TODO don't use below, propagate stage # ....
 
     # this can't be a loop since we call it via sockets and don't want to block the socket forever
+    @Pyro5.api.expose
     def manageExecutors(self):
         logger.debug("Checking if executors need to be launched ...")
         executors_to_launch = self.numberOfExecutorsToLaunch()
@@ -832,6 +838,7 @@ class Pipeline(object):
     def getProcessedStageCount(self):
         return self.num_finished_stages
 
+    @Pyro5.api.expose
     def registerClient(self, clientURI, maxmemory):
         # Adds new client (represented by a URI string)
         # to array of registered clients. If the server launched
@@ -845,8 +852,8 @@ class Pipeline(object):
         logger.debug("Client registered (Eh!): %s", clientURI)
         if self.verbose:
             print("\nClient registered (Eh!): %s" % clientURI, end="")
-            
-    #@Pyro4.oneway
+
+    @Pyro5.api.expose
     def unregisterClient(self, clientURI):
         # removes a client URI string from the table of registered clients. An executor 
         # calls this method when it decides on its own to shut down,
@@ -933,6 +940,7 @@ class Pipeline(object):
                 fh.write("%d,%s\n" % l)
         logger.info('Previously completed stages (of %d total): %d', len(self.stages), completed)
 
+    @Pyro5.api.expose
     def printShutdownMessage(self):
         # it is possible that pipeline.continueLoop returns false, even though the
         # pipeline is not completed (for instance, when stages failed, and no more stages
@@ -998,20 +1006,20 @@ def launchServer(pipeline):
     
     # getIpAddress is similar to socket.gethostbyname(...)
     # but uses a hack to attempt to avoid returning localhost (127....)
-    network_address = Pyro4.socketutil.getIpAddress(socket.gethostname(),
-                                                    workaround127 = True, ipVersion = 4)
-    daemon = Pyro4.core.Daemon(host=network_address)
+    network_address = Pyro5.socketutil.get_ip_address(socket.gethostname(),
+                                                      workaround127 = True, version = 4)
+    daemon = Pyro5.api.Daemon(host=network_address)
     pipelineURI = daemon.register(pipeline)
     
     if options.execution.use_ns:
         # in the future we might want to launch a nameserver here
         # instead of relying on a separate executable running
-        ns = Pyro4.locateNS()
+        ns = Pyro5.api.locate_ns()
         ns.register("pipeline", pipelineURI)
     else:
         # If not using Pyro NameServer, must write uri to file for reading by client.
         uf = open(options.execution.urifile, 'w')
-        uf.write(pipelineURI.asString())
+        uf.write(str(pipelineURI))
         uf.close()
     
     pipeline.setVerbosity(options.application.verbose)
@@ -1050,10 +1058,11 @@ def launchServer(pipeline):
         # processes don't share memory, (b) so that its logic is
         # not interleaved with calls from executors.  We could instead use a `select`
         # for both Pyro and non-Pyro socket events; see the Pyro documentation)
-        p = Pyro4.Proxy(pipelineURI)
+        p = Pyro5.api.Proxy(pipelineURI)
 
         #mem, memAvail = pipeline.options.execution.mem, pipeline.memAvail
         def loop():
+            p = Pyro5.api.Proxy(pipelineURI)
             try:
                 logger.debug("Auxiliary loop started")
                 logger.debug("memory limit: %.3G; available after server overhead: %.3fG" % (options.execution.mem, pipeline.memAvail))

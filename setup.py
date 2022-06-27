@@ -25,7 +25,7 @@ setup(name='pydpiper',
         #'pygraphviz',
         # pygraphviz needs the graphviz headers (e.g., from libgraphviz-dev .deb) to compile.
         'pyminc',
-        'Pyro4',
+        'Pyro5',
        # 'pytest',
        #TODO fix get_model_building_procedure in pydpiper/minc/registration_strategies.py. ref issue #387
         'qbatch'
