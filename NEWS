@@ -1,3 +1,16 @@
+New in Version 2.0.18
+=====================
+* add support for using Makeflow (https://ccl.cse.nd.edu/software/makeflow) as a backend
+  - this support more queue types than the `qbatch`+`Pyro` backend
+  - by default jobs are submitted individually
+  - for server-executor execution use --queue_type=wq to use Makeflow's Workqueue backend
+    (currently requires starting work_queue_factory yourself)
+  - known issues:
+    + since directories are included in the dependencies, you may see harmless warnings that directories have been modified
+    + our dependency specification may not include all output files;
+      this may be insufficiently strict for some Makeflow backends
+* Pyro4 updated to Pyro5
+
 New in Version 2.0.17
 =====================
 * add Singularity support via --use-singularity, --container-path, --container-args (easy to extend to Apptainer, Docker, Podman, ...)
