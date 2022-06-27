@@ -405,8 +405,6 @@ def _mk_execution_parser(p: ArgParser) -> ArgParser:
                        help="Create relevant directories when a stage is run instead of at startup [Default=%(default)s]")
     group.add_argument("--backend", dest="backend", default="pyro", choices=["pyro", "makeflow"],
                        help="Backend to use to execute pipeline [default=%(default)s]")
-    #group.add_argument("--makeflow", dest="makeflow", default=False, action="store_true",
-    #                   help="use Makeflow backend instead of Pyro5 (RPC) + qbatch backend for execution")
     group.add_argument("--makeflow-opts", dest="makeflow_opts", default=None,
                        help="Extra flags to pass to Makeflow if used [default='%(default)s']")
     return p
