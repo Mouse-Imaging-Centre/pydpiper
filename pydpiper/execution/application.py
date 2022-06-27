@@ -231,7 +231,13 @@ def mk_application(parsers: List[AnnotatedParser], pipeline: Callable[[Any], Res
 
 
 def backend(options):
-    return grid_only_execute if options.execution.submit_server and not options.execution.local else normal_execute
+    if options.execution.backend == 'makeflow':
+        return makeflow
+
+    if options.execution.submit_server and not options.execution.local:
+        return grid_only_execute
+    else:
+        return pyro_execute
 
 # TODO: should create_directories be added as a method to Pipeline?
 def create_directories(stages):
@@ -249,7 +255,7 @@ def create_directories(stages):
 # as a `mk_application` function which inverts control again, although with a clearer interface (hopefully)
 # than AbstractApplication.
 
-def normal_execute(pipeline, options):
+def pyro_execute(pipeline, options):
     # FIXME this is a trivial function; inline pipelineDaemon here
     #pipelineDaemon runs pipeline, launches Pyro client/server and executors (if specified)
     logger.info("Starting pipeline daemon...")
@@ -258,6 +264,107 @@ def normal_execute(pipeline, options):
         create_directories(pipeline.stages) # TODO: or whatever
     pipelineDaemon(pipeline, options, sys.argv[0])
     logger.info("Server has stopped.  Quitting...")
+
+
+def generate_makeflow_command(options, outfile):
+    return (["makeflow", "--jx", outfile] +
+            ([f"-T{options.execution.queue_type}"] if options.execution.queue_type else []) +
+            # TODO any way to pass queue_opts?  via `makeflow -B ...` somehow?
+            (options.execution.makeflow_opts.split() if options.execution.makeflow_opts else []) +
+            ([f"--singularity={options.execution.container_path}",
+              f"--singularity-opt={options.execution.container_args}"]
+             if options.execution.use_singularity else []) +
+            (["--max-remote", str(options.execution.num_exec),
+              "--max-local", str(options.execution.num_exec)]) +
+            (["--skip-file-check"] if not options.execution.check_input_files else []) +
+            ([f"--wrapper={options.execution.cmd_wrapper}"] if options.execution.cmd_wrapper else []) +
+            ([f"--disable-heartbeat"] if not options.execution.monitor_heartbeats else []) +
+            ([f"--wait-for-files={options.execution.fs_delay}"]
+             if options.execution.latency_tolerance else []))
+
+
+def makeflow(pipeline, options):
+    makeflow_file = generate_makeflow(pipeline, options)
+
+    print(f"generated Makeflow file at {makeflow_file}")
+
+    if options.application.execute:
+        import subprocess
+
+        cmd = generate_makeflow_command(options, outfile = makeflow_file)
+
+        logger.info(" ".join(cmd))
+
+        makeflow_stdout_file = f"{makeflow_file}.stdout"
+
+        monitor_cmd = ["makeflow_monitor", f"{makeflow_file}.makeflowlog"]
+
+        # note - we might want to install a sigint handler for all of Pydpiper,
+        # but it's quite unclear how this would intereact with the Pyro backend
+        # (and with potential library rather than application usage)
+
+        monitor = subprocess.Popen(monitor_cmd)
+        try:
+
+          with open(makeflow_stdout_file, 'w') as f:
+              res = subprocess.run(cmd, stdout = f, stderr=subprocess.STDOUT)
+
+        except KeyboardInterrupt:
+          rc = 130
+        else:
+          rc = res.returncode
+          if rc == 0:
+              print("Done.")
+          else:
+              print(f"makeflow exited with an error; see {makeflow_stdout_file} for details")
+        finally:
+          monitor.terminate()
+          monitor.wait()
+          sys.exit(rc)
+
+def generate_makeflow(pipeline, options):
+    import simplejson
+
+    def remove_none_values(d):
+        return { k : v for k, v in d.items() if v is not None }
+
+    output_file = f"{options.application.pipeline_name}_makeflow.jx"
+
+    with open(options.application.pipeline_name + "_makeflow.jx", 'w') as f:
+        f.write(simplejson.dumps(
+          { "rules" :
+            [
+              remove_none_values({
+                "command"     : str(stage),
+                "inputs"      : stage.inputFiles + list({os.path.dirname(f) for f in stage.outputFiles}),
+                "outputs"     : stage.outputFiles,
+                "category"    : stage.category,
+                "environment" : stage.env_vars if stage.env_vars != {} else None
+              })
+              for stage in pipeline.stages
+            ] + [ { "command" : f"mkdir -p {d}", "inputs" : [], "outputs" : [d],
+                    "local_job" : True, "category" : "mkdir" }
+                  for d in list({ os.path.dirname(f) for s in pipeline.stages for f in s.outputFiles }) ],
+            "categories" : {
+                "default" : {
+                    "resources" : { "memory" : int(1024 * options.execution.default_job_mem) }
+                },
+                "mkdir" : {
+                    "resources" : { "memory" : 1, "wall-time" : 10}
+                },
+                "ANTS" : {
+                    "resources" : { "memory" : int(1024 * 12), "wall-time" : 48 * 3600 }
+                },
+                "minctracc" : {
+                    "resources" : { "memory" : int(1024 * 8), "wall-time" : 12 * 3600 }
+                },
+            }
+          },
+          indent = '  '
+        ))
+
+    return output_file
+
 
 def grid_only_execute(pipeline, options):
     if options.execution.queue_type != 'pbs':

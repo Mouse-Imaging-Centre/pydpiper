@@ -380,7 +380,7 @@ def _mk_execution_parser(p: ArgParser) -> ArgParser:
                             "are valid MINC files [Default=%(default)s]")
     group.add_argument("--no-check-input-files", dest="check_input_files", action="store_false",
                        help="Opposite of --check-input-files")
-    group.set_defaults(check_inputs=True)
+    group.set_defaults(check_input_files=True)
     group.add_argument("--check-outputs", dest="check_outputs",
                        action="store_true",
                        help="Check output files exist and error if not [Default=%(default)s]")
@@ -403,6 +403,12 @@ def _mk_execution_parser(p: ArgParser) -> ArgParser:
     group.add_argument("--defer-directory-creation", default=False,
                        action="store_true", dest="defer_directory_creation",
                        help="Create relevant directories when a stage is run instead of at startup [Default=%(default)s]")
+    group.add_argument("--backend", dest="backend", default="pyro", choices=["pyro", "makeflow"],
+                       help="Backend to use to execute pipeline [default=%(default)s]")
+    #group.add_argument("--makeflow", dest="makeflow", default=False, action="store_true",
+    #                   help="use Makeflow backend instead of Pyro5 (RPC) + qbatch backend for execution")
+    group.add_argument("--makeflow-opts", dest="makeflow_opts", default=None,
+                       help="Extra flags to pass to Makeflow if used [default='%(default)s']")
     return p
 
 

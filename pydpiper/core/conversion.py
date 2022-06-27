@@ -7,6 +7,7 @@ def convertCmdStage(cmd_stage):
     c.cmd  = cmd_stage.to_array()
     c.mem  = cmd_stage.memory
     c.procs = cmd_stage.procs
+    c.category = cmd_stage.category
     c.name = c.cmd[0]
     c.checkLogFile()
     c._runnable_hooks = cmd_stage.when_runnable_hooks

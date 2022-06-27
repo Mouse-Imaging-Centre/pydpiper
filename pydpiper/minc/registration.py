@@ -2328,7 +2328,7 @@ def lsq6(imgs: List[MincAtom],
                                                            minctracc_conf=default_lsq6_minctracc_conf)
         else:
             mt_conf = conf_from_defaults(defaults)
-        xfms_to_target = s.defer_map([multilevel_minctracc(source=img, target=target, conf=mt_conf,
+        xfms_to_target = s.defer_all([multilevel_minctracc(source=img, target=target, conf=mt_conf,
                                                        transform_info=["-est_center", "-est_translations"])
                                      for img in imgs])
     elif conf.lsq6_method == "lsq6_simple":
@@ -2346,7 +2346,7 @@ def lsq6(imgs: List[MincAtom],
         else:
             mt_conf = conf_from_defaults(defaults)  # FIXME print a warning?!
 
-        xfms_to_target = s.defer_map([multilevel_minctracc(source=img,
+        xfms_to_target = s.defer_all([multilevel_minctracc(source=img,
                                                        target=target,
                                                        conf=mt_conf)
                                      for img in imgs])
@@ -2354,10 +2354,10 @@ def lsq6(imgs: List[MincAtom],
         raise ValueError("bad lsq6 method: %s" % conf.lsq6_method)
 
     if post_alignment_xfm:
-        composed_xfms = s.defer_map([xfmconcat([xfm.xfm, post_alignment_xfm],
+        composed_xfms = s.defer_all([xfmconcat([xfm.xfm, post_alignment_xfm],
                                            name=xfm.xfm.output_sub_dir + "_lsq6")
                                     for xfm in xfms_to_target])
-        resampled_imgs = (s.defer_map([mincresample(img=native_img,
+        resampled_imgs = (s.defer_all([mincresample(img=native_img,
                                                 xfm=overall_xfm,
                                                 like=post_alignment_target,
                                                 interpolation=Interpolation.sinc,

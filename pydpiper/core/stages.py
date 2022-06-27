@@ -21,7 +21,8 @@ class CmdStage(object):
                  memory   : float = None,
                  procs    : int = 1,
                  log_file : Optional[str] = None,
-                 env_vars : Dict[str,str] = None) -> None:
+                 env_vars : Dict[str,str] = None,
+                 category : Optional[str] = None) -> None:
         # TODO: rather than having separate cmd_stage fn, might want to make inputs/outputs optional here
         self.inputs  = inputs          # type: Tuple[FileAtom, ...]
         # TODO: might be better to dereference inputs -> inputs.path here to save mem
@@ -34,6 +35,7 @@ class CmdStage(object):
         self.when_finished_hooks = []  # type: List[Callable[[], Any]]
         self.memory = memory
         self.procs = procs
+        self.category = category or self._cmd[0]  # TODO using the cmd name seems like a good heuristic, but what about the case of wrapping programs ??
         # some cosmetics: we would like the log files to reside in the "log" subdirectory. For most mincAtoms, we can
         # access this directory by using its "dir" and adding "../log". This is not true for files that live in the
         # _nlin or _lsq12 directories though. They live in their own top level directory, so we should just create
@@ -123,7 +125,7 @@ class Stages(ordered_set.OrderedSet):
     def defer(self, result : 'Result[T]') -> T:
         self.update(result.stages)
         return result.output
-    def defer_map(self, results : Tuple['Result[T]']) -> Tuple[T]:
+    def defer_all(self, results : Tuple['Result[T]']) -> Tuple[T]:
         # eventually this will have better semantics than `map defer`
         results = tuple(results)  # TODO decide what type this should be (n-tuple, iterable, etc)
         for result in results:
