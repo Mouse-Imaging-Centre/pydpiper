@@ -206,6 +206,8 @@ class ANTS(NLIN):
                           str(sim_metric_conf.weight), str(sim_metric_conf.radius_or_bins)])
         subcmd = '"\'"' + "".join([sim_metric_conf.metric, '[', inner, ']']) + '"\'"'
         similarity_cmds.extend(["-m", subcmd])
+    if conf.use_mask and source.mask is None:
+        warnings.warn("ANTS configured to use mask for registration but no mask available")
     stage = CmdStage(
         inputs=(source, target) + tuple(similarity_inputs) + cast(tuple, ((source.mask,) if source.mask else ())),
         # need to cast to tuple due to mypy bug; see mypy/issues/622
