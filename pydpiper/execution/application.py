@@ -178,10 +178,6 @@ def execute(stages, options):
     ensure_distinct_outputs([convertCmdStage(s) for s in stages])
 
 
-    if not options.application.execute:
-        print("Not executing the command (--no-execute is specified).\nDone.")
-        return
-
     def check_inputs():
         # TODO: probably inefficient to reconstruct inputs from graph here instead of once and for all ...
         # TODO: or check inputs to unfinished stages lying outside the unfinished set, instead of the 'overall' inputs!
@@ -208,7 +204,6 @@ def execute(stages, options):
     # TODO: why is this needed now that --version is also handled automatically?
     # --num-executors=0 (<=> --no-execute) could be the default, and you could
     # also refuse to submit scripts for 0 executors ...
-    ensure_exec_specified(options.execution.num_exec)
 
     # TODO: move calls to create_directories into execution functions
     #create_directories(stages)
@@ -256,6 +251,10 @@ def create_directories(stages):
 # than AbstractApplication.
 
 def pyro_execute(pipeline, options):
+    if not options.application.execute:
+        print("Not executing the command (--no-execute is specified).\nDone.")
+        return
+    ensure_exec_specified(options.execution.num_exec)
     # FIXME this is a trivial function; inline pipelineDaemon here
     #pipelineDaemon runs pipeline, launches Pyro client/server and executors (if specified)
     logger.info("Starting pipeline daemon...")
@@ -275,7 +274,7 @@ def generate_makeflow_command(options, outfile):
               f"--singularity-opt={options.execution.container_args}"]
              if options.execution.use_singularity else []) +
             (["--max-remote", str(options.execution.num_exec),
-              "--max-local", str(options.execution.num_exec)]) +
+              "--max-local", str(options.execution.num_exec)] if options.execution.num_exec is not None else []) +
             (["--skip-file-check"] if not options.execution.check_input_files else []) +
             ([f"--wrapper={options.execution.cmd_wrapper}"] if options.execution.cmd_wrapper else []) +
             ([f"--disable-heartbeat"] if not options.execution.monitor_heartbeats else []) +
@@ -285,10 +284,10 @@ def generate_makeflow_command(options, outfile):
 
 def makeflow(pipeline, options):
     makeflow_file = generate_makeflow(pipeline, options)
-
     print(f"generated Makeflow file at {makeflow_file}")
 
     if options.application.execute:
+        ensure_exec_specified(options.execution.num_exec)
         import subprocess
 
         cmd = generate_makeflow_command(options, outfile = makeflow_file)
@@ -322,13 +321,16 @@ def makeflow(pipeline, options):
           monitor.wait()
           sys.exit(rc)
 
+def makeflow_filename(options):
+    return f"{options.application.pipeline_name}_makeflow.jx"
+
 def generate_makeflow(pipeline, options):
     import simplejson
 
     def remove_none_values(d):
         return { k : v for k, v in d.items() if v is not None }
 
-    output_file = f"{options.application.pipeline_name}_makeflow.jx"
+    output_file = makeflow_filename(options)
 
     with open(options.application.pipeline_name + "_makeflow.jx", 'w') as f:
         f.write(simplejson.dumps(
