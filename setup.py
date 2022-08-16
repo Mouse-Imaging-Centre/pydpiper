@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 
-import os
-import sys
-
 from setuptools import setup
+
+
+test_deps = ['pytest', 'pytest-console-scripts'],  # also rawtominc (minc_tools), param2xfm (mni_autoreg)
+
+extras = {
+  'test' : test_deps
+}
 
 
 setup(name='pydpiper',
@@ -30,13 +34,12 @@ setup(name='pydpiper',
         'qbatch',
         'simplejson'
       ],
-      #extras_require = { 'graphing' : ['pygraphviz']},  # could make pygraphviz optional, but then won't auto-install
+      extras_require=extras,
       platforms="any",
       packages=['pydpiper', 'pydpiper.core', 'pydpiper.execution', 'pydpiper.itk', 'pydpiper.minc', 'pydpiper.pipelines'],
       package_data={ 'pydpiper' : ['templates/*.sh'] },
       data_files=[('config',
-                   [os.path.join("config", f)
-                    for f in ['CCM_HPF.cfg', 'MICe.cfg', 'MICe_dev.cfg', 'SciNet.cfg', 'SciNet_debug.cfg']])],
+                   [f"config/{f}" for f in ['CCM_HPF.cfg', 'MICe.cfg', 'MICe_dev.cfg', 'SciNet.cfg', 'SciNet_debug.cfg']])],
       entry_points={
           'console_scripts':
             [f'{pipe}{ext}=pydpiper.pipelines.{pipe}:application' for pipe in
@@ -46,6 +49,6 @@ setup(name='pydpiper',
                  'stage_embryos_in_4D_atlas',
                  'twolevel_model_building'] for ext in ["", ".py"]],
       },
-      tests_require=['pytest', 'pytest-console-scripts'],  # also rawtominc (minc_tools), param2xfm (mni_autoreg)
+      tests_require=test_deps,
       zip_safe=False  # since we want the data files to be installed on disk for the moment ...
       )
