@@ -9,7 +9,7 @@ Path.ls = lambda x: list(x.iterdir())
 
 signal.signal(signal.SIGPIPE, signal.SIG_DFL)
 
-import Pyro4
+import Pyro5
 
 """ check the status of a pydpiper pipeline by querying the server using its uri"""
 
@@ -36,13 +36,13 @@ if __name__ == '__main__':
     # find the server
     try:
         uf = open(uri_file)
-        serverURI = Pyro4.URI(uf.readline())
+        serverURI = Pyro5.api.URI(uf.readline())
         uf.close()
     except:
         print("There is a problem opening the specified uri file: %s" % uri_file)
         raise
 
-    proxyServer = Pyro4.Proxy(serverURI)
+    proxyServer = Pyro5.api.Proxy(serverURI)
 
     # total number of stages in the pipeline:
     numStages = proxyServer.getTotalNumberOfStages()
