@@ -30,7 +30,7 @@ jobs:
         wget --quiet http://packages.bic.mni.mcgill.ca/minc-toolkit/Debian/minc-toolkit-1.9.18-20220625-Ubuntu_20.04-x86_64.deb
         sudo dpkg -i minc-toolkit-1.9.18-20220625-Ubuntu_20.04-x86_64.deb
         python -m pip install --upgrade pip
-        python -m pip install flake8 pytest
+        python -m pip install flake8 pytest pytest-console-scripts
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
     #- name: Lint with flake8
     #  run: |
