@@ -26,7 +26,6 @@ setup(name='pydpiper',
         # pygraphviz needs the graphviz headers (e.g., from libgraphviz-dev .deb) to compile.
         'pyminc',
         'Pyro5',
-       # 'pytest',
        #TODO fix get_model_building_procedure in pydpiper/minc/registration_strategies.py. ref issue #387
         'qbatch',
         'simplejson'
@@ -47,5 +46,6 @@ setup(name='pydpiper',
                  'stage_embryos_in_4D_atlas',
                  'twolevel_model_building'] for ext in ["", ".py"]],
       },
+      tests_require=['pytest', 'pytest-console-scripts'],  # also rawtominc (minc_tools), param2xfm (mni_autoreg)
       zip_safe=False  # since we want the data files to be installed on disk for the moment ...
       )
