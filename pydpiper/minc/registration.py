@@ -1934,7 +1934,7 @@ def lsq12_pairwise(imgs: List[MincAtom],
                    # what to do if both it and a protocol file are supplied?
                    lsq12_conf: LSQ12Conf,
                    lsq12_dir: str,
-                   use_robust_averaging: bool,
+                   use_robust_averaging: bool = False,
                    create_qc_images: bool = True,
                    like: MincAtom = None,
                    #mincaverage = mincbigaverage

@@ -132,7 +132,7 @@ class NLIN_BUILD_MODEL(NLIN, metaclass=ABCMeta):
                     nlin_dir : str,
                     nlin_prefix : str,
                     initial_target : I,
-                    robust_averaging: bool = None,
+                    use_robust_averaging: bool = None,
                     #mincaverage,
                     output_name_wo_ext : Optional[str] = None): pass
 

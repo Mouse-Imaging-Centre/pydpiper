@@ -20,9 +20,9 @@ def build_model(reg_module : Type[NLIN]) -> Type[NLIN_BUILD_MODEL]:
     def f(imgs: List[MincAtom],
           initial_target: MincAtom,
           conf: reg_module.MultilevelConf,
-          use_robust_averaging: bool,
           nlin_dir: str,
           nlin_prefix: str,
+          use_robust_averaging: bool = False,
           #algorithms : Type[Algorithms]
           ) -> Result[WithAvgImgs[List[XfmHandler]]]:
         confs = reg_module.hierarchical_to_single(conf) if conf is not None else None
@@ -229,6 +229,7 @@ def pairwise(nlin_module: NLIN, max_pairs: Optional[int] = None, max_images: Opt
         nlin_dir: str,
         conf: nlin_module.Conf,
         initial_target: ImgAtom,
+        use_robust_averaging: bool,
         nlin_prefix: str
         #output_dir_for_avg: str = None,
         #output_name_wo_ext: str = None
@@ -299,6 +300,7 @@ def pairwise(nlin_module: NLIN, max_pairs: Optional[int] = None, max_images: Opt
     # avg_xfmHs = [avg_nlin_xfm_from(src_img=img, target_imgs=imgs) for img in imgs]
 
     final_avg = s.defer(nlin_module.Algorithms.average(imgs=[xfm.resampled for xfm in avg_xfms],
+                                                       robust=use_robust_averaging,
                                                        avg_file=final_avg))
 
     return Result(stages=s, output=WithAvgImgs(avg_imgs=[final_avg], avg_img=final_avg, output=avg_xfms))
@@ -318,6 +320,7 @@ def tournament_and_build_model(nlin_module : Type[NLIN]):
           conf: nlin_module.MultilevelConf,
           initial_target: MincAtom,
           nlin_prefix: str,
+          use_robust_averaging: bool = False,
           #output_dir_for_avg: str = None,
           #output_name_wo_ext: str = None
           ):
@@ -325,13 +328,14 @@ def tournament_and_build_model(nlin_module : Type[NLIN]):
 
         tournament_result = s.defer(tournament(nlin_module).build_model(
             imgs=imgs, nlin_dir=nlin_dir, conf=nlin_module.hierarchical_to_single(conf)[-1] if conf else None,
-            initial_target=initial_target, nlin_prefix=nlin_prefix
+            initial_target=initial_target, nlin_prefix=nlin_prefix,
+            use_robust_averaging=use_robust_averaging
             #, output_name_wo_ext=output_name_wo_ext  #, algorithms=nlin_module.algorithms
         ))
 
         build_model_result = s.defer(build_model(nlin_module).build_model(
             imgs=imgs, nlin_dir=nlin_dir, conf=conf, initial_target=tournament_result.avg_img,
-            nlin_prefix=nlin_prefix
+            nlin_prefix=nlin_prefix, use_robust_averaging=use_robust_averaging
             #, output_name_wo_ext=output_name_wo_ext  #, algorithms=algorithms
         ))
 
@@ -350,6 +354,7 @@ def pairwise_and_build_model(nlin_module : Type[NLIN]):
           conf: nlin_module.MultilevelConf,
           initial_target: MincAtom,
           nlin_prefix: str,
+          use_robust_averaging: bool = False,
           #output_dir_for_avg: str = None,
           #output_name_wo_ext: str = None
           ):
@@ -357,13 +362,13 @@ def pairwise_and_build_model(nlin_module : Type[NLIN]):
 
         pairwise_result = s.defer(pairwise(nlin_module, max_images=25, max_pairs=None).build_model(
             imgs=imgs, nlin_dir=nlin_dir, conf=nlin_module.hierarchical_to_single(conf)[-1] if conf else None,
-            initial_target=initial_target, nlin_prefix=nlin_prefix
+            initial_target=initial_target, nlin_prefix=nlin_prefix, use_robust_averaging=use_robust_averaging
             #, output_name_wo_ext=output_name_wo_ext  #, algorithms=nlin_module.algorithms
         ))
 
         build_model_result = s.defer(build_model(nlin_module).build_model(
             imgs=imgs, nlin_dir=nlin_dir, conf=conf, initial_target=pairwise_result.avg_img,
-            nlin_prefix=nlin_prefix
+            nlin_prefix=nlin_prefix, use_robust_averaging=use_robust_averaging
             #, output_name_wo_ext=output_name_wo_ext  #, algorithms=algorithms
         ))
 
