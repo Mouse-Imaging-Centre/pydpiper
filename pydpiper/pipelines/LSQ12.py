@@ -9,6 +9,7 @@ from pydpiper.minc.registration import (lsq12_pairwise, LSQ12Conf,
                                         default_lsq12_multilevel_minctracc,
                                         parse_minctracc_nonlinear_protocol_file, get_resolution_from_file)
 from pydpiper.minc.files import MincAtom
+from pydpiper.pipelines.MAGeT import get_imgs
 
 
 def LSQ12_pipeline(options):
@@ -20,10 +21,10 @@ def LSQ12_pipeline(options):
     processed_dir = os.path.join(output_dir, pipeline_name + "_processed")
     lsq12_dir     = os.path.join(output_dir, pipeline_name + "_lsq12")
 
-    resolution = (options.registration.resolution  # TODO does using the finest resolution here make sense?
-                  or min([get_resolution_from_file(f) for f in options.application.files]))
+    imgs = get_imgs(options.application)
 
-    imgs = [MincAtom(f, pipeline_sub_dir=processed_dir) for f in options.application.files]
+    resolution = (options.registration.resolution  # TODO does using the finest resolution here make sense?
+                  or min([get_resolution_from_file(f.path) for f in imgs]))
 
     # determine LSQ12 settings by overriding defaults with
     # any settings present in protocol file, if it exists

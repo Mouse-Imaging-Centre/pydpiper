@@ -31,10 +31,10 @@ def NLIN_pipeline(options):
     processed_dir = os.path.join(output_dir, pipeline_name + "_processed")
     nlin_dir      = os.path.join(output_dir, pipeline_name + "_nlin")
 
-    resolution = (options.registration.resolution  # TODO does using the finest resolution here make sense?
-                  or min([get_resolution_from_file(f) for f in options.application.files]))
-
     imgs = get_imgs(options.application)
+
+    resolution = (options.registration.resolution  # TODO does using the finest resolution here make sense?
+                  or min([get_resolution_from_file(f.path) for f in imgs]))
 
     initial_target_mask = MincAtom(options.nlin.target_mask) if options.nlin.target_mask else None
     initial_target = MincAtom(options.nlin.target, mask=initial_target_mask)
