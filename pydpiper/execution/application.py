@@ -3,7 +3,6 @@ from collections import defaultdict
 import pkg_resources
 import logging
 import networkx as nx
-import pandas as pd
 import os
 import sys
 import shutil
@@ -15,7 +14,7 @@ from typing import NamedTuple, List, Callable, Any
 from pydpiper.core.stages import Result
 from pydpiper.core.arguments import (CompoundParser, AnnotatedParser, application_parser,
                                      registration_parser, execution_parser, parse)
-from pydpiper.execution.pipeline import Pipeline, pipelineDaemon
+from pydpiper.execution.pipeline import Pipeline, pipelineDaemon, CmdStage, OutputFile
 from pydpiper.execution.queueing import runOnQueueingSystem
 from pydpiper.execution.pipeline_executor import ensure_exec_specified
 from pydpiper.core.util import output_directories

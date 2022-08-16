@@ -142,9 +142,9 @@ def parse(cmd_str : str) -> CmdStage:
     or a few flags like -o and tags anything else that looks like a file as input.)
     >>> val = 2
     >>> c = parse('mincfoo -flag {val} ,input1.mnc ,input2.mnc @output.mnc'.format(**vars()))
-    >>> c.outputs
+    >>> [f.path for f in c.outputs]
     ['output.mnc']
-    >>> c.inputs
+    >>> [f.path for f in c.inputs]
     ['input1.mnc', 'input2.mnc']
     """
     cmd = shlex.split(cmd_str)

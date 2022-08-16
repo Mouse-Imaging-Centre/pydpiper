@@ -1,14 +1,13 @@
 import pytest
 from configargparse import Namespace
 
-from pydpiper.core.arguments import CompoundParser, AnnotatedParser, application_parser, parse #, lsq6_parser, lsq12_parser
-from pydpiper.pipelines.MBM  import mbm_parser
+from pydpiper.core.arguments import CompoundParser, AnnotatedParser, application_parser, parse
+from pydpiper.pipelines.MBM  import mk_mbm_parser
 
-# TODO should these test files be named test_*?
 
-# should these be fixtures or not?
 @pytest.fixture
 def two_mbm_parser():
+    mbm_parser = mk_mbm_parser(with_common_space=False)
     return CompoundParser([AnnotatedParser(parser=mbm_parser, prefix="mbm1", namespace="mbm1"),
                            AnnotatedParser(parser=mbm_parser, prefix="mbm2", namespace="mbm2")])
 
@@ -38,7 +37,7 @@ def application_parse(two_mbm_parser):
     return parse(CompoundParser([application_parser,
                                  AnnotatedParser(parser=two_mbm_parser, prefix="two-mbms", namespace="two-mbms")]),
                  ["--two-mbms-mbm1-bootstrap", "--two-mbms-mbm2-bootstrap",
-                  "--two-mbms-mbm1-lsq12-max-pairs", "23", "--two-mbms-mbm2-lsq12-max-pairs=24", "img_1.mnc"])
+                  "--two-mbms-mbm1-lsq12-max-pairs", "23", "--two-mbms-mbm2-lsq12-max-pairs=24", "--file", "img_1.mnc"])
 
 
 def is_recursive_subnamespace(n1, n2):
@@ -50,7 +49,7 @@ def is_recursive_subnamespace(n1, n2):
                                                       is_recursive_subnamespace(n1.__dict__[f], n2.__dict__[f])))
                 for f in n1.__dict__))
 
-class TestArgumentParsing():
+class TestArgumentParsing:
     def test_nested_parsing(self, two_mbm_parse):
         assert is_recursive_subnamespace(Namespace(mbm1=Namespace(lsq12=Namespace(max_pairs=22)),
                                                    mbm2=Namespace(lsq12=Namespace(max_pairs=25))),
@@ -62,6 +61,5 @@ class TestArgumentParsing():
                                                                       mbm2=Namespace(lsq12=Namespace(max_pairs=25)))),
                                          four_mbm_parse)
     def test_with_files(self, application_parse):
-        assert is_recursive_subnamespace(Namespace(application=Namespace(files=["img_1.mnc"]),
-                                                   mbm=Namespace(lsq12=Namespace(max_pairs=20))),
+        assert is_recursive_subnamespace(Namespace(application=Namespace(files=["img_1.mnc"])),
                                          application_parse)

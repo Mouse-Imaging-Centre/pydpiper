@@ -337,10 +337,12 @@ def mincblur(img: MincAtom,
     """
     >>> img = MincAtom(name='/images/img_1.mnc', pipeline_sub_dir='/scratch/some_pipeline_processed/')
     >>> img_blur = mincblur(img=img, fwhm=0.056)
-    >>> img_blur.output.path
+    >>> img_blur.output.img.path
     '/scratch/some_pipeline_processed/img_1/tmp/img_1_fwhm0.056_blur.mnc'
+    >>> img_blur.output.gradient.path
+    '/scratch/some_pipeline_processed/img_1/tmp/img_1_fwhm0.056_dxyz.mnc'
     >>> [i.render() for i in img_blur.stages]
-    ['mincblur -clobber -no_apodize -fwhm 0.056 /images/img_1.mnc /scratch/some_pipeline_processed/img_1/tmp/img_1_fwhm0.056']
+    ['mincblur -clobber -no_apodize -fwhm 0.056 /images/img_1.mnc /scratch/some_pipeline_processed/img_1/tmp/img_1_fwhm0.056 -gradient']
     """
 
     # Is this the appropriate place for this?
@@ -746,9 +748,9 @@ xfmconcat_template = templating_env.get_template("xfmconcat.sh")
 def xfmconcat(xfms: List[XfmAtom],
               name: str = None) -> Result[XfmAtom]:
     """
-    >>> stages, xfm = xfmconcat([XfmAtom('/tmp/%s' % i, pipeline_sub_dir='/scratch') for i in ['t1.xfm', 't2.xfm']])
+    >>> stages = xfmconcat([XfmAtom('/tmp/%s' % i, pipeline_sub_dir='/scratch') for i in ['t1.xfm', 't2.xfm']]).stages
     >>> [s.render() for s in stages]
-    ['xfmconcat /tmp/t1.xfm /tmp/t2.xfm /scratch/t1/concat_of_t1_and_t2.xfm']
+    ['xfmconcat -clobber /tmp/t1.xfm /tmp/t2.xfm /scratch/t1/transforms/concat_of_t1_and_t2.xfm']
     """
     if len(xfms) == 0:
         raise ValueError("`xfmconcat` arg `xfms` was empty (can't concat zero files)")

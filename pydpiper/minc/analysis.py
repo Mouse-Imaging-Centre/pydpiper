@@ -32,8 +32,9 @@ def mincblob(op : str, grid : MincAtom, subdir : str = "tmp") -> Result[MincAtom
     are being calculated. As such, 1 needs to be added to the result of the mincblob call.
     We will do that here, because it makes most sense here.
     >>> stages = mincblob('determinant', MincAtom("/images/img_1.mnc", pipeline_sub_dir="/tmp")).stages
-    >>> [s.render() for s in stages]
-    ['mincblob -clobber -determinant /images/img_1.mnc /tmp/img_1/img_1_determinant.mnc']
+    >>> for c in sorted({s.render() for s in stages}): print(c)
+    mincblob -clobber -determinant /images/img_1.mnc /tmp/img_1/tmp/img_1_temp_det.mnc
+    mincmath -clobber -2 -const 1 -add /tmp/img_1/tmp/img_1_temp_det.mnc /tmp/img_1/tmp/img_1_det.mnc
     """
     if op not in ["determinant", "trace", "translation", "magnitude"]:
         raise ValueError('mincblob: invalid operation %s' % op)
