@@ -45,5 +45,5 @@ def main(args):
     stages = LSQ12_pipeline(options).stages
     execute(stages, options)
 
-if __name__ == '__main__':
-    main(sys.argv)
+
+def application(): return main(sys.argv)

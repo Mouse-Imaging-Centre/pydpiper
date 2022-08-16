@@ -66,8 +66,4 @@ def lsq6_pipeline(options):
 
     return Result(stages=s, output=lsq6_result)
 
-lsq6_application = mk_application(parsers=[lsq6_parser], pipeline=lsq6_pipeline)
-
-
-if __name__ == "__main__":
-    lsq6_application()
+application = mk_application(parsers=[lsq6_parser], pipeline=lsq6_pipeline)

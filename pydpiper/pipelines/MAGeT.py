@@ -676,9 +676,6 @@ maget_parser = AnnotatedParser(parser=BaseParser(_mk_maget_parser(ArgParser(add_
 
 maget_parsers = CompoundParser([lsq12_parser, nlin_parser, maget_parser])
 
-maget_application = mk_application(parsers=[AnnotatedParser(parser=maget_parsers,
-                                                            namespace="maget")],
-                                   pipeline=maget_pipeline)
-
-if __name__ == "__main__":
-    maget_application()
+application = mk_application(parsers=[AnnotatedParser(parser=maget_parsers,
+                                                      namespace="maget")],
+                             pipeline=maget_pipeline)

@@ -831,7 +831,7 @@ def get_chain_transforms_for_stats(pipeline_subject_info, intersubj_xfms_dict, c
     return Result(stages=s, output=(dict_transforms_to_common_avg, dict_transforms_to_subject_common_tp))
 
 
-def main():
+def main(args):
     p = CompoundParser(
           [execution_parser,
            application_parser,
@@ -847,8 +847,8 @@ def main():
            AnnotatedParser(parser=_chain_parser, prefix="chain", namespace="chain")])
     
     # TODO could abstract and then parametrize by prefix/ns ??
-    options = parse(p, sys.argv[1:])
-    s= Stages()
+    options = parse(p, args[1:])
+    s = Stages()
     # TODO: the registration resolution should be set somewhat outside
     # of any actual function? Maybe the right time to set this, is here
     # when options are gathered?
@@ -915,5 +915,4 @@ def main():
     execute(chain_result.stages, options)
 
 
-if __name__ == "__main__":
-    main()
+def application(): return main(sys.argv)

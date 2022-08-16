@@ -312,5 +312,5 @@ def main(args):
 
     execute(two_level_pipeline(options).stages, options)
 
-if __name__ == "__main__":
-    main(sys.argv)
+
+def application(): return main(sys.argv)

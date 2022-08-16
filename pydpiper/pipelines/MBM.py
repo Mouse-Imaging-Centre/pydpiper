@@ -541,8 +541,5 @@ def mk_mbm_parser(with_common_space : bool = True,
 
 
 # TODO cast to MBMConf?
-mbm_application = mk_application(parsers=[AnnotatedParser(parser=mk_mbm_parser(), namespace='mbm')],
-                                 pipeline=mbm_pipeline)
-
-if __name__ == "__main__":
-    mbm_application()
+application = mk_application(parsers=[AnnotatedParser(parser=mk_mbm_parser(), namespace='mbm')],
+                             pipeline=mbm_pipeline)

@@ -38,15 +38,14 @@ setup(name='pydpiper',
       data_files=[('config',
                    [os.path.join("config", f)
                     for f in ['CCM_HPF.cfg', 'MICe.cfg', 'MICe_dev.cfg', 'SciNet.cfg', 'SciNet_debug.cfg']])],
-      scripts=([os.path.join("pydpiper/execution", script) for script in
-                ['pipeline_executor.py', 'check_pipeline_status.py']] +
-               [os.path.join("pydpiper/pipelines", f) for f in
-                ['asymmetry.py', 'LSQ12.py', 'LSQ6.py', 'MAGeT.py', 'MBM.py', 'NLIN.py',
-                 'registration_chain.py',
-                 'registration_tamarack.py',
-                 'stage_embryos_in_4D_atlas.py',
-                 'twolevel_model_building.py']]),
-                 #'stats.py',
-      tests_require=['pytest'],
+      entry_points={
+          'console_scripts':
+            [f'{pipe}{ext}=pydpiper.pipelines.{pipe}:application' for pipe in
+                ['asymmetry', 'LSQ12', 'LSQ6', 'MAGeT', 'MBM', 'NLIN',
+                 'registration_chain',
+                 'registration_tamarack',
+                 'stage_embryos_in_4D_atlas',
+                 'twolevel_model_building'] for ext in ["", ".py"]],
+      },
       zip_safe=False  # since we want the data files to be installed on disk for the moment ...
       )

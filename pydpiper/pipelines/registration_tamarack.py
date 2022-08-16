@@ -258,5 +258,4 @@ def main(args):
     execute(stages, options)
 
 
-if __name__ == '__main__':
-    main(sys.argv)
+def application(): return main(sys.argv)

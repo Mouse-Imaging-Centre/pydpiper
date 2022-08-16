@@ -91,9 +91,5 @@ nlin_parser.parser.argparser.add_argument("--target-mask", dest="target_mask",
                                                "[Default = %(default)s]")
 
 
-nlin_application = mk_application(parsers=[nlin_parser, stats_parser], #, namespace='nlin')],
-                                  pipeline=NLIN_pipeline)
-
-
-if __name__ == "__main__":
-    nlin_application()
+application = mk_application(parsers=[nlin_parser, stats_parser],
+                             pipeline=NLIN_pipeline)
