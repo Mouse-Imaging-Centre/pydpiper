@@ -121,6 +121,8 @@ def lsq12_protocol(tmp_path_factory):
       '"blur";0.28;0.19;0.14\n'
       '"step";0.9;0.46;0.3\n'
       '"gradient";FALSE;TRUE;FALSE\n'
+      '"simplex";2.8;1.4;0.9\n'
+      '"w_translations";0.4;0.4;0.4\n'
     )
     with open(protocol_file, 'w') as f:
         f.write(protocol)
@@ -133,9 +135,7 @@ def nonlinear_protocol(tmp_path_factory):
       '"blur";0.25;0.25;0.25;0.25;0.25;-1\n'
       '"step";1;0.5;0.5;0.2;0.2;0.1\n'
       '"iterations";60;60;60;10;10;4\n'
-      '"simplex";3;3;3;1.5;1.5;1\n'
       '"gradient";False;False;True;False;True;False\n'
-      '"w_translations";0.2;0.2;0.2;0.2;0.2;0.2\n'
       '"optimization";"-use_simplex";"-use_simplex";"-use_simplex";"-use_simplex";"-use_simplex";"-use_simplex"\n'
     )
     with open(protocol_file, 'w') as f:
