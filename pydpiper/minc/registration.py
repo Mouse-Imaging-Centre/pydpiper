@@ -384,6 +384,8 @@ def mincblur(img: MincAtom,
                   output=Namespace(img=out_img, gradient=out_gradient) if gradient else Namespace(img=out_img))
 
 
+mincaverage_template = templating_env.get_template("mincaverage.sh")
+
 def mincaverage(imgs: List[MincAtom],
                 name_wo_ext: str = "average",
                 output_dir: str = '.',
@@ -2131,7 +2133,7 @@ def check_MINC_input_files(args: List[str]) -> None:
     # lastly we should check that the actual filenames are distinct, because
     # directories are made based on the basename
     duplicates_exist = False
-    seen = set()  # type: Set[str]
+    seen = set()
     for inputF in args:
         fileBase = os.path.splitext(os.path.basename(inputF))[0]
         if fileBase in seen:

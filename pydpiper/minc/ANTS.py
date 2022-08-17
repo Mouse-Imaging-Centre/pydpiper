@@ -173,8 +173,8 @@ class ANTS(NLIN):
                             "%s_ANTS_to_%s.xfm" % (source.filename_wo_ext, target.filename_wo_ext))
     out_xfm = XfmAtom(name=name, pipeline_sub_dir=source.pipeline_sub_dir, output_sub_dir=source.output_sub_dir)
 
-    similarity_cmds = []       # type: List[str]
-    similarity_inputs = set()  # type: Set[MincAtom]
+    similarity_cmds = []
+    similarity_inputs = set()
     # TODO: similarity_inputs should be a set, but `MincAtom`s aren't hashable
     for sim_metric_conf in conf.sim_metric_confs:
         if sim_metric_conf.use_gradient_image:

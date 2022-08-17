@@ -14,10 +14,10 @@ from pydpiper.minc.nlin import NLIN
 #def transformix(img : ImgAtom, xfm : XfmAtom, out_dir: str): pass
 
 
-def as_deformation(xfm):
-    c = CmdStage(cmd=["transformix", "-def", "all", "-out", dirname, "-tp", xfm.path, "-xfm", out_path],
-                 inputs=(xfm,), outputs=NotImplemented)
-    return Result(stages=Stages([c]), output=NotImplemented)
+#def as_deformation(xfm):
+#    c = CmdStage(cmd=["transformix", "-def", "all", "-out", dirname, "-tp", xfm.path, "-xfm", out_path],
+#                 inputs=(xfm,), outputs=NotImplemented)
+#    return Result(stages=Stages([c]), output=NotImplemented)
 
 
 def to_itk_xfm(xfm): raise NotImplementedError

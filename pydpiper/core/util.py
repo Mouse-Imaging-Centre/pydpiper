@@ -74,7 +74,7 @@ def flatten(*xs):
     return functools.reduce(add, xs, [])
 
 
-def output_directories(stages: Set['pydpiper.execution.pipeline.CmdStage']) -> Set[str]:
+def output_directories(stages: Set) -> Set[str]:
     """Directories to be created (currently rather redundant in the presence of subdirectories).
     No need to consider stage inputs - any input already exists or is also the output
     of some previous stage."""

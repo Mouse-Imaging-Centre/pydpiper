@@ -99,9 +99,9 @@ class PipelineStage(object):
         self.mem = None # if not set, use pipeline default
         self.procs = 1 # default number of processors per stage
         # the input files for this stage
-        self.inputFiles  = [] # type: List[str]
+        self.inputFiles  = []
         # the output files for this stage
-        self.outputFiles = [] # type: List[str]
+        self.outputFiles = []
         self.logFile = None
         self.status = None
         self.name = ""

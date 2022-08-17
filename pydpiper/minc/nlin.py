@@ -81,7 +81,7 @@ class NLIN(Generic[I, X], metaclass=ABCMeta):
 
   @staticmethod
   @abstractmethod
-  def hierarchical_to_single(m: 'MultiLevelConf') -> Sequence[Conf]: pass
+  def hierarchical_to_single(m) -> Sequence[Conf]: pass
 
   @staticmethod
   @abstractmethod
@@ -89,7 +89,7 @@ class NLIN(Generic[I, X], metaclass=ABCMeta):
 
   @staticmethod
   @abstractmethod
-  def get_default_multilevel_conf(resolution) -> Optional[MultilevelConf]: pass
+  def get_default_multilevel_conf(resolution) -> Optional['MultilevelConf']: pass
 
   @classmethod
   @abstractmethod
