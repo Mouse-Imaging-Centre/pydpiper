@@ -65,6 +65,24 @@ def chain_csv_file(tmp_path_factory):
     df.to_csv(out, index=False)
     return out
 
+@pytest.fixture(scope="session")
+def tamarack_csv_file(tmp_path_factory, chain_csv_file):
+    out = str(tmp_path_factory.mktemp("csv") / "subjects.csv")
+    pd.read_csv(chain_csv_file).assign(group = lambda df: df.timepoint).to_csv(out, index=False)
+    return out
+
+@pytest.fixture(scope="session")
+def twolevel_csv_file(tmp_path_factory, chain_csv_file):
+    d = tmp_path_factory.mktemp("files")
+    n_groups = 3
+    n_per_group = 3
+    df = pd.DataFrame([{ 'file' : str(d / f"img_{g}_{n}"), "group" : g } for g in range(n_groups) for n in range(n_per_group)])
+    for p in df.file:
+        subprocess.check_call(['rawtominc', p, "-osigned", "-ofloat", "-input", "/dev/urandom", "100", "120", "140"])
+    out = tmp_path_factory.mktemp("csv") / "grouped.csv"
+    df.to_csv(out)
+    return out
+
 
 @pytest.fixture(scope="session")
 def atlas_dir(tmp_path_factory):
@@ -218,18 +236,20 @@ class TestMBM:
             assert ret.success
 
 class TestTwoLevel:
-    @pytest.mark.parametrize('use_csv', (True, False))
-    def test(self, script_runner, files, csv_file, use_csv, initial_model, lsq12_protocol):
-        files_arg = csv_file if use_csv else files
-        pytest.xfail("not implemented")
-        cmd = (["twolevel_model_building.py", f'--init-model={initial_model}', f"--lsq12-protocol={lsq12_protocol}"]
-               + files_arg + general_args)
+    def test(self, script_runner, twolevel_csv_file, initial_model, lsq12_protocol):
+        cmd = (["twolevel_model_building.py", f'--init-model={initial_model}', f"--lsq12-protocol={lsq12_protocol}",
+                f"--csv-file={twolevel_csv_file}", "--maget-no-mask", "--no-run-maget"] + general_args)
         ret = script_runner.run(*cmd)
         assert ret.success
 
 class TestTamarack:
-    def test(self, script_runner):
-        pytest.xfail("not implemented")
+    @pytest.mark.parametrize('common_time_point', chain_time_points)
+    def test(self, script_runner, lsq12_protocol, tamarack_csv_file, initial_model, common_time_point):
+        cmd = (["registration_tamarack.py", f"--init-model={initial_model}", f"--lsq12-protocol={lsq12_protocol}",
+                f"--csv-file={tamarack_csv_file}", "--maget-no-mask", "--no-run-maget",
+                f"--common-time-point={common_time_point}"] + general_args)
+        ret = script_runner.run(*cmd)
+        assert ret.success
 
 class TestRegistrationChain:
     @pytest.mark.parametrize('common_time_point', chain_time_points)
