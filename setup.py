@@ -39,7 +39,7 @@ setup(name='pydpiper',
       packages=['pydpiper', 'pydpiper.core', 'pydpiper.execution', 'pydpiper.itk', 'pydpiper.minc', 'pydpiper.pipelines'],
       package_data={ 'pydpiper' : ['templates/*.sh'] },
       data_files=[('config',
-                   [f"config/{f}" for f in ['CCM_HPF.cfg', 'MICe.cfg', 'MICe_dev.cfg', 'SciNet.cfg', 'SciNet_debug.cfg']])],
+                   [f"config/{f}" for f in ['CCM_HPF.cfg', 'MICe.cfg', 'MICe_dev.cfg', 'SciNet.cfg']])],
       entry_points={
           'console_scripts':
             [f'{pipe}{ext}=pydpiper.pipelines.{pipe}:application' for pipe in
