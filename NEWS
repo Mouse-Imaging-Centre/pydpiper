@@ -1,5 +1,21 @@
 New in Version 2.0.18
 =====================
+* created a number of tests exercising CLI functionality
+  (for performance reasons, these require pytest-console-scripts to run)
+* minor pipelines (LSQ12, NLIN): fixed some argument handling issues
+* check_pipeline_status.py: update to Pyro5
+* created a GitHub action to run the tests on push to master/develop
+* updated the doctests
+* make the linter happier
+* add pyproject.toml and requirements.txt
+* updated example config files to reflect Singularity and Makeflow options
+* fixed a bug --no-execute was not respected with --backend=makeflow
+* setup.py now uses the modern `entry_points = { 'console_scripts' : ...` idiom
+  + the entry point for each pipeline is called `application`
+* various minor bugfixes to Python code and templates, code cleanup, and dead code removal
+
+New in Version 2.0.18
+=====================
 * add support for using Makeflow (https://ccl.cse.nd.edu/software/makeflow) as a backend
   - this support more queue types than the `qbatch`+`Pyro` backend
   - by default jobs are submitted individually
