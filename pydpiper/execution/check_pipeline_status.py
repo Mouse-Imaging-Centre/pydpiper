@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 
-from __future__ import print_function
 import os
 import argparse
 import signal
@@ -13,7 +12,7 @@ import Pyro5
 
 """ check the status of a pydpiper pipeline by querying the server using its uri"""
 
-if __name__ == '__main__':
+def main():
 
     parser = argparse.ArgumentParser()
     parser.add_argument("uri_file", type=str, help="file containing server's URI. If not given, defaults to *_uri", nargs="?")

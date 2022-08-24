@@ -47,7 +47,9 @@ setup(name='pydpiper',
                  'registration_chain',
                  'registration_tamarack',
                  'stage_embryos_in_4D_atlas',
-                 'twolevel_model_building'] for ext in ["", ".py"]],
+                 'twolevel_model_building'] for ext in ["", ".py"]] +
+            ['pipeline_executor.py=pydpiper.execution.pipeline_executor:main',
+             'check_pipeline_status.py=pydpiper.execution.check_pipeline_status:main'],
       },
       tests_require=test_deps,
       zip_safe=False  # since we want the data files to be installed on disk for the moment ...

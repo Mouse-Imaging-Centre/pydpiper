@@ -700,6 +700,3 @@ def main():
             pe.submitToQueue(1)  # TODO is there a reason why we have logic for submitting `i` executors again here?
     else:
         local_launch(options)
-
-if __name__ == "__main__":
-    main()
