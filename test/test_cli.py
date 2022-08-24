@@ -104,10 +104,12 @@ pipelines = ["asymmetry.py",
              "LSQ6.py",
              "LSQ12.py"]
 
+all_programs = pipelines + ["check_pipeline_status.py", "pipeline_executor.py"]
+
 
 class TestTrivialUsage:
     def test_help(self, script_runner):
-        for prog in pipelines:
+        for prog in all_programs:
             ret = script_runner.run(prog, "--help")
             assert ret.success
 
