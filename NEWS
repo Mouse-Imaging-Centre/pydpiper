@@ -1,4 +1,4 @@
-New in Version 2.0.18
+New in Version 2.0.19
 =====================
 * created a number of tests exercising CLI functionality
   (for performance reasons, these require pytest-console-scripts to run)
