@@ -104,6 +104,8 @@ pipelines = ["asymmetry.py",
              "LSQ6.py",
              "LSQ12.py"]
 
+algorithm_suites = ["minc", "itk"]
+
 all_programs = pipelines + ["check_pipeline_status.py", "pipeline_executor.py"]
 
 

@@ -83,8 +83,9 @@ def mbm_pipeline(options : MBMConf):
             .applymap(maybe_deref_path))
         determinants.to_csv("determinants.csv", index=False)
 
-        analysis = (transforms.merge(determinants, left_on="lsq12_nlin_xfm", right_on="inv_xfm", how='inner')
-            .drop(["xfm", "inv_xfm"], axis=1))
+        analysis = (transforms.merge(determinants, left_on="lsq12_nlin_xfm", right_on="lsq12_nlin_xfm", how='inner')
+            #.drop(["xfm", "inv_xfm"], axis=1))
+            )
     else:
         analysis = transforms
 

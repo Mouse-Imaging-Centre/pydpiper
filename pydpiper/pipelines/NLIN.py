@@ -44,7 +44,7 @@ def NLIN_pipeline(options):
     reg_algorithms = get_registration_module(options.registration.image_algorithms, options.nlin.reg_method)
 
     resolution = (options.registration.resolution  # TODO does using the finest resolution here make sense?
-                  or min([reg_algorithms.Algorithms.get_resolution_from_file(f) for f in options.application.files]))
+                  or min([reg_algorithms.Algorithms.get_resolution_from_file(f.path) for f in imgs]))
 
     initial_target_mask = ImgAtom(options.nlin.target_mask) if options.nlin.target_mask else None
     initial_target = ImgAtom(options.nlin.target, mask=initial_target_mask)

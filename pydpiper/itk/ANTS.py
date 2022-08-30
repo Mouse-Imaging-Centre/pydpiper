@@ -146,7 +146,7 @@ class ANTS(NLIN):
     transform_name_wo_ext -- to use for the output transformation (without the extension)
     generation            -- if provided, the transformation name will be:
                              source.filename_wo_ext + "_ANTS_nlin-" + generation
-    resample_source       -- whether or not to resample the source file   
+    resample_moving       -- whether or not to resample the moving image
     
     Construct a single call to ANTS.
     Also does blurring according to the specified options
@@ -197,9 +197,9 @@ class ANTS(NLIN):
             # these are not gradient image terms; only blur if explicitly specified:
             if sim_metric_conf.blur is not None and sim_metric_conf.blur > 0:
                 moving_processed  = s.defer(cls.Algorithms.blur(moving, fwhm=sim_metric_conf.blur)).img
-                fixed_processed = s.defer(cls.Algorithms.blur(moving, fwhm=sim_metric_conf.blur)).img
+                fixed_processed = s.defer(cls.Algorithms.blur(fixed, fwhm=sim_metric_conf.blur)).img
             else:
-                moving_processed  = moving
+                moving_processed = moving
                 fixed_processed = fixed
 
         similarity_inputs.add(fixed_processed)
@@ -208,7 +208,7 @@ class ANTS(NLIN):
                           str(sim_metric_conf.weight), str(sim_metric_conf.radius_or_bins)])
         subcmd = '"\'"' + "".join([sim_metric_conf.metric, '[', inner, ']']) + '"\'"'
         similarity_cmds.extend(["-m", subcmd])
-    if conf.use_mask and source.mask is None:
+    if conf.use_mask and fixed.mask is None:
         warnings.warn("ANTS configured to use mask for registration but no mask available")
     stage = CmdStage(
         inputs=(moving, fixed) + tuple(similarity_inputs) + cast(tuple, ((moving.mask,) if moving.mask else ())),
@@ -218,7 +218,7 @@ class ANTS(NLIN):
               ants_template.render(conf = conf,
                                    out_xfm = out_xfm.path,
                                    similarity_cmds = similarity_cmds,
-                                   source = source)))
+                                   fixed = fixed)))
         #cmd=['ANTS', '3',
         #     '--number-of-affine-iterations', '0']
         #    + similarity_cmds

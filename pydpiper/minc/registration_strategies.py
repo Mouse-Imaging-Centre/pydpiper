@@ -117,9 +117,9 @@ def nonlinear_midpoint_xfm(nlin_algorithm : Type[NLIN],
                                                output_dir=out_dir,
                                                name_wo_ext=out_name_wo_ext))
 
-    return Result(stages=s, output=(XfmHandler(source=img_A, target=None,
+    return Result(stages=s, output=(XfmHandler(moving=img_A, fixed=None,
                                                xfm=transform_A_to_B_halfway, resampled=A_halfway_to_B),
-                                    XfmHandler(source=img_B, target=None,
+                                    XfmHandler(moving=img_B, fixed=None,
                                                xfm=transform_B_to_A_halfway, resampled=B_halfway_to_A),
                                     avg_mid_point))
 
@@ -168,16 +168,16 @@ def tournament(reg_module : Type[NLIN]):
                       nlin_algorithm=reg_module,
                       conf=conf,
                       out_dir=nlin_dir))
-              xfms_to_midpoint = ([XfmHandler(source=xfm.moving,
-                                              target=avg_img,
+              xfms_to_midpoint = ([XfmHandler(moving=xfm.moving,
+                                              fixed=avg_img,
                                               resampled=A_halfway_to_B.resampled,
                                               xfm=s.defer(reg_module.concat_transforms(
                                                             [xfm.xfm, A_halfway_to_B.xfm],
                                                             name="%s_%s" % (xfm.moving.filename_wo_ext,
                                                                             name_wo_ext))))
                                    for xfm in first_half_result]
-                                  + [XfmHandler(source=xfm.moving,
-                                                target=avg_img,
+                                  + [XfmHandler(moving=xfm.moving,
+                                                fixed=avg_img,
                                                 resampled=B_halfway_to_A.resampled,
                                                 xfm=s.defer(reg_module.concat_transforms(
                                                               [xfm.xfm, B_halfway_to_A.xfm],
@@ -190,7 +190,7 @@ def tournament(reg_module : Type[NLIN]):
                                                        name=os.path.join(imgs[0].pipeline_sub_dir,
                                                                          imgs[0].output_sub_dir,
                                                                          "id.xfm"))))
-      initial_xfms = [XfmHandler(source=img, target=img,
+      initial_xfms = [XfmHandler(moving=img, fixed=img,
                                  resampled=img, xfm=identity_xfm) for img in imgs]
       xfms_to_avg = h(initial_xfms, tournament_name_wo_ext)
       avg_img = xfms_to_avg[0].fixed
@@ -273,8 +273,8 @@ def pairwise(nlin_module: NLIN, max_pairs: Optional[int] = None, max_images: Opt
                                                       xfm=avg_xfm,
                                                       like=src_img))
         return XfmHandler(xfm=avg_xfm,
-                          source=src_img,
-                          target=final_avg,
+                          moving=src_img,
+                          fixed=final_avg,
                           resampled=res)
 
     if max_images is None or max_images >= len(imgs):

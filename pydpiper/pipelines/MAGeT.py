@@ -38,6 +38,7 @@ def get_rigid_registration_module(image_algorithms, reg_method):
             ('itk', 'lsq6_simple') : _antsRegistrationQuick_sh,
             ('itk', 'lsq6_large_rotations') : _antsAI,
             ('minc', 'lsq6_simple') : _minctracc,
+            ('minc', 'lsq6_centre_estimation') : _minctracc,
             ('minc', 'lsq6_large_rotations') : _rotational_minctracc,
         }
     try:
@@ -160,7 +161,7 @@ def hard_mask(img, *, algorithms, mask, dilation_voxels : int, subdir="tmp"):
                                      img,
                                      mask = mask if not dilation_voxels
                                               else s.defer(algorithms.dilate(mask, dilation_voxels, subdir=subdir)),
-                                     subdir = "resampled")))
+                                     subdir = subdir)))
 
 
 def get_atlases(maget_options, algorithms, pipeline_sub_dir : str):
@@ -277,12 +278,9 @@ def maget_mask(imgs : List[MincAtom], maget_options, registration_options, resol
 
     # TODO dereference maget_options -> maget_options.maget outside maget_mask call?
     if atlases is None:
-        atlases = s.defer(get_atlases(maget_options.maget,masking_nlin_component.Algorithms,
+        atlases = s.defer(get_atlases(maget_options.maget, masking_nlin_component.Algorithms,
                                       pipeline_sub_dir=pipeline_sub_dir))
 
-    #lsq12_conf = get_linear_configuration_from_options(maget_options.lsq12,
-    #                                                   LinearTransType.lsq12,
-    #                                                   resolution)
     lsq12_conf = masking_lsq12_component.parse_multilevel_protocol_file(maget_options.lsq12.protocol,
                                                                 resolution=resolution)
 
@@ -315,6 +313,7 @@ def maget_mask(imgs : List[MincAtom], maget_options, registration_options, resol
                                                        nlin_module=masking_nlin_component,
                                                        run_lsq12=maget_options.lsq12.run_lsq12,
                                                        resolution=resolution,
+                                                       resample_subdir="masking",
                                                        nlin_options=maget_options.maget.masking_nlin_protocol,
                                                        resample_moving=False))}
                                       for img in imgs for atlas in atlases)
@@ -331,12 +330,13 @@ def maget_mask(imgs : List[MincAtom], maget_options, registration_options, resol
                                        #invert=True,
                                        #interpolation=Interpolation.nearest_neighbour,
                                        postfix="-input-mask",
-                                       subdir="tmp",
+                                       subdir="masking",
                                        # TODO annoying hack; fix mincresample(_mask) ...:
                                        #new_name_wo_ext=df.apply(lambda row:
                                        #    "%s_to_%s-input-mask" % (row.atlas.filename_wo_ext,
                                        #                             row.img.filename_wo_ext),
                                        #    axis=1),
+                                       resample_labels=False,
                                        use_nn_interpolation=True
                                        ))))
         .groupby('img', as_index=False)
@@ -344,10 +344,9 @@ def maget_mask(imgs : List[MincAtom], maget_options, registration_options, resol
         .rename(columns={"resampled_mask" : "resampled_masks"})
         .assign(voted_mask=lambda df: df.apply(axis=1,
                                                func=lambda row:
-                  # FIXME cannot use mincmath here !!!
                   s.defer(algorithms.union_mask(imgs=row.resampled_masks,
                                                 new_name=f"{row.img.filename_wo_ext}_max_mask",
-                                                subdir="tmp"))))
+                                                subdir="masking"))))
         .apply(axis=1, func=lambda row: row.img._replace(mask=row.voted_mask)))
 
     # TODO check if initial-model mask is used for initial MAGeT masking reg after LSQ6 and if so add option to disable!!
@@ -359,8 +358,9 @@ def maget_mask(imgs : List[MincAtom], maget_options, registration_options, resol
                         algorithms.resample(img=row.atlas.hard_mask,  # apply(lambda x: x.mask),
                                             xfm=row.xfm.xfm,  # apply(lambda x: x.xfm),
                                             like=row.img,
+                                            resample_labels=False,
                                             postfix="-input-hard-mask",
-                                            subdir="tmp",
+                                            subdir="masking",
                                             # TODO annoying hack; fix mincresample(_mask) ...:
                                             # new_name_wo_ext=df.apply(lambda row:
                                             #    "%s_to_%s-input-mask" % (row.atlas.filename_wo_ext,
@@ -376,7 +376,7 @@ def maget_mask(imgs : List[MincAtom], maget_options, registration_options, resol
                                                # FIXME cannot use mincmath here !!!
                                                s.defer(algorithms.union_mask(sorted(row.resampled_hard_masks),
                                                                              new_name=f"{row.img.filename_wo_ext}_max_hard_mask",
-                                                                             subdir="tmp"))))
+                                                                             subdir="masking"))))
             .apply(axis=1, func=lambda row: s.defer(
                      hard_mask(row.img,
                                mask = row.voted_hard_mask,
@@ -406,7 +406,8 @@ def maget_mask(imgs : List[MincAtom], maget_options, registration_options, resol
       s.defer(algorithms.resample(
                 img=row.atlas,
                 xfm=row.xfm.xfm, #.apply(lambda x: x.xfm),
-                subdir="tmp",
+                subdir="masking",
+                resample_labels=False,
                 # TODO delete this stupid hack:
                 #new_name_wo_ext=df.apply(lambda row:
                 #  "%s_to_%s-resampled" % (row.atlas.filename_wo_ext,

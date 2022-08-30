@@ -2,7 +2,6 @@
 import csv
 import os
 import random
-import shlex
 import subprocess
 import sys
 import time
@@ -19,7 +18,7 @@ from pyminc.volumes.factory import volumeFromFile  # type: ignore
 from pydpiper.core.files import FileAtom, ImgAtom
 from pydpiper.core.stages import CmdStage, Result, Stages, identity_result
 from pydpiper.core.templating import rendered_template_to_command, templating_env
-from pydpiper.core.util import AutoEnum, NamedTuple, raise_, flatten
+from pydpiper.core.util import AutoEnum, NamedTuple, raise_, flatten, md5str
 from pydpiper.minc.containers import XfmHandler
 from pydpiper.minc.files import MincAtom, XfmAtom, xfmToMinc, mincToXfm
 from pydpiper.minc.nlin import NLIN, NLIN_BUILD_MODEL, Algorithms, REG
@@ -223,8 +222,9 @@ def minctracc(source: MincAtom,
 
     if conf.blur_resolution not in (-1, 0, None):
         img_or_grad = lambda result: result.gradient if conf.use_gradient else result.img
-        source_for_minctracc = img_or_grad(s.defer(mincblur(source, conf.blur_resolution)))
-        target_for_minctracc = img_or_grad(s.defer(mincblur(target, conf.blur_resolution)))
+        blur_subdir = os.path.join("tmp", md5str([source.path, target.path, str(conf)]))
+        source_for_minctracc = img_or_grad(s.defer(mincblur(source, conf.blur_resolution, subdir=blur_subdir)))
+        target_for_minctracc = img_or_grad(s.defer(mincblur(target, conf.blur_resolution, subdir=blur_subdir)))
     else:
         source_for_minctracc = source
         target_for_minctracc = target
@@ -671,6 +671,7 @@ def mincresample(img: MincAtom,
                  invert: bool = False,
                  interpolation: Interpolation = None,
                  extra_flags: Tuple[str] = (),
+                 resample_labels: bool = True,
                  new_name_wo_ext: str = None,
                  subdir: str = 'resampled',
                  postfix: str = None) -> Result[MincAtom]:
@@ -722,7 +723,7 @@ def mincresample(img: MincAtom,
                                                  interpolation=Interpolation.nearest_neighbour,
                                                  invert=invert,
                                                  new_name_wo_ext=new_name_wo_ext + "_labels",
-                                                 subdir=subdir)) if img.labels is not None else None
+                                                 subdir=subdir)) if resample_labels and img.labels is not None else None
 
     # Note that new_img can't be used for anything until the mask/label files are also resampled.
     # This shouldn't create a problem with stage dependencies as long as masks/labels appear in inputs/outputs of CmdStages.
@@ -738,13 +739,14 @@ def mincresample_new(img: MincAtom,
                      like: MincAtom,
                      extra_flags: Tuple[str] = (),
                      invert: bool = False,
+                     resample_labels: bool = True,
                      interpolation: Interpolation = None,
                      new_name_wo_ext: Optional[str] = None,
                      postfix: Optional[str] = None,
                      subdir: str = None) -> Result[MincAtom]:
 
     return mincresample(img=img, xfm=xfm, like=like, invert=invert,
-                        interpolation=interpolation, extra_flags=extra_flags,
+                        interpolation=interpolation, extra_flags=extra_flags, resample_labels=resample_labels,
                         new_name_wo_ext=new_name_wo_ext or ("%s_res_to_%s%s" % (img.filename_wo_ext,
                                                                                 like.filename_wo_ext,
                                                                                 postfix if postfix else "")),
@@ -799,6 +801,7 @@ def concat_xfmhandlers(xfms: List[XfmHandler],
                        algorithms,
                        name: str = None,
                        resample_moving: bool = True,  # False?
+                       resample_labels: bool = True,
                        use_nn_interpolation: bool = False,
                        interpolation: Optional[Interpolation] = None,  # remove or make `sinc` default?
                        #extra_flags: Tuple[str] = ()
@@ -815,6 +818,7 @@ def concat_xfmhandlers(xfms: List[XfmHandler],
                                       xfm=t,
                                       like=xfms[-1].fixed,
                                       use_nn_interpolation=use_nn_interpolation,
+                                      resample_labels = resample_labels
                                       #interpolation=interpolation,
                                       #extra_flags=extra_flags
                                       )) if resample_moving else None
@@ -913,13 +917,13 @@ def nu_evaluate(img: MincAtom,
     return Result(stages=Stages([cmd]), output=out)
 
 # TODO: could also use the `nu_correct` program instead of doing this:
-def nu_correct(src: MincAtom,
+def nu_correct(img: MincAtom,
                resolution: float,
                mask: Optional[MincAtom] = None,
                subject_matter: Optional[str] = None,
                subdir: str = "tmp") -> Result[MincAtom]:
     s = Stages()
-    return Result(stages=s, output=s.defer(nu_evaluate(src, s.defer(nu_estimate(src, resolution,
+    return Result(stages=s, output=s.defer(nu_evaluate(img, s.defer(nu_estimate(img, resolution,
                                                                                 mask=mask,
                                                                                 subject_matter=subject_matter)),
                                                        subdir=subdir)))
@@ -1654,6 +1658,7 @@ def lsq12_nlin(moving: ImgAtom,
                resolution: float,
                run_lsq12: bool,
                nlin_options,
+               resample_subdir: str = "resampled",
                resample_moving: bool = False):
     """
     Runs a 12 parameter (or really any) linear registration followed by a nonlinear registration
@@ -1683,6 +1688,7 @@ def lsq12_nlin(moving: ImgAtom,
     if not run_lsq12:
         full_transform = s.defer(nlin_module.register(moving=moving, fixed=fixed, conf=nlin_conf,
                                                       initial_moving_transform=None,
+                                                      resample_subdir=f"{resample_subdir}/tmp",
                                                       resample_moving=resample_moving))
         # TODO lsq12 being identity should probably be handled inside the lsq12 module?
     elif nlin_module.accepts_initial_transform():
@@ -1691,26 +1697,34 @@ def lsq12_nlin(moving: ImgAtom,
                                                                 conf=lsq12_conf,
                                                                 # TODO allow a transform here?
                                                                 # reduce file proliferation and attendant name clashes:
+                                                                resample_subdir=f"{resample_subdir}/tmp",
                                                                 resample_moving=False))
         nlin_transform_handler = s.defer(nlin_module.register(moving=moving,
                                                               fixed=fixed,
                                                               conf=nlin_conf,
                                                               initial_moving_transform=lsq12_transform_handler.xfm,
+                                                              resample_subdir=resample_subdir,
                                                               resample_moving=resample_moving))
         full_transform = nlin_transform_handler
     else:
         lsq12_transform_handler = s.defer(lsq12_module.register(moving=moving,
                                                                 fixed=fixed,
+                                                                resample_subdir=f"{resample_subdir}/tmp",
                                                                 conf=lsq12_conf,
-                                                                resample_moving=True))
+                                                                resample_moving=False
+                                                                # don't resample here because that resamples labels
+                                                                ))
         # NOW REPAIRED?  testing ...
         # hack because we don't trust MINCTRACC to put in the right 'resampled' field into an xfmhandler at the moment:
         # (but this could be fixed locally in the MINCTRACC class)
         # FIXME the accepts_initial_transform case is probably similarly broken
         #lsq12_resampled = s.defer(lsq12_module.Algorithms.resample(img=moving, xfm=lsq12_transform_handler.xfm,
         #                                                           like=fixed, use_nn_interpolation=False))
-        nlin_transform_handler = s.defer(nlin_module.register(moving=lsq12_transform_handler.resampled,
+
+        # hack since register(...) currently doesn't accept resample_labels=False:
+        nlin_transform_handler = s.defer(nlin_module.register(moving=s.defer(lsq12_module.Algorithms.resample(img=lsq12_transform_handler.moving, xfm = lsq12_transform_handler.xfm, like=lsq12_transform_handler.fixed, resample_labels=False, subdir=f"{resample_subdir}/tmp")),
                                                               fixed=fixed,
+                                                              resample_subdir=resample_subdir,
                                                               conf=nlin_conf,
                                                               resample_moving=resample_moving))
         full_transform = s.defer(concat_xfmhandlers(
@@ -1718,7 +1732,8 @@ def lsq12_nlin(moving: ImgAtom,
             algorithms=nlin_module.Algorithms,
             name=moving.filename_wo_ext + "_to_" +
                  fixed.filename_wo_ext + "_lsq12_ANTS_nlin",  # FIXME ANTS -> registration class
-            resample_moving=resample_moving))
+            resample_moving=resample_moving,
+            resample_labels=False))
     return Result(stages=s, output=full_transform)
 
 
@@ -3255,11 +3270,12 @@ class MincAlgorithms(Algorithms):
                  like,
                  invert = False,
                  use_nn_interpolation = None,
+                 resample_labels: bool = True,
                  new_name_wo_ext = None,
                  subdir = None,
                  postfix = None):
         return mincresample_new(img=img, xfm=xfm,
-                            like=like, invert=not invert,
+                            like=like, invert=not invert, resample_labels=resample_labels,
                             interpolation=Interpolation.nearest_neighbour
                               if use_nn_interpolation else Interpolation.trilinear,  # TODO was Interpolation.sinc - slower,
                             extra_flags=(("-keep_real_range", "-labels") if use_nn_interpolation else ()),

@@ -15,7 +15,7 @@ from pydpiper.minc.analysis import determinants_at_fwhms
 from pydpiper.core.stages import Result
 from pydpiper.minc.nlin import NLIN
 from pydpiper.minc.registration import (Stages,
-                                        mincaverage,
+                                        mincaverage, MincAlgorithms,
                                         concat_xfmhandlers, ensure_distinct_basenames, registration_targets,
                                         lsq6_nuc_inorm, XfmHandler,
                                         InputSpace, lsq12_nlin_build_model, TargetType,
@@ -217,6 +217,7 @@ def chain(options):
         if options.lsq6.target_type == TargetType.pride_of_models:
             pride_of_models_dict = get_pride_of_models_mapping(pride_csv=options.lsq6.target_file,
                                                                output_dir=options.application.output_directory,
+                                                               image_algorithms=MincAlgorithms,
                                                                pipeline_name=options.application.pipeline_name)
             subj_id_to_subj_with_lsq6_xfm_dict = map_with_index_over_time_pt_dict_in_Subject(
                                     lambda subj_atom, time_point:
@@ -858,8 +859,9 @@ def main(args):
         # works in a fairly different way, so we will separate out that option.
         if options.lsq6.target_type == TargetType.pride_of_models:
             pride_of_models_mapping = get_pride_of_models_mapping(options.lsq6.target_file,
-                                                                  options.application.output_directory,
-                                                                  options.application.pipeline_name)
+                                                                  output_dir=options.application.output_directory,
+                                                                  image_algorithms=MincAlgorithms,
+                                                                  pipeline_name=options.application.pipeline_name)
             # all initial models that are part of the pride of models must have
             # the same resolution (it's currently a requirement). So we can get the
             # resolution from any of the RegistrationTargets:

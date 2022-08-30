@@ -155,6 +155,8 @@ def determinants_at_fwhms(xfms       : List[XfmHandler],  # TODO change to pd.Se
     return Result(stages=s, output=df)
 
 
+smooth_vector_template = templating_env.get_template("smooth_vector.sh")
+
 def smooth_vector(source : MincAtom, fwhm : float) -> Result[MincAtom]:
     outf = source.newname_with_suffix("_smooth_fwhm%s" % fwhm, subdir="tmp") # TODO smooth_displacement_?
     cmd  = rendered_template_to_command(

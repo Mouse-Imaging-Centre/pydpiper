@@ -149,7 +149,8 @@ def execute(stages, options):
                         options=options)
 
     # TODO: print/log version
-    reconstruct_command(options)
+    if options.application.execute:
+        reconstruct_command(options)
 
     write_stages(stages, options.application.pipeline_name)
 

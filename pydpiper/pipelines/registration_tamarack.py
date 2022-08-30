@@ -11,15 +11,17 @@ from pydpiper.pipelines.registration_chain import get_closest_model_from_pride_o
 
 from pydpiper.core.util import NamedTuple, maybe_deref_path
 from pydpiper.pipelines.MBM import mk_mbm_parser, mbm, MBMConf
+from pydpiper.pipelines.MAGeT import (get_registration_module,
+                                      get_rigid_registration_module,
+                                      get_affine_registration_module)
 from pydpiper.core.stages import Result, Stages
 from pydpiper.core.arguments import (execution_parser, registration_parser, application_parser, parse, CompoundParser,
                                      AnnotatedParser, BaseParser)
 from pydpiper.execution.application import execute
 from pydpiper.minc.registration import (
     ensure_distinct_basenames, lsq12_nlin, get_pride_of_models_mapping, TargetType,
-    xfmconcat, concat_xfmhandlers, get_linear_configuration_from_options, LinearTransType,
-    get_resolution_from_file, registration_targets, get_nonlinear_component,
-    mincresample, xfminvert, invert_xfmhandler, mincresample_new)
+    concat_xfmhandlers, get_linear_configuration_from_options, LinearTransType,
+    registration_targets, get_nonlinear_component)
 from pydpiper.minc.files import MincAtom
 
 
@@ -53,6 +55,7 @@ def tamarack_pipeline(options):
 
     # first_level_results is currently a nested data structure, not a data frame
     #tamarack_result.first_level_results.applymap(maybe_deref_path).to_csv("first_level_results.csv", index=False)
+
     tamarack_result.resampled_determinants.applymap(maybe_deref_path).to_csv("resampled_determinants.csv", index=False)
     tamarack_result.overall_determinants.applymap(maybe_deref_path).to_csv("overall_determinants.csv", index=False)
 
@@ -65,6 +68,11 @@ def tamarack(imgs : pd.DataFrame, options):
     s = Stages()
 
     # TODO some assertions that the pride_of_models, if provided, is correct, and that this is intended target type
+
+    lsq6_module = get_rigid_registration_module(options.registration.image_algorithms, options.mbm.lsq6.lsq6_method)
+    lsq12_module = get_affine_registration_module(options.registration.image_algorithms, options.mbm.lsq12.reg_method)
+    reg_module = get_registration_module(options.registration.image_algorithms, options.mbm.nlin.reg_method)
+    algorithms = reg_module.Algorithms
 
     def group_options(options, timepoint):
         options = copy.deepcopy(options)
@@ -89,12 +97,19 @@ def tamarack(imgs : pd.DataFrame, options):
                                                         # so we can't send this RegistrationTargets to `mbm` directly ...
                                                         # one option: add yet another optional arg to `mbm` ...
         else:
+            #targets = s.defer(registration_targets(lsq6_conf=options.mbm.lsq6,
+            #                               app_conf=options.application, reg_conf=options.registration,
+            #                               image_algorithms=reg_module,
+            #                               first_input_file=imgs.filename.iloc[0]))
             targets = s.defer(registration_targets(lsq6_conf=options.mbm.lsq6,
-                                           app_conf=options.application, reg_conf=options.registration,
+                                           app_conf=options.application,
+                                           reg_conf=options.registration,
+                                           image_algorithms=algorithms,
                                            first_input_file=imgs.filename.iloc[0]))
 
         resolution = (options.registration.resolution or
-                        get_resolution_from_file(targets.registration_standard.path))
+                      algorithms.get_resolution_from_file(
+                          targets.registration_standard.path))
 
         # This must happen after calling registration_targets otherwise it will resample to options.registration.resolution
         options.registration = options.registration.replace(resolution=resolution)
@@ -112,6 +127,9 @@ def tamarack(imgs : pd.DataFrame, options):
                               df.apply(axis=1,
                                        func=lambda row: s.defer(
                                            mbm(imgs=row.files,
+                                               registration_algorithms=reg_module,
+                                               lsq6_module=lsq6_module,
+                                               lsq12_module=lsq12_module,
                                                options=row.options,
                                                prefix="%s" % row.group,
                                                output_dir=os.path.join(
@@ -132,21 +150,22 @@ def tamarack(imgs : pd.DataFrame, options):
     # construction of the overall inter-average transforms will be done iteratively (for efficiency/aesthetics),
     # which doesn't really fit the DataFrame mold ...
 
-    nlin_component = get_nonlinear_component(reg_method=options.mbm.nlin.reg_method)
-
     # first register consecutive averages together:
     average_registrations = (
         first_level_results[:-1]
             .assign(next_model=list(first_level_results[1:].build_model))
             # TODO: we should be able to do lsq6 registration here as well!
             .assign(xfm=lambda df: df.apply(axis=1, func=lambda row: s.defer(
-                                                      lsq12_nlin(source=row.build_model.avg_img,
-                                                                 target=row.next_model.avg_img,
-                                                                 lsq12_conf=get_linear_configuration_from_options(
-                                                                     options.mbm.lsq12,
-                                                                     transform_type=LinearTransType.lsq12,
-                                                                     file_resolution=options.registration.resolution),
-                                                                 nlin_module=nlin_component,
+                                                      lsq12_nlin(moving=row.build_model.avg_img,
+                                                                 fixed=row.next_model.avg_img,
+                                                                 lsq12_conf=lsq12_module.parse_multilevel_protocol_file(options.mbm.lsq12.protocol, resolution=options.registration.resolution),
+                                                                 #get_linear_configuration_from_options(
+                                                                 #    options.mbm.lsq12,
+                                                                 #    transform_type=LinearTransType.lsq12,
+                                                                 #    file_resolution=options.registration.resolution),
+                                                                 lsq12_module=lsq12_module,
+                                                                 nlin_module=reg_module,
+                                                                 run_lsq12=options.mbm.lsq12.run_lsq12,
                                                                  resolution=options.registration.resolution,
                                                                  nlin_options=options.mbm.nlin.nlin_protocol,
                                                                  resample_moving=True)))))
@@ -174,12 +193,15 @@ def tamarack(imgs : pd.DataFrame, options):
             ys = prefixes(xs[1:])
             return ys + [ys[-1] + [xs[0]]]
 
+    # TODO we can improve the logic here to remove the use of 'invert' by choosing which direction to go in prior based on whether we're before/after
+    # the common time point
     xfms_to_common = (
         first_level_results
         .assign(uncomposed_xfms=suffixes(list(before.xfm))[:-1] + [None] + prefixes(list(after.xfm))[1:])
         .assign(xfm_to_common=lambda df: df.apply(axis=1, func=lambda row:
-                                ((lambda x: s.defer(invert_xfmhandler(x)) if row.group >= common_time_pt else x)
+                                ((lambda x: s.defer(algorithms.invert_xfmhandler(x)) if row.group >= common_time_pt else x)
                                    (s.defer(concat_xfmhandlers(row.uncomposed_xfms,
+                                                               algorithms=algorithms,
                                                                name=("%s_to_common"
                                                                      if row.group < common_time_pt
                                                                      else "%s_from_common") % row.group))))
@@ -193,33 +215,42 @@ def tamarack(imgs : pd.DataFrame, options):
 
     resampled_determinants = (
         pd.merge(left=first_level_determinants,
-                 right=xfms_to_common.assign(source=lambda df: df.xfm_to_common.apply(
+                 right=xfms_to_common.assign(moving=lambda df: df.xfm_to_common.apply(
                                                               lambda x:
                                                                 x.moving if x is not None else None)),
-                 left_on="first_level_avg", right_on='source')
+                 left_on="first_level_avg", right_on='moving')
         .assign(resampled_log_full_det=lambda df: df.apply(axis=1, func=lambda row:
-                                         s.defer(mincresample_new(img=row.log_full_det,
-                                                                  xfm=row.xfm_to_common.xfm,
-                                                                  like=common_model))
+                                         s.defer(algorithms.resample(img=row.log_full_det,
+                                                                     xfm=row.xfm_to_common.xfm,
+                                                                     like=common_model))
                                                  if row.xfm_to_common is not None else row.img),
-                resampled_log_nlin_det=lambda df: df.apply(axis=1, func=lambda row:
-                                         s.defer(mincresample_new(img=row.log_nlin_det,
-                                                                  xfm=row.xfm_to_common.xfm,
-                                                                  like=common_model))
-                                                 if row.xfm_to_common is not None else row.img))
+                #resampled_log_nlin_det=lambda df: df.apply(axis=1, func=lambda row:
+                #                         s.defer(algorithms.resample(img=row.log_nlin_det,
+                #                                                     xfm=row.xfm_to_common.xfm,
+                #                                                     like=common_model))
+                #                                 if row.xfm_to_common is not None else row.img))
+                )
     )
 
-    inverted_overall_xfms = pd.Series({ xfm : (s.defer(concat_xfmhandlers([xfm, row.xfm_to_common]))
+    inverted_overall_xfms = pd.Series({ xfm : (s.defer(concat_xfmhandlers([xfm, row.xfm_to_common], algorithms=algorithms))
                                                  if row.xfm_to_common is not None else xfm)
                                         for _ix, row in xfms_to_common.iterrows()
                                         for xfm in row.build_model.xfms.lsq12_nlin_xfm })
 
-    overall_xfms = inverted_overall_xfms.apply(lambda x: s.defer(invert_xfmhandler(x)))
+    overall_xfms = inverted_overall_xfms.apply(lambda x: s.defer(algorithms.invert_xfmhandler(x)))
 
-    overall_determinants = s.defer(
-                             determinants_at_fwhms(xfms=overall_xfms,
-                                                   blur_fwhms=options.mbm.stats.stats_kernels,
-                                                   inv_xfms=inverted_overall_xfms))
+    #overall_determinants = s.defer(
+    #                         determinants_at_fwhms(xfms=overall_xfms, algorithms=algorithms,
+    #                                               blur_fwhms=options.mbm.stats.stats_kernels))
+    if options.mbm.stats.calc_stats:
+        #determinants = s.defer(determinants_at_fwhms(
+        #                           xfms=lsq12_nlin_result.output,
+        #                           blur_fwhms=options.mbm.stats.stats_kernels,
+        #                           algorithms=algorithms))
+        # FIXME blurring, nlin det, etc.
+        overall_determinants = (pd.DataFrame({ 'overall_xfm' : x } for x in overall_xfms) 
+                                .assign(log_full_det = lambda df:
+                                          df.overall_xfm.apply(lambda x: s.defer(algorithms.log_determinant(x)))))
 
 
     # TODO turn off bootstrap as with two-level code?

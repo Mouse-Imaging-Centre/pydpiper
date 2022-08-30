@@ -6,4 +6,4 @@ ANTS 3
   -r {{ conf.regularization }}
   -i {{ conf.iterations }}
   -o {{ out_xfm }}
-  {% if conf.use_mask and source.mask %} -x {{ source.mask.path }} {% endif %}
+  {% if conf.use_mask and fixed.mask %} -x {{ fixed.mask.path }} {% endif %}

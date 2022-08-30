@@ -40,7 +40,7 @@ class Algorithms():  #(Generic[I, X], metaclass=ABCMeta):
 
     @staticmethod
     @abstractmethod
-    def nu_correct(src : I,
+    def nu_correct(img : I,
                    resolution,
                    mask : Optional[I],
                    # TODO add weights (-w)
@@ -75,6 +75,7 @@ class Algorithms():  #(Generic[I, X], metaclass=ABCMeta):
                  like: I,
                  invert: bool = False,
                  use_nn_interpolation : Optional[bool] = None,
+                 resample_labels: bool = True,
                  #interpolation = None,   #interpolation: Interpolation = None,
                  #  TODO fix type for non-minc resampling programs; also, can't import Interpolation here
                  #extra_flags: Sequence[str] = (),

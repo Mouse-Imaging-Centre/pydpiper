@@ -1,9 +1,11 @@
+from hashlib import md5
 import os
-import functools  # type: ignore
+import functools
 from operator import add
 from enum import Enum
 import typing
 from typing import Any, Callable, List, Set, Tuple, TypeVar
+
 
 def maybe_deref_path(x):
     # ugh ... just a convenience to allow using applymap in a 'generic' way ...
@@ -103,3 +105,5 @@ def output_directories(stages: Set) -> Set[str]:
 #    fields = [v.... for v in p._option_store_actions.values()]
 #    pass #TODO use p._option_string_actions ?
 
+def md5str(xs):
+    return md5("".join(xs).encode()).hexdigest()[:5]
