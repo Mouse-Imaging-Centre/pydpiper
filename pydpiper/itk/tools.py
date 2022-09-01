@@ -494,7 +494,7 @@ def inputs(t : Transform) -> Tuple[ITKXfmAtom]:
     else: raise TypeError("?!")
 
 def out_path(t : Transform) -> ITKXfmAtom:
-    if isinstance(t, XfmAtom):
+    if hasattr(t, "path"):
         return t.path
     elif isinstance(t, IdentityTransform):
         return "id"
@@ -539,9 +539,12 @@ class Algorithms(Algorithms):
 
         out_img = img.newname_with_suffix("_N")
 
+        if mask is None:
+            warnings.warn("running N4 without a mask")
+
         cmd = CmdStage(cmd = ["N4BiasFieldCorrection", "-d 3", "-i", img.path, "-o", out_img.path] +
                              (["-x", mask.path] if mask is not None else []),
-                       inputs = (img, mask),
+                       inputs = (img, mask) if mask is not None else (img,),
                        outputs = (out_img,))
         return Result(stages=Stages((cmd,)), output=out_img)
 
