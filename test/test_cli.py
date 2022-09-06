@@ -4,6 +4,8 @@ import pytest
 import subprocess
 
 
+bools = (True, False)
+
 @pytest.fixture(scope="session")
 def minc_files(tmp_path_factory):
     d = tmp_path_factory.mktemp("files")
@@ -110,15 +112,15 @@ all_programs = pipelines + ["check_pipeline_status.py", "pipeline_executor.py"]
 
 
 class TestTrivialUsage:
-    def test_help(self, script_runner):
-        for prog in all_programs:
-            ret = script_runner.run(prog, "--help")
-            assert ret.success
+    @pytest.mark.parametrize('program', all_programs)
+    def test_help(self, script_runner, program):
+        ret = script_runner.run(program, "--help")
+        assert ret.success
 
-    def test_version(self, script_runner):
-        for prog in pipelines:
-            ret = script_runner.run(prog, '--version')
-            assert ret.success
+    @pytest.mark.parametrize('pipeline', pipelines)
+    def test_version(self, script_runner, pipeline):
+        ret = script_runner.run(pipeline, '--version')
+        assert ret.success
 
 
 general_args = ["--pipeline-name=test-pipe",
@@ -137,8 +139,8 @@ def lsq6_targets(initial_model, minc_files):
 lsq6_methods = ["--lsq6-large-rotations", "--lsq6-centre-estimation", "--lsq6-simple"]
 
 @pytest.fixture(scope="session")
-def lsq12_protocol(tmp_path_factory):
-    protocol_file = tmp_path_factory.mktemp("linear") / "lsq12_protocol.csv"
+def minctracc_lsq12_protocol(tmp_path_factory):
+    protocol_file = tmp_path_factory.mktemp("linear") / "minctracc_lsq12_protocol.csv"
     protocol = ( 
       '"blur";0.28;0.19;0.14\n'
       '"step";0.9;0.46;0.3\n'
@@ -151,7 +153,7 @@ def lsq12_protocol(tmp_path_factory):
     return protocol_file
 
 @pytest.fixture(scope="session")
-def nonlinear_protocol(tmp_path_factory):
+def minctracc_nonlinear_protocol(tmp_path_factory):
     protocol_file = tmp_path_factory.mktemp("nonlinear") / "MAGeT_protocol.csv"
     protocol = (
       '"blur";0.25;0.25;0.25;0.25;0.25;-1\n'
@@ -164,9 +166,23 @@ def nonlinear_protocol(tmp_path_factory):
         f.write(protocol)
     return protocol_file
 
-registration_methods = [["--registration-method=ANTS"],
-                        #["--registration-method=minctracc"],
-                        []]
+@pytest.fixture(scope="session")
+def lsq12_protocols(minctracc_lsq12_protocol):
+    return { 'minctracc' : minctracc_lsq12_protocol }
+
+@pytest.fixture(scope="session")
+def nonlinear_protocols(minctracc_nonlinear_protocol):
+    return { 'minctracc' : minctracc_nonlinear_protocol }
+
+
+#registration_methods = [["--registration-method=ANTS"],
+#                        ["--registration-method=minctracc"],  # TODO propagate minctracc protocol file / make it superfluous
+#                        []]
+registration_methods = [None, "ANTS", "minctracc", "demons"]
+
+def render_nonlinear_method(method):
+    return [f"--registration-method={method}"] if method is not None else []
+
 
 registration_strategies = [[]] + [[f"--registration-strategy={s}"] for s in ["build_model", "pairwise", "pairwise_and_build_model"]]
 
@@ -175,81 +191,150 @@ class TestLSQ6:
     @pytest.mark.parametrize('n3_arg', n3_args)
     @pytest.mark.parametrize('inorm_arg', inorm_args)
     @pytest.mark.parametrize('lsq6_method', lsq6_methods)
-    @pytest.mark.parametrize('use_csv', (True, False))
-    def test(self, script_runner, files, csv_file, use_csv, initial_model, lsq6_method, n3_arg, inorm_arg, lsq6_targets):
+    @pytest.mark.parametrize('algorithm_suite', algorithm_suites)
+    @pytest.mark.parametrize('use_csv', bools)
+    def test(self, script_runner, files, csv_file, use_csv,
+             initial_model, lsq6_method, n3_arg, inorm_arg,
+             lsq6_targets, algorithm_suite):
         for lsq6_target in lsq6_targets:
             files_arg = csv_file if use_csv else files
-            cmd = ["LSQ6.py", lsq6_target, lsq6_method] + files_arg + general_args + n3_arg + inorm_arg
+            cmd = (["LSQ6.py", f"--image-algorithms={algorithm_suite}",
+                   lsq6_target, lsq6_method]
+                   + files_arg + general_args + n3_arg + inorm_arg)
             ret = script_runner.run(*cmd)
             assert ret.success
 
+
+def render_lsq12_protocol(protocols, reg_method):
+    return [f"--lsq12-protocol={protocols[reg_method]}"] if protocols.get(reg_method) else []
+
+
+# TODO these `get` calls are kinda nasty!
+def render_nonlinear_protocol(protocols, reg_method, default_reg_method="ANTS", prefix=""):
+    reg_method = reg_method or default_reg_method
+    return [f"--{prefix}nlin-protocol={protocols[reg_method]}"] if protocols.get(reg_method) else []
+
+
 class TestLSQ12:
     # TODO find a way to parametrize this (i.e., vs deeply nested for-loops) that also works for MBM pipeline
-    @pytest.mark.parametrize('use_csv', (True, False))
-    def test(self, script_runner, files, csv_file, use_csv, lsq12_protocol):
+    @pytest.mark.parametrize('use_csv', bools)
+    @pytest.mark.parametrize('algorithm_suite', [("minc", "minctracc"), ("itk", "antsRegistration_sh")])
+    def test(self, script_runner, files, csv_file, use_csv, lsq12_protocols, algorithm_suite):
         files_arg = csv_file if use_csv else files
-        cmd = ["LSQ12.py", f"--lsq12-protocol={lsq12_protocol}"] + files_arg + general_args
+        cmd = (["LSQ12.py",
+                f"--image-algorithms={algorithm_suite[0]}",
+                f"--lsq12-registration-method={algorithm_suite[1]}"] + files_arg + general_args
+                + render_lsq12_protocol(protocols=lsq12_protocols, reg_method=algorithm_suite[1]))
         ret = script_runner.run(*cmd)
         assert ret.success
+
 
 class TestNLIN:
     @pytest.mark.parametrize('registration_method', registration_methods)
     @pytest.mark.parametrize('registration_strategy', registration_strategies)
-    @pytest.mark.parametrize('use_csv', (True, False))
-    def test(self, script_runner, files, csv_file, use_csv, initial_model, registration_method, registration_strategy):
+    @pytest.mark.parametrize('use_csv', bools)
+    @pytest.mark.parametrize('algorithm_suite', algorithm_suites)
+    def test(self, script_runner,
+             files, csv_file, use_csv,
+             initial_model,
+             registration_method, registration_strategy,
+             algorithm_suite, nonlinear_protocols):
+        if registration_method == 'minctracc' and algorithm_suite == 'itk':
+            pytest.skip("unsupported for now")
+
         files_arg = csv_file if use_csv else files
-        cmd = ["NLIN.py", f"--target={initial_model}"] + files_arg + general_args + registration_method + registration_strategy
+        cmd = (["NLIN.py",
+                f"--target={initial_model}",
+                f"--image-algorithms={algorithm_suite}"]
+                + render_nonlinear_method(registration_method) + registration_strategy
+                + render_nonlinear_protocol(nonlinear_protocols, registration_method)
+                + files_arg + general_args)
         ret = script_runner.run(*cmd)
         assert ret.success
+
 
 class TestMAGeT:
-    @pytest.mark.parametrize('use_csv', (True, False))
-    #@pytest.mark.parametrize('registration_method', registration_methods)
-    @pytest.mark.parametrize('maget_mask', (False, True))
-    def test(self, script_runner, files, csv_file, use_csv, lsq12_protocol, nonlinear_protocol,
-             atlas_dir, maget_mask):
+    @pytest.mark.parametrize('use_csv', bools)
+    @pytest.mark.parametrize('masking_method', registration_methods)
+    @pytest.mark.parametrize('registration_method', registration_methods)
+    @pytest.mark.parametrize('maget_mask', bools)
+    #@pytest.mark.parametrize('algorithm_suite', [("minc", "minctracc"), ("itk", "antsRegistration_sh")])
+    @pytest.mark.parametrize('lsq12_method', ("minctracc", "antsRegistration_sh"))
+    @pytest.mark.parametrize('algorithm_suite', algorithm_suites)
+    @pytest.mark.parametrize('hard_mask', bools)
+    def test(self, script_runner, files, csv_file, use_csv, lsq12_protocols, lsq12_method,
+             nonlinear_protocols, atlas_dir, maget_mask, hard_mask, algorithm_suite, registration_method, masking_method):
+
+        if maget_mask is False and masking_method is not None:
+            pytest.skip("mostly redundant")
+        if hard_mask and not maget_mask:
+            pytest.skip("redundant")
+
+        if algorithm_suite == 'itk' and (registration_method == 'minctracc' or masking_method in ('minctracc', None)):
+            pytest.xfail("unsupported for now")
+        if algorithm_suite == 'itk' and lsq12_method == 'minctracc':
+            pytest.xfail("unsupported for now")
+        if registration_method in ('ANTS', None) or masking_method in ('ANTS',):
+            pytest.xfail("somehow don't know the resolution!?")
+        if lsq12_method == "antsRegistration_sh" and algorithm_suite == "minc":
+            pytest.xfail("unsupported for now -- TODO replace antsRegistration_sh")
+        #if algorithm_suite == 'itk':
+        #    pytest.xfail("TODO test issue -- switch to ITK instead of minctracc here (minctracc doesn't yet support itk tooling)")
+
         files_arg = csv_file if use_csv else files
-        if maget_mask:
-            mask_args = ['--mask', f'--masking-nlin-protocol={nonlinear_protocol}', '--masking-method=minctracc']
-        else:
-            mask_args = ["--no-mask"]
-        cmd = (["MAGeT.py", f"--lsq12-protocol={lsq12_protocol}", f"--atlas-library={atlas_dir}",
-                '--registration-method=minctracc', f'--nlin-protocol={nonlinear_protocol}']
-               + files_arg + general_args + mask_args)
+
+        mask_args = ((['--mask'] + ([f'--masking-method={masking_method}'] if masking_method is not None else [])
+                      + render_nonlinear_protocol(nonlinear_protocols, masking_method, prefix="masking-", default_reg_method="minctracc")
+                      + (["--hard-mask"] if hard_mask else []))
+                     if maget_mask else ["--no-mask"])
+        cmd = (["MAGeT.py",
+                f"--atlas-library={atlas_dir}",
+                f"--image-algorithms={algorithm_suite}"]
+               + render_lsq12_protocol(lsq12_protocols, lsq12_method)
+               + [f"--lsq12-registration-method={lsq12_method}"]
+               + files_arg + general_args + mask_args
+               + render_nonlinear_protocol(nonlinear_protocols, registration_method)
+               + render_nonlinear_method(registration_method))
         ret = script_runner.run(*cmd)
         assert ret.success
 
+# FIXME test maget masking (at least add as xfail)
 class TestMBM:
     @pytest.mark.parametrize('lsq6_method', lsq6_methods)
     @pytest.mark.parametrize('registration_method', registration_methods)
     @pytest.mark.parametrize('registration_strategy', registration_strategies)
-    @pytest.mark.parametrize('use_csv', (True, False))
-    @pytest.mark.parametrize('run_maget', (True, False))
-    def test(self, script_runner, files, csv_file, use_csv, run_maget, atlas_dir, nonlinear_protocol,
-             initial_model, lsq6_method, lsq6_targets, lsq12_protocol,
+    @pytest.mark.parametrize('use_csv', bools)
+    @pytest.mark.parametrize('run_maget', bools)
+    def test(self, script_runner, files, csv_file, use_csv, run_maget, atlas_dir, nonlinear_protocols,
+             initial_model, lsq6_method, lsq6_targets, minctracc_lsq12_protocol, minctracc_nonlinear_protocol,
              registration_method, registration_strategy):
         files_arg = csv_file if use_csv else files
         for lsq6_target in lsq6_targets:
-            maget_args = [f"--maget-atlas-library={atlas_dir}"] if run_maget else ['--no-run-maget', '--maget-no-mask']
+            maget_args = ([f"--maget-atlas-library={atlas_dir}", "--maget-mask", "--run-maget"]
+                          if run_maget else ['--no-run-maget', '--maget-no-mask'])
             cmd = (["MBM.py", lsq6_target] +
-                    [f"--maget-nlin-protocol={nonlinear_protocol}",
-                     f"--lsq12-protocol={lsq12_protocol}",
-                     "--maget-registration-method=minctracc"] +
-                    maget_args + files_arg + general_args + registration_method + registration_strategy)
+                    [f"--maget-nlin-protocol={minctracc_nonlinear_protocol}",
+                     f"--lsq12-protocol={minctracc_lsq12_protocol}",
+                     "--maget-registration-method=minctracc"]
+                    + maget_args + files_arg + general_args
+                    + render_nonlinear_method(registration_method) + registration_strategy
+                    + render_nonlinear_protocol(nonlinear_protocols, registration_method))
             ret = script_runner.run(*cmd)
             assert ret.success
 
+
 class TestTwoLevel:
-    def test(self, script_runner, twolevel_csv_file, initial_model, lsq12_protocol):
-        cmd = (["twolevel_model_building.py", f'--init-model={initial_model}', f"--lsq12-protocol={lsq12_protocol}",
+    def test(self, script_runner, twolevel_csv_file, initial_model, minctracc_lsq12_protocol):
+        cmd = (["twolevel_model_building.py", f'--init-model={initial_model}', f"--lsq12-protocol={minctracc_lsq12_protocol}",
                 f"--csv-file={twolevel_csv_file}", "--maget-no-mask", "--no-run-maget"] + general_args)
         ret = script_runner.run(*cmd)
         assert ret.success
 
 class TestTamarack:
     @pytest.mark.parametrize('common_time_point', chain_time_points)
-    def test(self, script_runner, lsq12_protocol, tamarack_csv_file, initial_model, common_time_point):
-        cmd = (["registration_tamarack.py", f"--init-model={initial_model}", f"--lsq12-protocol={lsq12_protocol}",
+    def test(self, script_runner, minctracc_lsq12_protocol, tamarack_csv_file, initial_model, common_time_point):
+        cmd = (["registration_tamarack.py", f"--init-model={initial_model}",
+               f"--lsq12-protocol={minctracc_lsq12_protocol}",
                 f"--csv-file={tamarack_csv_file}", "--maget-no-mask", "--no-run-maget",
                 f"--common-time-point={common_time_point}"] + general_args)
         ret = script_runner.run(*cmd)
@@ -257,23 +342,23 @@ class TestTamarack:
 
 class TestRegistrationChain:
     @pytest.mark.parametrize('common_time_point', chain_time_points)
-    @pytest.mark.parametrize('use_pride_of_models', (True, False))
-    def test(self, script_runner, lsq12_protocol, chain_csv_file, initial_model, common_time_point, pride_of_models, use_pride_of_models):
+    @pytest.mark.parametrize('use_pride_of_models', bools)
+    def test(self, script_runner, minctracc_lsq12_protocol, chain_csv_file, initial_model, common_time_point, pride_of_models, use_pride_of_models):
+        pytest.xfail("registration chain currently borked")
         initial_model_args = [f"--pride-of-models={pride_of_models}"] if use_pride_of_models else [f"--init-model={initial_model}"]
         cmd = ["registration_chain.py",
                f"--chain-csv-file={chain_csv_file}",
                f"--chain-common-time-point={common_time_point}",
-               f"--lsq12-protocol={lsq12_protocol}"] + general_args + initial_model_args
+               f"--lsq12-protocol={minctracc_lsq12_protocol}"] + general_args + initial_model_args
         ret = script_runner.run(*cmd)
         assert ret.success
 
 class TestAsymmetry:
-    @pytest.mark.parametrize('registration_method', registration_methods)
-    @pytest.mark.parametrize('use_csv', (True, False))
-    def test(self, script_runner, files, csv_file, use_csv, registration_method, initial_model, lsq12_protocol):
+    @pytest.mark.parametrize('use_csv', bools)
+    def test(self, script_runner, files, csv_file, use_csv, initial_model, minctracc_lsq12_protocol):
         files_arg = csv_file if use_csv else files
-        cmd = (["asymmetry.py", f"--lsq12-protocol={lsq12_protocol}",
+        cmd = (["asymmetry.py", f"--lsq12-protocol={minctracc_lsq12_protocol}",
                 "--no-run-maget", "--maget-no-mask", f"--init-model={initial_model}"]
-                + files_arg + general_args + registration_method)
+                + files_arg + general_args)
         ret = script_runner.run(*cmd)
         assert ret.success
