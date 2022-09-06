@@ -80,7 +80,6 @@ def ensure_output_paths_in_dir(stages, d):
             if os.path.relpath(o.path, d).startswith('..'):
                 not_in_dir.append([o.path,s.cmd_to_string()])
     if (not_in_dir):
-        # import pdb; pdb.set_trace()
         raise ValueError(["output %s of stage '%s' not contained inside pipeline directory %s"
                           % (item[0], item[1], d) for item in not_in_dir])
 

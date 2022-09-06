@@ -268,7 +268,7 @@ def maget_mask(imgs : List[MincAtom], maget_options, registration_options, resol
                                                              maget_options.lsq12.reg_method)
 
     masking_nlin_component = get_registration_module(registration_options.image_algorithms,
-                                                     maget_options.nlin.reg_method)
+                                                     maget_options.maget.mask_method)
 
     original_imgs = imgs
     imgs = copy.deepcopy(imgs)
@@ -314,7 +314,7 @@ def maget_mask(imgs : List[MincAtom], maget_options, registration_options, resol
                                                        run_lsq12=maget_options.lsq12.run_lsq12,
                                                        resolution=resolution,
                                                        resample_subdir="masking",
-                                                       nlin_options=maget_options.maget.masking_nlin_protocol,
+                                                       nlin_options=maget_options.maget.masking_nlin_protocol,  # --- weird
                                                        resample_moving=False))}
                                       for img in imgs for atlas in atlases)
 
@@ -381,6 +381,7 @@ def maget_mask(imgs : List[MincAtom], maget_options, registration_options, resol
                      hard_mask(row.img,
                                mask = row.voted_hard_mask,
                                algorithms=algorithms,
+                               subdir="masking",
                                dilation_voxels = maget_options.maget.hard_mask_dilation))))
 
         # is this necessary or is the (soft) mask automatically propagated ?

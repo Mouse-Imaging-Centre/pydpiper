@@ -889,7 +889,6 @@ def main(args):
         for timept, img in subject.time_pt_dict.items():
             # these rows contain full_det, fwhm, inv_xfm, log_full_det, log_nlin_det,... (some more)
             for i, row in img.iterrows():
-                #import pdb; pdb.set_trace()
                 if timept != subject.intersubject_registration_time_pt:
                     # TODO: this is not really the proper way of dealing with things. If
                     # the code above changes (i.e., if the filenames change) this won't work anymore...
