@@ -50,7 +50,7 @@ class runOnQueueingSystem():
         # self.options = options would be easier than this manual unpacking
         # for vars that don't have much 'logic' associated with them ...
         self.job_lifetime = timestr_to_secs(options.execution.time or '48:00:00')
-        self.mem = options.execution.mem
+        self.mem = options.execution.memory
         self.max_walltime = options.execution.max_walltime
         self.min_walltime = options.execution.min_walltime
         self.procs = options.execution.proc

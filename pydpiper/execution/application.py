@@ -14,11 +14,10 @@ from typing import NamedTuple, List, Callable, Any
 from pydpiper.core.stages import Result
 from pydpiper.core.arguments import (CompoundParser, AnnotatedParser, application_parser,
                                      registration_parser, execution_parser, parse)
-from pydpiper.execution.pipeline import Pipeline, pipelineDaemon, CmdStage, OutputFile
+from pydpiper.execution.pipeline import Pipeline, pipelineDaemon, OutputFile
 from pydpiper.execution.queueing import runOnQueueingSystem
 from pydpiper.execution.pipeline_executor import ensure_exec_specified
 from pydpiper.core.util import output_directories
-from pydpiper.core.conversion import convertCmdStage
 from pydpiper.minc.registration import can_read_MINC_file
 
 PYDPIPER_VERSION = pkg_resources.get_distribution("pydpiper").version  # pylint: disable=E1101
@@ -78,7 +77,7 @@ def ensure_output_paths_in_dir(stages, d):
     for s in stages:
         for o in s.outputs:
             if os.path.relpath(o.path, d).startswith('..'):
-                not_in_dir.append([o.path,s.cmd_to_string()])
+                not_in_dir.append([o.path, s.cmd_to_string()])
     if (not_in_dir):
         # import pdb; pdb.set_trace()
         raise ValueError(["output %s of stage '%s' not contained inside pipeline directory %s"
@@ -165,7 +164,7 @@ def execute(stages, options):
     #     os.chdir(options.application.output_directory)
 
     # TODO: logger.info('Constructing pipeline...')
-    pipeline = Pipeline(stages=[convertCmdStage(s) for s in stages],
+    pipeline = Pipeline(stages=tuple(stages),
                         options=options)
 
     # TODO: print/log version
@@ -198,7 +197,7 @@ def execute(stages, options):
     # for debugging reasons, it's best if these come after writing stages, drawing graph, ...
     ensure_short_output_paths(stages)  # TODO convert to new `CmdStage`s
     ensure_output_paths_in_dir(stages, options.application.output_directory)
-    ensure_distinct_outputs([convertCmdStage(s) for s in stages])
+    ensure_distinct_outputs(tuple(stages))
 
 
     def check_inputs():
@@ -360,8 +359,8 @@ def generate_makeflow(pipeline, options):
           { "rules" :
             [
               remove_none_values({
-                "command"     : str(stage),
-                "inputs"      : stage.inputFiles + list({os.path.dirname(f) for f in stage.outputFiles}),
+                "command"     : stage.render(),
+                "inputs"      : stage.inputFiles + tuple({os.path.dirname(f) for f in stage.outputFiles}),
                 "outputs"     : stage.outputFiles,
                 "category"    : stage.category,
                 "environment" : stage.env_vars if stage.env_vars != {} else None

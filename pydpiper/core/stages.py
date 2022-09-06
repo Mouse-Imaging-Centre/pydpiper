@@ -1,9 +1,19 @@
+import hashlib
 import os
+from enum import Enum
 
 import ordered_set
 import shlex
 from typing import Any, Callable, Generic, Iterable, List, Set, Tuple, TypeVar, Union, Optional, Dict
 from pydpiper.core.files import FileAtom
+
+
+class State(Enum):
+    finished = "finished"
+    running = "running"
+    started = "started"
+    failed = "failed"
+
 
 class CmdStage(object):
     """A simplified command stage - one could write a simple conversion
@@ -21,12 +31,15 @@ class CmdStage(object):
                  memory   : float = None,
                  procs    : int = 1,
                  log_file : Optional[str] = None,
-                 env_vars : Dict[str,str] = None,
+                 env_vars : Dict[str, str] = None,
                  category : Optional[str] = None) -> None:
         # TODO: rather than having separate cmd_stage fn, might want to make inputs/outputs optional here
         self.inputs  = inputs          # type: Tuple[FileAtom, ...]
         # TODO: might be better to dereference inputs -> inputs.path here to save mem
         self.outputs = outputs         # type: Tuple[FileAtom, ...]
+        # TODO inputs and inputFiles/outputs and outputFiles are redundant -- optimize!
+        self.inputFiles = tuple(i.path for i in self.inputs)
+        self.outputFiles = tuple(o.path for o in self.outputs)
         #self.conf    = conf           # not needed at present -- see note on render_fn
         self._cmd    = [str(x) for x in cmd] # type: List[str]
         # TODO: why not expose this publicly?
@@ -34,7 +47,9 @@ class CmdStage(object):
         # TODO: make the hooks accessible via the constructor?
         self.when_finished_hooks = []  # type: List[Callable[[], Any]]
         self.memory = memory
+        self.number_retries = 0
         self.procs = procs
+        self._state = None
         self.category = category or self._cmd[0]  # TODO using the cmd name seems like a good heuristic, but what about the case of wrapping programs ??
         # some cosmetics: we would like the log files to reside in the "log" subdirectory. For most mincAtoms, we can
         # access this directory by using its "dir" and adding "../log". This is not true for files that live in the
@@ -51,7 +66,7 @@ class CmdStage(object):
     # Also, we assume cmd determines inputs, outputs so ignore it in hash/eq calculations
     # FIXME: we should make the CmdStage fields immutable (via properties) to prevent hashing-related bugs
     def __hash__(self) -> int:
-        return hash(self.cmd_to_string())
+        return int(hashlib.md5(self.render().encode()).hexdigest(), base=16)
     def __eq__(self, c) -> bool:
         return self._cmd == c._cmd
     # Originally I had `render_fn` : inputs, outputs, conf -> [str] instead of `cmd` : [str] to
@@ -71,6 +86,24 @@ class CmdStage(object):
         return self._cmd
     def set_log_file(self, log_file_name: str) -> None:
         self.log_file = log_file_name
+    def getNumberOfRetries(self):
+        return self.number_retries
+    def incrementNumberOfRetries(self):
+        self.number_retries += 1
+
+
+    def get_name(self):
+        return self._cmd[0]
+    name = property(get_name)
+
+    def get_colour(self): return "black"
+    colour = property(get_colour)
+
+    # FIXME having a _state field seems like a waste of memory -- better to track in Pipeline itself
+    def get_state(self): return self._state
+    def set_state(self, state: Optional[State]):
+        self._state = state
+    state = property(get_state, set_state)
 
     #def execute(self, backend):    # could also be elsewhere...
     #    raise NotImplemented

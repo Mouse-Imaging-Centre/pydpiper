@@ -80,11 +80,11 @@ def output_directories(stages: Set) -> Set[str]:
     of some previous stage."""
     # What if an output file IS a directory - should there be a special
     # way of tagging this other than ending the path in a trailing "/"?
-    all_files_to_consider = []
+    all_files_to_consider = ()
     for stage in stages:
-        all_files_to_consider = all_files_to_consider + stage.outputFiles
-        if stage.logFile:
-            all_files_to_consider.append(stage.logFile)
+        all_files_to_consider += stage.outputFiles
+        if stage.log_file:
+            all_files_to_consider += (stage.log_file,)
         else:
             print("no log file for stage:")
             # old style CmdStage (from execution/pipeline.py) uses __repr__ to print itself

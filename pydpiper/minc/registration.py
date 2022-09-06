@@ -254,7 +254,7 @@ def minctracc(source: MincAtom,
     if nlin_conf is not None:  # TODO at the moment basically ignore resource requirements for linear stages ...
         def set_memory(st, cfg):
             voxels = reduce(mul, volumeFromFile(source.path).getSizes())
-            st.setMem(voxels * cfg.mem_per_voxel + cfg.base_mem)
+            st.mem = voxels * cfg.mem_per_voxel + cfg.base_mem
             # TODO make a wrapper to generate these set_memory functions?
 
         stage.when_runnable_hooks.append(lambda st: set_memory(st, default_minctracc_mem_cfg))
@@ -373,7 +373,7 @@ def mincblur(img: MincAtom,
         # (instead of no arguments as previously).
         voxels = reduce(mul, volumeFromFile(img.path).getSizes())
         #default_mem = self.mem #hack; see pipeline.addStage method
-        stage.setMem((mem_cfg.base_mem + voxels * mem_cfg.mem_per_voxel)
+        stage.mem = ((mem_cfg.base_mem + voxels * mem_cfg.mem_per_voxel)
                      * (mem_cfg.tmpdir_factor if mem_cfg.include_tmpdir else 1))
     # FIXME this is the final word; we might want (1) either the executor/system to look at it
     # or (2) a wrapper that enforces some sensible minimum, as with Pydpiper 1.x
@@ -579,7 +579,7 @@ def pmincaverage(imgs: List[MincAtom],
 
     def set_memory(st, cfg):
         voxels_per_file = reduce(mul, volumeFromFile(imgs[0].path).getSizes())
-        st.setMem(cfg.base_mem + voxels_per_file * cfg.mem_per_voxel * len(imgs))
+        st.mem = cfg.base_mem + voxels_per_file * cfg.mem_per_voxel * len(imgs)
 
     avg_cmd.when_runnable_hooks.append(lambda st: set_memory(st, default_pmincaverage_mem_cfg))
 

@@ -5,32 +5,31 @@ import sys
 import os
 import warnings
 
-from configargparse import ArgParser, Namespace  # type: ignore
+from configargparse import ArgParser
 from datetime import datetime
-from multiprocessing import Process, Pool, Lock # type: ignore
+from multiprocessing.dummy import Process, Pool, Lock  # TODO refactor to use concurrent.futures.ThreadPoolExecutor
 import subprocess
-import shlex
-import pydpiper.execution.queueing as q
 import math as m
 import logging
 import socket
-import signal
 import threading
-os.environ["PYRO_LOGLEVEL"] = os.getenv("PYRO_LOGLEVEL", "INFO")
+from typing import Any
 
 import Pyro5
 import Pyro5.api
-from typing import Any
 
-if os.getenv("OMP_NUM_THREADS") is None:  # for #378 (very large vmem usage)
-  os.environ["OMP_NUM_THREADS"] = "4"
+
+#if os.getenv("OMP_NUM_THREADS") is None:  # for #378 (very large vmem usage)
+#  os.environ["OMP_NUM_THREADS"] = "4"
 
 from pyminc.volumes.volumes import mincException
 
+from util import remove_flags
 
 Pyro5.config.SERVERTYPE = "multiplex"
 
 class SubmitError(ValueError): pass
+
 
 for boring_exception, name in [(mincException, "mincException"), (SubmitError, "SubmitError"), (KeyError, "KeyError")]:
     Pyro5.api.SerializerBase.register_dict_to_class(name, lambda _classname, dict: boring_exception)
@@ -45,7 +44,7 @@ HEARTBEAT_INTERVAL = EXECUTOR_MAIN_LOOP_INTERVAL  # Logically necessary since th
 logger = logging # type: Any
 #logger = logging.getLogger(__name__)
 
-sys.excepthook = Pyro5.errors.excepthook  # type: ignore
+sys.excepthook = Pyro5.errors.excepthook
 
 
 def ensure_exec_specified(numExec):
@@ -166,8 +165,10 @@ def runStage(*, clientURI    : str, stage,
         # n.b.: normally we'd make the `try` block as small as possible, but in this case we
         # want to avoid raising an error since apply_async's error_callback doesn't know which stage
         # caused the error
+
+        ix = stage.ix
+
         try:
-            ix = stage.ix
 
             logger.info("Running stage %i (on %s). Memory requested: %.2f", ix, clientURI, stage.mem)
 
@@ -222,7 +223,7 @@ def runStage(*, clientURI    : str, stage,
                           of.write("[executor] ERROR: outputs not produced, failing this stage: %s\n" % missing_outputs)
                           raise MissingOutputs(missing_outputs)
         except Exception as e:
-            logger.exception("Exception whilst running stage: %i (on %s)", ix, clientURI)
+            logger.exception(f"Exception whilst running stage: {ix} (on {clientURI})")
             return ix, e
         else:
             # TODO: the big try-catch block above is quite ugly ...
