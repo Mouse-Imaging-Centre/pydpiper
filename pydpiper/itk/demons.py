@@ -74,7 +74,7 @@ class DEMONS(NLIN):
       return OmegaConf.load(filename)
 
   @staticmethod
-  def accepts_initial_transform(): return False  # might work for some formats e.g. .h5 but not .xfm
+  def accepts_initial_transform(): return False  # might work for some formats e.g. .h5 but not .xfm (maybe resolved?)
 
   @classmethod
   def register(cls,
@@ -123,7 +123,7 @@ class DEMONS(NLIN):
               + (["--fixed-mask", fixed.mask.path] if fixed.mask else [])
               + (["--moving-mask", moving.mask.path] if moving.mask else [])
               + (["-p", initial_moving_transform.path] if initial_moving_transform else [])
-              #+ ["-o", out_img.path]
+              #+ ["-o", out_img.path]  # we might not want the histogram-matched image output
               + ["-O", out_xfm.path]
               + option_flag('--use-histogram-matching', conf.use_histogram_matching)
               + option('--def-field-sigma', conf.deformation_field_sigma)
@@ -138,7 +138,7 @@ class DEMONS(NLIN):
                           + ((fixed.mask,) if fixed.mask else ()),
                    outputs = (out_xfm,)))
 
-      out_img = s.defer(cls.Algorithms.resample(img = moving, xfm = out_xfm, like = fixed, subdir='resampled'))
+      out_img = s.defer(cls.Algorithms.resample(img = moving, xfm = out_xfm, like = fixed, subdir=resample_subdir))
 
       xfm = GenericXfmHandler(moving=moving, fixed=fixed, xfm=out_xfm, resampled=out_img)
 

@@ -25,6 +25,14 @@ class ITKImgAtom(ImgAtom):
     pass
 
 
+
+def c3d_cmd(files, op, out_file):
+
+    c = CmdStage(cmd = ["c3d"] + [f.path for f in files] + [op, '-o', out_file.path],
+                 inputs = files, outputs=(out_file,))
+    return Result(stages=Stages([c]), output=out_file)
+
+
 def convert(infile : ImgAtom, out_ext : str) -> Result[ImgAtom]:
     s = Stages()
     outfile = infile.newext(ext=out_ext)
@@ -174,6 +182,7 @@ def resample(img,
              use_nn_interpolation = None,
              new_name_wo_ext: str = None,
              subdir: str = None,
+             resample_labels: bool = True,
              postfix: str = None):
 
     s = Stages()
@@ -205,7 +214,7 @@ def resample(img,
                                              use_nn_interpolation=True,
                                              invert=invert,
                                              new_name_wo_ext=new_name_wo_ext + "_labels",
-                                             subdir=subdir)) if img.labels is not None else None
+                                             subdir=subdir)) if resample_labels and img.labels is not None else None
 
     # Note that new_img can't be used for anything until the mask/label files are also resampled.
     # This shouldn't create a problem with stage dependencies as long as masks/labels appear in inputs/outputs of CmdStages.
@@ -555,7 +564,9 @@ class Algorithms(Algorithms):
 
     @staticmethod
     def hard_mask(img, *, mask, subdir = "tmp"):
-        raise NotImplementedError
+        out_file = img.newname_with_suffix("_hard_masked", subdir=subdir)
+        c = CmdStage(cmd = ["c3d", img, mask, "-mul", out_file.path], inputs=(img, mask), outputs=(out_file,))
+        return Result(stages=Stages([c]), output=out_file)
 
     @staticmethod
     def dilate_mask(mask, voxels, subdir = "tmp"):
@@ -578,7 +589,7 @@ class Algorithms(Algorithms):
 
     @staticmethod
     def union_mask(imgs, new_name, subdir):
-        raise NotImplementedError
+        return c3d_cmd(imgs, op="-max", out_file = ImgAtom(new_name))
 
     @staticmethod
     def blur(img, fwhm, gradient=True, subdir='tmp'):
