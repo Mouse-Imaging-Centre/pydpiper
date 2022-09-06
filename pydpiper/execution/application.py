@@ -14,11 +14,10 @@ from typing import NamedTuple, List, Callable, Any
 from pydpiper.core.stages import Result
 from pydpiper.core.arguments import (CompoundParser, AnnotatedParser, application_parser,
                                      registration_parser, execution_parser, parse)
-from pydpiper.execution.pipeline import Pipeline, pipelineDaemon, CmdStage, OutputFile
+from pydpiper.execution.pipeline import Pipeline, pipelineDaemon, OutputFile
 from pydpiper.execution.queueing import runOnQueueingSystem
 from pydpiper.execution.pipeline_executor import ensure_exec_specified
 from pydpiper.core.util import output_directories
-from pydpiper.core.conversion import convertCmdStage
 from pydpiper.minc.registration import can_read_MINC_file
 
 PYDPIPER_VERSION = pkg_resources.get_distribution("pydpiper").version  # pylint: disable=E1101
@@ -144,7 +143,7 @@ def execute(stages, options):
     #     os.chdir(options.application.output_directory)
 
     # TODO: logger.info('Constructing pipeline...')
-    pipeline = Pipeline(stages=[convertCmdStage(s) for s in stages],
+    pipeline = Pipeline(stages=tuple(stages),
                         options=options)
 
     # TODO: print/log version
@@ -174,7 +173,7 @@ def execute(stages, options):
     # for debugging reasons, it's best if these come after writing stages, drawing graph, ...
     ensure_short_output_paths(stages)  # TODO convert to new `CmdStage`s
     ensure_output_paths_in_dir(stages, options.application.output_directory)
-    ensure_distinct_outputs([convertCmdStage(s) for s in stages])
+    ensure_distinct_outputs(tuple(stages))
 
 
     def check_inputs():

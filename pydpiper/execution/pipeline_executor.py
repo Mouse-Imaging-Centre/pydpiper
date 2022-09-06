@@ -84,7 +84,7 @@ def launchExecutor(executor):
     # the following command only works if the server is alive. Currently if that's
     # not the case, the executor will die which is okay, but this should be
     # more properly handled: a more elegant check to verify the server is running
-    p.registerClient(str(clientURI), executor.mem)
+    p.registerClient(str(clientURI), executor.memory)
 
     executor.registeredWithServer()
     executor.setClientURI(str(clientURI))
@@ -169,7 +169,7 @@ def runStage(*, clientURI    : str, stage,
         try:
             ix = stage.ix
 
-            logger.info("Running stage %i (on %s). Memory requested: %.2f", ix, clientURI, stage.mem)
+            logger.info("Running stage %i (on %s). Memory requested: %.2f", ix, clientURI, stage.memory)
 
             if use_singularity:
                 # this should have been previously checked, but assert anyway
@@ -253,10 +253,10 @@ class pipelineExecutor(object):
         # options.max_mem since this represents a per-node
         # limit (or at least a per-executor limit)
         logger.info("memNeeded: %s", memNeeded)
-        self.mem = memNeeded or options.mem
+        self.mem = memNeeded or options.memory
         logger.info("self.mem = %0.2fG", self.mem)
-        if self.mem > options.mem:
-            raise InsufficientResources("executor requesting %.2fG memory but maximum is %.2fG" % (options.mem, self.mem))
+        if self.mem > options.memory:
+            raise InsufficientResources("executor requesting %.2fG memory but maximum is %.2fG" % (options.memory, self.mem))
         self.defer_directory_creation = options.defer_directory_creation
         self.pipeline_name = pipeline_name
         self.procs = options.proc
@@ -592,7 +592,7 @@ class pipelineExecutor(object):
             # reset the idle time, we are running a stage!
             self.idle_time = 0
             with self.lock:
-                self.runningMem += stage.mem
+                self.runningMem += stage.memory
                 self.runningProcs += stage.procs
             # The multiprocessing library must pickle things in order to execute them.
             # I wanted the following function (runStage) to be a function of the pipelineExecutor
@@ -619,7 +619,7 @@ class pipelineExecutor(object):
                 logger.debug("Freeing up resources for stage %i.", ix)
                 stage = self.runningChildren[ix]
                 with self.lock:
-                    self.runningMem -= stage.mem
+                    self.runningMem -= stage.memory
                     self.runningProcs -= stage.procs
                 del self.runningChildren[ix]
 
@@ -637,7 +637,7 @@ class pipelineExecutor(object):
                                                   "check_outputs" : self.check_outputs,
                                                   "mkdirs" : self.defer_directory_creation },
                                            callback=process_result)
-            self.runningChildren[i] = ChildProcess(i, result, stage.mem, stage.procs)
+            self.runningChildren[i] = ChildProcess(i, result, stage.memory, stage.procs)
 
             logger.debug("Added stage %i to the running pool.", i)
             return True

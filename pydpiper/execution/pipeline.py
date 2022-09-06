@@ -22,6 +22,8 @@ import functools
 import math
 from typing import Any
 
+from pydpiper.core.stages import State
+
 from sys import intern
 
 # TODO move this and Pyro5 imports down into launchServer where pipeline name is available?
@@ -94,106 +96,6 @@ def memoize_hook(hook):  # TODO replace with functools.lru_cache (?!) in python3
             return data.result
     return g
 
-class PipelineStage(object):
-    def __init__(self):
-        self.mem = None # if not set, use pipeline default
-        self.procs = 1 # default number of processors per stage
-        # the input files for this stage
-        self.inputFiles  = []
-        # the output files for this stage
-        self.outputFiles = []
-        self.logFile = None
-        self.status = None
-        self.name = ""
-        self.colour = "black" # used when a graph is created of all stages to colour the nodes
-        self.number_retries = 0
-        # functions to be called when the stage becomes runnable
-        # (these might be called multiple times, so should be benign
-        # in some sense)
-        self._runnable_hooks = []
-        # functions to be called when a stage finishes
-        self.finished_hooks = []
-
-    def add_runnable_hook(self, h, memoize=True):
-        self._runnable_hooks.append((memoize_hook if memoize else lambda x: x)(h))
-
-    def isFinished(self):
-        return self.status == "finished"
-    def setRunning(self):
-        self.status = "running"
-    def setFinished(self):
-        self.status = "finished"
-    def setFailed(self):
-        self.status = "failed"
-    def setNone(self):
-        self.status = None
-    def setMem(self, mem):
-        self.mem = mem
-    def getMem(self):
-        return self.mem
-    def setProcs(self, num):
-        self.procs = num
-    def getProcs(self):
-        return self.procs
-    def getHash(self):
-        return(hash("".join(self.outputFiles) + "".join(self.inputFiles)))
-    def __eq__(self, other):
-        return self.inputFiles == other.inputFiles and self.outputFiles == other.outputFiles
-    def __ne__(self, other):
-        return not(self.__eq__(other))
-    def getNumberOfRetries(self):
-        return self.number_retries
-    def incrementNumberOfRetries(self):
-        self.number_retries += 1
-
-class CmdStage(PipelineStage):
-    pipeline_start_time = datetime.isoformat(datetime.now())
-    logfile_id = 0
-    def __init__(self, argArray):
-        PipelineStage.__init__(self)
-        self.cmd = [] # the input array converted to strings
-        self.parseArgs(argArray)
-        #self.checkLogFile()
-    def parseArgs(self, argArray):
-        if argArray:
-            for a in argArray:
-                ft = getattr(a, "fileType", None)
-                s = intern(str(a))
-                if ft == "input":
-                    self.inputFiles.append(s)
-                elif ft == "output":
-                    self.outputFiles.append(s)
-                self.cmd.append(s)
-            self.name = self.cmd[0]
-    def checkLogFile(self):  # TODO silly, this is always called since called by __init__
-        if not self.logFile:
-            self.logFile = self.name + "." + CmdStage.pipeline_start_time + '-' + str(CmdStage.logfile_id) + ".log"
-            CmdStage.logfile_id += 1
-    def setLogFile(self, logFileName): 
-        self.logFile = str(logFileName)
-    def execStage(self):
-        of = open(self.logFile, 'a')
-        of.write("Running on: " + socket.gethostname() + " at " + datetime.isoformat(datetime.now(), " ") + "\n")
-        of.write(repr(self) + "\n")
-        of.flush()
-
-        args = split(repr(self))
-        returncode = subprocess.call(args, stdout=of, stderr=of, shell=False)
-        of.close()
-        return(returncode)
-
-    def getHash(self):
-        """Return a small value which can be used to compare objects.
-        Use a deterministic hash to allow persistence across restarts (calls to `hash` and `__hash__`
-        depend on the value of PYTHONHASHSEED as of Python 3.3)"""
-        return hashlib.md5("".join(self.cmd).encode()).hexdigest()
-
-    def __repr__(self):
-        return(" ".join(self.cmd))
-    def __eq__(self, other):
-        return (self is other) or (self.__class__ == other.__class__ and self.cmd == other.cmd)
-    def __hash__(self):
-        return tuple(self.cmd).__hash__()
 
 """A graph with no edge information; see networkx/classes/digraph.py"""
 class ThinGraph(nx.DiGraph):
@@ -283,7 +185,7 @@ class Pipeline(object):
         # even though the "graph heads" are enqueued here, this will be changed later when completed stages
         # are skipped :D
         self.unfinished_pred_counts = [ len([i for i in self.G.predecessors(n)
-                                             if not self.stages[i].isFinished()])
+                                             if not self.stages[i].state == State.finished])
                                         for n in range(self.G.order()) ]
         graph_heads = [n for n in self.G.nodes()
                        if self.unfinished_pred_counts[n] == 0]
@@ -346,7 +248,7 @@ class Pipeline(object):
         # To save memory, we could make use of the fact that strings
         # are actually interned, so it might be faster/cheaper
         # just to store/compare the pointers.
-        h = stage.getHash()
+        h = hash(stage)
         if h in self.stage_dict:
             self.skipped_stages += 1
             #stage already exists - nothing to be done
@@ -363,8 +265,8 @@ class Pipeline(object):
             self.counter += 1
         # huge hack since default isn't available in CmdStage() constructor
         # (may get overridden later by a hook, hence may really be wrong ... ugh):
-        if stage.mem is None and self.exec_options is not None:
-            stage.setMem(self.exec_options.default_job_mem)
+        if stage.memory is None and self.exec_options is not None:
+            stage.mem = self.exec_options.default_job_mem
 
     def _backup_file_location(self, outputDir=None):
         loc = os.path.join(outputDir or os.getcwd(),
@@ -543,7 +445,7 @@ class Pipeline(object):
             logger.info("Finished Stage %s: %s (on %s)", str(index), str(self.stages[index]), clientURI)
             self.removeFromRunning(index, clientURI, new_status = "finished")
             # run any potential hooks now that the stage has finished:
-            for f in s.finished_hooks:
+            for f in s.when_finished_hooks:
                 f(s)
         self.num_finished_stages += 1
 
@@ -622,17 +524,17 @@ class Pipeline(object):
     def prepare_to_run(self, i):
         """Some pre-run tasks that must only run once
         (in the current model, `enqueue` may run arbitrarily many times!)"""
-        for f in self.stages[i]._runnable_hooks:
+        for f in self.stages[i].when_runnable_hooks:
             f(self.stages[i])
         # the easiest place to ensure that all stages request at least
         # the default job mem is here. The hooks above might estimate
         # memory for the jobs, here we'll override that if they requested
         # less than the minimum
         if self.stages[i].mem < self.exec_options.default_job_mem:
-            self.stages[i].setMem(self.exec_options.default_job_mem)
+            self.stages[i].mem = self.exec_options.default_job_mem
         # scale everything by the memory_factor
         # FIXME this may run several times ... weird !!
-        self.stages[i].setMem(self.stages[i].mem * self.exec_options.memory_factor)
+        self.stages[i].mem == self.stages[i].mem * self.exec_options.memory_factor
 
     def enqueue(self, i):
         """Update pipeline data structures and run relevant hooks when a stage becomes runnable."""
@@ -994,9 +896,9 @@ def launchServer(pipeline):
     if executors_local:
         # measured once -- we assume that server memory usage will be
         # roughly constant at this point
-        pipeline.memAvail = pipeline.exec_options.mem - (float(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss) / 10**6)  # 2^20?
+        pipeline.memAvail = pipeline.exec_options.memory - (float(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss) / 10 ** 6)  # 2^20?
     else:
-        pipeline.memAvail = pipeline.exec_options.mem
+        pipeline.memAvail = pipeline.exec_options.memory
     
     # is the server going to be verbose or not?
     if options.application.verbose:
@@ -1065,7 +967,7 @@ def launchServer(pipeline):
             p = Pyro5.api.Proxy(pipelineURI)
             try:
                 logger.debug("Auxiliary loop started")
-                logger.debug("memory limit: %.3G; available after server overhead: %.3fG" % (options.execution.mem, pipeline.memAvail))
+                logger.debug("memory limit: %.3G; available after server overhead: %.3fG" % (options.execution.memory, pipeline.memAvail))
                 while p.continueLoop():
                     p.manageExecutors()
                     e.wait(LOOP_INTERVAL)
