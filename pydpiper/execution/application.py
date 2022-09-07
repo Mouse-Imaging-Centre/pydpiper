@@ -122,15 +122,35 @@ def ensure_commands_exist(stages, use_singularity, container_path, container_arg
     if use_singularity:
         if not container_path:
             raise ValueError("container_path needed")
-        bad_cmds = [cmd for cmd in cmds
-                    if subprocess.run(['singularity', 'exec']
-                                       + ([container_args] if container_args else [])
-                                       + [container_path, 'which', cmd],
-                                      capture_output=True).returncode != 0]
+        check_cmd_base = (['singularity', 'exec'] + ([container_args] if container_args else []) + [container_path])
+        missing_cmds = ()
+        for cmd in cmds:
+            check_cmd = check_cmd_base + ['which', cmd]
+            res = subprocess.run(check_cmd, capture_output=True).returncode
+            if res == 0:
+                continue
+            elif res == 1:
+                missing_cmds += (cmd,)
+            else:
+                raise ValueError(f"running {check_cmd} raised {res}")
+
     else:
-        bad_cmds = [cmd for cmd in cmds if shutil.which(cmd) is None]
-    if len(bad_cmds) > 0:
-        raise ValueError("Missing executables: %s" % bad_cmds)
+        missing_cmds = [cmd for cmd in cmds if shutil.which(cmd) is None]
+    if len(missing_cmds) > 0:
+        raise ValueError("Missing executables: %s" % missing_cmds)
+
+
+def ensure_singularity_works(container_path, container_args):
+    if shutil.which("singularity") is None:
+        raise ValueError("missing Singularity executable")
+    cmd = (["singularity", "exec"]
+           + ([container_args] if container_args is not None else [])
+           + [container_path, "echo", "hello"])
+    try:
+        subprocess.run(cmd, check=True, capture_output=True)
+    except:
+        raise ValueError(f"looks like Singularity isn't happy with your container path and arguments")
+
 
 def check_container_options(use_singularity, container_path):
     assert not (use_singularity and not container_path), "need --container-path=... with --use-singularity"
@@ -160,6 +180,10 @@ def execute(stages, options):
         nx.drawing.nx_agraph.write_dot(file_graph(stages, options.application.output_directory),
                                        str(options.application.pipeline_name) + "_labeled-tree-alternate.dot")
         logger.debug("Done.")
+
+    if options.execution.use_singularity:
+        ensure_singularity_works(container_path=options.execution.container_path,
+                                 container_args=options.execution.container_args)
 
     # TODO some of these checks could come even earlier
     check_container_options(use_singularity=options.execution.use_singularity,
