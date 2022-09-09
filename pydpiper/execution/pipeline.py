@@ -393,7 +393,7 @@ class Pipeline(object):
     @Pyro5.api.expose
     def setStageStarted(self, index, clientURI):
         URIstring = "(" + str(clientURI) + ")"
-        logger.info("Starting Stage " + str(index) + ": " + str(self.stages[index]) + URIstring)
+        logger.info(f"Starting Stage {index}: {self.stages[index].render()}({URIstring})")
         # There may be a bug in which a stage is added to the runnable set multiple times.
         # It would be better to catch that earlier (by using a different/additional data structure)
         # but for now look for the case when a stage is run twice at the same time, which may
@@ -435,7 +435,7 @@ class Pipeline(object):
         if checking_pipeline_status:
             s.state = State.finished
         else:
-            logger.info("Finished Stage %s: %s (on %s)", str(index), str(self.stages[index]), clientURI)
+            logger.info(f"Finished Stage {index}: {self.stages[index].render()} (on {clientURI})")
             self.removeFromRunning(index, clientURI, new_status = State.finished)
             # run any potential hooks now that the stage has finished:
             for f in s.when_finished_hooks:
@@ -497,15 +497,15 @@ class Pipeline(object):
             #time.sleep(STAGE_RETRY_INTERVAL)
             self.removeFromRunning(index, clientURI, new_status = None)
             self.stages[index].incrementNumberOfRetries()
-            logger.info("RETRYING: ERROR in Stage " + str(index) + ": " + str(self.stages[index]) + "\n"
+            logger.info("RETRYING: ERROR in Stage " + str(index) + ": " + self.stages[index].render() + "\n"
                         + "RETRYING: adding this stage back to the runnable set.\n"
                         + "RETRYING: Logfile for Stage " + str(self.stages[index].log_file) + "\n")
             self.enqueue(index)
         else:
             self.removeFromRunning(index, clientURI, new_status = State.failed)
-            logger.info("ERROR in Stage " + str(index) + ": " + str(self.stages[index]))
+            logger.info("ERROR in Stage " + str(index) + ": " + self.stages[index]).render()
             # This is something we should also directly report back to the user:
-            print("\nERROR in Stage %s: %s" % (str(index), str(self.stages[index])))
+            print("\nERROR in Stage %s: %s" % (str(index), self.stages[index].render()))
             print("Logfile for (potentially) more information:\n%s\n" % self.stages[index].log_file)
             if exc: print(exc)
             sys.stdout.flush()
@@ -793,20 +793,20 @@ class Pipeline(object):
             # (either because the input/output filenames or command has changed
             # or because an ancestor has re-run, i.e., the files themselves have changed)
             # but whose ancestors have already been run
-            flag,i = self.getRunnableStageIndex()
-            if i == None:
+            flag, i = self.getRunnableStageIndex()
+            if i is None:
                 break
 
             s = self.getStage(i)
 
-            if not isinstance(s, CmdStage):
-                runnable.append(i)
-                continue
+            #if not isinstance(s, CmdStage):
+            #    runnable.append(i)
+            #    continue
 
             h = hash(s)
 
             # we've never run this command before
-            if not h in previous_hashes:
+            if h not in previous_hashes:
                 runnable.append(i)
                 continue
 
@@ -1030,7 +1030,7 @@ def flatten_pipeline(p):
         else:
             return 0 
                 
-    return sorted([(i, str(p.stages[i]), p.G.predecessors(i)) for i in p.G.nodes()], key=functools.cmp_to_key(post))
+    return sorted([(i, p.stages[i].render(), p.G.predecessors(i)) for i in p.G.nodes()], key=functools.cmp_to_key(post))
 
 def pipelineDaemon(pipeline, options, programName=None):
     """Launches Pyro server and (if specified by options) pipeline executors"""

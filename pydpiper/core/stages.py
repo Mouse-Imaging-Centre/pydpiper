@@ -4,7 +4,7 @@ from enum import Enum
 
 import ordered_set
 import shlex
-from typing import Any, Callable, Generic, Iterable, List, Set, Tuple, TypeVar, Union, Optional, Dict
+from typing import Any, Callable, Generic, Iterable, List, Tuple, TypeVar, Union, Optional, Dict
 from pydpiper.core.files import FileAtom
 
 
@@ -174,7 +174,7 @@ def parse(cmd_str : str) -> CmdStage:
     an even more clever parser that simply guesses the output based on position
     or a few flags like -o and tags anything else that looks like a file as input.)
     >>> val = 2
-    >>> c = parse('mincfoo -flag {val} ,input1.mnc ,input2.mnc @output.mnc'.format(**vars()))
+    >>> c = parse(f'mincfoo -flag {val} ,input1.mnc ,input2.mnc @output.mnc')
     >>> [f.path for f in c.outputs]
     ['output.mnc']
     >>> [f.path for f in c.inputs]
@@ -183,7 +183,7 @@ def parse(cmd_str : str) -> CmdStage:
     cmd = shlex.split(cmd_str)
     inputs  = tuple([FileAtom(s[1:]) for s in cmd if s[0] == ','])  #TODO what about I(), O() ?
     outputs = tuple([FileAtom(s[1:]) for s in cmd if s[0] == '@'])
-    s = CmdStage(inputs = inputs, outputs = outputs, cmd = [c if c[0] not in [',','@'] else c[1:] for c in cmd])
+    s = CmdStage(inputs = inputs, outputs = outputs, cmd = [c if c[0] not in [',', '@'] else c[1:] for c in cmd])
     return s
 
 

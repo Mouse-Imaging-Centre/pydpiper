@@ -178,9 +178,7 @@ def runStage(*, clientURI    : str, stage,
                 if container_path is None:
                     raise ValueError("can't use singularity without --container-path")
                 args = [container_args] if container_args is not None else []
-                singularity_prefix = (["singularity", "exec"]
-                                              + ([container_args] if container_args is not None else [])
-                                              + [container_path])
+                singularity_prefix = (["singularity", "exec"] + args + [container_path])
             else:
                 singularity_prefix = []
 

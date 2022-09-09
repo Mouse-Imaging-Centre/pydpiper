@@ -42,7 +42,7 @@ class PydParser(ArgParser):
 # def id(*args, **kwargs):
 #    return args, kwargs
 
-def parse_nullable_int(string: str) -> int:
+def parse_nullable_int(string: str) -> Optional[int]:
     if string == "None":
         return None
     else:

@@ -11,12 +11,15 @@ import time
 
 from typing import NamedTuple, List, Callable, Any
 
+from pydpiper.core.files import ImgAtom
 from pydpiper.core.stages import Result
+from pydpiper.core.util import output_directories
 from pydpiper.core.arguments import (CompoundParser, AnnotatedParser, application_parser,
                                      registration_parser, execution_parser, parse)
-from pydpiper.execution.pipeline import Pipeline, pipelineDaemon, OutputFile
+from pydpiper.execution.pipeline import Pipeline, pipelineDaemon
 from pydpiper.execution.pipeline_executor import ensure_exec_specified
 from pydpiper.minc.registration import can_read_MINC_file
+from pydpiper.core.stages import CmdStage
 
 PYDPIPER_VERSION = pkg_resources.get_distribution("pydpiper").version  # pylint: disable=E1101
 
@@ -88,9 +91,10 @@ def ensure_output_paths_in_dir(stages, d):
 def nondistinct_outputs(stages):
     """
     TODO: move this doctest to a proper test in test/
-    >>> c1 = CmdStage(argArray=["touch", OutputFile("/tmp/foo.txt")])
-    >>> c2 = CmdStage(argArray=[">",     OutputFile("/tmp/foo.txt")])
-    >>> nondistinct_outputs([c1, c2]) == { '/tmp/foo.txt' : set([c1,c2]) }
+    >>> out = ImgAtom("/tmp/foo.txt")
+    >>> c1 = CmdStage(cmd = ["touch", out.path], inputs=(), outputs=(out,))
+    >>> c2 = CmdStage(cmd = [">", out.path], inputs=(), outputs=(out,))
+    >>> nondistinct_outputs([c1, c2]) == { out.path : {c1, c2} }
     True
     """
     m = ((o, s) for s in stages for o in s.outputFiles)
@@ -134,7 +138,7 @@ def ensure_commands_exist(stages, use_singularity, container_path, container_arg
     else:
         missing_cmds = [cmd for cmd in cmds if shutil.which(cmd) is None]
     if len(missing_cmds) > 0:
-        raise ValueError("Missing executables: %s" % missing_cmds)
+        raise ValueError(f"Missing executables: {missing_cmds}")
 
 
 def ensure_singularity_works(container_path, container_args):
@@ -320,6 +324,8 @@ def makeflow(pipeline, options):
         # (and with potential library rather than application usage)
 
         monitor = subprocess.Popen(monitor_cmd)
+        rc = None
+
         try:
 
           with open(makeflow_stdout_file, 'w') as f:
@@ -336,6 +342,7 @@ def makeflow(pipeline, options):
         finally:
           monitor.terminate()
           monitor.wait()
+          if rc is None: rc = -1
           sys.exit(rc)
 
 def makeflow_filename(options):
