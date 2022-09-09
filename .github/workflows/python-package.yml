@@ -41,4 +41,5 @@ jobs:
     - name: Test with pytest
       run: |
         . /opt/minc/1.9.18/minc-toolkit-config.sh
+        pytest pydpiper
         pytest test
