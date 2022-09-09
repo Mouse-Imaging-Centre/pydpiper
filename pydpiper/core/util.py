@@ -100,3 +100,36 @@ def output_directories(stages: Set) -> Set[str]:
 #    fields = [v.... for v in p._option_store_actions.values()]
 #    pass #TODO use p._option_string_actions ?
 
+def create_uri_filename_from_options(pipeline_name : str) -> str:
+    return os.path.abspath(os.path.join(os.curdir, pipeline_name + "_uri"))
+
+
+def timestr_to_secs(ts):
+    # TODO replace with a library function
+    # TODO put into a util module
+    try:
+        h, m, s = ts.split(':')
+        return 3600 * int(h) + 60 * int(m) + int(s)
+    except:
+        raise Exception("invalid (H...)HH:MM:SS timestring: %s" % ts)
+
+
+def remove_flags(flags, args):
+    new_args = args[:] # copy for politeness
+    for ix, arg in reversed(list(enumerate(new_args))):
+        for flag in flags:
+            if flag in arg: #re.search(flag, arg):
+                # matches? (argparse uses prefix matching...try to catch -
+                # ideally we'd actually consult a table of legal arguments)
+                if '=' in arg:
+                    # sys.argv has form [..., '--num-executors=3', ...]
+                    new_args.pop(ix)
+                elif len(new_args) - 1 == ix or new_args[ix+1][0] == '-':  # FIXME TOTAL HACK
+                    # sys.argv has form [..., '--boolean-flag'] ( + [optionally] ['--other-flag', ...])
+                # ... hopefully another flag, not a negative number ...
+                    new_args.pop(ix)
+                else:
+                    # sys.argv has form [..., '--num-executors', '3', ...]
+                    new_args.pop(ix)
+                    new_args.pop(ix)
+    return new_args

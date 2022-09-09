@@ -418,7 +418,7 @@ class pipelineExecutor(object):
                    '--uri-file', self.uri_file,
                    # Only one exec is launched at a time in this manner, so:
                    "--num-executors", str(1), '--mem', str(self.mem)]
-                   + q.remove_flags(['--num-exec', '--mem'], sys.argv[1:])))
+                  + remove_flags(['--num-exec', '--mem'], sys.argv[1:])))
 
             #     header = '\n'.join(["#!/usr/bin/env bash",
             #                         "setenv PYRO_LOGFILE logs/%s-${JOB_ID}-${SGE_TASK_ID}.log" % ident])
@@ -690,11 +690,6 @@ def main():
 
     if options.local:
         local_launch(options)
-    elif options.submit_server:
-        roq = q.runOnQueueingSystem(options, sysArgs=sys.argv)
-        for i in range(options.num_exec):
-            roq.createAndSubmitExecutorJobFile(i, after=None,
-                                               time=q.timestr_to_secs(options.time))
     elif options.queue_type is not None:
         for i in range(options.num_exec):
             pe = pipelineExecutor(options=options, uri_file=options.urifile, pipeline_name="anon-executor")

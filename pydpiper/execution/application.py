@@ -15,9 +15,7 @@ from pydpiper.core.stages import Result
 from pydpiper.core.arguments import (CompoundParser, AnnotatedParser, application_parser,
                                      registration_parser, execution_parser, parse)
 from pydpiper.execution.pipeline import Pipeline, pipelineDaemon, OutputFile
-from pydpiper.execution.queueing import runOnQueueingSystem
 from pydpiper.execution.pipeline_executor import ensure_exec_specified
-from pydpiper.core.util import output_directories
 from pydpiper.minc.registration import can_read_MINC_file
 
 PYDPIPER_VERSION = pkg_resources.get_distribution("pydpiper").version  # pylint: disable=E1101
@@ -250,9 +248,6 @@ def mk_application(parsers: List[AnnotatedParser], pipeline: Callable[[Any], Res
 def backend(options):
     if options.execution.backend == 'makeflow':
         return makeflow
-
-    if options.execution.submit_server and not options.execution.local:
-        return grid_only_execute
     else:
         return pyro_execute
 
@@ -389,15 +384,6 @@ def generate_makeflow(pipeline, options):
 
     return output_file
 
-
-def grid_only_execute(pipeline, options):
-    if options.execution.queue_type != 'pbs':
-        raise ValueError("currently we only support submitting the server to PBS/Torque systems")
-    roq = runOnQueueingSystem(options, sys.argv)
-    roq.createAndSubmitPbsScripts()
-    # TODO: make the local server create the directories (first time only) OR create them before submitting OR submit a separate stage?
-    # NOTE we can't add a stage to the pipeline at this point since the pipeline doesn't support any sort of incremental recomputation ...
-    logger.info("Finished submitting PBS job scripts...quitting")
 
 def reconstruct_command(options):
     # TODO: also write down the environment, contents of config files

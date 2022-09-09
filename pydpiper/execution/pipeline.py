@@ -38,8 +38,9 @@ logger.basicConfig(filename="pipeline.log", level=os.getenv("PYDPIPER_LOGLEVEL",
                           +__name__+",%(levelname)s] %(message)s")  # type: ignore
 
 import Pyro5
-from . import pipeline_executor as pe
-from pydpiper.execution.queueing import create_uri_filename_from_options
+
+import pydpiper.execution.pipeline_executor as pe
+from pydpiper.core.util import create_uri_filename_from_options
 
 Pyro5.config.SERVERTYPE = pe.Pyro5.config.SERVERTYPE
 
@@ -167,13 +168,6 @@ class Pipeline(object):
         self.finished_stages_fh = None
         
         self.outputDir = self.options.application.output_directory or os.getcwd()
-
-        # TODO this doesn't work with the qbatch-based server submission on Graham:
-        if self.options.execution.submit_server and self.options.execution.local:
-            # redirect the standard output to a text file
-            serverLogFile = os.path.join(self.outputDir, self.pipeline_name + '_server_stdout.log')
-            LINE_BUFFERING = 1
-            sys.stdout = open(serverLogFile, 'a', LINE_BUFFERING)
 
         for s in stages:
             self._add_stage(s)
@@ -556,7 +550,7 @@ class Pipeline(object):
     def continueLoop(self):
         if self.verbose:
             print('.', end="", flush=True)
-        # We may be have been called one last time just as the parent thread is exiting
+        # We may have been called one last time just as the parent thread is exiting
         # (if it wakes us with a signal).  In this case, don't do anything:
         if self.shutdown_ev.is_set():
             logger.debug("Shutdown event is set ... quitting")
