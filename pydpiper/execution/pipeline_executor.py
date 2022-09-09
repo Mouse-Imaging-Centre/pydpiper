@@ -24,7 +24,7 @@ import Pyro5.api
 
 from pyminc.volumes.volumes import mincException
 
-from util import remove_flags
+from pydpiper.core.util import remove_flags
 
 Pyro5.config.SERVERTYPE = "multiplex"
 
@@ -54,6 +54,7 @@ def ensure_exec_specified(numExec):
         print(msg)
         sys.exit(1)
 
+
 def launchExecutor(executor):
     # Start executor that will run pipeline stages
 
@@ -61,8 +62,8 @@ def launchExecutor(executor):
     # but uses a hack to attempt to avoid returning localhost (127....)
     network_address = Pyro5.socketutil.get_ip_address(socket.gethostname(),
                                                       workaround127 = True, version = 4)
-    daemon = Pyro5.api.Daemon(host=network_address)
-    clientURI = daemon.register(executor)
+    pyro_daemon = Pyro5.api.Daemon(host=network_address)
+    clientURI = pyro_daemon.register(executor)
 
     # find the URI of the server:
     if executor.ns:
@@ -78,17 +79,17 @@ def launchExecutor(executor):
             logger.exception("Problem opening the specified uri file:")
             raise
 
-    p = Pyro5.api.Proxy(serverURI)
-    # Register the executor with the pipeline
-    # the following command only works if the server is alive. Currently if that's
-    # not the case, the executor will die which is okay, but this should be
-    # more properly handled: a more elegant check to verify the server is running
-    p.registerClient(str(clientURI), executor.mem)
+    with Pyro5.api.Proxy(serverURI) as p:
+        # Register the executor with the pipeline
+        # the following command only works if the server is alive. Currently if that's
+        # not the case, the executor will die which is okay, but this should be
+        # more properly handled: a more elegant check to verify the server is running
+        p.registerClient(str(clientURI), executor.mem)
 
     executor.registeredWithServer()
     executor.setClientURI(str(clientURI))
     executor.setServerURI(str(serverURI))
-    executor.setProxyForServer(p)
+    #executor.setProxyForServer(p)
     
     logger.info("Connected to %s",  serverURI)
     logger.info("Client URI is %s", clientURI)
@@ -100,7 +101,7 @@ def launchExecutor(executor):
     # which causes an error when calling `join` ...
     executor.initializePool()
 
-    logger.debug("Executor daemon running at: %s", daemon.locationStr)
+    logger.debug("Executor daemon running at: %s", pyro_daemon.locationStr)
     try:
         # run the daemon, not the executor mainLoop, in a new thread
         # so that mainLoop exceptions (e.g., if we lose contact with the server)
@@ -114,7 +115,7 @@ def launchExecutor(executor):
                     crash_hook() if crash_hook else ()
                     raise
             return _f
-        t = threading.Thread(target=with_exception_logging(daemon.requestLoop, "Pyro daemon"))
+        t = threading.Thread(target=with_exception_logging(pyro_daemon.requestLoop, "Pyro daemon"))
         t.daemon = True
         t.start()
         executor.mainLoop()
@@ -131,8 +132,8 @@ def launchExecutor(executor):
     else:
         executor.completeAndExitChildren()
         logger.info("Executor shutting down.")
-        daemon.shutdown()
-        t.join()
+        pyro_daemon.shutdown()
+        sys.exit()
 
 
 # like a stage but lighter weight (no methods wasting memory...)
@@ -307,26 +308,6 @@ class pipelineExecutor(object):
         self.e = threading.Event()
         self.heartbeat_tick = 0
 
-    def wrapPyroCall(self, func, *args, **kwargs):
-        try:
-            # a bit expensive perhaps, but it is safer to create
-            # a new proxy for the server whenever it is contacted.
-            # We found that connecting to the server via the same proxy using several
-            # Process-es, can bring down either or both the server and the client
-            # (the documentation also states that proxies can only be shared between
-            # threads).
-            # also, note Ben and his bag of tricks! When a function on the server
-            # side needs to be called, and wrapPyroCall is invoked, we do this
-            # using the lambda functionality. Below the lambda p: p.call_at_the_server
-            # will pass the new proxy to p. At the same time, pycharm is still able
-            # to type check things.
-            logger.debug("wrapPyroCall: %s", func)
-            with Pyro5.api.Proxy(self.serverURI) as one_time_proxy:
-                return func(one_time_proxy)(*args, **kwargs)
-        except:
-            logger.exception("Exception while placing a Pyro call at the server: %s", func)
-            raise Exception("Pyro call with the server failed. Shutting down...")
-
     def registeredWithServer(self):
         self.registered_with_server = True
 
@@ -392,7 +373,8 @@ class pipelineExecutor(object):
             # since the server runs single-threaded)
             logger.info("Unsetting the registered-with-the-server flag for executor: %s", self.clientURI)
             self.registered_with_server = False
-            self.wrapPyroCall(lambda p: p.unregisterClient, self.clientURI)
+            with Pyro5.api.Proxy(self.serverURI) as p:
+                p.unregisterClient(self.clientURI)
             logger.info("Done calling unregisterClient")
 
     def submitToQueue(self, number):
@@ -494,15 +476,15 @@ class pipelineExecutor(object):
     #            self.runningChildren.remove(child)
 
     def notifyStageTerminated(self, i, returncode=None, exc=None):
-        #try:
+        with Pyro5.api.Proxy(self.serverURI) as p:
             if returncode == 0:
                 logger.debug("Setting stage %d finished on the server side", i)
-                self.wrapPyroCall(lambda p: p.setStageFinished, i, self.clientURI)
+                p.setStageFinished(i, self.clientURI)
                 logger.debug("Done setting stage finished")
             else:
                 # a None returncode is also considered a failure
                 logger.debug("Setting stage %d failed on the server side. Return code: %s", i, returncode)
-                self.wrapPyroCall(lambda p: p.setStageFailed, i, self.clientURI, exc)
+                p.setStageFailed(i, self.clientURI, exc)
                 logger.debug("Done setting stage failed")
             # the server may have shutdown or otherwise become unavailable
             # (currently this is expected when a long-running job completes;
@@ -523,6 +505,7 @@ class pipelineExecutor(object):
         logger.info("Main loop finished")
 
     def mainFn(self):
+      with Pyro5.api.Proxy(self.serverURI) as p:
         """Try to get a job from the server (if appropriate) and update
         internal state accordingly.  Return True if it should be called
         again (i.e., there is more to do before shutting down),
@@ -541,7 +524,7 @@ class pipelineExecutor(object):
         #self.free_resources()
 
         logger.debug("Updating timestamp with heartbeat tick: %d", self.heartbeat_tick)
-        self.wrapPyroCall(lambda p: p.updateClientTimestamp, self.clientURI, tick=self.heartbeat_tick)
+        p.updateClientTimestamp(self.clientURI, tick=self.heartbeat_tick)
         self.heartbeat_tick += 1
         logger.debug("Done updating timestamp")
 
@@ -569,9 +552,9 @@ class pipelineExecutor(object):
         # (just setting the event immediately would be somewhat hackish)
         # FIXME send/get the whole stageinfo here (it contains an `ix` field, right?)?!
         logger.debug("Going to get command from server")
-        cmd, i = self.wrapPyroCall(lambda p: p.getCommand, clientURIstr=self.clientURI,
-                                                           clientMemFree=self.mem - self.runningMem,
-                                                           clientProcsFree=self.procs - self.runningProcs)
+        cmd, i = p.getCommand(clientURIstr=self.clientURI,
+                              clientMemFree=self.mem - self.runningMem,
+                              clientProcsFree=self.procs - self.runningProcs)
         logger.debug("Done getting command from server")
 
         if cmd == "shutdown_normally":
@@ -584,7 +567,7 @@ class pipelineExecutor(object):
             return True
         elif cmd == "run_stage":
             logger.debug("Going to get stage info for stage: %d", i)
-            stage = self.wrapPyroCall(lambda p: p.get_stage_info,i)
+            stage = p.get_stage_info(i)
             logger.debug("Done getting stage information for stage: %d", i)
             # we trust that the server has given us a stage
             # that we have enough memory and processors to run ...
@@ -624,7 +607,7 @@ class pipelineExecutor(object):
 
             # why does this need a separate call? should be able to infer that this stage will start from getCommand...
             logger.debug("Telling the server that stage %d has started", i)
-            self.wrapPyroCall(lambda p: p.setStageStarted, i, self.clientURI)
+            p.setStageStarted(i, self.clientURI)
             logger.debug("Server knows that stage started")
             result = self.pool.apply_async(runStage, args=(),
                                            kwds={ "clientURI" : self.clientURI, "stage" : stage,
@@ -676,10 +659,13 @@ def main():
     ensure_exec_specified(options.num_exec)
 
     def local_launch(options):
-        pe = pipelineExecutor(options=options, uri_file=options.urifile, pipeline_name="anon-executor")  # didn't parse application options so don't have a --pipeline-name
+        def f():
+            pe = pipelineExecutor(options=options, uri_file=options.urifile, pipeline_name="anon-executor")
+            # didn't parse application options so don't have a --pipeline-name
+            launchExecutor(pe)
         # FIXME - I doubt missing the other options even works, otherwise we could change the executor interface!!
         # executors don't use any shared-memory constructs, so OK to copy
-        ps = [Process(target=launchExecutor, args=(pe,))
+        ps = [Process(target=f)
               for _ in range(options.num_exec)]
         for p in ps:
             p.start()

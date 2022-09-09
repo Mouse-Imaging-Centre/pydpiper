@@ -8,22 +8,16 @@ import sys
 import signal
 import socket
 import time
-import re
 import resource
-from collections import defaultdict
-from datetime import datetime
-import subprocess
-from shlex import split
-from multiprocessing import Process, Event  # type: ignore
+from threading import Thread, Event
 from configargparse import Namespace
 import logging
 import functools
 import math
-from typing import Any
+from typing import Any, List
 
 from pydpiper.core.stages import CmdStage, State
 
-from sys import intern
 
 # TODO move this and Pyro5 imports down into launchServer where pipeline name is available?
 #os.environ["PYRO_LOGLEVEL"] = os.getenv("PYRO_LOGLEVEL", "INFO")
@@ -124,7 +118,7 @@ class Pipeline(object):
         # of the corresponding graph node (will be populated later -- __init__ is a misnomer)
         self.unfinished_pred_counts = []
         # an array of the actual stages (PipelineStage objects)
-        self.stages = []
+        self.stages: List[CmdStage] = []
         self.nameArray = []
         # indices of the stages ready to be run
         self.runnable = set()
@@ -586,25 +580,25 @@ class Pipeline(object):
             return False
 
         # TODO combine with above clause?
-        else:
-          if len(self.runnable) > 0:
+        elif len(self.runnable) > 0:
             highest_mem_stage = self.highest_memory_stage(self.runnable)
-            max_memory_required = highest_mem_stage.mem
-          if ((len(self.runnable) > 0) and
-          # require no running jobs rather than no clients
-          # since in some configurations (e.g., currently SciNet config has
-          # the server-local executor shut down only when the server does)
-          # the latter choice might lead to the system
-          # running indefinitely with no jobs
-            (self.number_launched_and_waiting_clients + len(self.clients) == 0 and
-            max_memory_required > self.memAvail)):
-              msg = ("\nShutting down due to jobs (e.g. `%s`) which require more memory (%.2fG) than the amount requestable. "
-                     "Please use the --mem argument to increase the amount of memory that executors can request."
-                     % (str(highest_mem_stage)[:1000], max_memory_required))
-              print(msg)
-              logger.warning(msg)
-              return False
-          else:
+            max_memory_required = highest_mem_stage.memory
+            # require no running jobs rather than no clients
+            # since in some configurations (e.g., currently SciNet config has
+            # the server-local executor shut down only when the server does)
+            # the latter choice might lead to the system
+            # running indefinitely with no jobs
+            if ((self.number_launched_and_waiting_clients + len(self.clients) == 0) and
+                max_memory_required > self.memAvail):
+                msg = ("\nShutting down due to jobs (e.g. `%s`) which require more memory (%.2fG) than the amount requestable. "
+                       "Please use the --mem argument to increase the amount of memory that executors can request."
+                       % (str(highest_mem_stage)[:1000], max_memory_required))
+                print(msg)
+                logger.warning(msg)
+                return False
+            else:
+                return True
+        else:
             return True
 
     @Pyro5.api.expose
@@ -903,8 +897,8 @@ def launchServer(pipeline):
     # but uses a hack to attempt to avoid returning localhost (127....)
     network_address = Pyro5.socketutil.get_ip_address(socket.gethostname(),
                                                       workaround127 = True, version = 4)
-    daemon = Pyro5.api.Daemon(host=network_address)
-    pipelineURI = daemon.register(pipeline)
+    pyro_daemon = Pyro5.api.Daemon(host=network_address)
+    pipelineURI = pyro_daemon.register(pipeline)
     
     if options.execution.use_ns:
         # in the future we might want to launch a nameserver here
@@ -919,13 +913,13 @@ def launchServer(pipeline):
     
     pipeline.setVerbosity(options.application.verbose)
 
-    shutdown_time = pe.EXECUTOR_MAIN_LOOP_INTERVAL + options.execution.latency_tolerance
-    
-    try:
-        t = Process(target=daemon.requestLoop)
-        # t.daemon = True
-        t.start()
+    # shutdown_time = pe.EXECUTOR_MAIN_LOOP_INTERVAL + options.execution.latency_tolerance
 
+    t = Thread(target=pyro_daemon.requestLoop)
+    t.daemon = True  # quit Pyro server automatically once the main loop of the Pydpiper server has quit
+    t.start()
+
+    try:
         # at this point requests made to the Pyro daemon will touch process `t`'s copy
         # of the pipeline, so modifiying `pipeline` won't have any effect.  The exception is
         # communication through its multiprocessing.Event, which we use below to wait
@@ -933,8 +927,8 @@ def launchServer(pipeline):
         #FIXME does this leak the memory used by the old pipeline?
         #if so, avoid doing this or at least `del` the old graph ...
 
-        verboseprint("Daemon is running at: %s" % daemon.locationStr)
-        logger.info("Daemon is running at: %s", daemon.locationStr)
+        verboseprint("Daemon is running at: %s" % pyro_daemon.locationStr)
+        logger.info("Daemon is running at: %s", pyro_daemon.locationStr)
         verboseprint("The pipeline's uri is: %s" % str(pipelineURI))
         logger.info("The pipeline's uri is: %s", str(pipelineURI))
 
@@ -964,35 +958,44 @@ def launchServer(pipeline):
                 while p.continueLoop():
                     p.manageExecutors()
                     e.wait(LOOP_INTERVAL)
+            except KeyboardInterrupt:
+                msg = "\nCaught KeyboardInterrupt - bye!"
+                logger.info(msg)
+                print(msg)
             except:
                 logger.exception("Server loop encountered a problem.  Shutting down.")
             finally:
                 logger.info("Server loop going to shut down ...")
                 p.set_shutdown_ev()
 
-        h = Process(target=loop)
-        h.daemon = True
-        h.start()
+        loop()
+        #h.daemon = True
+        #h.start()
         #del pipeline   # `top` shows this has no effect on vmem
 
-        try:
-            jid    = os.environ["PBS_JOBID"]
-            output = subprocess.check_output(['qstat', '-f', jid], stderr=subprocess.STDOUT)
-
-            time_left = int(re.search('Walltime.Remaining = (\d*)', output).group(1))
-            logger.debug("Time remaining: %d s" % time_left)
-            time_to_live = time_left - shutdown_time
-        except:
-            logger.info("I couldn't determine your remaining walltime from qstat.")
-            time_to_live = None
-        flag = e.wait(time_to_live)
-        if not flag:
-            logger.info("Time's up!")
-        e.set()
+        # def timeout():
+        #     # FIXME this is not a good timeout thread, but there is still a use for a timeout thread
+        #     try:
+        #         jid    = os.environ["PBS_JOBID"]
+        #         output = subprocess.check_output(['qstat', '-f', jid], stderr=subprocess.STDOUT)
+        #
+        #         time_left = int(re.search('Walltime.Remaining = (\d*)', output).group(1))
+        #         logger.debug("Time remaining: %d s" % time_left)
+        #         time_to_live = time_left - shutdown_time
+        #     except:
+        #         logger.info("I couldn't determine your remaining walltime from qstat.")
+        #         time_to_live = None
+        #     flag = e.wait(time_to_live)
+        #     if not flag:
+        #         logger.info("Time's up!")
+        #     e.set()
+        # timeout_thread = Thread(target=timeout)
+        # t.daemon = True
+        # timeout_thread.start()
 
     # FIXME if we terminate abnormally, we should _actually_ kill child executors (if running locally)
     except KeyboardInterrupt:
-        logger.exception("Caught keyboard interrupt, killing executors and shutting down server.")
+        logger.info("Caught keyboard interrupt, killing executors and shutting down server.")
         print("\nKeyboardInterrupt caught: cleaning up, shutting down executors.\n")
         sys.stdout.flush()
     except:
@@ -1012,10 +1015,10 @@ def launchServer(pipeline):
         # trying to access variables from `p` in the `finally` clause (in order
         # to print a shutdown message) hangs for some reason, so do it here instead
         p.printShutdownMessage()
-    finally:
+    #finally:
         # brutal, but awkward to do with our system of `Event`s
         # could send a signal to `t` instead:
-        t.terminate()
+        #t.join(5)  # don't need to join daemonized thread
 
 def flatten_pipeline(p):
     """return a list of tuples for each stage.
