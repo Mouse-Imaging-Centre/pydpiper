@@ -1,18 +1,21 @@
-To install pydpiper, both the current source and most stable release can be downloaded from github:
+To install pydpiper and its depending Python packages, both the current source and most recent stable release can be downloaded from github:
 
-https://github.com/Mouse-Imaging-Centre/pydpiper
+python3 -m pip install 'git+https://github.com/Mouse-Imaging-Centre/pydpiper' <...other installation args...>
 
-Using the Downloads button, access the .tar.gz or .zip file.
-Unzip and untar and change into the source directory (e.g. cd pydpiper)
-Run: python3 setup.py install 
+Alternately you may manually clone the repository or download it as a .tar.gz or .zip file, untar/unzip as applicable, `cd` into the source directory (e.g. `pydpiper/`), and run `python3 setup.py install <...extra args...>`.
+
+You must also install the necessary system (non-Python) dependencies; see below.  Of these, the most important is `libminc`.
 
 System dependencies:
 
-minc-toolkit v2 - https://github.com/BIC-MNI/minc-toolkit-v2
-minc-stuffs - https://github.com/Mouse-Imaging-Centre/minc-stuffs
-minc2-simple - https://github.com/vfonov/minc2-simple
-cctools (optional; required for the Makeflow backend) - https://ccl.cse.nd.edu
-Singularity (optional) - https://docs.sylabs.io/guides/latest/admin-guide/
+If you use our MICe Singularity/Apptainer container as per Pydpiper's README, you don't need to install minc-toolkit, minc-stuffs, or minc2-simple, only libminc.  This is probably the easiest way to go.
+
+libminc (required if minc-toolkit-v2 is not installed)
+minc-toolkit v2 - https://github.com/BIC-MNI/minc-toolkit-v2 (required if not using a Singularity container)
+minc-stuffs - https://github.com/Mouse-Imaging-Centre/minc-stuffs (required if not using a Singularity container)
+minc2-simple - https://github.com/vfonov/minc2-simple (required if not using a Singularity container)
+cctools (required for the Makeflow backend) - https://ccl.cse.nd.edu
+Singularity (required to avoid installing several of the above packages) - https://docs.sylabs.io/guides/latest/admin-guide/
 graphviz (optional) - http://www.graphviz.org/
 
 Various Python libraries are also required (see `setup.py` for details); these should
